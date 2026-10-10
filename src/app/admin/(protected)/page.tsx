@@ -10,6 +10,7 @@ import {
 } from "@/lib/admin/dashboard-queries";
 import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
 import { formatTime } from "@/lib/format";
+import { imageVariantUrl } from "@/lib/image-variants";
 import AdminGlobalSearch from "./AdminGlobalSearch";
 import { MetricCell, ModulePanel } from "./dashboard-ui";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
@@ -177,11 +178,22 @@ export default async function AdminDashboardPage() {
                       <span className="w-[4.5rem] shrink-0 text-metadata font-semibold tabular-nums text-secondary">
                         {formatTime(item.startAt)}
                       </span>
+                      {/* Compact visual identity — same small avatar
+                          treatment as the admin RelationPicker. */}
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/5 text-xs font-bold text-ink/40">
+                        {item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={imageVariantUrl(item.imageUrl, "thumb")} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          item.title.charAt(0).toUpperCase()
+                        )}
+                      </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-body font-semibold text-primary">{item.title}</span>
                         <span className="block truncate text-metadata text-muted">
                           {item.kind === "event" ? "Event" : "Appearance"}
                           {item.subtitle ? ` · ${item.subtitle}` : ""}
+                          {item.withBusinesses.length > 0 ? ` · With ${item.withBusinesses.join(", ")}` : ""}
                         </span>
                       </span>
                       {live && (

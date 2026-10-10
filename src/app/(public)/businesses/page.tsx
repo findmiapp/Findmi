@@ -18,8 +18,7 @@ import {
   getHomeCategories,
   getMarketAreaLabel,
   getNextAppearanceHints,
-  getUpcomingAppearanceHints,
-  getUpcomingAppearanceCounts,
+  getUpcomingAppearanceSummaries,
   searchBusinesses,
   type BusinessSort,
   type NextAppearanceHint,
@@ -165,13 +164,15 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     categoryRails = rails.filter((r) => r.businesses.length > 0);
     const browseIds = [...featuredBusinesses, ...categoryRails.flatMap((r) => r.businesses)].map((b) => b.id);
     browseAppearanceHints = await getNextAppearanceHints(browseIds);
-    [featuredUpcomingHints, featuredUpcomingCounts, featuredGalleryImages] = await Promise.all([
-      getUpcomingAppearanceHints(featuredBusinesses.map((b) => b.id)),
-      // The card's "N Upcoming Appearances" label — the true total, never
-      // the 4-item preview's length (same pairing as the homepage rows).
-      getUpcomingAppearanceCounts(featuredBusinesses.map((b) => b.id)),
+    // Preview + the card's "N Upcoming Appearances" TRUE count (distinct
+    // Appearances, never the preview's length) — same as the homepage rows.
+    let featuredSummaries: Awaited<ReturnType<typeof getUpcomingAppearanceSummaries>>;
+    [featuredSummaries, featuredGalleryImages] = await Promise.all([
+      getUpcomingAppearanceSummaries(featuredBusinesses.map((b) => b.id)),
       getBusinessGalleryImagesMap(featuredBusinesses.map((b) => b.id)),
     ]);
+    featuredUpcomingHints = featuredSummaries.hints;
+    featuredUpcomingCounts = featuredSummaries.counts;
   }
 
   // Every filter round-trips through real URL search params (Discovery/

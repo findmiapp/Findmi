@@ -167,24 +167,24 @@ test("Fox Den's single later-dated Appearance still survives alongside appearanc
 });
 
 // ── Static guards: both homepage paths, architecture, and untouched scope ──
-test("static guard: getUpcomingAppearanceCounts is an efficient head-count query, never a row scan, and reuses the fairness architecture", () => {
+test("static guard: the card count is resolved by the fair per-business count resolver from the canonical read, never from the preview", () => {
   const src = readFileSync("src/lib/data.ts", "utf8");
   assert.match(src, /export (?:async )?function resolveUpcomingAppearanceCounts/);
-  assert.match(src, /export async function getUpcomingAppearanceCounts/);
-  const start = src.indexOf("export async function getUpcomingAppearanceCounts");
-  const fnSrc = src.slice(start, start + 800);
-  assert.match(fnSrc, /\{\s*count:\s*"exact",\s*head:\s*true\s*\}/, "must use an exact head-count query, never fetch rows to count them");
+  const start = src.indexOf("export async function getUpcomingAppearanceSummaries");
+  assert.ok(start !== -1);
+  const fnSrc = src.slice(start, start + 2000);
   assert.match(fnSrc, /resolveUpcomingAppearanceCounts\(/, "must funnel through the same fairness-preserving resolver");
+  assert.match(fnSrc, /countUpcomingAppearances\(/, "counts every normalized dated Appearance");
 });
 
-test("static guard: both the initial server render and the category-chip API route fetch counts independently and expose them alongside hints", () => {
+test("static guard: both the initial server render and the category-chip API route expose the true counts alongside hints", () => {
   const page = readFileSync("src/app/(public)/page.tsx", "utf8");
-  assert.match(page, /getUpcomingAppearanceCounts\(businessIds\)/);
+  assert.match(page, /getUpcomingAppearanceSummaries\(businessIds\)/);
   assert.match(page, /appearanceCounts=\{appearanceCounts\}/);
 
   const route = readFileSync("src/app/api/homepage-business-row/route.ts", "utf8");
-  const getCountsCalls = route.match(/getUpcomingAppearanceCounts\(/g) ?? [];
-  assert.equal(getCountsCalls.length, 2, "both the curated branch and the dynamic/hybrid branch must fetch counts");
+  const calls = route.match(/getUpcomingAppearanceSummaries\(/g) ?? [];
+  assert.equal(calls.length, 2, "both the curated branch and the dynamic/hybrid branch must fetch counts");
   assert.match(route, /appearanceCounts: Object\.fromEntries\(appearanceCountsMap\)/);
 });
 
@@ -207,5 +207,5 @@ test("static guard: unrelated scope is untouched — eligibility, Fox Den's data
   // getUpcomingAppearanceHints (a different content path entirely) must
   // still compile/behave unchanged -- its return shape was never touched.
   const businessesPage = readFileSync("src/app/(public)/businesses/page.tsx", "utf8");
-  assert.match(businessesPage, /getUpcomingAppearanceHints/);
+  assert.match(businessesPage, /getUpcomingAppearanceSummaries/);
 });

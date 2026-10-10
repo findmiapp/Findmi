@@ -4,7 +4,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
 import ChevronIcon from "@/components/ChevronIcon";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
-import type { DashboardAppearance, NeedsAttentionItem } from "@/lib/business-dashboard";
+import type { DashboardAppearance, HomeActivityItem, NeedsAttentionItem } from "@/lib/business-dashboard";
 import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { SparkGlyph } from "./BusinessAppShell";
@@ -41,8 +41,8 @@ export default function BusinessHome({
   businessId,
   businessName,
   pro,
-  todayAppearances,
-  upcomingAppearances,
+  liveActivities,
+  comingUp,
   needsAttention,
   metrics,
   metricsRangeLabel,
@@ -56,8 +56,10 @@ export default function BusinessHome({
   businessId: string;
   businessName: string;
   pro: boolean;
-  todayAppearances: DashboardAppearance[];
-  upcomingAppearances: DashboardAppearance[];
+  /** One per live Event / standalone Appearance (lib/business-dashboard.ts buildHomeActivities). */
+  liveActivities: DashboardAppearance[];
+  /** One row per Event / standalone Appearance — next date + "+ N More Dates". */
+  comingUp: HomeActivityItem[];
   needsAttention: NeedsAttentionItem[];
   metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
   metricsRangeLabel: string | null;
@@ -68,9 +70,7 @@ export default function BusinessHome({
   /** This Business's own commercial Opportunities (Business-safe items). */
   opportunityItems: BusinessOpportunityItem[];
 }) {
-  const liveNow = todayAppearances.filter((a) => a.temporal.live);
-  const laterToday = todayAppearances.filter((a) => !a.temporal.live);
-  const comingUp = [...laterToday, ...upcomingAppearances].slice(0, 4);
+  const liveNow = liveActivities;
 
   return (
     <div className="flex flex-col gap-7">
@@ -132,9 +132,9 @@ export default function BusinessHome({
         <SectionTitle id="coming-up" title="Coming Up" href={`${basePath}?tab=findmi-here`} linkLabel="See All" />
         {comingUp.length > 0 ? (
           <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
-            {comingUp.map((a) => (
-              <li key={a.id}>
-                <UpcomingRow appearance={a} />
+            {comingUp.map((item) => (
+              <li key={item.appearance.id}>
+                <UpcomingRow appearance={item.appearance} moreDates={item.moreDates} />
               </li>
             ))}
           </ul>
@@ -340,8 +340,8 @@ function LiveCard({ appearance: a }: { appearance: DashboardAppearance }) {
       className="flex overflow-hidden rounded-2xl border border-black/[0.07] bg-white shadow-sm transition hover:border-black/15 active:scale-[0.99]"
     >
       <div className="relative w-24 shrink-0 bg-black/[0.04] sm:w-32">
-        {a.flyerImageUrl ? (
-          <SupabaseImage src={a.flyerImageUrl} alt="" fill sizes="128px" className="object-cover" />
+        {a.displayImageUrl ? (
+          <SupabaseImage src={a.displayImageUrl} alt="" fill sizes="128px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink/20">
             <NavIcon name="calendar" className="h-7 w-7" />
@@ -361,7 +361,7 @@ function LiveCard({ appearance: a }: { appearance: DashboardAppearance }) {
   );
 }
 
-function UpcomingRow({ appearance: a }: { appearance: DashboardAppearance }) {
+function UpcomingRow({ appearance: a, moreDates }: { appearance: DashboardAppearance; moreDates: number }) {
   const place = placeLine(a);
   const pendingStatus = a.participationStatus && a.participationStatus !== "approved";
   return (
@@ -378,6 +378,13 @@ function UpcomingRow({ appearance: a }: { appearance: DashboardAppearance }) {
           {a.temporal.label} · {formatTime(a.startAt)}–{formatTime(a.endAt)}
           {place ? ` · ${place}` : ""}
         </span>
+        {/* A multi-date Event's Appearances share one row: its next date
+            above, the rest summarized here (every date is under See All). */}
+        {moreDates > 0 && (
+          <span className="block truncate text-metadata font-semibold text-findmi-700">
+            {moreDates === 1 ? "+ 1 More Date" : `+ ${moreDates} More Dates`}
+          </span>
+        )}
       </span>
       {pendingStatus ? (
         <Chip tone="amber">{a.statusLabel}</Chip>

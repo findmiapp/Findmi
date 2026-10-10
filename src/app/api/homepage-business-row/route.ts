@@ -5,8 +5,7 @@ import {
   getBusinessesByIds,
   getBusinessGalleryImagesMap,
   getHomepageRowBusinesses,
-  getUpcomingAppearanceCounts,
-  getUpcomingAppearanceHints,
+  getUpcomingAppearanceSummaries,
 } from "@/lib/data";
 import { isPrimaryBusinessesRow, type HomepageRow } from "@/lib/homepage-rows";
 
@@ -65,9 +64,8 @@ export async function GET(request: NextRequest) {
     const eligible = requireUpcomingAppearance ? await filterBusinessesWithUpcomingAppearance(curated) : curated;
     const filtered = category ? eligible.filter((b) => b.categories.some((c) => c.slug === category)) : eligible;
     const filteredIds = filtered.map((b) => b.id);
-    const [appearanceHintsMap, appearanceCountsMap, galleriesMap] = await Promise.all([
-      getUpcomingAppearanceHints(filteredIds),
-      getUpcomingAppearanceCounts(filteredIds),
+    const [{ hints: appearanceHintsMap, counts: appearanceCountsMap }, galleriesMap] = await Promise.all([
+      getUpcomingAppearanceSummaries(filteredIds),
       getBusinessGalleryImagesMap(filteredIds),
     ]);
     return NextResponse.json({
@@ -90,9 +88,8 @@ export async function GET(request: NextRequest) {
   // the initial server-rendered load (visual polish pass item 2).
   // Gallery-Image Fallback experiment — same bulk-fetched-once discipline.
   const businessIds = businesses.map((b) => b.id);
-  const [appearanceHintsMap, appearanceCountsMap, galleriesMap] = await Promise.all([
-    getUpcomingAppearanceHints(businessIds),
-    getUpcomingAppearanceCounts(businessIds),
+  const [{ hints: appearanceHintsMap, counts: appearanceCountsMap }, galleriesMap] = await Promise.all([
+    getUpcomingAppearanceSummaries(businessIds),
     getBusinessGalleryImagesMap(businessIds),
   ]);
   return NextResponse.json({

@@ -210,7 +210,7 @@ test("static guard: media-calibration gate and the appearance-count fix from a06
   const calibration = readFileSync("src/lib/admin/media-calibration.ts", "utf8");
   assert.match(calibration, /MEDIA_CALIBRATION_ENABLED/);
   const data = readFileSync("src/lib/data.ts", "utf8");
-  assert.match(data, /export async function getUpcomingAppearanceCounts/);
+  assert.match(data, /export async function getUpcomingAppearanceSummaries/);
   assert.match(data, /export (?:async )?function resolveUpcomingAppearanceCounts/);
 });
 

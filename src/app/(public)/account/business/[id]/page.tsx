@@ -21,6 +21,8 @@ import {
   buildNeedsAttentionItems,
   resolveDashboardAppearances,
   canonicalOwnerAppearances,
+  buildHomeActivities,
+  countUpcomingDatesPerPreviewGroup,
   type DashboardAppearance,
   type DashboardAppearanceSource,
 } from "@/lib/business-dashboard";
@@ -872,6 +874,17 @@ export default async function ManageBusinessPage({
   // Activity Integrity — Event ids for which this business has per-date
   // official projections (see withoutSupersededEventProjections).
   let eventIdsWithOccurrenceProjections = new Set<string>();
+  // Account Home — every non-canceled row's identity + dates (unpaged), so
+  // Coming Up's "N more dates" never depends on the schedule page size.
+  let allScheduleRows: {
+    id: string;
+    event_id: string | null;
+    event_occurrence_id: string | null;
+    source: string | null;
+    start_at: string;
+    end_at: string | null;
+    created_at: string;
+  }[] = [];
   // Business-Hosted Events V1 — Events this Business HOSTS, sourced ONLY
   // from events.host_business_id (never participation, appearances, a
   // featured flag or organizer_name). Split by the same "has an upcoming
@@ -974,7 +987,11 @@ export default async function ManageBusinessPage({
       // Add flow itself, and its separate platform-wide Event/Occurrence
       // queries below, are an explicitly out-of-scope concern this pass —
       // see the Schedule Scalability audit).
-      admin.from("appearances").select("event_id, event_occurrence_id, source").eq("business_id", id).neq("status", "canceled"),
+      admin
+        .from("appearances")
+        .select("id, event_id, event_occurrence_id, source, start_at, end_at, created_at")
+        .eq("business_id", id)
+        .neq("status", "canceled"),
       admin.from("event_businesses").select("event_id, status").eq("business_id", id),
       admin.from("event_occurrence_businesses").select("occurrence_id, status").eq("business_id", id),
     ]);
@@ -1004,6 +1021,7 @@ export default async function ManageBusinessPage({
     // per-date official projections rather than maintaining two copies of
     // this filter.
     eventIdsWithOccurrenceProjections = deriveEventIdsWithOccurrenceProjections(linkedIdRows ?? []);
+    allScheduleRows = linkedIdRows ?? [];
     const linkedEventIds = new Set((linkedIdRows ?? []).filter((r) => !r.event_occurrence_id).map((r) => r.event_id));
     const linkedOccurrenceIds = new Set((linkedIdRows ?? []).map((r) => r.event_occurrence_id).filter((x): x is string => Boolean(x)));
 
@@ -1217,7 +1235,14 @@ export default async function ManageBusinessPage({
     // Home's Happening now / Coming up show one card per real-world
     // participation; the Where I'll Be management list keeps every row.
     canonicalAppearances as DashboardAppearanceSource[],
-    { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null }
+    { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null },
+    // Same image fallback the public Appearance cards use (flyer → Event
+    // cover → gallery → cover), then the logo.
+    {
+      galleryImages,
+      coverUrl: business.cover_image_url,
+      logoUrl: business.logo_url,
+    }
   );
   // Pass A — the same id-based integrity rule for Presence → Upcoming:
   // a superseded Event-level projection (e.g. Lavazza TABLÌ) isn't listed
@@ -1228,8 +1253,13 @@ export default async function ManageBusinessPage({
   const presenceAppearances = canonicalAppearances.filter(
     (a) => !(a.event_id && hostedEventIds.has(a.event_id) && !a.event_occurrence_id && a.source !== "manual")
   );
-  const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
-  const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
+  // Home is a summary (presentation grouping, not counting): one live card
+  // / Coming Up row per Event or standalone Appearance, with "+ N More
+  // Dates" read from the full (unpaged) schedule.
+  const homeActivities = buildHomeActivities(
+    dashboardAppearances,
+    countUpcomingDatesPerPreviewGroup(allScheduleRows, eventIdsWithOccurrenceProjections)
+  );
   // "Materially affects discovery" — the same fields a visitor would
   // actually need to find/trust this business, not every optional field
   // on the Profile tab (e.g. website/social links are never required here).
@@ -1614,8 +1644,8 @@ export default async function ManageBusinessPage({
               businessId={id}
               businessName={business.name}
               pro={pro}
-              todayAppearances={todayAppearances}
-              upcomingAppearances={upcomingAppearances}
+              liveActivities={homeActivities.live}
+              comingUp={homeActivities.comingUp.slice(0, 4)}
               needsAttention={needsAttention}
               metrics={
                 performanceData

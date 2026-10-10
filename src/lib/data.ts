@@ -12,7 +12,7 @@ import {
 import { resolveEffectiveEventMarket } from "./event-markets";
 import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
 import { resolveAppearanceDisplayImage } from "./appearance-image";
-import { collapseEventDates } from "./findmi-here";
+import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import type {
   Appearance,
@@ -1465,6 +1465,156 @@ export async function getPastAppearancesForBusiness(
   return dedupeAppearances(rows).slice(0, limit);
 }
 
+export interface ActivityOccurrence {
+  id: string;
+  event_id: string;
+  start_at: string;
+  end_at: string;
+  status: string;
+  location: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
+  venue_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+export type ActivityEventRow = {
+  id: string;
+  slug: string;
+  name: string;
+  cover_image_url: string | null;
+  start_at: string;
+  end_at: string | null;
+  venue_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+};
+const ACTIVITY_EVENT_COLUMNS = "id, slug, name, cover_image_url, start_at, end_at, venue_name, address, city, state";
+
+/** The pure core of getBusinessFindmiHereActivity (rules 1–3 in its doc),
+ * shared with the Business-card summaries (getUpcomingAppearanceSummaries)
+ * so a Business card and the Business page reconcile exactly the same
+ * activity. `rows` are this Business's real Appearance rows (any dates);
+ * `events` holds only real (non-demo) Events; `occurrences` are the
+ * approved, non-cancelled occurrence participations. Returns every
+ * reconciled row, unsplit and unsorted — callers split by time. */
+export function reconcileBusinessActivity(
+  { businessId, rows, eventLinkIds, occurrences, events }: {
+    businessId: string;
+    rows: BusinessActivityRow[];
+    eventLinkIds: string[];
+    occurrences: ActivityOccurrence[];
+    events: Map<string, ActivityEventRow>;
+  },
+  nowIso: string = new Date().toISOString()
+): BusinessActivityRow[] {
+  // 1. Event-level Appearances follow the Event's own current schedule.
+  const reDated: BusinessActivityRow[] = rows.map((r) => {
+    const e = r.event_id ? events.get(r.event_id) : null;
+    if (!e || r.event_occurrence_id || !e.end_at) return r;
+    if (e.start_at === r.start_at && e.end_at === r.end_at) return r;
+    return { ...r, start_at: e.start_at, end_at: e.end_at };
+  });
+
+  // Canonical Activity Normalization pass — the same supersession rule
+  // the owner dashboard applies (lib/business-dashboard.ts's
+  // canonicalOwnerAppearances), so public Findmi Here can never disagree
+  // with the owner's own view about which projection is authoritative.
+  // Runs BEFORE steps 2/3 below: once a stale Event-level row is dropped
+  // here, its event_id is still "covered" by the surviving occurrence-
+  // level real rows, so eventsWithRows (step 2) correctly still skips
+  // synthesizing a replacement Event-level placeholder for it.
+  const superseded: BusinessActivityRow[] = withoutSupersededEventProjections(
+    reDated,
+    deriveEventIdsWithOccurrenceProjections(reDated)
+  );
+  // A dated row projected onto its Event's range-mirror occurrence
+  // (lib/event-range-mirror.ts — the month-long seed row beside the real
+  // per-day dates) is a mirror, not another Appearance, whenever the same
+  // Event still has other dated rows here. Same rule the public Event
+  // page applies to its dates.
+  const reconciled = superseded.filter((r) => {
+    const e = r.event_id ? events.get(r.event_id) : null;
+    if (!e || !r.event_occurrence_id || !isRangeMirrorOccurrence(r, e)) return true;
+    return !superseded.some((o) => o !== r && o.event_id === r.event_id && !(o.event_occurrence_id && isRangeMirrorOccurrence(o, e)));
+  });
+
+  const base = {
+    business_id: businessId,
+    description: null,
+    latitude: null,
+    longitude: null,
+    status: "confirmed" as const,
+    source: "official_participation" as const,
+    is_featured: false,
+    bulletin_text: null,
+    show_on_home: false,
+    home_sort_order: null,
+    external_url: null,
+    flyer_image_url: null,
+    admin_reviewed_at: null,
+    market_id: null,
+    market_area_id: null,
+    categories: [],
+    created_at: nowIso,
+    derived: true,
+  };
+
+  // 2. Approved Event-level participation with no Appearance at all.
+  const eventsWithRows = new Set(reconciled.filter((r) => r.event_id).map((r) => r.event_id as string));
+  for (const eventId of eventLinkIds) {
+    const e = events.get(eventId);
+    if (!e || !e.end_at || eventsWithRows.has(e.id)) continue;
+    reconciled.push({
+      ...base,
+      id: `participation-${e.id}`,
+      event_id: e.id,
+      event_occurrence_id: null,
+      title: e.name,
+      start_at: e.start_at,
+      end_at: e.end_at,
+      venue_name: e.venue_name,
+      address: e.address,
+      city: e.city,
+      state: e.state,
+      location_id: null,
+      location: null,
+      event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
+    } as BusinessActivityRow);
+    eventsWithRows.add(e.id);
+  }
+
+  // 3. Approved occurrence-level participation with no Appearance for it.
+  const occurrencesWithRows = new Set(reconciled.map((r) => r.event_occurrence_id).filter(Boolean));
+  for (const o of occurrences) {
+    const e = events.get(o.event_id);
+    if (!e || occurrencesWithRows.has(o.id)) continue;
+    // Same instant already represented (e.g. an Event-level row for the
+    // primary date) — never two rows for one date.
+    if (reconciled.some((r) => r.event_id === o.event_id && r.start_at === o.start_at)) continue;
+    const loc = Array.isArray(o.location) ? (o.location[0] ?? null) : o.location;
+    reconciled.push({
+      ...base,
+      id: `participation-${o.id}`,
+      event_id: o.event_id,
+      event_occurrence_id: o.id,
+      title: e.name,
+      start_at: o.start_at,
+      end_at: o.end_at,
+      venue_name: o.venue_name ?? e.venue_name,
+      address: o.address ?? e.address,
+      city: o.city ?? e.city,
+      state: o.state ?? e.state,
+      location_id: loc?.id ?? null,
+      location: loc,
+      event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
+    } as BusinessActivityRow);
+  }
+
+  return reconciled;
+}
+
 /** Public Business Findmi Here — the Business page's activity, reconciled
  * against the Event participation it actually has (read-only; nothing is
  * written).
@@ -1514,21 +1664,9 @@ export async function getBusinessFindmiHereActivity(
       .eq("status", "approved"),
   ]);
 
-  type OccJoin = {
-    id: string;
-    event_id: string;
-    start_at: string;
-    end_at: string;
-    status: string;
-    location: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
-    venue_name: string | null;
-    address: string | null;
-    city: string | null;
-    state: string | null;
-  };
-  const occurrences = ((occurrenceLinks ?? []) as unknown as { occurrence: OccJoin | OccJoin[] | null }[])
+  const occurrences = ((occurrenceLinks ?? []) as unknown as { occurrence: ActivityOccurrence | ActivityOccurrence[] | null }[])
     .map((r) => (Array.isArray(r.occurrence) ? (r.occurrence[0] ?? null) : r.occurrence))
-    .filter((o): o is OccJoin => Boolean(o) && o!.status !== "cancelled");
+    .filter((o): o is ActivityOccurrence => Boolean(o) && o!.status !== "cancelled");
 
   const rows = [...upcoming, ...past];
   const eventIds = new Set<string>();
@@ -1537,118 +1675,20 @@ export async function getBusinessFindmiHereActivity(
   for (const o of occurrences) eventIds.add(o.event_id);
   if (eventIds.size === 0) return { upcoming, past };
 
-  type EventRow = {
-    id: string;
-    slug: string;
-    name: string;
-    cover_image_url: string | null;
-    start_at: string;
-    end_at: string | null;
-    venue_name: string | null;
-    address: string | null;
-    city: string | null;
-    state: string | null;
-  };
   const { data: eventData } = await supabase
     .from("events")
-    .select("id, slug, name, cover_image_url, start_at, end_at, venue_name, address, city, state")
+    .select(ACTIVITY_EVENT_COLUMNS)
     .in("id", Array.from(eventIds))
     .eq("is_demo", false);
-  const events = new Map<string, EventRow>(((eventData ?? []) as EventRow[]).map((e) => [e.id, e]));
+  const events = new Map<string, ActivityEventRow>(((eventData ?? []) as ActivityEventRow[]).map((e) => [e.id, e]));
 
-  // 1. Event-level Appearances follow the Event's own current schedule.
-  const reDated: BusinessActivityRow[] = rows.map((r) => {
-    const e = r.event_id ? events.get(r.event_id) : null;
-    if (!e || r.event_occurrence_id || !e.end_at) return r;
-    if (e.start_at === r.start_at && e.end_at === r.end_at) return r;
-    return { ...r, start_at: e.start_at, end_at: e.end_at };
+  const reconciled = reconcileBusinessActivity({
+    businessId,
+    rows,
+    eventLinkIds: ((eventLinks ?? []) as { event_id: string }[]).map((l) => l.event_id),
+    occurrences,
+    events,
   });
-
-  // Canonical Activity Normalization pass — the same supersession rule
-  // the owner dashboard applies (lib/business-dashboard.ts's
-  // canonicalOwnerAppearances), so public Findmi Here can never disagree
-  // with the owner's own view about which projection is authoritative.
-  // Runs BEFORE steps 2/3 below: once a stale Event-level row is dropped
-  // here, its event_id is still "covered" by the surviving occurrence-
-  // level real rows, so eventsWithRows (step 2) correctly still skips
-  // synthesizing a replacement Event-level placeholder for it.
-  const reconciled: BusinessActivityRow[] = withoutSupersededEventProjections(
-    reDated,
-    deriveEventIdsWithOccurrenceProjections(reDated)
-  );
-
-  const nowIso = new Date().toISOString();
-  const base = {
-    business_id: businessId,
-    description: null,
-    latitude: null,
-    longitude: null,
-    status: "confirmed" as const,
-    source: "official_participation" as const,
-    is_featured: false,
-    bulletin_text: null,
-    show_on_home: false,
-    home_sort_order: null,
-    external_url: null,
-    flyer_image_url: null,
-    admin_reviewed_at: null,
-    market_id: null,
-    market_area_id: null,
-    categories: [],
-    created_at: nowIso,
-    derived: true,
-  };
-
-  // 2. Approved Event-level participation with no Appearance at all.
-  const eventsWithRows = new Set(reconciled.filter((r) => r.event_id).map((r) => r.event_id as string));
-  for (const l of (eventLinks ?? []) as { event_id: string }[]) {
-    const e = events.get(l.event_id);
-    if (!e || !e.end_at || eventsWithRows.has(e.id)) continue;
-    reconciled.push({
-      ...base,
-      id: `participation-${e.id}`,
-      event_id: e.id,
-      event_occurrence_id: null,
-      title: e.name,
-      start_at: e.start_at,
-      end_at: e.end_at,
-      venue_name: e.venue_name,
-      address: e.address,
-      city: e.city,
-      state: e.state,
-      location_id: null,
-      location: null,
-      event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
-    } as BusinessActivityRow);
-    eventsWithRows.add(e.id);
-  }
-
-  // 3. Approved occurrence-level participation with no Appearance for it.
-  const occurrencesWithRows = new Set(reconciled.map((r) => r.event_occurrence_id).filter(Boolean));
-  for (const o of occurrences) {
-    const e = events.get(o.event_id);
-    if (!e || occurrencesWithRows.has(o.id)) continue;
-    // Same instant already represented (e.g. an Event-level row for the
-    // primary date) — never two rows for one date.
-    if (reconciled.some((r) => r.event_id === o.event_id && r.start_at === o.start_at)) continue;
-    const loc = Array.isArray(o.location) ? (o.location[0] ?? null) : o.location;
-    reconciled.push({
-      ...base,
-      id: `participation-${o.id}`,
-      event_id: o.event_id,
-      event_occurrence_id: o.id,
-      title: e.name,
-      start_at: o.start_at,
-      end_at: o.end_at,
-      venue_name: o.venue_name ?? e.venue_name,
-      address: o.address ?? e.address,
-      city: o.city ?? e.city,
-      state: o.state ?? e.state,
-      location_id: loc?.id ?? null,
-      location: loc,
-      event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
-    } as BusinessActivityRow);
-  }
 
   const now = Date.now();
   const isUpcoming = (r: BusinessActivityRow) => new Date(r.end_at ?? r.start_at).getTime() > now;
@@ -3135,6 +3175,11 @@ export interface NextAppearanceHint {
    * mini-card's date/time line can correctly show "Time TBD" instead of
    * fabricating a real-looking time from the importer's noon placeholder. */
   description?: string | null;
+  /** Business-card preview only — this entry is an Event's next date
+   * standing in for this many FURTHER upcoming dated Appearances of the
+   * same Event (presentation grouping; the card's count still counts every
+   * dated Appearance). 0/undefined for a standalone or single-date entry. */
+  moreDates?: number;
 }
 
 /** Bulk "next real appearance" per business — powers business cards'
@@ -3196,11 +3241,6 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
 }
 
 const UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS = 4;
-/** Raw rows fetched per business before collapsing an Event's dates into
- * one Appearance: a multi-date Event projects one row per date, so
- * fetching only `limit` raw rows could fill the whole preview with one
- * Event's dates and hide the business's other, distinct Appearances. */
-const UPCOMING_APPEARANCE_CANDIDATE_ROWS = 50;
 // Homepage Appearance Hints Fairness pass — this function is only ever
 // called with one homepage row's own (founder-configured, typically
 // single-digit-to-low-teens) business list, never an unbounded fan-out —
@@ -3228,7 +3268,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: 
 
 export interface AppearanceHintRow {
   business_id: string;
-  /** Identity for collapseEventDates (one card per Event). Optional only so
+  /** Fields for preview grouping (groupAppearancesForPreview). Optional only so
    * older/test fetchers without them still resolve — a row with no
    * event_id is a standalone Appearance and is never merged. */
   id?: string;
@@ -3290,10 +3330,12 @@ function toAppearanceHint(r: AppearanceHintRow): NextAppearanceHint {
  * FETCH STRATEGY changed (bounded per-business queries, run with capped
  * concurrency via mapWithConcurrency, rather than one shared-budget
  * query). */
-/** Fetches ONE business's own candidate rows (already status/date-filtered
- * and ordered server-side, capped at `limit`) — the only thing abstracted
- * behind dependency injection below. */
-export type AppearanceHintFetcher = (businessId: string, limit: number) => Promise<AppearanceHintRow[]>;
+/** Returns ONE business's COMPLETE canonical upcoming activity rows (every
+ * upcoming date, already status/date-filtered, reconciled and ordered by
+ * start_at — never truncated, so neither the count nor the preview can
+ * depend on a fetch limit) — the only thing abstracted behind dependency
+ * injection below. */
+export type AppearanceHintFetcher = (businessId: string) => Promise<AppearanceHintRow[]>;
 
 /** The per-business-FAIR core of getUpcomingAppearanceHints, with the
  * actual Storage/DB call abstracted behind `fetch` — same dependency-
@@ -3317,44 +3359,29 @@ export async function resolveUpcomingAppearanceHints(
 
   const perBusiness = await mapWithConcurrency(uniqueIds, UPCOMING_APPEARANCE_QUERY_CONCURRENCY, async (businessId) => ({
     businessId,
-    rows: await fetch(businessId, Math.max(limitPerBusiness, UPCOMING_APPEARANCE_CANDIDATE_ROWS)),
+    rows: await fetch(businessId),
   }));
 
   for (const { businessId, rows } of perBusiness) {
-    // EVENT IDENTITY != SCHEDULE OCCURRENCES — one Appearance per Event
-    // (its live date, else its next date), standalone rows untouched: the
-    // same collapseEventDates the Business page's Featured card uses, and
-    // the same unit getUpcomingAppearanceCounts counts.
-    const appearances = collapseEventDates(
-      rows.map((r, i) => ({ ...r, id: r.id ?? `row:${i}`, event_id: r.event_id ?? null, end_at: r.end_at ?? null }))
-    ).slice(0, limitPerBusiness);
-    if (appearances.length === 0) continue;
-    result.set(businessId, appearances.map(toAppearanceHint));
+    // PRESENTATION grouping (lib/findmi-here.ts): one preview entry per
+    // Event (its live date, else its next, with "+ N More Dates") and per
+    // standalone Appearance, so a multi-date Event takes one slot and can't
+    // crowd other Appearances out. The COUNT (resolveUpcomingAppearanceCounts)
+    // still counts every dated Appearance — grouping never changes it.
+    const groups = groupAppearancesForPreview(toActivityRows(rows)).slice(0, limitPerBusiness);
+    if (groups.length === 0) continue;
+    result.set(
+      businessId,
+      groups.map((g) => ({ ...toAppearanceHint(g.representative), moreDates: g.dates.length - 1 }))
+    );
   }
   return result;
 }
 
-export async function getUpcomingAppearanceHints(
-  businessIds: string[],
-  limitPerBusiness: number = UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS
-): Promise<Map<string, NextAppearanceHint[]>> {
-  const supabase = getSupabase();
-  if (!supabase || businessIds.length === 0) return new Map();
-  const nowIso = new Date().toISOString();
-
-  return resolveUpcomingAppearanceHints(businessIds, limitPerBusiness, async (businessId, limit) => {
-    const { data } = await supabase
-      .from("appearances")
-      .select(
-        "id, event_id, end_at, business_id, title, start_at, flyer_image_url, venue_name, city, state, description, event:events(slug, is_demo, name, cover_image_url)"
-      )
-      .eq("business_id", businessId)
-      .neq("status", "canceled")
-      .gt("end_at", nowIso)
-      .order("start_at", { ascending: true })
-      .limit(limit);
-    return (data ?? []) as unknown as AppearanceHintRow[];
-  });
+/** Hint rows carry optional identity fields (older/test fetchers may omit
+ * them); a row without an event_id is a standalone Appearance. */
+function toActivityRows(rows: AppearanceHintRow[]) {
+  return rows.map((r, i) => ({ ...r, id: r.id ?? `row:${i}`, event_id: r.event_id ?? null, end_at: r.end_at ?? null }));
 }
 
 /** Resolves ONE business's exact qualifying-Appearance count. */
@@ -3385,63 +3412,156 @@ export async function resolveUpcomingAppearanceCounts(businessIds: string[], fet
   return result;
 }
 
-/** Homepage Appearance Count Accuracy pass — the TRUE total number of
- * qualifying upcoming Appearances per business (same canonical
- * definition as getUpcomingAppearanceHints/getBusinessIdsWithUpcoming
- * Appearance: status <> 'canceled', end_at > now()), used alongside (not
- * instead of) getUpcomingAppearanceHints: the card's visual preview stays
- * capped at UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS regardless of this
- * number — this only fixes what the heading/CTA TEXT says. Root cause
- * this corrects: BusinessLogoCard previously read its displayed count
- * straight off the bounded preview array's own .length, so a business
- * with more qualifying Appearances than the 4-card preview limit (e.g.
- * Free Bean, 10+) showed "4 Upcoming Appearances" — the preview cap, not
- * the real total.
- *
- * Deliberately an exact COUNT query (`{ count: "exact", head: true }` —
- * Postgres COUNT(*), no rows returned/fetched) per business, never a scan
- * of every Appearance row: getting the total must not cost anywhere near
- * what fetching every row would. Same per-business-bounded-query
- * architecture as getUpcomingAppearanceHints (see that function's own
- * root-cause doc) — one independent query per business, never a shared/
- * global budget a high-volume business could consume at another
- * business's expense.
- *
- * The unit is an Appearance, not a schedule date: a multi-date Event
- * participation (one appearance row per occurrence, see
- * lib/appearance-event-sync.ts) counts ONCE, matching the collapsed
- * preview. Standalone rows stay an exact head count; Event-linked rows
- * are read as a bare event_id list to count distinct Events. */
-export async function getUpcomingAppearanceCounts(businessIds: string[]): Promise<Map<string, number>> {
-  const supabase = getSupabase();
-  if (!supabase || businessIds.length === 0) return new Map();
-  const nowIso = new Date().toISOString();
+/** Reads every row a paginated PostgREST query returns, page by page, so
+ * a result is never silently truncated at the server's max-rows cap. */
+async function fetchAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await page(from, from + pageSize - 1);
+    if (error || !data) break;
+    out.push(...(data as T[]));
+    if (data.length < pageSize) break;
+  }
+  return out;
+}
 
-  return resolveUpcomingAppearanceCounts(businessIds, async (businessId) => {
-    // Appearances, not schedule dates: standalone rows each count once
-    // (exact head count), and every Event-linked row — its Event-level row
-    // and each per-date occurrence row — counts once per Event (distinct
-    // event_id, the same unit collapseEventDates shows in the preview).
-    const [{ count }, { data: eventRows }] = await Promise.all([
+/** Every listed Business's canonical UPCOMING activity — the same
+ * reconciliation the Business page uses (reconcileBusinessActivity:
+ * Event-level rows follow their Event's schedule, superseded projections
+ * dropped, approved participation without a row still counts), deduped
+ * per date and sorted. Batched: six set-based queries for the whole list
+ * (never one per business), each read exhaustively, so no business's
+ * result depends on any other's volume and nothing is cut off by a limit. */
+async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<string, BusinessActivityRow[]>> {
+  const result = new Map<string, BusinessActivityRow[]>();
+  const supabase = getSupabase();
+  const ids = [...new Set(businessIds)];
+  if (!supabase || ids.length === 0) return result;
+  const nowIso = new Date().toISOString();
+  const select = "*, event:events(slug, is_demo, name, cover_image_url)";
+
+  const [upcomingRows, eventLevelRows, pastDateRows, eventLinks, occurrenceLinks] = await Promise.all([
+    fetchAllPages<BusinessActivityRow>((from, to) =>
       supabase
         .from("appearances")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId)
-        .is("event_id", null)
-        .neq("status", "canceled")
-        .gt("end_at", nowIso),
-      supabase
-        .from("appearances")
-        .select("event_id")
-        .eq("business_id", businessId)
-        .not("event_id", "is", null)
+        .select(select)
+        .in("business_id", ids)
         .neq("status", "canceled")
         .gt("end_at", nowIso)
-        .limit(1000),
-    ]);
-    const events = new Set(((eventRows ?? []) as { event_id: string }[]).map((r) => r.event_id));
-    return (count ?? 0) + events.size;
-  });
+        .order("start_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    // Event-level rows whose STORED date has passed — rule 1 may re-date
+    // them onto their Event's current (upcoming) schedule.
+    fetchAllPages<BusinessActivityRow>((from, to) =>
+      supabase
+        .from("appearances")
+        .select(select)
+        .in("business_id", ids)
+        .not("event_id", "is", null)
+        .is("event_occurrence_id", null)
+        .neq("status", "canceled")
+        .lte("end_at", nowIso)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    // Past per-date rows (identity columns only, never displayed): the
+    // supersession signal and "already has a row" checks must see them,
+    // exactly as the Business page's own past rows do.
+    fetchAllPages<BusinessActivityRow>((from, to) =>
+      supabase
+        .from("appearances")
+        .select("id, business_id, event_id, event_occurrence_id, source, status, title, start_at, end_at, created_at")
+        .in("business_id", ids)
+        .not("event_occurrence_id", "is", null)
+        .neq("status", "canceled")
+        .lte("end_at", nowIso)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllPages<{ business_id: string; event_id: string }>((from, to) =>
+      supabase.from("event_businesses").select("business_id, event_id").in("business_id", ids).eq("status", "approved").order("event_id").range(from, to)
+    ),
+    fetchAllPages<{ business_id: string; occurrence: ActivityOccurrence | ActivityOccurrence[] | null }>((from, to) =>
+      supabase
+        .from("event_occurrence_businesses")
+        .select("business_id, occurrence:event_occurrences!inner(id, event_id, start_at, end_at, status, location:locations(id, name, slug), venue_name, address, city, state)")
+        .in("business_id", ids)
+        .eq("status", "approved")
+        .gt("occurrence.end_at", nowIso)
+        .order("occurrence_id")
+        .range(from, to)
+    ),
+  ]);
+
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
+  const rows = [...upcomingRows, ...eventLevelRows, ...pastDateRows].map(
+    (r) => ({ ...r, event: one((r.event ?? null) as never) }) as BusinessActivityRow
+  );
+  const occurrences = occurrenceLinks
+    .map((l) => ({ businessId: l.business_id, occurrence: one(l.occurrence) }))
+    .filter((o): o is { businessId: string; occurrence: ActivityOccurrence } => Boolean(o.occurrence) && o.occurrence!.status !== "cancelled");
+
+  const eventIds = new Set<string>();
+  for (const r of rows) if (r.event_id) eventIds.add(r.event_id);
+  for (const l of eventLinks) eventIds.add(l.event_id);
+  for (const o of occurrences) eventIds.add(o.occurrence.event_id);
+  const eventData = eventIds.size
+    ? await fetchAllPages<ActivityEventRow>((from, to) =>
+        supabase.from("events").select(ACTIVITY_EVENT_COLUMNS).in("id", [...eventIds]).eq("is_demo", false).order("id").range(from, to)
+      )
+    : [];
+  const events = new Map(eventData.map((e) => [e.id, e]));
+
+  const now = Date.now();
+  for (const businessId of ids) {
+    const reconciled = reconcileBusinessActivity({
+      businessId,
+      rows: dedupeAppearances(rows.filter((r) => r.business_id === businessId)),
+      eventLinkIds: eventLinks.filter((l) => l.business_id === businessId).map((l) => l.event_id),
+      occurrences: occurrences.filter((o) => o.businessId === businessId).map((o) => o.occurrence),
+      events,
+    });
+    const upcoming = reconciled
+      .filter((r) => new Date(r.end_at ?? r.start_at).getTime() > now)
+      .sort((a, b) => a.start_at.localeCompare(b.start_at));
+    if (upcoming.length > 0) result.set(businessId, upcoming);
+  }
+  return result;
+}
+
+/** Business-card Appearance preview + TRUE count, from one canonical read.
+ * Count = number of upcoming dated Appearances after normalization
+ * (reconcileBusinessActivity: canceled excluded, superseded Event-level
+ * Primary Date projections and duplicate/range-mirror rows dropped) —
+ * never preview entries, raw rows or Events. Preview = the first
+ * `limitPerBusiness` presentation groups (lib/findmi-here.ts), one per
+ * Event with "+ N More Dates". Both resolve through the per-business
+ * resolvers above. */
+export async function getUpcomingAppearanceSummaries(
+  businessIds: string[],
+  limitPerBusiness: number = UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS
+): Promise<{ hints: Map<string, NextAppearanceHint[]>; counts: Map<string, number> }> {
+  const activity = await getUpcomingBusinessActivity(businessIds);
+  const rowsFor = (businessId: string): AppearanceHintRow[] =>
+    (activity.get(businessId) ?? []).map((r) => {
+      const event = r.event as (NonNullable<BusinessActivityRow["event"]> & { is_demo?: boolean }) | null;
+      return {
+        ...r,
+        // Derived rows come only from real (non-demo) Events.
+        event: event ? { slug: event.slug, is_demo: event.is_demo ?? false, name: event.name ?? "", cover_image_url: event.cover_image_url ?? null } : null,
+      };
+    });
+  const [hints, counts] = await Promise.all([
+    resolveUpcomingAppearanceHints(businessIds, limitPerBusiness, async (id) => rowsFor(id)),
+    // Canonical count: every normalized upcoming dated Appearance.
+    resolveUpcomingAppearanceCounts(businessIds, async (id) => countUpcomingAppearances(toActivityRows(rowsFor(id)))),
+  ]);
+  return { hints, counts };
 }
 
 export interface MarketplaceProduct extends Product {

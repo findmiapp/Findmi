@@ -161,7 +161,11 @@ export default function BusinessLogoCard({
       : null;
 
   return (
-    <div ref={impressionRef} className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
+    // Rail alignment: the card fills its rail slot (h-full; rails are flex
+    // rows that stretch every slot to the tallest card) and pins its CTA to
+    // the bottom, so how many Appearances a business has never changes the
+    // outer card height.
+    <div ref={impressionRef} className="group relative flex h-full w-full flex-col rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
       <Link
         href={href}
         aria-label={`${business.name}: ${ctaLabel}`}
@@ -229,7 +233,7 @@ export default function BusinessLogoCard({
         )}
       </div>
 
-      <div className="relative flex flex-col gap-1 rounded-b-3xl p-3.5">
+      <div className="relative flex flex-1 flex-col gap-1 rounded-b-3xl p-3.5">
         {/* Preview Card Polish pass item 3 — Follow + Save, reusing the
             exact production components (no duplicate state systems). This
             row is deliberately right-aligned and sits ABOVE the business
@@ -301,16 +305,16 @@ export default function BusinessLogoCard({
             )}
 
             <Link
-              href={upcoming.length === 1 ? (upcoming[0].href ?? appearancesHref) : appearancesHref}
+              href={totalUpcoming === 1 ? (upcoming[0].href ?? appearancesHref) : appearancesHref}
               className="relative z-20 mt-2 flex items-center gap-0.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700"
             >
-              {upcoming.length === 1 ? "View appearance" : `See all ${totalUpcoming} appearances`}
+              {totalUpcoming === 1 ? "View appearance" : `See all ${totalUpcoming} appearances`}
               <ChevronGlyph className="h-2.5 w-2.5" />
             </Link>
           </div>
         )}
 
-        <p className="mt-1 flex items-center gap-0.5 text-xs font-bold uppercase tracking-wide text-findmi-700">
+        <p className="mt-auto flex items-center gap-0.5 pt-1 text-xs font-bold uppercase tracking-wide text-findmi-700">
           {ctaLabel}
           <ChevronGlyph className="h-3 w-3" />
         </p>
@@ -378,6 +382,10 @@ function AppearanceMiniCard({
     ? formatDateShort(item.startAt)
     : `${formatDateShort(item.startAt)} · ${formatTime(item.startAt)}`;
   const venueLine = [item.venueName, cityState(item.city, item.state)].filter(Boolean).join(" · ");
+  // Presentation grouping: an Event's next date standing in for its further
+  // dated Appearances. Same three fixed-height lines — the venue joins the
+  // date line and the third line carries "+ N More Dates".
+  const moreDates = item.moreDates ?? 0;
 
   return (
     <Link
@@ -431,9 +439,17 @@ function AppearanceMiniCard({
         <p className={`truncate font-semibold leading-tight text-ink ${wide ? "text-sm" : "text-[11px]"}`}>
           {item.venue}
         </p>
-        <p className={`truncate leading-tight text-ink/50 ${wide ? "text-xs" : "text-[10px]"}`}>{dateTime}</p>
-        {venueLine && (
-          <p className={`truncate leading-tight text-ink/40 ${wide ? "text-[11px]" : "text-[9px]"}`}>{venueLine}</p>
+        <p className={`truncate leading-tight text-ink/50 ${wide ? "text-xs" : "text-[10px]"}`}>
+          {moreDates > 0 && item.venueName ? `${dateTime} · ${item.venueName}` : dateTime}
+        </p>
+        {moreDates > 0 ? (
+          <p className={`truncate font-semibold leading-tight text-findmi-700 ${wide ? "text-[11px]" : "text-[9px]"}`}>
+            {moreDates === 1 ? "+ 1 More Date" : `+ ${moreDates} More Dates`}
+          </p>
+        ) : (
+          venueLine && (
+            <p className={`truncate leading-tight text-ink/40 ${wide ? "text-[11px]" : "text-[9px]"}`}>{venueLine}</p>
+          )
         )}
       </div>
     </Link>

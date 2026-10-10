@@ -185,31 +185,32 @@ test("one fetch call per unique business id, never a shared/global fetch", async
 });
 
 // ── Static guards: the shared-limit bug cannot silently come back ────────
-test("static guard: the global shared .limit(N * businessIds.length) pattern is gone from getUpcomingAppearanceHints specifically", () => {
+test("static guard: the shared-limit starvation bug cannot come back — business-card activity is read exhaustively, never under a shared .limit()", () => {
   const src = readFileSync("src/lib/data.ts", "utf8");
   assert.doesNotMatch(src, /UPCOMING_APPEARANCE_FETCH_PER_BUSINESS/, "the old over-fetch-multiplier constant must be removed, not just unused");
+  assert.doesNotMatch(src, /UPCOMING_APPEARANCE_CANDIDATE_ROWS/, "no fixed candidate cap a busy business could exhaust");
   assert.match(src, /export type AppearanceHintFetcher/);
   assert.match(src, /export (?:async )?function resolveUpcomingAppearanceHints/);
 
-  // Scope the remaining checks to just this function's own source (NOT
-  // the whole file) — a different, unrelated function elsewhere
-  // (getBusinessGalleryImagesMap) legitimately uses its own, untouched
-  // shared-limit pattern and must not be flagged by this guard.
-  const start = src.indexOf("export async function getUpcomingAppearanceHints");
-  assert.ok(start !== -1, "getUpcomingAppearanceHints exists");
-  const fnSrc = src.slice(start, start + 1500);
-  assert.doesNotMatch(fnSrc, /\.limit\(\s*\w+\s*\*\s*businessIds\.length\s*\)/, "no query in this function may size its limit by the FULL businessIds list");
-  assert.doesNotMatch(fnSrc, /\.in\("business_id",\s*businessIds\)/, "no single query may scope to the whole businessIds list");
-  assert.match(fnSrc, /\.eq\("business_id", businessId\)/, "each business is queried individually");
+  // The batched read (one set-based query per table for the whole list)
+  // is starvation-free only because every query pages to exhaustion —
+  // a shared .limit() is exactly the Fox Den bug.
+  const start = src.indexOf("async function getUpcomingBusinessActivity");
+  assert.ok(start !== -1, "getUpcomingBusinessActivity exists");
+  const fnSrc = src.slice(start, src.indexOf("export async function getUpcomingAppearanceSummaries", start));
+  assert.doesNotMatch(fnSrc, /\.limit\(/, "no shared row limit anywhere in the batched read");
+  const reads = fnSrc.match(/fetchAllPages</g) ?? [];
+  assert.ok(reads.length >= 5, "every batched query pages through fetchAllPages");
+  assert.match(fnSrc, /\.range\(from, to\)/);
 });
 
 test("static guard: both the initial server render and the category-chip API route still consume the same Map<string, NextAppearanceHint[]> contract via Object.fromEntries", () => {
   const page = readFileSync("src/app/(public)/page.tsx", "utf8");
-  assert.match(page, /getUpcomingAppearanceHints\(businessIds\)/);
+  assert.match(page, /getUpcomingAppearanceSummaries\(businessIds\)/);
   assert.match(page, /Object\.fromEntries\(appearanceHintsMap\)/);
 
   const route = readFileSync("src/app/api/homepage-business-row/route.ts", "utf8");
-  assert.match(route, /getUpcomingAppearanceHints\(/);
+  assert.match(route, /getUpcomingAppearanceSummaries\(/);
   assert.match(route, /Object\.fromEntries\(appearanceHintsMap\)/);
 });
 

@@ -17,6 +17,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EventParticipationStatus } from "./types";
 import { dedupeAppearances, getMarketAreaLabel, withoutSupersededEventProjections, type DedupableAppearance } from "./data";
 import { getTemporalLabel, type TemporalLabel } from "./format";
+import { resolveAppearanceDisplayImage } from "./appearance-image";
+import { groupAppearancesForPreview } from "./findmi-here";
 
 // A small, deliberate duplicate of page.tsx's own PARTICIPATION_LABEL —
 // kept separate rather than importing from that page file (Next.js page
@@ -85,6 +87,7 @@ export interface DashboardAppearance {
   state: string | null;
   flyerImageUrl: string | null;
   isEventLinked: boolean;
+  eventId: string | null;
   eventName: string | null;
   /** /event/[slug] — null for a standalone appearance, or a demo event
    * (never linked to a real public page). */
@@ -112,8 +115,24 @@ export interface DashboardAppearance {
    * the existing `editing=<id>` query param the FindMi Here tab already
    * reads (see page.tsx). */
   editHref: string;
+  /** The activity has an image of its OWN — its flyer, or its linked
+   * Event's cover (what the public Findmi Here card shows first). A flyer
+   * is never separately required: public surfaces fall back flyer → Event
+   * cover → Business gallery → Business cover, so an Event-linked activity
+   * with a cover is fully illustrated without one. */
   hasImage: boolean;
+  /** The image every public Appearance surface would show for this
+   * activity (resolveAppearanceDisplayImage), then the Business logo;
+   * null only when the Business has no imagery at all. */
+  displayImageUrl: string | null;
   hasVenue: boolean;
+}
+
+/** The Business's own imagery, for the canonical display-image fallback. */
+export interface DashboardBusinessImages {
+  galleryImages: string[];
+  coverUrl: string | null;
+  logoUrl: string | null;
 }
 
 export interface DashboardBusinessGeo {
@@ -126,6 +145,7 @@ type EventGeoRow = {
   name: string;
   slug: string;
   is_demo: boolean;
+  cover_image_url: string | null;
   market_id: string | null;
   market_area_id: string | null;
 };
@@ -155,7 +175,8 @@ export async function resolveDashboardAppearances(
   admin: SupabaseClient,
   businessId: string,
   appearances: DashboardAppearanceSource[],
-  businessGeo: DashboardBusinessGeo
+  businessGeo: DashboardBusinessGeo,
+  businessImages: DashboardBusinessImages = { galleryImages: [], coverUrl: null, logoUrl: null }
 ): Promise<ResolvedDashboardAppearances> {
   const managementHref = `/account/business/${businessId}?tab=findmi-here`;
 
@@ -163,7 +184,7 @@ export async function resolveDashboardAppearances(
     new Set(appearances.map((a) => a.event_id).filter((v): v is string => Boolean(v)))
   );
   const { data: eventRows } = eventIds.length
-    ? await admin.from("events").select("id, name, slug, is_demo, market_id, market_area_id").in("id", eventIds)
+    ? await admin.from("events").select("id, name, slug, is_demo, cover_image_url, market_id, market_area_id").in("id", eventIds)
     : { data: [] as EventGeoRow[] };
   const eventById = new Map(((eventRows ?? []) as EventGeoRow[]).map((e) => [e.id, e]));
 
@@ -202,6 +223,7 @@ export async function resolveDashboardAppearances(
     const cityStateLabel = [a.city, a.state].filter(Boolean).join(", ") || null;
     const geographyLabel = eventGeoLabel ?? businessGeographyLabel ?? cityStateLabel;
     const temporal = getTemporalLabel(a.start_at, a.end_at);
+    const specificImageUrl = a.flyer_image_url ?? (event && !event.is_demo ? event.cover_image_url : null);
     return {
       id: a.id,
       title: a.title,
@@ -213,6 +235,7 @@ export async function resolveDashboardAppearances(
       state: a.state,
       flyerImageUrl: a.flyer_image_url,
       isEventLinked: Boolean(a.event_id),
+      eventId: a.event_id,
       eventName: event?.name ?? null,
       eventHref: event && !event.is_demo ? `/event/${event.slug}` : null,
       participationStatus: a.participationStatus,
@@ -222,12 +245,72 @@ export async function resolveDashboardAppearances(
       isToday: temporal.live || temporal.label === "TODAY",
       managementHref,
       editHref: `${managementHref}&editing=${a.id}`,
-      hasImage: Boolean(a.flyer_image_url),
+      hasImage: Boolean(specificImageUrl),
+      displayImageUrl:
+        resolveAppearanceDisplayImage({
+          appearanceId: a.id,
+          specificImageUrl,
+          galleryImages: businessImages.galleryImages,
+          businessCoverUrl: businessImages.coverUrl,
+        }) ?? businessImages.logoUrl,
       hasVenue: Boolean(a.venue_name || a.address),
     };
   });
 
   return { appearances: resolved, businessGeographyLabel };
+}
+
+/** Account Home — an operational SUMMARY, not a date dump. PRESENTATION
+ * grouping only (lib/findmi-here.ts groupAppearancesForPreview): a
+ * multi-date Event's dated Appearances render as ONE row (its next date +
+ * "+ N More Dates"); standalone Appearances stay separate. Every date is
+ * still its own Appearance — nothing here changes what is counted. */
+export interface HomeActivityItem {
+  appearance: DashboardAppearance;
+  /** Further upcoming dated Appearances of the same Event after `appearance`. */
+  moreDates: number;
+}
+
+function groupDashboard(appearances: DashboardAppearance[]) {
+  return groupAppearancesForPreview(
+    appearances.map((a) => ({ id: a.id, event_id: a.eventId, start_at: a.startAt, end_at: a.endAt, a }))
+  );
+}
+
+/** Splits the canonical, start-ordered dashboard list into Happening Now
+ * (one live card per Event / standalone Appearance) and Coming Up (one row
+ * per Event / standalone Appearance, at its next not-yet-live date).
+ * `upcomingDateCounts` — from countUpcomingDatesPerPreviewGroup over the
+ * Business's FULL schedule —
+ * keeps "N more dates" truthful when the loaded list is paged; without it
+ * the loaded rows are counted. */
+export function buildHomeActivities(
+  appearances: DashboardAppearance[],
+  upcomingDateCounts?: Map<string, number>
+): { live: DashboardAppearance[]; comingUp: HomeActivityItem[] } {
+  const live = groupDashboard(appearances.filter((a) => a.temporal.live)).map((g) => g.representative.a);
+  const comingUp = groupDashboard(appearances.filter((a) => !a.temporal.live)).map((g) => ({
+    appearance: g.dates[0].a,
+    moreDates: Math.max(0, (upcomingDateCounts?.get(g.key) ?? g.dates.length) - 1),
+  }));
+  return { live, comingUp };
+}
+
+/** Not-yet-live upcoming dated Appearances per presentation group (Event
+ * or standalone), over the Business's complete (unpaged) row set, after the
+ * same canonical normalization the dashboard list gets
+ * (canonicalOwnerAppearances). Feeds only the "+ N More Dates" label. */
+export function countUpcomingDatesPerPreviewGroup<
+  T extends DedupableAppearance & { end_at: string | null; event_occurrence_id: string | null; source: string | null },
+>(rows: T[], eventIdsWithOccurrenceProjections: Set<string>, now: number = Date.now()): Map<string, number> {
+  const pending = rows
+    .filter((r) => new Date(r.start_at).getTime() > now)
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  const counts = new Map<string, number>();
+  for (const g of groupAppearancesForPreview(canonicalOwnerAppearances(pending, eventIdsWithOccurrenceProjections), now)) {
+    counts.set(g.key, g.dates.length);
+  }
+  return counts;
 }
 
 /** Appearances that ended earlier THIS calendar month (server-local time —

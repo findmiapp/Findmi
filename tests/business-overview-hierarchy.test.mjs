@@ -102,8 +102,10 @@ test("every section's own conditional guard is byte-identical to before this pas
   assert.match(HOME, /<HomeOpportunities basePath=\{basePath\} items=\{opportunityItems\} \/>/);
 });
 
-test("Coming Up's later-today + upcoming composition and cap are unchanged", () => {
-  assert.match(HOME, /const comingUp = \[\.\.\.laterToday, \.\.\.upcomingAppearances\]\.slice\(0, 4\);/);
+test("Coming Up is one row per Appearance (buildHomeActivities), capped at 4", () => {
+  const page = readFileSync("src/app/(public)/account/business/[id]/page.tsx", "utf8");
+  assert.match(page, /comingUp=\{homeActivities\.comingUp\.slice\(0, 4\)\}/);
+  assert.match(page, /liveActivities=\{homeActivities\.live\}/);
 });
 
 test("Performance's metric set, Free/Pro trend gating, and link label are unchanged", () => {
@@ -125,7 +127,7 @@ test("MetricTile still suppresses changeLabel (trend) for a non-Pro business, un
 test("static guard: no new props, data fetching, or entitlement checks were introduced", () => {
   const propsMatch = HOME.match(/export default function BusinessHome\(\{([\s\S]*?)\}:\s*\{/);
   assert.ok(propsMatch, "expected BusinessHome's destructured props list");
-  const propNames = ["basePath", "businessId", "businessName", "pro", "todayAppearances", "upcomingAppearances", "needsAttention", "metrics", "metricsRangeLabel", "pendingInvitationCount", "newOrderCount", "businessHandle", "updateHandleAction", "opportunityItems"];
+  const propNames = ["basePath", "businessId", "businessName", "pro", "liveActivities", "comingUp", "needsAttention", "metrics", "metricsRangeLabel", "pendingInvitationCount", "newOrderCount", "businessHandle", "updateHandleAction", "opportunityItems"];
   for (const name of propNames) assert.match(propsMatch[1], new RegExp(`\\b${name}\\b`), `expected existing prop "${name}" to still be destructured`);
   // This is a client-presentation component -- it must still receive
   // every value as a prop rather than fetching anything itself.
