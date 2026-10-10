@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
+import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
@@ -481,7 +482,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             exists; the whole row disappears when none do. */}
         {(showMessageButton || website || location.phone || location.email) && (
           <div className="mt-8 flex flex-wrap items-center gap-1.5">
-            {showMessageButton && <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} />}
+            {showMessageButton && <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} messagingEnabled={isDirectBusinessMessagingEnabled()} />}
             {website && (
               <a
                 href={website}

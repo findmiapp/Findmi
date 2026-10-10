@@ -32,7 +32,9 @@ import { isEmailVerified, requireBusinessMember, requireEventMember, requireLoca
 import {
   createInquiryConversation,
   createOpportunity,
+  findOpportunityConversation,
   getOrCreateConversation,
+  getThreadMessagingFacts,
   isAuthorizedForConversation,
   resolveEventApplicationDecision,
   resolveOpportunity,
@@ -42,13 +44,28 @@ import {
   type InquirySubjectType,
 } from "@/lib/opportunities";
 import { isBusinessPro } from "@/lib/entitlements";
-import { BUSINESS_INQUIRY_TOPIC_LABELS, isBusinessInquiryTopic, sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
+import {
+  DIRECT_MESSAGING_PAUSED_MESSAGE,
+  canSendInThread,
+  isDirectBusinessMessagingEnabled,
+} from "@/lib/communication-policy";
+import {
+  BUSINESS_INQUIRY_TOPIC_LABELS,
+  isBusinessInquiryTopic,
+  isCommercialInquiryTopic,
+  sanitizeBusinessInquiryTopics,
+} from "@/lib/business-inquiry-topics";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import type { PlanTier } from "@/lib/types";
 import { ensureEventAppearance, realizeEventLevelApproval, declineEventLevelParticipation } from "@/lib/appearance-event-sync";
 import { isPrimaryDateId, primaryDateId } from "@/lib/data";
 import type { EventParticipationScope } from "@/lib/types";
 
 type ActionResult = { conversationId: string } | { error: string };
+/** Structured participation (apply / invite): always recorded; the thread
+ * to open is null when none exists and direct messaging is paused (the
+ * plain chat fallback is never created then — see communication-policy). */
+type StructuredActionResult = { conversationId: string | null } | { error: string };
 
 // ── Controlled public inquiries (Inquire / Contact Organizer / Contact) ──
 //
@@ -103,8 +120,10 @@ const TARGET_TABLE: Record<"business" | "event" | "location", "businesses" | "ev
  * the client beyond its id), and Business Inquiry keeps its existing Pro
  * entitlement gate (ensureIsPro) — this pass changes the CTA's
  * destination, not who gets to use it. */
-export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Promise<{ ok: true } | { error: string }> {
-  if (input.companySite && input.companySite.trim()) return { ok: true };
+export async function submitEntityInquiry(
+  input: SubmitEntityInquiryInput
+): Promise<{ ok: true; routedTo: "organization" | "findmi" } | { error: string }> {
+  if (input.companySite && input.companySite.trim()) return { ok: true, routedTo: "organization" };
 
   const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
   const email = input.email.trim().toLowerCase();
@@ -120,7 +139,7 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
   if (!admin) return { error: "Server isn't configured." };
 
   const targetColumns =
-    input.targetType === "business" ? "id, plan_tier, plan_expires_at, accepts_inquiries, inquiry_topics" : "id";
+    input.targetType === "business" ? "id, name, slug, plan_tier, plan_expires_at, accepts_inquiries, inquiry_topics" : "id";
   const { data: target } = await admin
     .from(TARGET_TABLE[input.targetType])
     .select(targetColumns)
@@ -139,8 +158,12 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
   // business with inquiries off, or with a topic that business never
   // enabled (or no longer does).
   let topicLabel: string | null = null;
+  let businessName = "";
+  let businessSlug = "";
   if (input.targetType === "business") {
     const businessRow = target as unknown as {
+      name: string;
+      slug: string;
       plan_tier: PlanTier | null;
       plan_expires_at: string | null;
       accepts_inquiries: boolean;
@@ -157,6 +180,8 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
       return { error: "Choose a valid inquiry topic." };
     }
     topicLabel = BUSINESS_INQUIRY_TOPIC_LABELS[rawTopic];
+    businessName = businessRow.name;
+    businessSlug = businessRow.slug;
   }
   const fullMessage = topicLabel ? `Topic: ${topicLabel}\n\n${message}` : message;
 
@@ -168,6 +193,43 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Communication boundary — commercial intents (Wholesale, Catering /
+  // Booking, Event / Pop-Up, Collaboration) go to FINDMI, never directly
+  // to the Business: a conversation with NO organization participant
+  // (the Business can't see it), the sender's contact kept on the row,
+  // and an email to Findmi, who qualifies it and decides the next step.
+  if (input.targetType === "business" && isCommercialInquiryTopic(rawTopic)) {
+    try {
+      const { conversationId } = await createInquiryConversation(admin, {
+        subjectType: "findmi_commercial_request",
+        subjectId: input.targetId,
+        targetEntityType: null,
+        targetEntityId: null,
+        senderUserId: user?.id ?? null,
+        guestName: name,
+        guestEmail: email,
+        guestPhone: phone,
+        message: `Commercial request about ${businessName} · ${topicLabel}\n\n${message}`,
+        keepContactDetails: true,
+      });
+      await notifyAdmin({
+        subject: `Commercial request: ${topicLabel} · ${businessName}`,
+        heading: `New ${topicLabel} request about ${businessName}`,
+        body: [
+          `From: ${name} <${email}>${phone ? ` · ${phone}` : ""}${user ? " (signed in)" : " (guest)"}`,
+          `Business: ${businessName} (/business/${businessSlug})`,
+          message,
+          "This request was sent to Findmi, not to the Business. Qualify it and decide the next step.",
+        ],
+        actionLabel: "Open Request",
+        actionUrl: `/admin/conversations/${conversationId}`,
+      });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Couldn't send your request. Please try again." };
+    }
+    return { ok: true, routedTo: "findmi" };
+  }
 
   try {
     await createInquiryConversation(admin, {
@@ -185,7 +247,7 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
     return { error: err instanceof Error ? err.message : "Couldn't send your message. Please try again." };
   }
 
-  return { ok: true };
+  return { ok: true, routedTo: "organization" };
 }
 
 export interface SubmitProductInquiryInput {
@@ -305,6 +367,7 @@ function asEntityParty(entityType: ConversationEntityType, entityId: string | nu
 
 /** "Message Organizer" from the public Event page. */
 export async function messageEventOrganizer(eventId: string, actingBusinessId: string, body: string): Promise<ActionResult> {
+  if (!isDirectBusinessMessagingEnabled()) return { error: DIRECT_MESSAGING_PAUSED_MESSAGE };
   const text = body.trim();
   if (!text) return { error: "Write a message first." };
 
@@ -368,7 +431,7 @@ export async function applyToEventPublic(
   // doesn't pass this (there are none left after this pass) keeps the
   // pre-existing occurrence-scoped behavior exactly as it was.
   scope: EventParticipationScope = "selected_dates"
-): Promise<ActionResult> {
+): Promise<StructuredActionResult> {
   try {
     await requireBusinessMember(actingBusinessId);
   } catch (err) {
@@ -578,6 +641,13 @@ export async function applyToEventPublic(
     }
   }
 
+  if (!conversationId && !isDirectBusinessMessagingEnabled()) {
+    // Direct messaging paused — the application itself is already
+    // recorded above; land in the existing structured (Opportunity)
+    // thread for this pair if there is one, never a new plain chat.
+    return { conversationId: await findOpportunityConversation(admin, eventId, actingBusinessId) };
+  }
+
   if (!conversationId) {
     // Fallback: no Opportunity conversation resulted (e.g. already-invited
     // -> immediately approved with no fresh Opportunity created) — a plain
@@ -609,6 +679,7 @@ export async function messageBusiness(
   actingEntityId: string,
   body: string
 ): Promise<ActionResult> {
+  if (!isDirectBusinessMessagingEnabled()) return { error: DIRECT_MESSAGING_PAUSED_MESSAGE };
   const text = body.trim();
   if (!text) return { error: "Write a message first." };
   if (actingEntityId === targetBusinessId) return { error: "You can't message your own business." };
@@ -643,7 +714,7 @@ export async function messageBusiness(
  * organizer's Event) instead of requiring a trip through the Event Manager
  * first. Whole-event only, same limitation inviteParticipatingBusiness
  * already has (no occurrence parameter). */
-export async function inviteBusinessToEventPublic(actingEventId: string, targetBusinessId: string, note: string): Promise<ActionResult> {
+export async function inviteBusinessToEventPublic(actingEventId: string, targetBusinessId: string, note: string): Promise<StructuredActionResult> {
   try {
     await requireEventMember(actingEventId);
   } catch (err) {
@@ -685,6 +756,12 @@ export async function inviteBusinessToEventPublic(actingEventId: string, targetB
     console.error("[opportunities] failed to record invitation Opportunity", err);
   }
 
+  if (!conversationId && !isDirectBusinessMessagingEnabled()) {
+    // Same rule as applyToEventPublic: the invitation is recorded; open
+    // the structured thread if one exists, never a new plain chat.
+    return { conversationId: await findOpportunityConversation(admin, actingEventId, targetBusinessId) };
+  }
+
   if (!conversationId) {
     const { id } = await getOrCreateConversation(admin, {
       subjectType: "event_business_chat",
@@ -706,6 +783,7 @@ export async function inviteBusinessToEventPublic(actingEventId: string, targetB
  * the same Conversation model, no Location-specific structured Opportunity
  * type this pass). */
 export async function messageLocation(targetLocationId: string, actingBusinessId: string, body: string): Promise<ActionResult> {
+  if (!isDirectBusinessMessagingEnabled()) return { error: DIRECT_MESSAGING_PAUSED_MESSAGE };
   const text = body.trim();
   if (!text) return { error: "Write a message first." };
 
@@ -763,6 +841,15 @@ export async function sendReply(
 
   if (!(await isAuthorizedForConversation(admin, conversationId, userId))) {
     return { error: "You don't have access to this conversation." };
+  }
+
+  // Communication boundary — a direct org-to-org thread (no Findmi
+  // structure) is read-only while direct messaging is paused, including
+  // replying as a second organization into a consumer thread.
+  // Opportunity threads and consumer threads are unaffected.
+  const facts = await getThreadMessagingFacts(admin, conversationId);
+  if (!canSendInThread(facts, { entityType: actingEntityType, entityId: actingEntityId }, isDirectBusinessMessagingEnabled())) {
+    return { error: DIRECT_MESSAGING_PAUSED_MESSAGE };
   }
 
   await sendTextMessage(admin, conversationId, userId, actingEntityType, actingEntityId, text);

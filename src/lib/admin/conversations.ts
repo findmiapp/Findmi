@@ -10,7 +10,7 @@ import { getAdminSupabase } from "./supabase-admin";
 // /admin/sales-inquiries stays the structured CRM view for Findmi Sales;
 // this is still the raw communication record, not a competing inbox.
 
-export type CommunicationType = "all" | "business" | "product" | "event" | "venue" | "sales";
+export type CommunicationType = "all" | "business" | "product" | "event" | "venue" | "sales" | "commercial";
 
 const TYPE_SUBJECT_TYPE: Record<Exclude<CommunicationType, "all">, string> = {
   business: "business_inquiry",
@@ -18,6 +18,7 @@ const TYPE_SUBJECT_TYPE: Record<Exclude<CommunicationType, "all">, string> = {
   event: "event_inquiry",
   venue: "venue_inquiry",
   sales: "findmi_sales",
+  commercial: "findmi_commercial_request",
 };
 
 const SUBJECT_TYPE_LABEL: Record<string, string> = {
@@ -26,6 +27,7 @@ const SUBJECT_TYPE_LABEL: Record<string, string> = {
   event_inquiry: "Event Inquiry",
   venue_inquiry: "Venue Inquiry",
   findmi_sales: "Findmi Sales",
+  findmi_commercial_request: "Commercial Request",
   opportunity: "Opportunity",
   event_business_chat: "Direct Message",
   business_business_chat: "Direct Message",
@@ -236,6 +238,12 @@ export async function getAdminConversationList(params: {
           .join(" · ") || null;
       }
       entityLink = { label: "View Sales Inquiry", href: "/admin/sales-inquiries" };
+    } else if (c.subject_type === "findmi_commercial_request") {
+      // Findmi-mediated commercial request (communication boundary): sent
+      // to Findmi about a Business, never to the Business itself.
+      recipientLabel = "Findmi";
+      contextLine = first?.body.split("\n")[0] ?? null;
+      entityLink = { label: "View Business", href: `/admin/businesses/${c.subject_id}` };
     }
 
     return {
@@ -368,6 +376,10 @@ export async function getAdminConversationDetail(conversationId: string): Promis
       contextLine = [s.city_market_count ? `${s.city_market_count} cities` : null, s.regions || null].filter(Boolean).join(" · ") || null;
     }
     entityLink = { label: "View Sales Inquiry", href: "/admin/sales-inquiries" };
+  } else if (row.subject_type === "findmi_commercial_request") {
+    recipientLabel = "Findmi";
+    contextLine = rawMessages[0]?.body.split("\n")[0] ?? null;
+    entityLink = { label: "View Business", href: `/admin/businesses/${row.subject_id}` };
   }
 
   const messages: AdminConversationMessage[] = rawMessages.map((m) => ({

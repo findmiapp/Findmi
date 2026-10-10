@@ -16,6 +16,7 @@ import { respondToApplicationInThread, respondToInvitationInThread } from "@/app
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../../PersonalAppShell";
 import ReplyComposer from "./ReplyComposer";
+import { DIRECT_MESSAGING_PAUSED_MESSAGE, canSendInThread, isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 
 export const metadata: Metadata = {
   title: "Conversation",
@@ -87,7 +88,17 @@ export default async function ConversationPage({
   // no participant at all for the guest side (see createInquiryConversation),
   // so otherParties is empty; fall back to the guest's own name rather
   // than the generic "Conversation".
-  const title = otherParties.map((p) => p.label).join(" & ") || thread.guestName || "Conversation";
+  const isFindmiRequest = thread.subjectType === "findmi_commercial_request";
+  const messagingEnabled = isDirectBusinessMessagingEnabled();
+  const title = isFindmiRequest ? "Findmi" : otherParties.map((p) => p.label).join(" & ") || thread.guestName || "Conversation";
+  // Communication boundary — a direct org-to-org thread is read-only while
+  // direct messaging is paused (history stays visible). Opportunity
+  // threads and consumer threads keep their reply box.
+  const replyPaused = myParties.length > 0 && myParties.every((p) => !canSendInThread(
+    { subjectType: thread.subjectType, hasOpportunity: thread.opportunityCards.length > 0, parties: thread.parties },
+    { entityType: p.entityType, entityId: p.entityId },
+    messagingEnabled
+  ));
 
   const timeline: TimelineItem[] = [
     ...thread.messages.map((m): TimelineItem => ({ kind: "message", createdAt: m.createdAt, message: m })),
@@ -105,11 +116,18 @@ export default async function ConversationPage({
           Findmi account to reply from (Phase 12's own "smallest safe V1"
           limitation), so their contact info is surfaced here instead —
           the way an authorized manager actually follows up. */}
-      {thread.guestEmail && (
+      {isFindmiRequest ? (
         <p className="mt-1 text-metadata text-subtle">
-          Guest contact: {thread.guestEmail}
-          {thread.guestPhone && ` · ${thread.guestPhone}`}
+          Sent to Findmi, not directly to the business. Findmi will review it and follow up
+          {thread.guestEmail ? ` at ${thread.guestEmail}` : ""}.
         </p>
+      ) : (
+        thread.guestEmail && (
+          <p className="mt-1 text-metadata text-subtle">
+            Guest contact: {thread.guestEmail}
+            {thread.guestPhone && ` · ${thread.guestPhone}`}
+          </p>
+        )
       )}
 
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata text-red-600">{error}</p>}
@@ -132,8 +150,21 @@ export default async function ConversationPage({
       </div>
 
       <div className="mt-6">
-        {myParties.length > 0 ? (
-          <ReplyComposer conversationId={id} parties={myParties} />
+        {replyPaused ? (
+          <p className="rounded-xl bg-findmi-50 px-3.5 py-2.5 text-metadata leading-relaxed text-findmi-700">
+            {DIRECT_MESSAGING_PAUSED_MESSAGE} This conversation stays here for your records.
+          </p>
+        ) : myParties.length > 0 ? (
+          <ReplyComposer
+            conversationId={id}
+            parties={myParties.filter((p) =>
+              canSendInThread(
+                { subjectType: thread.subjectType, hasOpportunity: thread.opportunityCards.length > 0, parties: thread.parties },
+                { entityType: p.entityType, entityId: p.entityId },
+                messagingEnabled
+              )
+            )}
+          />
         ) : (
           <p className="text-metadata text-subtle">You can view this conversation, but none of your current identities can reply here.</p>
         )}

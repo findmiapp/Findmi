@@ -26,6 +26,16 @@ export const BUSINESS_INQUIRY_TOPIC_LABELS: Record<BusinessInquiryTopic, string>
   other: "Other",
 };
 
+/** Commercial intents Findmi receives and qualifies itself (communication
+ * boundary, lib/communication-policy.ts): an Inquiry on one of these
+ * topics goes to FINDMI, never directly to the Business. Every other topic
+ * (General, Product / Order, Other) stays a direct customer inquiry. */
+export const COMMERCIAL_INQUIRY_TOPICS = ["wholesale", "catering_booking", "event_popup", "collaboration"] as const satisfies readonly BusinessInquiryTopic[];
+
+export function isCommercialInquiryTopic(value: string | null | undefined): boolean {
+  return !!value && (COMMERCIAL_INQUIRY_TOPICS as readonly string[]).includes(value);
+}
+
 export function isBusinessInquiryTopic(value: string): value is BusinessInquiryTopic {
   return (BUSINESS_INQUIRY_TOPIC_VALUES as readonly string[]).includes(value);
 }

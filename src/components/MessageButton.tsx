@@ -45,6 +45,7 @@ type ActorOption = { kind: "business" | "event"; id: string; name: string };
  * modal, never a leading action menu. */
 type Mode = "message" | "apply" | "invite";
 
+
 export default function MessageButton({
   targetType,
   targetId,
@@ -52,6 +53,7 @@ export default function MessageButton({
   eventOccurrences,
   size = "compact",
   layout = "pill",
+  messagingEnabled = false,
 }: {
   targetType: "event" | "business" | "location";
   targetId: string;
@@ -74,7 +76,16 @@ export default function MessageButton({
    * modal itself is identical either way — only the trigger markup
    * changes. */
   layout?: "pill" | "grid";
+  /** Communication boundary (lib/communication-policy.ts) — the server-read
+   * DIRECT_BUSINESS_MESSAGING_ENABLED switch, passed down by the page
+   * (never read on the client). While false (the default) the modal offers
+   * ONLY the structured action for its target: Apply to Vend (Event) or
+   * Invite to Event (Business); free-text messaging is gone from the UI
+   * and refused by the server; visibility is gated by
+   * shouldShowMessageButton. */
+  messagingEnabled?: boolean;
 }) {
+  const MESSAGING = messagingEnabled;
   const router = useRouter();
   const [state, setState] = useState<ViewerState | "loading">("loading");
   const [open, setOpen] = useState(false);
@@ -90,7 +101,10 @@ export default function MessageButton({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const entryMode: Mode = MESSAGING ? "message" : targetType === "event" ? "apply" : "invite";
+  const triggerLabel = MESSAGING ? "Message" : targetType === "event" ? "Apply to Vend" : "Invite to Event";
   const fetchedRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
@@ -115,14 +129,19 @@ export default function MessageButton({
   const actorOptions: ActorOption[] = resolved
     ? targetType === "business"
       ? [
-          ...resolved.businesses.filter((b) => b.id !== targetId).map((b) => ({ kind: "business" as const, id: b.id, name: b.name })),
+          // Paused messaging: a Business target only takes invitations, so
+          // only the viewer's Events can act.
+          ...(MESSAGING
+            ? resolved.businesses.filter((b) => b.id !== targetId).map((b) => ({ kind: "business" as const, id: b.id, name: b.name }))
+            : []),
           ...resolved.events.map((e) => ({ kind: "event" as const, id: e.id, name: e.name })),
         ]
       : resolved.businesses.map((b) => ({ kind: "business" as const, id: b.id, name: b.name }))
     : [];
 
   function reset() {
-    setMode("message");
+    setMode(entryMode);
+    setNotice(null);
     setActorId(actorOptions[0]?.id ?? "");
     // Occurrence-Aware Event Participation pass — Phase 2's product rule:
     // a single-occurrence Event auto-selects that one date (no extra UI
@@ -212,8 +231,12 @@ export default function MessageButton({
       if ("error" in result) {
         setError(result.error);
         setSubmitting(false);
-      } else {
+      } else if (result.conversationId) {
         router.push(`/account/messages/${result.conversationId}`);
+      } else {
+        setNotice("Application sent. You'll see the organizer's decision in your Business Manager.");
+        setSubmitting(false);
+        router.refresh();
       }
     } catch {
       setError("Couldn't submit that application. Please try again.");
@@ -230,8 +253,12 @@ export default function MessageButton({
       if ("error" in result) {
         setError(result.error);
         setSubmitting(false);
-      } else {
+      } else if (result.conversationId) {
         router.push(`/account/messages/${result.conversationId}`);
+      } else {
+        setNotice("Invitation sent. You'll see their response in your Event Manager.");
+        setSubmitting(false);
+        router.refresh();
       }
     } catch {
       setError("Couldn't send that invite. Please try again.");
@@ -267,10 +294,12 @@ export default function MessageButton({
         {layout === "grid" ? (
           <>
             <MessageGlyph className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide">Message</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide">
+              {MESSAGING ? "Message" : targetType === "event" ? "Apply" : "Invite"}
+            </span>
           </>
         ) : (
-          "Message"
+          triggerLabel
         )}
       </button>
 
@@ -282,11 +311,13 @@ export default function MessageButton({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label={`Message ${targetName}`}
+              aria-label={MESSAGING ? `Message ${targetName}` : `${triggerLabel}: ${targetName}`}
               className="relative w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-xl sm:max-w-sm sm:rounded-3xl sm:pb-5"
             >
               <div className="flex items-start justify-between gap-3">
-                <h2 className="font-display text-lg font-bold tracking-tight text-ink">Message {targetName}</h2>
+                <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+                  {MESSAGING ? `Message ${targetName}` : `${triggerLabel}: ${targetName}`}
+                </h2>
                 <button
                   type="button"
                   onClick={close}
@@ -305,7 +336,7 @@ export default function MessageButton({
                 <p className="mt-4 text-sm text-ink/40">Loading…</p>
               ) : !resolved.authenticated ? (
                 <div className="mt-4">
-                  <p className="text-sm text-ink/60">Sign in with your free Findmi account to message on Findmi.</p>
+                  <p className="text-sm text-ink/60">Sign in with your free Findmi account to continue.</p>
                   <a
                     href={`/login${nextParam}`}
                     className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -315,7 +346,7 @@ export default function MessageButton({
                 </div>
               ) : !resolved.emailVerified ? (
                 <div className="mt-4">
-                  <p className="text-sm text-ink/60">Verify your email before you can message on Findmi.</p>
+                  <p className="text-sm text-ink/60">Verify your email before you continue.</p>
                   <a
                     href={`/account/verify-email${nextParam}`}
                     className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -327,8 +358,12 @@ export default function MessageButton({
                 <div className="mt-4">
                   <p className="text-sm text-ink/60">
                     {targetType === "event"
-                      ? "You need a Business on Findmi to message organizers."
-                      : "You need a Business or Event on Findmi to send a message."}
+                      ? MESSAGING
+                        ? "You need a Business on Findmi to message organizers."
+                        : "You need a Business on Findmi to apply."
+                      : MESSAGING
+                        ? "You need a Business or Event on Findmi to send a message."
+                        : "You need an Event on Findmi to invite businesses."}
                   </p>
                   <Link
                     href="/account/business/new"
@@ -344,12 +379,14 @@ export default function MessageButton({
                       not force identity selection" rule). */}
                   {actorOptions.length > 1 && (
                     <label className="block">
-                      <span className="mb-1.5 block text-xs font-medium text-ink">Message as</span>
+                      <span className="mb-1.5 block text-xs font-medium text-ink">
+                        {MESSAGING ? "Message as" : targetType === "event" ? "Apply as" : "Invite from"}
+                      </span>
                       <select
                         value={actorId}
                         onChange={(e) => {
                           setActorId(e.target.value);
-                          setMode("message");
+                          setMode(entryMode);
                         }}
                         className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
                       >
@@ -362,7 +399,9 @@ export default function MessageButton({
                     </label>
                   )}
 
-                  {mode === "message" && (
+                  {notice && <p className="rounded-xl bg-findmi-50 px-3.5 py-2.5 text-sm text-findmi-700">{notice}</p>}
+
+                  {MESSAGING && mode === "message" && (
                     <div className="flex flex-col gap-3">
                       <textarea
                         value={body}
@@ -508,10 +547,12 @@ export default function MessageButton({
                       >
                         {submitting ? "…" : "Apply to Vend"}
                       </button>
-                      <button type="button" onClick={() => setMode("message")} className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
-                        <ChevronIcon direction="left" className="h-3 w-3" />
-                        Back to Message
-                      </button>
+                      {MESSAGING && (
+                        <button type="button" onClick={() => setMode("message")} className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
+                          <ChevronIcon direction="left" className="h-3 w-3" />
+                          Back to Message
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -533,10 +574,12 @@ export default function MessageButton({
                       >
                         {submitting ? "…" : "Send Invite"}
                       </button>
-                      <button type="button" onClick={() => setMode("message")} className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
-                        <ChevronIcon direction="left" className="h-3 w-3" />
-                        Back to Message
-                      </button>
+                      {MESSAGING && (
+                        <button type="button" onClick={() => setMode("message")} className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
+                          <ChevronIcon direction="left" className="h-3 w-3" />
+                          Back to Message
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

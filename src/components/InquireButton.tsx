@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { submitEntityInquiry, submitProductInquiry } from "@/app/(public)/connect/actions";
-import { BUSINESS_INQUIRY_TOPIC_LABELS, type BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
+import { BUSINESS_INQUIRY_TOPIC_LABELS, isCommercialInquiryTopic, type BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
 import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
 
 // Unify Site-Wide Communications pass — the ONE controlled public
@@ -73,6 +73,7 @@ export default function InquireButton({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [sentToFindmi, setSentToFindmi] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => setMounted(true), []);
@@ -106,6 +107,10 @@ export default function InquireButton({
   }
 
   const needsTopicChoice = Boolean(topics && topics.length > 1);
+  // Communication boundary — commercial topics (Wholesale, Catering /
+  // Booking, Event / Pop-Up, Collaboration) go to Findmi, never directly
+  // to the Business; the form says so before and after sending.
+  const viaFindmi = !productId && targetType === "business" && isCommercialInquiryTopic(topic);
   const canSubmit = Boolean(name.trim() && email.trim() && message.trim() && (!needsTopicChoice || topic));
 
   async function submit() {
@@ -136,6 +141,7 @@ export default function InquireButton({
         setError(result.error);
         setSubmitting(false);
       } else {
+        setSentToFindmi("routedTo" in result && result.routedTo === "findmi");
         setSent(true);
         setSubmitting(false);
       }
@@ -168,7 +174,7 @@ export default function InquireButton({
             >
               <div className="flex items-start justify-between gap-3">
                 <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-                  {sent ? "Message sent" : `${label}: ${targetName}`}
+                  {sent ? (sentToFindmi ? "Request sent to Findmi" : "Message sent") : `${label}: ${targetName}`}
                 </h2>
                 <button
                   type="button"
@@ -183,7 +189,14 @@ export default function InquireButton({
               {sent ? (
                 <div className="mt-4">
                   <p className="text-sm text-ink/60">
-                    Thanks, we&rsquo;ll be in touch. Your message was sent to {targetName} on Findmi.
+                    {sentToFindmi ? (
+                      <>
+                        Thanks. Findmi has your request about {targetName} and will review it and follow up by email. It
+                        wasn&rsquo;t sent directly to {targetName}.
+                      </>
+                    ) : (
+                      <>Thanks, we&rsquo;ll be in touch. Your message was sent to {targetName} on Findmi.</>
+                    )}
                   </p>
                   <button
                     type="button"
@@ -253,13 +266,19 @@ export default function InquireButton({
                       </div>
                     </div>
                   )}
+                  {viaFindmi && (
+                    <p className="rounded-xl bg-findmi-50 px-3.5 py-2.5 text-xs leading-relaxed text-findmi-700">
+                      Findmi handles {BUSINESS_INQUIRY_TOPIC_LABELS[topic as BusinessInquiryTopic]} requests. Your request goes to
+                      Findmi, not directly to {targetName}. We&rsquo;ll review it and follow up with next steps.
+                    </p>
+                  )}
                   <label className="block">
                     <span className={labelClass}>Message</span>
                     <textarea
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       rows={4}
-                      placeholder={`Write a message to ${targetName}…`}
+                      placeholder={viaFindmi ? "Tell Findmi what you have in mind…" : `Write a message to ${targetName}…`}
                       className={inputClass}
                     />
                   </label>
@@ -275,7 +294,7 @@ export default function InquireButton({
                     disabled={submitting || !canSubmit}
                     className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                   >
-                    {submitting ? "Sending…" : "Send"}
+                    {submitting ? "Sending…" : viaFindmi ? "Send to Findmi" : "Send"}
                   </button>
                 </div>
               )}

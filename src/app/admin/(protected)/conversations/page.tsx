@@ -11,6 +11,7 @@ const TYPE_TABS: { key: CommunicationType; label: string }[] = [
   { key: "event", label: "Event" },
   { key: "venue", label: "Venue" },
   { key: "sales", label: "Sales" },
+  { key: "commercial", label: "Commercial" },
 ];
 
 function tabHref(type: CommunicationType, q: string | undefined): string {

@@ -181,7 +181,8 @@ export interface Business {
   // billing/historical concept). Backfilled from founding_member so
   // today's featured-brand set is unchanged; founder curates from here on.
   is_featured: boolean;
-  membership_status: MembershipStatus;
+  /** Internal (admin-only reads) — never returned by public queries (PUBLIC_BUSINESS_COLUMNS). */
+  membership_status?: MembershipStatus;
   lead_status: LeadStatus;
   created_at: string;
   updated_at: string;

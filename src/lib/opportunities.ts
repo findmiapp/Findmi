@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ThreadMessagingFacts } from "./communication-policy";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getAccountEmail, getEntityManagerEmails, dedupeEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
@@ -347,7 +348,17 @@ export async function sendTextMessage(
   await notifyNewMessage(admin, conversationId, senderUserId, senderEntityType, senderEntityId, body);
 }
 
-export type InquirySubjectType = "business_inquiry" | "event_inquiry" | "venue_inquiry" | "findmi_sales" | "product_inquiry";
+export type InquirySubjectType =
+  | "business_inquiry"
+  | "event_inquiry"
+  | "venue_inquiry"
+  | "findmi_sales"
+  | "product_inquiry"
+  // Findmi-mediated commercial request (Wholesale, Catering / Booking,
+  // Event / Pop-Up, Collaboration from a Business page): subject_id = the
+  // Business it's about, NO organization participant — Findmi receives
+  // and qualifies it; the Business is never sent the request directly.
+  | "findmi_commercial_request";
 
 /** Unify Site-Wide Communications pass — the one entry point every
  * CONTROLLED PUBLIC INQUIRY (Business Inquire, Event Contact Organizer,
@@ -394,9 +405,14 @@ export async function createInquiryConversation(
     guestEmail: string | null;
     guestPhone: string | null;
     message: string;
+    /** Store the submitted contact details even for a signed-in sender —
+     * Findmi-mediated requests have no organization participant, so the
+     * contact on the row is how Findmi follows up. */
+    keepContactDetails?: boolean;
   }
 ): Promise<{ conversationId: string }> {
   const { subjectType, subjectId, targetEntityType, targetEntityId, senderUserId, guestName, guestEmail, guestPhone, message } = params;
+  const storeContact = !senderUserId || params.keepContactDetails === true;
 
   // Reuse an existing thread for a signed-in consumer re-inquiring about
   // the same entity (same dedup rule every other Conversation entry
@@ -417,9 +433,9 @@ export async function createInquiryConversation(
       .insert({
         subject_type: subjectType,
         subject_id: subjectId,
-        guest_name: senderUserId ? null : guestName,
-        guest_email: senderUserId ? null : guestEmail,
-        guest_phone: senderUserId ? null : guestPhone,
+        guest_name: storeContact ? guestName : null,
+        guest_email: storeContact ? guestEmail : null,
+        guest_phone: storeContact ? guestPhone : null,
       })
       .select("id")
       .single();
@@ -448,6 +464,42 @@ export async function createInquiryConversation(
   }
 
   return { conversationId };
+}
+
+/** The facts lib/communication-policy.ts needs to decide whether a new
+ * free-text message may be posted into a thread: its subject, whether a
+ * structured Opportunity is attached, and its organization parties. Three
+ * small reads, service-role (callers authorize first). */
+export async function getThreadMessagingFacts(admin: SupabaseClient, conversationId: string): Promise<ThreadMessagingFacts> {
+  const [{ data: conversation }, { data: participants }, { count }] = await Promise.all([
+    admin.from("conversations").select("subject_type").eq("id", conversationId).maybeSingle(),
+    admin.from("conversation_participants").select("entity_type, entity_id").eq("conversation_id", conversationId),
+    admin.from("opportunities").select("id", { count: "exact", head: true }).eq("conversation_id", conversationId),
+  ]);
+  return {
+    subjectType: (conversation as { subject_type: string } | null)?.subject_type ?? null,
+    hasOpportunity: (count ?? 0) > 0,
+    parties: ((participants ?? []) as { entity_type: ConversationEntityType; entity_id: string | null }[]).map((p) => ({
+      entityType: p.entity_type,
+      entityId: p.entity_id,
+    })),
+  };
+}
+
+/** The most recent structured (Opportunity) conversation between an Event
+ * and a Business, if any — where an application/invitation lands when no
+ * fresh Opportunity thread was created and direct messaging is paused. */
+export async function findOpportunityConversation(admin: SupabaseClient, eventId: string, businessId: string): Promise<string | null> {
+  const { data } = await admin
+    .from("opportunities")
+    .select("conversation_id")
+    .eq("event_id", eventId)
+    .eq("business_id", businessId)
+    .not("conversation_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { conversation_id: string | null } | null)?.conversation_id ?? null;
 }
 
 /** Entity-aware identity, re-derived live (Section 14) — never trusts a
@@ -1246,6 +1298,9 @@ export interface ConversationThread {
   guestName: string | null;
   guestEmail: string | null;
   guestPhone: string | null;
+  /** conversations.subject_type — lets the thread view apply the
+   * communication policy (lib/communication-policy.ts). */
+  subjectType: string | null;
 }
 
 /** The conversation thread view's one data source — chronological
@@ -1264,10 +1319,10 @@ export async function getConversationThread(
 
   const { data: conversationRow } = await admin
     .from("conversations")
-    .select("guest_name, guest_email, guest_phone")
+    .select("guest_name, guest_email, guest_phone, subject_type")
     .eq("id", conversationId)
     .maybeSingle();
-  const guest = conversationRow as { guest_name: string | null; guest_email: string | null; guest_phone: string | null } | null;
+  const guest = conversationRow as { guest_name: string | null; guest_email: string | null; guest_phone: string | null; subject_type: string | null } | null;
 
   const { data: participantRows } = await admin
     .from("conversation_participants")
@@ -1345,6 +1400,7 @@ export async function getConversationThread(
     guestName: guest?.guest_name ?? null,
     guestEmail: guest?.guest_email ?? null,
     guestPhone: guest?.guest_phone ?? null,
+    subjectType: guest?.subject_type ?? null,
   };
 }
 
@@ -1480,7 +1536,15 @@ export async function listConversationsForUser(
     const last = lastMessageByConversation.get(conversationId) ?? null;
     items.push({
       id: conversationId,
-      otherPartyLabel: other ? (labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member") : guestName!,
+      // A Findmi-mediated commercial request has no organization party —
+      // the other side is Findmi itself (the stored contact is the
+      // sender's own, never the counterparty).
+      otherPartyLabel:
+        meta?.subject_type === "findmi_commercial_request"
+          ? "Findmi"
+          : other
+            ? (labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member")
+            : guestName!,
       otherPartyEntityType: other?.entity_type ?? "personal",
       lastMessageBody: last?.body ?? null,
       lastActivityAt: last?.created_at ?? meta?.created_at ?? new Date(0).toISOString(),

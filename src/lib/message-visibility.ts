@@ -1,3 +1,4 @@
+import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getUserManagedEntities } from "@/lib/opportunities";
@@ -32,6 +33,16 @@ export async function shouldShowMessageButton(
   if (!admin) return false;
 
   const managed = await getUserManagedEntities(admin, user.id);
+  // Communication boundary — with direct org messaging paused, the button
+  // only offers the structured actions: Invite to Event (Business page,
+  // for viewers who organize an Event) and Apply to Vend (Event page, for
+  // viewers with a Business). A Location has no structured action, so its
+  // button is hidden.
+  if (!isDirectBusinessMessagingEnabled()) {
+    if (targetType === "business") return managed.events.length > 0;
+    if (targetType === "event") return managed.businesses.length > 0;
+    return false;
+  }
   if (targetType === "business") {
     return managed.businesses.some((b) => b.id !== targetId) || managed.events.length > 0;
   }

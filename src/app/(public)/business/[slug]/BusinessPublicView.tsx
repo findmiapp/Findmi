@@ -19,6 +19,7 @@ import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import MessageButton from "@/components/MessageButton";
+import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
@@ -611,7 +612,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                   the separate, always-available controlled entry
                   point. */}
               {showMessageButton && (
-                <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
+                <MessageButton targetType="business" targetId={business.id} targetName={business.name} messagingEnabled={isDirectBusinessMessagingEnabled()} />
               )}
               <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
               <SaveButton slug={business.slug} id={business.id} />

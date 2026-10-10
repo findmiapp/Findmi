@@ -17,6 +17,7 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
+import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import Bulletin from "@/components/Bulletin";
@@ -838,6 +839,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             targetId={event.id}
             targetName={event.name}
             eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+            messagingEnabled={isDirectBusinessMessagingEnabled()}
           />
         )}
         {showContact && (

@@ -52,7 +52,7 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "id, slug, name, short_description, description, logo_url, cover_image_url, " +
   "website_url, instagram_url, facebook_url, tiktok_url, city, " +
   "state, country, service_radius_miles, verified, founding_member, " +
-  "membership_status, created_at, updated_at, is_demo, commerce_enabled, " +
+  "created_at, updated_at, is_demo, commerce_enabled, " +
   "publication_status, is_featured, inquiry_cta_label, inquiry_cta_url, " +
   "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
   "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
@@ -60,7 +60,9 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "native_inquiries_enabled, market_area_id, is_pro_member, " +
   "accepts_inquiries, inquiry_topics, featured_event_id, featured_appearance_id";
 // Intentionally excluded (matches the migration exactly — never add these
-// back here without also widening the grant): lead_status,
+// back here without also widening the grant): membership_status (Step 1 /
+// Phase 0A — an internal sales/lead field no public UI uses; removed here
+// FIRST, then its anon/authenticated column grant is revoked), lead_status,
 // marketplace_fee_percent, processing_fee_payer, payout_method,
 // stripe_account_id, stripe_connect_status, plan_tier, plan_source,
 // plan_started_at, plan_expires_at, plan_payment_reference. is_pro_member
