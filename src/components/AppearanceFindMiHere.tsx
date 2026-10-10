@@ -68,7 +68,7 @@ export default function AppearanceFindMiHere({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
-          <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Upcoming Appearances</h2>
+          <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Upcoming Schedule</h2>
           <p className="mt-0.5 text-xs text-ink/50">See where {business.name} is showing up next.</p>
         </div>
         <ViewSwitcher view={view} onChange={switchView} />
@@ -96,7 +96,7 @@ export default function AppearanceFindMiHere({
               total={appearances.length}
               onMore={listReveal.showMore}
               onAll={listReveal.showAll}
-              noun="Appearances"
+              noun="Dates"
             />
           </>
         )}

@@ -12,6 +12,7 @@ import {
 import { resolveEffectiveEventMarket } from "./event-markets";
 import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
 import { resolveAppearanceDisplayImage } from "./appearance-image";
+import { collapseEventDates } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import type {
   Appearance,
@@ -3195,6 +3196,11 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
 }
 
 const UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS = 4;
+/** Raw rows fetched per business before collapsing an Event's dates into
+ * one Appearance: a multi-date Event projects one row per date, so
+ * fetching only `limit` raw rows could fill the whole preview with one
+ * Event's dates and hide the business's other, distinct Appearances. */
+const UPCOMING_APPEARANCE_CANDIDATE_ROWS = 50;
 // Homepage Appearance Hints Fairness pass — this function is only ever
 // called with one homepage row's own (founder-configured, typically
 // single-digit-to-low-teens) business list, never an unbounded fan-out —
@@ -3222,6 +3228,12 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: 
 
 export interface AppearanceHintRow {
   business_id: string;
+  /** Identity for collapseEventDates (one card per Event). Optional only so
+   * older/test fetchers without them still resolve — a row with no
+   * event_id is a standalone Appearance and is never merged. */
+  id?: string;
+  event_id?: string | null;
+  end_at?: string | null;
   title: string;
   start_at: string;
   flyer_image_url: string | null;
@@ -3305,12 +3317,19 @@ export async function resolveUpcomingAppearanceHints(
 
   const perBusiness = await mapWithConcurrency(uniqueIds, UPCOMING_APPEARANCE_QUERY_CONCURRENCY, async (businessId) => ({
     businessId,
-    rows: await fetch(businessId, limitPerBusiness),
+    rows: await fetch(businessId, Math.max(limitPerBusiness, UPCOMING_APPEARANCE_CANDIDATE_ROWS)),
   }));
 
   for (const { businessId, rows } of perBusiness) {
-    if (rows.length === 0) continue;
-    result.set(businessId, rows.map(toAppearanceHint));
+    // EVENT IDENTITY != SCHEDULE OCCURRENCES — one Appearance per Event
+    // (its live date, else its next date), standalone rows untouched: the
+    // same collapseEventDates the Business page's Featured card uses, and
+    // the same unit getUpcomingAppearanceCounts counts.
+    const appearances = collapseEventDates(
+      rows.map((r, i) => ({ ...r, id: r.id ?? `row:${i}`, event_id: r.event_id ?? null, end_at: r.end_at ?? null }))
+    ).slice(0, limitPerBusiness);
+    if (appearances.length === 0) continue;
+    result.set(businessId, appearances.map(toAppearanceHint));
   }
   return result;
 }
@@ -3327,7 +3346,7 @@ export async function getUpcomingAppearanceHints(
     const { data } = await supabase
       .from("appearances")
       .select(
-        "business_id, title, start_at, flyer_image_url, venue_name, city, state, description, event:events(slug, is_demo, name, cover_image_url)"
+        "id, event_id, end_at, business_id, title, start_at, flyer_image_url, venue_name, city, state, description, event:events(slug, is_demo, name, cover_image_url)"
       )
       .eq("business_id", businessId)
       .neq("status", "canceled")
@@ -3386,20 +3405,42 @@ export async function resolveUpcomingAppearanceCounts(businessIds: string[], fet
  * architecture as getUpcomingAppearanceHints (see that function's own
  * root-cause doc) — one independent query per business, never a shared/
  * global budget a high-volume business could consume at another
- * business's expense. */
+ * business's expense.
+ *
+ * The unit is an Appearance, not a schedule date: a multi-date Event
+ * participation (one appearance row per occurrence, see
+ * lib/appearance-event-sync.ts) counts ONCE, matching the collapsed
+ * preview. Standalone rows stay an exact head count; Event-linked rows
+ * are read as a bare event_id list to count distinct Events. */
 export async function getUpcomingAppearanceCounts(businessIds: string[]): Promise<Map<string, number>> {
   const supabase = getSupabase();
   if (!supabase || businessIds.length === 0) return new Map();
   const nowIso = new Date().toISOString();
 
   return resolveUpcomingAppearanceCounts(businessIds, async (businessId) => {
-    const { count } = await supabase
-      .from("appearances")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", businessId)
-      .neq("status", "canceled")
-      .gt("end_at", nowIso);
-    return count ?? 0;
+    // Appearances, not schedule dates: standalone rows each count once
+    // (exact head count), and every Event-linked row — its Event-level row
+    // and each per-date occurrence row — counts once per Event (distinct
+    // event_id, the same unit collapseEventDates shows in the preview).
+    const [{ count }, { data: eventRows }] = await Promise.all([
+      supabase
+        .from("appearances")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .is("event_id", null)
+        .neq("status", "canceled")
+        .gt("end_at", nowIso),
+      supabase
+        .from("appearances")
+        .select("event_id")
+        .eq("business_id", businessId)
+        .not("event_id", "is", null)
+        .neq("status", "canceled")
+        .gt("end_at", nowIso)
+        .limit(1000),
+    ]);
+    const events = new Set(((eventRows ?? []) as { event_id: string }[]).map((r) => r.event_id));
+    return (count ?? 0) + events.size;
   });
 }
 

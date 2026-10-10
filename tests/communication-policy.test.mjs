@@ -156,9 +156,13 @@ test("commercial Inquiries go to Findmi with no organization participant", () =>
 });
 
 // ── UI mirrors the policy ──────────────────────────────────────────────
-test("visibility gate and modal offer only structured actions while paused", () => {
+test("paused: the profile CTA is removed, never swapped for Invite/Apply", () => {
   const gate = read("src/lib/message-visibility.ts");
-  assert.match(gate, /if \(!isDirectBusinessMessagingEnabled\(\)\) \{\s*if \(targetType === "business"\) return managed\.events\.length > 0;\s*if \(targetType === "event"\) return managed\.businesses\.length > 0;\s*return false;/);
+  // First statement, before any session/manager lookup: who the viewer
+  // manages can't change a profile's CTA hierarchy.
+  const paused = gate.indexOf("if (!isDirectBusinessMessagingEnabled()) return false;");
+  assert.ok(paused > -1, "gate returns false while paused");
+  assert.ok(paused < gate.indexOf("getServerSupabase()"), "decided before any viewer lookup");
   const button = read("src/components/MessageButton.tsx");
   // The client never reads the switch: it gets the server-read value as a prop.
   assert.doesNotMatch(button, /import[^;]*communication-policy/);

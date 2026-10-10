@@ -742,7 +742,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           Small Public UI Polish pass — that eyebrow-only treatment
           (text-xs/uppercase/text-findmi-700) still read noticeably weaker
           than this profile's other major section headings (FindMi Here's
-          own "Upcoming Appearances" h2, Gallery's h2), both of which use
+          own "Upcoming Schedule" h2, Gallery's h2), both of which use
           the font-display/text-lg/font-bold/tracking-tight/text-ink
           convention. Converged onto that same convention so Featured
           Appearance carries the same visual authority as its peers,
