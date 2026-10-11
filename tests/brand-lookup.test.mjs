@@ -38,6 +38,13 @@ test("classify: name, website (scheme / bare domain), Instagram (@ / URL)", () =
   assert.equal(c("  東京珈琲  ").kind, "name");
 });
 
+test("classify: www.domain.com is deterministically a website; malformed whitespace is never loosened into one", () => {
+  assert.deepEqual(B.classifyBrandInput("www.fentybeauty.com"), { ok: true, kind: "website", value: "www.fentybeauty.com", alternative: "name" });
+  assert.equal(B.classifyBrandInput("www. fentybeauty.com").kind, "name", "a space inside the input keeps it a name");
+  const page = readFileSync("src/app/(public)/join/brand/page.tsx", "utf8");
+  assert.match(page, /autoCapitalize="none"\s+autoCorrect="off"\s+spellCheck=\{false\}/, "mobile keyboards can't alter domains/handles");
+});
+
 test("classify: ambiguous dotted token defaults to website but offers name; bare words are never auto-Instagram", () => {
   assert.deepEqual(B.classifyBrandInput("joe.coffee"), { ok: true, kind: "website", value: "joe.coffee", alternative: "name" });
   const bare = B.classifyBrandInput("lavazzausa");

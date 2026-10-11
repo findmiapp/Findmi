@@ -246,6 +246,7 @@ function SearchForm({ value }: { value: string }) {
         defaultValue={value}
         autoComplete="off"
         autoCapitalize="none"
+        autoCorrect="off"
         spellCheck={false}
         placeholder="Business name, website or Instagram"
         className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
