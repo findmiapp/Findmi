@@ -60,7 +60,7 @@ function deps(over = {}) {
       },
       listCategories: async () => [],
       isRateLimited: () => false,
-      enrich: async () => null,
+      enrich: async () => ({ result: null, called: false, usage: null }),
       verifyImage: async () => false,
       draftsEnabled: false,
       acquireSlot: () => () => {},

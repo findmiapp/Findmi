@@ -132,7 +132,7 @@ function fakeClient(output, opts = {}) {
         parse: async (params, options) => {
           calls.push({ params, options });
           if (opts.throw) throw opts.throw;
-          return { stop_reason: opts.stop ?? "end_turn", parsed_output: output };
+          return { model: opts.model ?? "claude-opus-5", stop_reason: opts.stop ?? "end_turn", parsed_output: output, usage: opts.usage ?? { input_tokens: 1200, output_tokens: 300 } };
         },
       },
     },
@@ -170,11 +170,11 @@ test("AI: output re-validated — only existing category ids; lengths and useful
   assert.equal(AI.sanitizeBrandAiOutput({ short_description: "<b>Beauty</b> products for everyday life routines" }, ids, "X").shortDescription, null, "markup rejected");
 });
 
-test("AI: errors, refusals, missing output and no client all → null (deterministic fallback)", async () => {
-  assert.equal(await AI.enrichBrandWithAi(aiInput, fakeClient(null).client), null);
-  assert.equal(await AI.enrichBrandWithAi(aiInput, fakeClient({ category_id: CATS[0].id }, { stop: "refusal" }).client), null);
-  assert.equal(await AI.enrichBrandWithAi(aiInput, fakeClient(null, { throw: new Error("timeout") }).client), null);
-  assert.equal(await AI.enrichBrandWithAi(aiInput, null), null);
+test("AI: errors, refusals, missing output and no client all → null result (deterministic fallback)", async () => {
+  assert.equal((await AI.enrichBrandWithAi(aiInput, fakeClient(null).client)).result, null);
+  assert.equal((await AI.enrichBrandWithAi(aiInput, fakeClient({ category_id: CATS[0].id }, { stop: "refusal" }).client)).result, null);
+  assert.equal((await AI.enrichBrandWithAi(aiInput, fakeClient(null, { throw: new Error("timeout") }).client)).result, null);
+  assert.deepEqual(await AI.enrichBrandWithAi(aiInput, null), { result: null, called: false, usage: null });
 });
 
 // ── IMAGES ────────────────────────────────────────────────────────────────
@@ -369,7 +369,7 @@ function deps(over = {}) {
       listCategories: async () => [{ id: CATS[0].id, slug: "beauty-self-care", name: CATS[0].name }],
       enrich: async () => {
         calls.enrich += 1;
-        return { categoryId: CATS[0].id, shortDescription: "Skincare and makeup products inspired by real life.", about: null };
+        return { result: { categoryId: CATS[0].id, shortDescription: "Skincare and makeup products inspired by real life.", about: null }, called: true, usage: null };
       },
       verifyImage: async (url, role) => {
         calls.verify.push(role);
@@ -413,7 +413,7 @@ test("analysis: Glossier-style page → enriched draft (AI category + descriptio
 });
 
 test("analysis: unverified images never enter the draft; AI failure keeps deterministic values; AI cached per URL", async () => {
-  const noImg = deps({ verifyImage: async () => false, enrich: async () => null });
+  const noImg = deps({ verifyImage: async () => false, enrich: async () => ({ result: null, called: true, usage: null }) });
   const r = await run(noImg.deps);
   assert.equal(r.draft.logo, null);
   assert.equal(r.draft.cover, null);
@@ -439,7 +439,7 @@ test("analysis: deterministic category/description win — AI only when somethin
   const noAbout = page(ld({ "@type": "BeautySalon", name: "Glow Studio", url: "https://glossier.com/", description: "Facials, brows and lash treatments for every skin type." }));
   const partial = deps({
     fetchHtml: async (url) => ({ ok: true, url, html: noAbout, bytes: 1, redirects: 0 }),
-    enrich: async () => ({ categoryId: "99999999-9999-4999-8999-999999999999", shortDescription: "AI text that should lose to page text.", about: null }),
+    enrich: async () => ({ result: { categoryId: "99999999-9999-4999-8999-999999999999", shortDescription: "AI text that should lose to page text.", about: null }, called: true, usage: null }),
   });
   const r2 = await run(partial.deps);
   assert.equal(r2.draft.cat, CATS[0].id, "deterministic category wins over AI");

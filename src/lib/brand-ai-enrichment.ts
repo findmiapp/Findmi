@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { estimateAnthropicCostUsd } from "./anthropic-pricing";
 import { cleanText, isUsefulDescription, type BrandPageExcerpt } from "./brand-website-extract";
 
 /** Brand Onboarding V1.1C — ONE bounded Claude call that fills only what
@@ -45,6 +46,48 @@ export interface BrandAiResult {
   categoryId: string | null;
   shortDescription: string | null;
   about: string | null;
+}
+
+/** Operational telemetry for ONE Anthropic response — counts and the
+ * model id Anthropic returned only (never prompt, page text or output).
+ * Cache fields are null when Anthropic didn't supply them. */
+export interface BrandAiUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number | null;
+  cacheReadInputTokens: number | null;
+  /** lib/anthropic-pricing.ts estimate; null for unpriced models/usage. */
+  estimatedCostUsd: number | null;
+}
+
+export interface BrandAiEnrichment {
+  /** null → keep the deterministic values (unchanged V1.1C behavior). */
+  result: BrandAiResult | null;
+  /** A request was actually sent to Anthropic by THIS invocation. */
+  called: boolean;
+  /** Present only when Anthropic returned a response with usage — never
+   * fabricated (a timeout/connection error after sending leaves it null). */
+  usage: BrandAiUsage | null;
+}
+
+const tokenCount = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null);
+
+/** Reads the SDK's response `model` + `usage` (exported for tests). */
+export function readBrandAiUsage(response: { model?: unknown; usage?: unknown } | null | undefined): BrandAiUsage | null {
+  const usage = response?.usage as Partial<Anthropic.Messages.Usage> | null | undefined;
+  const model = typeof response?.model === "string" ? response.model : null;
+  const inputTokens = tokenCount(usage?.input_tokens);
+  const outputTokens = tokenCount(usage?.output_tokens);
+  if (!usage || !model || inputTokens === null || outputTokens === null) return null;
+  return {
+    model,
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens: tokenCount(usage.cache_creation_input_tokens),
+    cacheReadInputTokens: tokenCount(usage.cache_read_input_tokens),
+    estimatedCostUsd: estimateAnthropicCostUsd(model, { ...usage, input_tokens: inputTokens, output_tokens: outputTokens }),
+  };
 }
 
 export const BRAND_AI_SYSTEM_PROMPT = `You help a business discovery app prepare a draft profile for a brand, which the brand's owner will review and edit before anything is saved.
@@ -116,9 +159,11 @@ export function sanitizeBrandAiOutput(
   };
 }
 
-/** One structured call, or null on any failure. Never throws. */
-export async function enrichBrandWithAi(input: BrandAiInput, client: BrandAiClient | null = defaultClient()): Promise<BrandAiResult | null> {
-  if (!client) return null;
+/** One structured call; `result` is null on any failure. Never throws.
+ * Usage is captured from every response Anthropic returns — including a
+ * refusal or unusable output, which still consumed tokens. */
+export async function enrichBrandWithAi(input: BrandAiInput, client: BrandAiClient | null = defaultClient()): Promise<BrandAiEnrichment> {
+  if (!client) return { result: null, called: false, usage: null };
   const categoryIds = input.categories.map((c) => c.id);
   const allowed = input.categories.map((c) => `${c.id}: ${c.name}`).join("\n");
   try {
@@ -137,11 +182,13 @@ export async function enrichBrandWithAi(input: BrandAiInput, client: BrandAiClie
       },
       { timeout: BRAND_AI_TIMEOUT_MS, maxRetries: 0 }
     );
-    if (response.stop_reason === "refusal" || !response.parsed_output) return null;
-    return sanitizeBrandAiOutput(response.parsed_output, categoryIds, input.brandName);
+    const usage = readBrandAiUsage(response);
+    if (response.stop_reason === "refusal" || !response.parsed_output) return { result: null, called: true, usage };
+    return { result: sanitizeBrandAiOutput(response.parsed_output, categoryIds, input.brandName), called: true, usage };
   } catch {
     // Auth/rate-limit/timeout/connection/API/schema errors all mean the
-    // same thing here: keep the deterministic values.
-    return null;
+    // same thing here: keep the deterministic values. No response → no
+    // usage to report.
+    return { result: null, called: true, usage: null };
   }
 }

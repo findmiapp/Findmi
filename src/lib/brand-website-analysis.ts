@@ -11,7 +11,7 @@ import { claimHref, classifyBrandInput, searchHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
 import { extractBrandProfile, type ExtractedBrandProfile } from "./brand-website-extract";
 import { SAFE_FETCH_MAX_BYTES, safeFetchHtml, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
-import { enrichBrandWithAi, type BrandAiInput, type BrandAiResult } from "./brand-ai-enrichment";
+import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput, type BrandAiResult } from "./brand-ai-enrichment";
 import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
 import { getBrandDraftSecret, type BrandDraftCandidate } from "./brand-draft";
 import { recordWebsiteAnalysisAttempt, tryAcquireWebsiteFetchSlot } from "./brand-website-rate-limit";
@@ -119,7 +119,21 @@ export interface WebsiteAnalysisLog {
   declaredSizeExceededOldLimit: boolean | null;
   cached: boolean;
   fields: Record<"name" | "description" | "about" | "instagram" | "city" | "state" | "category" | "logo" | "cover", boolean> | null;
+  /** Status of the candidate's AI enrichment — may come from Findmi's
+   * 10-minute cache (see aiFromCache); NOT proof of a new Anthropic call. */
   ai: "used" | "skipped" | "failed" | null;
+  /** The enrichment (ai status) was reused from Findmi's cache. */
+  aiFromCache: boolean | null;
+  /** THIS request sent a request to Anthropic (the paid-call signal). */
+  aiCalled: boolean | null;
+  /** Anthropic usage for THIS request's call only; all null when there was
+   * no call or no response. Never prompts, page text or output. */
+  aiModel: string | null;
+  aiInputTokens: number | null;
+  aiOutputTokens: number | null;
+  aiCacheCreationInputTokens: number | null;
+  aiCacheReadInputTokens: number | null;
+  aiEstimatedCostUsd: number | null;
   match: "none" | "public" | "hidden" | null;
 }
 
@@ -132,7 +146,7 @@ const SIZE_LIMIT_LOG: Record<SafeFetchSizeLimit, WebsiteAnalysisLog["size"]> = {
 export interface WebsiteAnalysisDeps {
   fetchHtml: (url: URL) => Promise<SafeFetchResult>;
   /** V1.1C — one bounded AI enrichment (null result = keep deterministic). */
-  enrich: (input: BrandAiInput) => Promise<BrandAiResult | null>;
+  enrich: (input: BrandAiInput) => Promise<BrandAiEnrichment>;
   /** V1.1C — fetch + fully verify a logo/cover candidate. */
   verifyImage: (url: string, role: BrandImageRole) => Promise<boolean>;
   /** V1.1C — BRAND_DRAFT_SECRET configured: build an enriched signed draft.
@@ -192,7 +206,7 @@ export async function analyzeBrandWebsite(
   const host = normalizeWebsiteHost(websiteUrl);
   const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ ...seedCandidate(seed), website_url: websiteUrl }, prefill);
 
-  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, size: null, truncated: null, declaredSizeExceededOldLimit: null, cached: false, fields: null, ai: null, match: null };
+  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, size: null, truncated: null, declaredSizeExceededOldLimit: null, cached: false, fields: null, ai: null, aiFromCache: null, aiCalled: null, aiModel: null, aiInputTokens: null, aiOutputTokens: null, aiCacheCreationInputTokens: null, aiCacheReadInputTokens: null, aiEstimatedCostUsd: null, match: null };
   const finish = (
     href: string,
     outcome: WebsiteAnalysisOutcome,
@@ -307,6 +321,8 @@ export async function analyzeBrandWebsite(
   // left the category or a description empty, and (drafts only) the
   // logo/cover candidates fetched and fully verified, in parallel.
   let enrichment = cached.enrichment;
+  log.aiFromCache = Boolean(enrichment);
+  log.aiCalled = false;
   if (!enrichment) {
     const needsAi = !deterministicCategoryId || !profile.shortDescription || !profile.aboutDescription;
     const verify = async (url: string | null, role: BrandImageRole) => {
@@ -321,13 +337,27 @@ export async function analyzeBrandWebsite(
       needsAi
         ? deps
             .enrich({ brandName: name, website: websiteUrl, excerpt: profile.excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
-            .catch(() => null)
-        : Promise.resolve(null),
+            // enrichBrandWithAi never throws; an unexpected throw is
+            // counted as a call with unknown usage, never as zero tokens.
+            .catch((): BrandAiEnrichment => ({ result: null, called: true, usage: null }))
+        : Promise.resolve<BrandAiEnrichment | null>(null),
       verify(profile.logoCandidateUrl, "logo"),
       verify(profile.coverCandidateUrl, "cover"),
     ]);
-    enrichment = { ai, aiStatus: !needsAi ? "skipped" : ai ? "used" : "failed", logo, cover };
+    const result = ai?.result ?? null;
+    enrichment = { ai: result, aiStatus: !needsAi ? "skipped" : result ? "used" : "failed", logo, cover };
     cached.enrichment = enrichment;
+    // Usage is logged only on the request that made the call — it is not
+    // cached, so a reuse can never look like a new paid invocation.
+    log.aiCalled = ai?.called ?? false;
+    if (ai?.usage) {
+      log.aiModel = ai.usage.model;
+      log.aiInputTokens = ai.usage.inputTokens;
+      log.aiOutputTokens = ai.usage.outputTokens;
+      log.aiCacheCreationInputTokens = ai.usage.cacheCreationInputTokens;
+      log.aiCacheReadInputTokens = ai.usage.cacheReadInputTokens;
+      log.aiEstimatedCostUsd = ai.usage.estimatedCostUsd;
+    }
   }
   log.ai = enrichment.aiStatus;
 
