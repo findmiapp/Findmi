@@ -262,15 +262,159 @@ test("MIME: only text/html and application/xhtml+xml are accepted", async () => 
   assert.equal((await F.safeFetchHtml("https://brand.com/", { transport })).ok, true);
 });
 
-test("size: declared and streamed bodies over 1 MB are refused", async () => {
-  const declared = stub({ "https://brand.com/": respond(200, { ...HTML, "content-length": String(F.SAFE_FETCH_MAX_BYTES + 1) }, "x") });
-  assert.equal((await F.safeFetchHtml("https://brand.com/", { transport: declared.transport })).code, "too_large");
-  const big = Buffer.alloc(64 * 1024, 0x61);
-  const streamed = stub({ "https://brand.com/": respond(200, HTML, Array(17).fill(big)) });
-  assert.equal((await F.safeFetchHtml("https://brand.com/", { transport: streamed.transport })).code, "too_large");
+// ── Bounded head-first HTML read ──────────────────────────────────────────
+// A large modern storefront: metadata in the head, Instagram link early in
+// the body, then megabytes of markup/inline scripts.
+const KB = 1024;
+const HEAD = `<!doctype html><html><head><title>Milk Makeup</title>
+  <meta property="og:site_name" content="Milk Makeup">
+  <meta name="description" content="Clean, vegan makeup and skincare made for every face, created in a Brooklyn studio since 2016.">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Milk Makeup","url":"https://milkmakeup.com","sameAs":["https://www.instagram.com/milkmakeup/"]}</script>
+</head><body><header><a href="/">Milk Makeup</a></header><main><h1>Milk Makeup</h1><p>Clean, vegan makeup and skincare.</p>`;
+const FILLER = Buffer.alloc(64 * KB, 0x61);
+const fillerChunks = (bytes) => Array(Math.ceil(bytes / FILLER.length)).fill(FILLER);
+/** A response whose body NEVER ends (no EOF) — counts how much was pulled. */
+function endless(headers, first) {
+  let pulled = 0;
+  let destroyed = false;
+  return {
+    status: 200,
+    headers,
+    body: (async function* () {
+      if (first) {
+        pulled += first.length;
+        yield first;
+      }
+      for (;;) {
+        pulled += FILLER.length;
+        yield FILLER;
+      }
+    })(),
+    destroy: () => {
+      destroyed = true;
+    },
+    get destroyed() {
+      return destroyed;
+    },
+    get pulled() {
+      return pulled;
+    },
+  };
+}
+
+test("size: limits are bounded constants — 1.5 MB hard ceiling, 256 KB after the head", () => {
+  assert.equal(F.SAFE_FETCH_HTML_MAX_BYTES, 1536 * KB);
+  assert.equal(F.SAFE_FETCH_HTML_BODY_BYTES, 256 * KB);
+  assert.ok(F.SAFE_FETCH_HTML_MAX_BYTES < 2 * F.SAFE_FETCH_MAX_BYTES, "not a blind 5/10 MB raise");
 });
 
-test("decompression: gzip and br are decoded; a compression bomb is cut off at 1 MB DECOMPRESSED", async () => {
+test("size: a declared Content-Length over 1 MB no longer auto-rejects HTML; metadata early → success", async () => {
+  const body = [Buffer.from(HEAD), ...fillerChunks(3 * 1024 * KB)];
+  const declared = stub({ "https://milkmakeup.com/": respond(200, { ...HTML, "content-length": String(3 * 1024 * KB) }, body) });
+  const r = await F.safeFetchHtml("https://milkmakeup.com/", { transport: declared.transport });
+  assert.equal(r.ok, true);
+  assert.equal(r.truncated, true);
+  assert.equal(r.declaredBytes, 3 * 1024 * KB);
+  assert.equal(r.redirects, 0);
+  assert.ok(r.html.includes("Milk Makeup"));
+  assert.ok(r.bytes <= HEAD.length + F.SAFE_FETCH_HTML_BODY_BYTES + FILLER.length, `read ${r.bytes}`);
+});
+
+test("size: a chunked (no Content-Length) page over 1 MB with early metadata → success, truncated", async () => {
+  const chunked = stub({ "https://milkmakeup.com/": respond(200, HTML, [Buffer.from(HEAD), ...fillerChunks(2 * 1024 * KB)]) });
+  const r = await F.safeFetchHtml("https://milkmakeup.com/", { transport: chunked.transport });
+  assert.equal(r.ok, true);
+  assert.equal(r.truncated, true);
+  assert.equal(r.declaredBytes, null);
+  assert.ok(r.bytes < F.SAFE_FETCH_MAX_BYTES);
+});
+
+test("size: reading stops after the head + bounded body excerpt WITHOUT waiting for EOF", async () => {
+  const res = endless(HTML, Buffer.from(HEAD));
+  const r = await F.safeFetchHtml("https://milkmakeup.com/", { transport: async () => res });
+  assert.equal(r.ok, true);
+  assert.equal(r.truncated, true);
+  const headEnd = HEAD.indexOf("</head>");
+  assert.ok(r.bytes >= headEnd + F.SAFE_FETCH_HTML_BODY_BYTES, "full body excerpt kept");
+  assert.ok(r.bytes <= headEnd + F.SAFE_FETCH_HTML_BODY_BYTES + FILLER.length, `bounded: ${r.bytes}`);
+  assert.ok(res.pulled <= headEnd + F.SAFE_FETCH_HTML_BODY_BYTES + 4 * FILLER.length, `pulled ${res.pulled}`);
+  assert.equal(res.destroyed, true);
+  // A small page still reads to EOF and is reported complete.
+  const small = stub({ "https://brand.com/": respond(200, HTML, HEAD + "</main></body></html>") });
+  const c = await F.safeFetchHtml("https://brand.com/", { transport: small.transport });
+  assert.equal(c.truncated, false);
+  assert.equal(c.bytes, Buffer.byteLength(HEAD + "</main></body></html>"));
+});
+
+test("size: a huge page whose head never ends is refused at the hard ceiling (streamed limit)", async () => {
+  const res = endless(HTML, Buffer.from("<html><head><title>x</title>"));
+  const r = await F.safeFetchHtml("https://brand.com/", { transport: async () => res });
+  assert.deepEqual(r, { ok: false, code: "too_large", redirects: 0, limit: "streamed", declaredBytes: null });
+  assert.ok(res.pulled <= F.SAFE_FETCH_HTML_MAX_BYTES + 4 * FILLER.length, `pulled ${res.pulled}`);
+  // Under the ceiling with no head end, a finite page still reads to EOF.
+  const finite = stub({ "https://brand.com/": respond(200, HTML, fillerChunks(17 * 64 * KB)) });
+  const f = await F.safeFetchHtml("https://brand.com/", { transport: finite.transport });
+  assert.equal(f.ok, true);
+  assert.equal(f.truncated, false);
+  // The head ends only AFTER the ceiling → still refused, never over-read.
+  const late = stub({ "https://brand.com/": respond(200, HTML, [...fillerChunks(F.SAFE_FETCH_HTML_MAX_BYTES), Buffer.from("</head><body>")]) });
+  assert.equal((await F.safeFetchHtml("https://brand.com/", { transport: late.transport })).code, "too_large");
+  // Response headers over the limit are reported as the header limit.
+  const overflow = async () => {
+    throw Object.assign(new Error("overflow"), { code: "HPE_HEADER_OVERFLOW" });
+  };
+  assert.deepEqual(await F.safeFetchHtml("https://brand.com/", { transport: overflow }), { ok: false, code: "too_large", redirects: 0, limit: "headers", declaredBytes: null });
+});
+
+test("size: compressed oversized pages — head-first success, and the bomb is bounded on DECOMPRESSED bytes", async () => {
+  const page = Buffer.concat([Buffer.from(HEAD), ...fillerChunks(8 * 1024 * KB)]);
+  for (const [encoding, compress] of [["gzip", gzipSync], ["br", brotliCompressSync]]) {
+    const wire = compress(page);
+    assert.ok(wire.length < F.SAFE_FETCH_HTML_MAX_BYTES, "small on the wire");
+    const t = stub({ "https://brand.com/": respond(200, { ...HTML, "content-encoding": encoding }, wire) });
+    const r = await F.safeFetchHtml("https://brand.com/", { transport: t.transport });
+    assert.equal(r.ok, true, encoding);
+    assert.equal(r.truncated, true);
+    assert.ok(r.bytes <= HEAD.length + F.SAFE_FETCH_HTML_BODY_BYTES + 64 * KB, `${encoding} decompressed ${r.bytes}`);
+  }
+  // No head end inside the ceiling: refused at the DECOMPRESSED ceiling.
+  const bomb = stub({ "https://brand.com/": respond(200, { ...HTML, "content-encoding": "gzip" }, gzipSync(Buffer.alloc(50 * 1024 * KB))) });
+  const b = await F.safeFetchHtml("https://brand.com/", { transport: bomb.transport });
+  assert.equal(b.code, "too_large");
+  assert.equal(b.limit, "streamed");
+});
+
+test("size: image profile unchanged — declared or streamed over 5 MB is refused, no head-first read", async () => {
+  const PNG = { "content-type": "image/png" };
+  const declared = stub({ "https://cdn.brand.com/logo.png": respond(200, { ...PNG, "content-length": String(F.SAFE_FETCH_IMAGE_MAX_BYTES + 1) }, "x") });
+  assert.deepEqual(await F.safeFetchImage("https://cdn.brand.com/logo.png", { transport: declared.transport }), {
+    ok: false,
+    code: "too_large",
+    redirects: 0,
+    limit: "declared",
+    declaredBytes: F.SAFE_FETCH_IMAGE_MAX_BYTES + 1,
+  });
+  // Even bytes that look like an HTML head never trigger an early stop.
+  const looks = [Buffer.from("</head><body>"), ...fillerChunks(F.SAFE_FETCH_IMAGE_MAX_BYTES + KB)];
+  const streamed = stub({ "https://cdn.brand.com/logo.png": respond(200, PNG, looks) });
+  const s = await F.safeFetchImage("https://cdn.brand.com/logo.png", { transport: streamed.transport });
+  assert.equal(s.code, "too_large");
+  assert.equal(s.limit, "streamed");
+  const ok = stub({ "https://cdn.brand.com/logo.png": respond(200, PNG, "png-bytes") });
+  assert.deepEqual(Object.keys(await F.safeFetchImage("https://cdn.brand.com/logo.png", { transport: ok.transport })).sort(), ["body", "bytes", "contentType", "ok", "redirects", "url"]);
+});
+
+test("size: the extractor reads a truncated document (name, description, JSON-LD, Instagram)", async () => {
+  const res = endless(HTML, Buffer.from(HEAD + '<footer><a href="https://www.instagram.com/milkmakeup/">IG</a></footer><div>'));
+  const r = await F.safeFetchHtml("https://milkmakeup.com/", { transport: async () => res });
+  assert.equal(r.truncated, true);
+  const profile = E.extractBrandProfile(r.html, r.url);
+  assert.equal(profile.name, "Milk Makeup");
+  assert.match(profile.shortDescription ?? "", /vegan makeup/);
+  assert.equal(profile.instagramHandle, "milkmakeup");
+});
+
+test("decompression: gzip and br are decoded; a compression bomb is cut off at the DECOMPRESSED ceiling", async () => {
   const page = "<html><title>Brand</title></html>";
   const gz = stub({ "https://brand.com/": respond(200, { ...HTML, "content-encoding": "gzip" }, gzipSync(page)) });
   assert.equal((await F.safeFetchHtml("https://brand.com/", { transport: gz.transport })).html, page);

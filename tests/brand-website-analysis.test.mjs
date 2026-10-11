@@ -212,6 +212,29 @@ test("every fetch failure → the manual form with the website preserved (never 
   }
 });
 
+test("logging: HTML size outcome — complete, successful truncated, streamed/header limit, declared over the old 1 MB", async () => {
+  const truncated = makeDeps({
+    fetchHtml: async (url) => ({ ok: true, url: new URL(url.href), html: HTML, bytes: 400000, redirects: 1, truncated: true, declaredBytes: 3000000 }),
+  });
+  assert.equal((await run(truncated.deps)).outcome, "prefilled");
+  const t = truncated.calls.logs[0];
+  assert.deepEqual([t.size, t.truncated, t.declaredSizeExceededOldLimit, t.bytes, t.redirects], ["successful_truncated_html", true, true, 400000, 1]);
+
+  const complete = makeDeps({
+    fetchHtml: async (url) => ({ ok: true, url: new URL(url.href), html: HTML, bytes: HTML.length, redirects: 0, truncated: false, declaredBytes: HTML.length }),
+  });
+  await run(complete.deps);
+  const c = complete.calls.logs[0];
+  assert.deepEqual([c.size, c.truncated, c.declaredSizeExceededOldLimit], ["complete_html", false, false]);
+
+  for (const [limit, size] of [["streamed", "streamed_limit"], ["headers", "header_limit"]]) {
+    const failed = makeDeps({ fetchHtml: async () => ({ ok: false, code: "too_large", redirects: 0, limit, declaredBytes: null }) });
+    assert.equal((await run(failed.deps)).outcome, "too_large");
+    const f = failed.calls.logs[0];
+    assert.deepEqual([f.size, f.truncated, f.declaredSizeExceededOldLimit, f.bytes], [size, null, null, null]);
+  }
+});
+
 test("no metadata, extraction error, matcher error, busy, unsupported site → manual form", async () => {
   const empty = makeDeps({ fetchHtml: async (url) => ({ ok: true, url, html: "<html></html>", bytes: 13, redirects: 0 }) });
   assert.deepEqual(await run(empty.deps), { href: "/account/business/new?website_url=https%3A%2F%2Flavazza.com&prefill=unavailable&source=brand", outcome: "no_metadata" });
@@ -266,7 +289,7 @@ test("logging: host/outcome/timings/counts/booleans only — no HTML, text, quer
   const { deps, calls } = makeDeps();
   await run(deps, "https://lavazza.com/us?secret=token", "user-secret-id");
   const entry = calls.logs[0];
-  assert.deepEqual(Object.keys(entry).sort(), ["ai", "bytes", "cached", "event", "fields", "host", "match", "ms", "outcome", "redirects"]);
+  assert.deepEqual(Object.keys(entry).sort(), ["ai", "bytes", "cached", "declaredSizeExceededOldLimit", "event", "fields", "host", "match", "ms", "outcome", "redirects", "size", "truncated"]);
   const json = JSON.stringify(calls.logs);
   for (const leak of ["Italian coffee", "<html", "secret=token", "user-secret-id", "lavazzausa", "New York", "203.0.113.5"]) {
     assert.ok(!json.includes(leak), `log leaks ${leak}`);

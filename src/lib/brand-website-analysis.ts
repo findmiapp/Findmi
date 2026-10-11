@@ -10,7 +10,7 @@ import {
 import { claimHref, classifyBrandInput, searchHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
 import { extractBrandProfile, type ExtractedBrandProfile } from "./brand-website-extract";
-import { safeFetchHtml, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
+import { SAFE_FETCH_MAX_BYTES, safeFetchHtml, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
 import { enrichBrandWithAi, type BrandAiInput, type BrandAiResult } from "./brand-ai-enrichment";
 import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
 import { getBrandDraftSecret, type BrandDraftCandidate } from "./brand-draft";
@@ -108,11 +108,26 @@ export interface WebsiteAnalysisLog {
   ms: number;
   bytes: number | null;
   redirects: number | null;
+  /** HTML acquisition (safe observability — never content):
+   * complete_html = read to EOF; successful_truncated_html = stopped on
+   * purpose after the head + bounded body; streamed_limit = hard ceiling
+   * hit before the head ended; header_limit = response headers too large;
+   * declared_limit = refused on Content-Length (not used for HTML). */
+  size: "complete_html" | "successful_truncated_html" | "streamed_limit" | "header_limit" | "declared_limit" | null;
+  truncated: boolean | null;
+  /** The server declared a Content-Length over the old 1 MB limit. */
+  declaredSizeExceededOldLimit: boolean | null;
   cached: boolean;
   fields: Record<"name" | "description" | "about" | "instagram" | "city" | "state" | "category" | "logo" | "cover", boolean> | null;
   ai: "used" | "skipped" | "failed" | null;
   match: "none" | "public" | "hidden" | null;
 }
+
+const SIZE_LIMIT_LOG: Record<SafeFetchSizeLimit, WebsiteAnalysisLog["size"]> = {
+  declared: "declared_limit",
+  streamed: "streamed_limit",
+  headers: "header_limit",
+};
 
 export interface WebsiteAnalysisDeps {
   fetchHtml: (url: URL) => Promise<SafeFetchResult>;
@@ -177,7 +192,7 @@ export async function analyzeBrandWebsite(
   const host = normalizeWebsiteHost(websiteUrl);
   const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ ...seedCandidate(seed), website_url: websiteUrl }, prefill);
 
-  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, cached: false, fields: null, ai: null, match: null };
+  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, size: null, truncated: null, declaredSizeExceededOldLimit: null, cached: false, fields: null, ai: null, match: null };
   const finish = (
     href: string,
     outcome: WebsiteAnalysisOutcome,
@@ -216,8 +231,14 @@ export async function analyzeBrandWebsite(
       release();
     }
     log.redirects = fetched.redirects;
-    if (!fetched.ok) return finish(manual("unavailable"), fetched.code);
+    if (fetched.declaredBytes != null) log.declaredSizeExceededOldLimit = fetched.declaredBytes > SAFE_FETCH_MAX_BYTES;
+    if (!fetched.ok) {
+      if (fetched.limit) log.size = SIZE_LIMIT_LOG[fetched.limit];
+      return finish(manual("unavailable"), fetched.code);
+    }
     log.bytes = fetched.bytes;
+    log.truncated = fetched.truncated;
+    log.size = fetched.truncated ? "successful_truncated_html" : "complete_html";
     let profile: ExtractedBrandProfile;
     try {
       profile = extractBrandProfile(fetched.html, fetched.url);

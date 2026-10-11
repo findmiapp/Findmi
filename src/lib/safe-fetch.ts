@@ -43,7 +43,17 @@ import { normalizeWebsiteHost } from "./business-matching";
  * internally with no hook to validate the address it connects to. */
 
 export const SAFE_FETCH_MAX_REDIRECTS = 3;
+/** The V1.1B whole-document limit. HTML is no longer rejected for being
+ * larger than this (see the bounded head-first read below); it remains
+ * only as the reference for the `declaredOverLegacyLimit` log flag. */
 export const SAFE_FETCH_MAX_BYTES = 1024 * 1024;
+/** HTML analysis — ABSOLUTE ceiling on bytes consumed, enforced on both
+ * the raw (compressed) and the decompressed stream. Never exceeded. */
+export const SAFE_FETCH_HTML_MAX_BYTES = 1536 * 1024;
+/** HTML analysis — once the document head has ended (`</head>` or
+ * `<body>`), read at most this much more (early body: headings,
+ * paragraphs, social links for the excerpt), then stop on purpose. */
+export const SAFE_FETCH_HTML_BODY_BYTES = 256 * 1024;
 export const SAFE_FETCH_TIMEOUT_MS = 8000;
 export const SAFE_FETCH_SOCKET_TIMEOUT_MS = 3000;
 export const SAFE_FETCH_MAX_HEADER_BYTES = 16 * 1024;
@@ -70,9 +80,23 @@ export type SafeFetchFailure =
   | "too_large"
   | "network_error";
 
+/** Which size guard produced a `too_large` (safe observability only). */
+export type SafeFetchSizeLimit = "declared" | "streamed" | "headers";
+
 export type SafeFetchResult =
-  | { ok: true; url: URL; html: string; bytes: number; redirects: number }
-  | { ok: false; code: SafeFetchFailure; redirects: number };
+  | {
+      ok: true;
+      url: URL;
+      html: string;
+      /** Decompressed bytes actually consumed. */
+      bytes: number;
+      redirects: number;
+      /** True when reading stopped on purpose after the head + bounded body. */
+      truncated: boolean;
+      /** The server's Content-Length, if any (observability only). */
+      declaredBytes: number | null;
+    }
+  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
 
 // ── Destination rules ─────────────────────────────────────────────────────
 
@@ -322,19 +346,43 @@ function mapTransportError(err: unknown, aborted: boolean): SafeFetchFailure {
 }
 
 class TooLarge extends Error {}
+class StopReading extends Error {}
 
-/** Streams the body through an optional decompressor, aborting as soon as
- * either the raw or the DECOMPRESSED byte count passes `max` (the
- * decompressor emits bounded chunks, so memory stays bounded too). */
-async function readBody(body: AsyncIterable<Buffer>, encoding: string, max: number, signal: AbortSignal): Promise<Buffer> {
+/** End of the document head: `</head>` or the start of `<body>`. ASCII
+ * bytes, so it is found the same way in UTF-8 and Latin-1 pages. */
+const HEAD_END = /<\/head[\s>]|<body[\s>]/i;
+const HEAD_END_OVERLAP = 16;
+
+/** Streams the body through an optional decompressor with a HARD ceiling
+ * (`max`) on both the raw and the DECOMPRESSED byte counts (the
+ * decompressor emits bounded chunks, so memory stays bounded and a
+ * compression bomb is cut off). With `headStop` (HTML analysis), reading
+ * stops on purpose once the head has ended and `headStop.bodyBytes` more
+ * have arrived — and reaching the ceiling AFTER the head has ended is also
+ * a successful truncated read. Only a ceiling hit before the head ends is
+ * `TooLarge`. Never needs EOF. */
+async function readBody(
+  body: AsyncIterable<Buffer>,
+  encoding: string,
+  max: number,
+  signal: AbortSignal,
+  headStop?: { bodyBytes: number }
+): Promise<{ buffer: Buffer; truncated: boolean }> {
   const chunks: Buffer[] = [];
   let total = 0;
   let exceeded = false;
+  let stopped = false;
+  let headEnd = -1;
+  let tail = "";
   async function* capped(source: AsyncIterable<Buffer>): AsyncGenerator<Buffer> {
     let raw = 0;
     for await (const chunk of source) {
       raw += chunk.length;
       if (raw > max) {
+        if (headStop && headEnd >= 0) {
+          stopped = true;
+          throw new StopReading();
+        }
         exceeded = true;
         throw new TooLarge();
       }
@@ -343,12 +391,29 @@ async function readBody(body: AsyncIterable<Buffer>, encoding: string, max: numb
   }
   const collect = async (source: AsyncIterable<Buffer>) => {
     for await (const chunk of source) {
-      total += chunk.length;
-      if (total > max) {
+      const room = max - total;
+      const piece = chunk.length > room ? chunk.subarray(0, room) : chunk;
+      if (headStop && headEnd < 0) {
+        const text = tail + piece.toString("latin1");
+        const m = HEAD_END.exec(text);
+        if (m) headEnd = total - tail.length + m.index;
+        tail = text.slice(-HEAD_END_OVERLAP);
+      }
+      chunks.push(piece);
+      total += piece.length;
+      if (chunk.length > room) {
+        // The hard ceiling: a success only if the head already ended.
+        if (headStop && headEnd >= 0) {
+          stopped = true;
+          throw new StopReading();
+        }
         exceeded = true;
         throw new TooLarge();
       }
-      chunks.push(chunk);
+      if (headStop && headEnd >= 0 && total - headEnd >= headStop.bodyBytes) {
+        stopped = true;
+        throw new StopReading();
+      }
     }
   };
   const raw = Readable.from(capped(body));
@@ -358,12 +423,13 @@ async function readBody(body: AsyncIterable<Buffer>, encoding: string, max: numb
     else if (encoding === "br") await pipeline(raw, createBrotliDecompress(), collect, { signal });
     else await pipeline(raw, collect, { signal });
   } catch (err) {
-    // pipeline may surface a secondary error (e.g. premature close) —
-    // the size decision is the flag, not the error object.
+    // pipeline may surface a secondary error (e.g. premature close) — the
+    // decision is the flag, not the error object.
+    if (stopped) return { buffer: Buffer.concat(chunks, total), truncated: true };
     if (exceeded) throw new TooLarge();
     throw err;
   }
-  return Buffer.concat(chunks, total);
+  return { buffer: Buffer.concat(chunks, total), truncated: false };
 }
 
 function decodeHtml(buffer: Buffer, contentType: string): string {
@@ -396,10 +462,21 @@ export interface SafeFetchOptions {
 interface FetchProfile {
   accept: string | undefined;
   mediaTypes: ReadonlySet<string>;
+  /** Hard ceiling on raw and decompressed bytes consumed. */
   maxBytes: number;
+  /** Refuse up front when Content-Length exceeds `maxBytes` (whole-file
+   * resources). HTML analysis reads a bounded prefix instead. */
+  rejectDeclaredOverMax: boolean;
+  headStop?: { bodyBytes: number };
 }
 
-const HTML_PROFILE: FetchProfile = { accept: undefined, mediaTypes: HTML_TYPES, maxBytes: SAFE_FETCH_MAX_BYTES };
+const HTML_PROFILE: FetchProfile = {
+  accept: undefined,
+  mediaTypes: HTML_TYPES,
+  maxBytes: SAFE_FETCH_HTML_MAX_BYTES,
+  rejectDeclaredOverMax: false,
+  headStop: { bodyBytes: SAFE_FETCH_HTML_BODY_BYTES },
+};
 
 /** Brand Onboarding V1.1C — logo/cover candidates. Raster formats the
  * existing upload pipeline accepts (validateImageFile); SVG and ICO are
@@ -410,11 +487,12 @@ const IMAGE_PROFILE: FetchProfile = {
   accept: "image/png,image/jpeg,image/webp,image/gif;q=0.8",
   mediaTypes: SAFE_FETCH_IMAGE_TYPES,
   maxBytes: SAFE_FETCH_IMAGE_MAX_BYTES,
+  rejectDeclaredOverMax: true,
 };
 
 type ResourceResult =
-  | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number }
-  | { ok: false; code: SafeFetchFailure; redirects: number };
+  | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number; truncated: boolean; declaredBytes: number | null }
+  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
 
 async function safeFetchResource(input: string | URL, profile: FetchProfile, options: SafeFetchOptions): Promise<ResourceResult> {
   const transport = options.transport ?? createHttpsTransport();
@@ -426,7 +504,9 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
   let url = first.url;
   let redirects = 0;
   const visited = new Set<string>();
-  const fail = (code: SafeFetchFailure): ResourceResult => ({ ok: false, code, redirects });
+  let declaredBytes: number | null = null;
+  const fail = (code: SafeFetchFailure, limit?: SafeFetchSizeLimit): ResourceResult =>
+    limit ? { ok: false, code, redirects, limit, declaredBytes } : { ok: false, code, redirects };
 
   try {
     for (;;) {
@@ -435,7 +515,8 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
       try {
         res = await transport(url, controller.signal, profile.accept);
       } catch (err) {
-        return fail(mapTransportError(err, controller.signal.aborted));
+        const code = mapTransportError(err, controller.signal.aborted);
+        return fail(code, code === "too_large" ? "headers" : undefined);
       }
       try {
         if (REDIRECT_STATUSES.has(res.status)) {
@@ -461,27 +542,37 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
         const contentType = header(res.headers, "content-type") ?? "";
         const mediaType = contentType.split(";")[0].trim().toLowerCase();
         if (!profile.mediaTypes.has(mediaType)) return fail("unsupported_content");
-        const declaredLength = Number(header(res.headers, "content-length"));
-        if (Number.isFinite(declaredLength) && declaredLength > profile.maxBytes) return fail("too_large");
+        const declaredLength = Number(header(res.headers, "content-length") ?? NaN);
+        declaredBytes = Number.isFinite(declaredLength) && declaredLength >= 0 ? declaredLength : null;
+        if (profile.rejectDeclaredOverMax && declaredBytes !== null && declaredBytes > profile.maxBytes) return fail("too_large", "declared");
         const encoding = (header(res.headers, "content-encoding") ?? "identity").trim().toLowerCase();
         if (!["identity", "", "gzip", "x-gzip", "deflate", "br"].includes(encoding)) return fail("unsupported_content");
-        let buffer: Buffer;
+        let read: { buffer: Buffer; truncated: boolean };
         // The deadline must hold even if a body stream never settles: the
         // response is destroyed on abort AND the read is raced against it.
         const onAbort = () => res.destroy();
         controller.signal.addEventListener("abort", onAbort, { once: true });
         try {
-          const reading = readBody(res.body, encoding, profile.maxBytes, controller.signal);
+          const reading = readBody(res.body, encoding, profile.maxBytes, controller.signal, profile.headStop);
           reading.catch(() => undefined); // a late rejection after the race is not unhandled
-          buffer = await Promise.race([reading, abortedPromise(controller.signal)]);
+          read = await Promise.race([reading, abortedPromise(controller.signal)]);
         } catch (err) {
-          if (err instanceof TooLarge) return fail("too_large");
+          if (err instanceof TooLarge) return fail("too_large", "streamed");
           if (controller.signal.aborted) return fail("timeout");
           return fail((err as NodeJS.ErrnoException)?.code?.startsWith("Z_") ? "unsupported_content" : "network_error");
         } finally {
           controller.signal.removeEventListener("abort", onAbort);
         }
-        return { ok: true, url, body: buffer, contentType, bytes: buffer.length, redirects };
+        return {
+          ok: true,
+          url,
+          body: read.buffer,
+          contentType,
+          bytes: read.buffer.length,
+          redirects,
+          truncated: read.truncated,
+          declaredBytes,
+        };
       } finally {
         res.destroy();
       }
@@ -496,17 +587,27 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
 export async function safeFetchHtml(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
   const r = await safeFetchResource(input, HTML_PROFILE, options);
   if (!r.ok) return r;
-  return { ok: true, url: r.url, html: decodeHtml(r.body, r.contentType), bytes: r.bytes, redirects: r.redirects };
+  return {
+    ok: true,
+    url: r.url,
+    html: decodeHtml(r.body, r.contentType),
+    bytes: r.bytes,
+    redirects: r.redirects,
+    truncated: r.truncated,
+    declaredBytes: r.declaredBytes,
+  };
 }
 
 export type SafeFetchImageResult =
   | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number }
-  | { ok: false; code: SafeFetchFailure; redirects: number };
+  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
 
 /** Retrieves ONE raster image (PNG/JPEG/WebP/GIF, ≤ 5 MB) under exactly the
  * same destination/DNS/redirect/TLS/timeout rules as safeFetchHtml. The
  * declared type is only a first gate — callers must still validate the
  * actual bytes (lib/brand-images.ts → validateImageFile + sharp). */
 export async function safeFetchImage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchImageResult> {
-  return safeFetchResource(input, IMAGE_PROFILE, options);
+  const r = await safeFetchResource(input, IMAGE_PROFILE, options);
+  if (!r.ok) return r;
+  return { ok: true, url: r.url, body: r.body, contentType: r.contentType, bytes: r.bytes, redirects: r.redirects };
 }
