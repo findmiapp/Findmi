@@ -20,6 +20,7 @@ import { isRecurringCheckoutConfigured } from "@/lib/commerce/subscriptionPricin
 import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptionTypes";
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
+import { findBusinessMatches } from "@/lib/business-matching";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -1153,56 +1154,8 @@ export async function removeOwnerAppearance(businessId: string, appearanceId: st
 
 const CREATE_BUSINESS_PATH = "/account/business/new";
 
-function normalizeForMatch(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-function normalizeUrlForMatch(value: string | null): string | null {
-  if (!value) return null;
-  return value.trim().toLowerCase().replace(/\/+$/, "").replace(/^https?:\/\/(www\.)?/, "") || null;
-}
-
-/** Practical, non-fuzzy duplicate check — the small candidate pool this
- * catalog actually has today makes a full compare-in-JS pass (not a
- * search index) the honest "smallest thing that works" choice; see this
- * pass's own scope note against building real matching infrastructure.
- * Checked in order: an exact website/Instagram match (the strongest
- * signal) first, then a normalized name match that ALSO agrees on city
- * and state whenever both sides have one (so the same business name in a
- * different city is never flagged). Demo rows are never candidates — a
- * seeded demo business is not a real duplicate target. Every real
- * publication_status (pending_review and live alike) is considered, so
- * two users can't independently create the "same" business twice while
- * the first is still awaiting review. */
-async function findLikelyDuplicateBusiness(
-  admin: SupabaseClient,
-  input: { name: string; city: string | null; state: string | null; websiteUrl: string | null; instagramUrl: string | null }
-): Promise<{ slug: string; name: string } | null> {
-  const { data } = await admin
-    .from("businesses")
-    .select("slug, name, city, state, website_url, instagram_url")
-    .eq("is_demo", false);
-  const rows = (data ?? []) as { slug: string; name: string; city: string | null; state: string | null; website_url: string | null; instagram_url: string | null }[];
-
-  const inputSite = normalizeUrlForMatch(input.websiteUrl);
-  const inputInsta = normalizeUrlForMatch(input.instagramUrl);
-  if (inputSite || inputInsta) {
-    for (const row of rows) {
-      if (inputSite && normalizeUrlForMatch(row.website_url) === inputSite) return row;
-      if (inputInsta && normalizeUrlForMatch(row.instagram_url) === inputInsta) return row;
-    }
-  }
-
-  const normalizedName = normalizeForMatch(input.name);
-  for (const row of rows) {
-    if (normalizeForMatch(row.name) !== normalizedName) continue;
-    const cityMatches = !input.city || !row.city || normalizeForMatch(input.city) === normalizeForMatch(row.city);
-    const stateMatches = !input.state || !row.state || normalizeForMatch(input.state) === normalizeForMatch(row.state);
-    if (cityMatches && stateMatches) return row;
-  }
-
-  return null;
-}
+// Duplicate detection lives in lib/business-matching.ts (Brand Onboarding
+// V1 · Pass 1) — the one reusable, bounded, ranked Business matcher.
 
 const CREATE_FRIENDLY_ERROR: Record<string, string> = {
   user_required: "You need to be signed in to create a business.",
@@ -1334,9 +1287,12 @@ export async function createMemberBusiness(formData: FormData) {
 
   // Server-side duplicate protection — required regardless of any
   // client-side check, run BEFORE the atomic create below. A likely
-  // match never auto-creates a second business; the visitor is directed
-  // to the existing Claim Business flow instead.
-  const duplicate = await findLikelyDuplicateBusiness(admin, {
+  // match never auto-creates a second business. The strongest candidate
+  // decides: a PUBLIC one is offered through the existing Claim Business
+  // flow (name + link, as before); a non-public one (pending review,
+  // draft, paused, rejected, archived, trashed) still blocks creation but
+  // its name/slug are never revealed to the visitor.
+  const [duplicate] = await findBusinessMatches(admin, {
     name: name!,
     city,
     state,
@@ -1345,11 +1301,17 @@ export async function createMemberBusiness(formData: FormData) {
   });
   if (duplicate) {
     redirect(
-      errorRedirectUrlWithFields(
-        CREATE_BUSINESS_PATH,
-        "We found a business that looks like a match. Claim it instead of creating a duplicate.",
-        { ...preservedFields, duplicate_slug: duplicate.slug, duplicate_name: duplicate.name }
-      )
+      duplicate.isPublic
+        ? errorRedirectUrlWithFields(
+            CREATE_BUSINESS_PATH,
+            "We found a business that looks like a match. Claim it instead of creating a duplicate.",
+            { ...preservedFields, duplicate_slug: duplicate.slug, duplicate_name: duplicate.name }
+          )
+        : errorRedirectUrlWithFields(
+            CREATE_BUSINESS_PATH,
+            "A business matching these details is already on Findmi but isn't public yet. If it's yours, contact Findmi instead of creating a duplicate.",
+            preservedFields
+          )
     );
   }
 
