@@ -273,7 +273,12 @@ export default function BusinessLogoCard({
         )}
 
         {upcoming.length > 0 && (
-          <div className="relative z-20 mt-1.5 rounded-2xl bg-findmi-50 p-2.5">
+          // Reclaims 8px of the card body's p-3.5 inset on each side (and
+          // trims the module's own horizontal padding by 2px) so a count
+          // heading like "10 Upcoming Appearances" fits on one line in the
+          // narrow Featured rail at 360px — width only; type and outer card
+          // geometry unchanged.
+          <div className="relative z-20 -mx-2 mt-1.5 rounded-2xl bg-findmi-50 px-2 py-2.5">
             <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700">
               <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
               {totalUpcoming === 1 ? "1 Upcoming Appearance" : `${totalUpcoming} Upcoming Appearances`}
