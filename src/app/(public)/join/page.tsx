@@ -77,8 +77,10 @@ export default async function JoinPage({
           title="Build your digital passbook"
           description="Discover what you love, save what you want to do, and document the places, products and experiences that become part of your world."
         />
+        {/* Brand Onboarding V1 — the public Find Your Brand front door:
+            look up first, sign in only to claim or create. */}
         <ValueCard
-          href={`/signup?next=${encodeURIComponent("/join/start?intent=business")}`}
+          href="/join/brand"
           icon={<NavIcon name="storefront" className="h-5 w-5 text-ink/70" />}
           iconBg="bg-mist/60"
           border="border-black/10"

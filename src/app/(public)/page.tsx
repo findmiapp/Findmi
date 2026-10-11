@@ -322,7 +322,7 @@ export default async function HomePage({
             </span>
           </Link>
           <Link
-            href="/account/business/new"
+            href="/join/brand"
             className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
             <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
