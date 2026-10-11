@@ -21,6 +21,7 @@ import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptio
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { findBusinessMatches } from "@/lib/business-matching";
+import { SHORT_DESCRIPTION_MAX_LENGTH } from "@/lib/brand-candidate";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -1217,6 +1218,9 @@ export async function createMemberBusiness(formData: FormData) {
   const state = str(formData, "state");
   const websiteUrl = str(formData, "website_url");
   const instagramUrl = str(formData, "instagram_url");
+  // Brand Onboarding V1.1B — optional, owner-editable (website analysis
+  // may have suggested it; never authoritative). Whitespace collapsed.
+  const shortDescription = str(formData, "short_description")?.replace(/\s+/g, " ") ?? null;
   const marketId = str(formData, "market_id");
   // Consumer Area Picker + Market Requests V1 — the alternative to
   // marketId: the business is still created, but with a linked
@@ -1243,6 +1247,7 @@ export async function createMemberBusiness(formData: FormData) {
     state,
     website_url: websiteUrl,
     instagram_url: instagramUrl,
+    short_description: shortDescription,
     market_id: marketId,
     requested_market_text: requestedMarketText,
     authorized: authorized ? "1" : null,
@@ -1266,6 +1271,9 @@ export async function createMemberBusiness(formData: FormData) {
   // own profile-edit form is untouched), so no legitimate already-created
   // business is affected.
   if (!city || !state) fail("City and state are required.");
+  if (shortDescription && shortDescription.length > SHORT_DESCRIPTION_MAX_LENGTH) {
+    fail(`Keep your short description to ${SHORT_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
+  }
   // Primary Market During Business Creation V1, extended by Consumer Area
   // Picker + Market Requests V1 — checked here for a fast, friendly error
   // before any duplicate-check/slug work runs, but create_owned_business()
@@ -1360,6 +1368,15 @@ export async function createMemberBusiness(formData: FormData) {
 
   const businessId = (created as { id: string }).id;
   revalidatePath("/account");
+
+  // Brand Onboarding V1.1B — create_owned_business() doesn't take a
+  // description, so the optional short_description is written right after
+  // it, to the just-created row (an ordinary owner-editable profile
+  // column). Best-effort: a failure here only drops the description — the
+  // owner can add it in Business Manager — and never undoes the create.
+  if (shortDescription) {
+    await admin.from("businesses").update({ short_description: shortDescription }).eq("id", businessId);
+  }
 
   // Best-effort only — the atomic RPC above already succeeded, so a
   // failure here just means the business keeps its Market without the

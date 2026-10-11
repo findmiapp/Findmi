@@ -6,6 +6,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarkets, getCategories } from "@/lib/data";
 import BusinessGeographyFields from "@/components/BusinessGeographyFields";
 import { createMemberBusiness } from "../actions";
+import { SHORT_DESCRIPTION_MAX_LENGTH, parseBrandPrefillStatus, prefillHostLabel } from "@/lib/brand-candidate";
 
 export const metadata: Metadata = {
   title: "Add a Business",
@@ -43,6 +44,8 @@ export default async function AddBusinessPage({
     state?: string;
     website_url?: string;
     instagram_url?: string;
+    short_description?: string;
+    prefill?: string;
     market_id?: string;
     requested_market_text?: string;
     authorized?: string;
@@ -62,6 +65,8 @@ export default async function AddBusinessPage({
     state: submittedState,
     website_url: submittedWebsiteUrl,
     instagram_url: submittedInstagramUrl,
+    short_description: submittedShortDescription,
+    prefill,
     market_id: submittedMarketId,
     requested_market_text: submittedRequestedMarketText,
     authorized: submittedAuthorized,
@@ -108,6 +113,21 @@ export default async function AddBusinessPage({
 
   const [categories, markets] = await Promise.all([getCategories(), getActiveMarkets()]);
 
+  // Brand Onboarding V1.1B — set only by /join/brand's website analysis
+  // (lib/brand-candidate.ts). Display-only: the fields below are the
+  // ordinary, editable form values and createMemberBusiness re-validates
+  // everything on submit.
+  const prefillStatus = parseBrandPrefillStatus(prefill);
+  const prefillHost = prefillHostLabel(submittedWebsiteUrl);
+  const prefillNotice =
+    prefillStatus === "website"
+      ? `We filled in some details from ${prefillHost ?? "your website"}. Check everything before adding your brand.`
+      : prefillStatus === "unavailable"
+        ? `We couldn't read ${prefillHost ?? "that website"}, so add your details below.`
+        : prefillStatus === "limited"
+          ? "You've built several profiles recently. Add your details below, or try again in a few minutes."
+          : null;
+
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-label font-bold uppercase text-accent">My Findmi</p>
@@ -121,6 +141,10 @@ export default async function AddBusinessPage({
           Get started free, no credit card required. You&rsquo;ll own and manage your business right away, and
           Findmi will review it before it appears in discovery. Pro is available anytime below if you want more.
         </p>
+      )}
+
+      {prefillNotice && !error && (
+        <p className="mt-5 rounded-2xl bg-findmi-50 px-4 py-3 text-body text-findmi-700">{prefillNotice}</p>
       )}
 
       {duplicateSlug ? (
@@ -217,6 +241,20 @@ export default async function AddBusinessPage({
               placeholder="https://instagram.com/…"
               className={inputClass}
             />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-body font-medium text-primary">
+              Short description <span className="font-normal text-subtle">(optional)</span>
+            </span>
+            <textarea
+              name="short_description"
+              rows={2}
+              maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+              defaultValue={submittedShortDescription ?? ""}
+              placeholder="A sentence about what you do"
+              className={inputClass}
+            />
+            <span className="mt-1 block text-label text-subtle">Up to {SHORT_DESCRIPTION_MAX_LENGTH} characters.</span>
           </label>
 
           {/* Plan choice — Native Business Onboarding Pass 3, restyled by

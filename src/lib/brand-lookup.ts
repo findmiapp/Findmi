@@ -9,6 +9,7 @@ import {
   type BusinessMatch,
   type BusinessMatchInput,
 } from "./business-matching";
+import { brandCandidateHref } from "./brand-candidate";
 
 /** Brand Onboarding V1 · Pass 2B — the server-only layer behind the public
  * /join/brand "Find Your Brand" page:
@@ -183,8 +184,6 @@ export function defaultBrandLookupDeps(): BrandLookupDeps | null {
 
 // ── Handoff links ─────────────────────────────────────────────────────────
 
-const CREATE_PATH = "/account/business/new";
-
 /** Claim reuses the existing ClaimButton flow: its ?claim=1 reopens the
  * modal; guests go through /login (which carries `next` into signup and
  * the email-confirmation callback). */
@@ -196,21 +195,17 @@ export function claimHref(slug: string, authenticated: boolean): string {
 /** Create reuses /account/business/new, whose form already prefills
  * name / website_url / instagram_url from the query string (and whose
  * createMemberBusiness re-checks duplicates on submit). Only the visitor's
- * own input is carried — never matcher data. Website/Instagram values are
- * made absolute because those fields are type="url". Middleware keeps the
- * full query string through /login → signup → auth callback. */
+ * own input is carried — never matcher data — and the URL itself is built
+ * by the one candidate serializer (lib/brand-candidate.ts). Website values
+ * are made absolute because the field is type="url"; Instagram becomes the
+ * canonical profile URL. Middleware keeps the full query string through
+ * /login → signup → auth callback. */
 export function createHref(input: { kind: BrandInputKind; value: string }): string {
-  const params = new URLSearchParams();
-  if (input.kind === "name") {
-    params.set("name", input.value);
-  } else if (input.kind === "website") {
-    params.set("website_url", HAS_SCHEME.test(input.value) ? input.value : `https://${input.value}`);
-  } else {
-    const handle = normalizeInstagramHandle(input.value);
-    if (handle) params.set("instagram_url", `https://www.instagram.com/${handle}`);
+  if (input.kind === "name") return brandCandidateHref({ name: input.value });
+  if (input.kind === "website") {
+    return brandCandidateHref({ website_url: HAS_SCHEME.test(input.value) ? input.value : `https://${input.value}` });
   }
-  const query = params.toString();
-  return query ? `${CREATE_PATH}?${query}` : CREATE_PATH;
+  return brandCandidateHref({ instagram_url: input.value });
 }
 
 /** Re-search link for an alternate interpretation of the same input. */

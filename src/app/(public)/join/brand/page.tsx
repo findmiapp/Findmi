@@ -17,6 +17,8 @@ import {
   type PublicBrandCard,
 } from "@/lib/brand-lookup";
 import { isBrandLookupRateLimited } from "@/lib/brand-lookup-rate-limit";
+import { buildBrandProfile } from "./actions";
+import BuildProfileButton from "./BuildProfileButton";
 
 export const metadata: Metadata = {
   title: "Find Your Brand",
@@ -24,6 +26,9 @@ export const metadata: Metadata = {
 };
 // Per-request lookup + session-aware links — never cached.
 export const dynamic = "force-dynamic";
+// Build My Brand Profile (V1.1B) runs one bounded website fetch (8 s
+// deadline) plus matching inside this route's server action.
+export const maxDuration = 30;
 
 /** Brand Onboarding V1 · Pass 2B — the public "Find or Add Your Brand"
  * front door. Server-rendered GET (/join/brand?q=…&as=…): no JSON API, no
@@ -72,13 +77,27 @@ async function resolveState(q: string | undefined, as: string | undefined, authe
   }
 }
 
-export default async function FindYourBrandPage({ searchParams }: { searchParams: Promise<{ q?: string; as?: string }> }) {
-  const { q, as } = await searchParams;
+export default async function FindYourBrandPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; as?: string; notice?: string }>;
+}) {
+  const { q, as, notice } = await searchParams;
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const authenticated = Boolean(user);
+  // V1.1B — website analysis found a matching Business that isn't public:
+  // the same generic assistance state as the lookup (signed-in only; it
+  // names nothing). Anonymous visitors just get the ordinary page.
+  if (notice === "already_listed" && authenticated) {
+    return (
+      <div className="mx-auto max-w-lg px-6 py-8 sm:py-12">
+        <AssistanceBlock />
+      </div>
+    );
+  }
   const state = await resolveState(q, as, authenticated);
 
   return (
@@ -181,14 +200,29 @@ function ResultView({
     );
   }
 
-  if (result.state === "assistance") {
+  if (result.state === "assistance") return <AssistanceBlock>{searched}</AssistanceBlock>;
+
+  // V1.1B — a website with no match can be read (signed-in only, explicit
+  // POST) to prefill the existing create form. Guests sign in first and
+  // come back to this same result; adding it manually stays available.
+  if (inputKind === "website") {
     return (
-      <StateBlock
-        title="This Brand May Already Be on Findmi"
-        body="It looks like this brand may already have a listing that isn't public yet. Reach out and we'll help you access it or sort it out."
-      >
+      <StateBlock title="Add Your Brand" body="We didn't find this brand on Findmi. Add it now — it only takes a few minutes.">
         {searched}
-        <PrimaryLink href="/join/sales" label="Contact Findmi" />
+        {authenticated ? (
+          <form action={buildBrandProfile} className="mt-5">
+            <input type="hidden" name="website" value={value} />
+            <BuildProfileButton />
+          </form>
+        ) : (
+          <PrimaryLink href={`/login?next=${encodeURIComponent(searchHref(value, "website"))}`} label="Build My Brand Profile" />
+        )}
+        <p className="mt-2 text-center text-xs text-ink/50">
+          {authenticated
+            ? "We'll read your website's homepage and fill in what we can. You'll review everything before adding your brand."
+            : "Sign in and we'll read your website's homepage to fill in what we can. You'll review everything before adding your brand."}
+        </p>
+        <SecondaryLink href={addHref} label="Add It Myself" />
         <SecondaryLink href="/join/brand" label="Search Again" subtle />
       </StateBlock>
     );
@@ -198,6 +232,19 @@ function ResultView({
     <StateBlock title="Add Your Brand" body="We didn't find this brand on Findmi. Add it now — it only takes a few minutes.">
       {searched}
       <PrimaryLink href={addHref} label="Add Your Brand" />
+      <SecondaryLink href="/join/brand" label="Search Again" subtle />
+    </StateBlock>
+  );
+}
+
+function AssistanceBlock({ children }: { children?: React.ReactNode }) {
+  return (
+    <StateBlock
+      title="This Brand May Already Be on Findmi"
+      body="It looks like this brand may already have a listing that isn't public yet. Reach out and we'll help you access it or sort it out."
+    >
+      {children}
+      <PrimaryLink href="/join/sales" label="Contact Findmi" />
       <SecondaryLink href="/join/brand" label="Search Again" subtle />
     </StateBlock>
   );
