@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarkets, getCategories } from "@/lib/data";
@@ -13,6 +14,9 @@ import {
   parseBrandSource,
   prefillHostLabel,
 } from "@/lib/brand-candidate";
+import { readBrandDraft } from "@/lib/brand-draft";
+import { previewBrandCandidate } from "@/lib/brand-images";
+import { recordBrandImagePreview } from "@/lib/brand-website-rate-limit";
 
 export const metadata: Metadata = {
   title: "Add a Business",
@@ -21,6 +25,11 @@ export const metadata: Metadata = {
 // Authenticated, per-user content — must never be statically or
 // ISR-cached, same convention every other /account/* page uses.
 export const dynamic = "force-dynamic";
+// Brand Onboarding V1.1C — creation may re-host up to two verified brand
+// images (each a bounded 8 s safe fetch) after the Business is created.
+export const maxDuration = 30;
+
+const ABOUT_MAX_LENGTH = 600;
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none";
@@ -53,6 +62,10 @@ export default async function AddBusinessPage({
     short_description?: string;
     prefill?: string;
     source?: string;
+    draft?: string;
+    description?: string;
+    use_logo?: string;
+    use_cover?: string;
     market_id?: string;
     requested_market_text?: string;
     authorized?: string;
@@ -75,6 +88,10 @@ export default async function AddBusinessPage({
     short_description: submittedShortDescription,
     prefill,
     source,
+    draft: draftParam,
+    description: submittedAbout,
+    use_logo: submittedUseLogo,
+    use_cover: submittedUseCover,
     market_id: submittedMarketId,
     requested_market_text: submittedRequestedMarketText,
     authorized: submittedAuthorized,
@@ -132,7 +149,38 @@ export default async function AddBusinessPage({
   // Presentation only — an explicit ?invite= still shows its own existing
   // invite block, and a stray ?plan=pro never brings the picker back here.
   const brandOnboarding = parseBrandSource(source);
-  const prefillHost = prefillHostLabel(submittedWebsiteUrl);
+  // V1.1C — the enriched Brand Identity draft (signed, short-lived cookie,
+  // verified against the CURRENT Supabase user). On a validation round-
+  // trip (`error` present) the owner's own submitted values win and the
+  // draft only supplies the image candidates; otherwise the draft fills
+  // the editable fields. It never sets plan, authorization or ownership.
+  const draft = brandOnboarding && draftParam === "1" ? await readBrandDraft(user.id) : null;
+  const roundTrip = Boolean(error);
+  const fromDraft = draft && !roundTrip ? draft : null;
+  const values = {
+    name: fromDraft ? (fromDraft.name ?? "") : (submittedName ?? ""),
+    categoryId: fromDraft ? (fromDraft.cat ?? "") : (submittedCategoryId ?? ""),
+    city: fromDraft ? (fromDraft.city ?? "") : (submittedCity ?? ""),
+    state: fromDraft ? (fromDraft.state ?? "") : (submittedState ?? ""),
+    websiteUrl: fromDraft ? fromDraft.site : (submittedWebsiteUrl ?? ""),
+    instagramUrl: fromDraft ? (fromDraft.ig ? `https://www.instagram.com/${fromDraft.ig}` : "") : (submittedInstagramUrl ?? ""),
+    shortDescription: fromDraft ? (fromDraft.sd ?? "") : (submittedShortDescription ?? ""),
+    about: fromDraft ? (fromDraft.about ?? "") : (submittedAbout ?? ""),
+  };
+  // Previews: each candidate is re-fetched and re-validated server-side and
+  // shown as a small re-encoded data URI — never hotlinked, never stored.
+  // A candidate is offered (and selected by default) ONLY if that full
+  // verification + preview succeeds; the owner can deselect it.
+  const previewsAllowed = Boolean(draft && (draft.logo || draft.cover)) && !recordBrandImagePreview(user.id);
+  const [logoPreview, coverPreview] = previewsAllowed
+    ? await Promise.all([
+        draft!.logo ? previewBrandCandidate(draft!.logo, "logo") : Promise.resolve(null),
+        draft!.cover ? previewBrandCandidate(draft!.cover, "cover") : Promise.resolve(null),
+      ])
+    : [null, null];
+  const useLogoDefault = roundTrip ? submittedUseLogo === "1" : true;
+  const useCoverDefault = roundTrip ? submittedUseCover === "1" : true;
+  const prefillHost = prefillHostLabel(values.websiteUrl);
   const prefillNotice =
     prefillStatus === "website"
       ? `We filled in some details from ${prefillHost ?? "your website"}. Check everything before adding your brand.`
@@ -142,13 +190,28 @@ export default async function AddBusinessPage({
           ? "You've built several profiles recently. Add your details below, or try again in a few minutes."
           : null;
 
+  const geography = (
+    <BusinessGeographyFields
+      markets={markets}
+      defaultCity={values.city}
+      defaultState={values.state}
+      defaultMarketId={submittedMarketId ?? ""}
+      defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
+    />
+  );
+
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-label font-bold uppercase text-accent">My Findmi</p>
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
         {brandOnboarding ? "Review Your Brand" : "Add a Business"}
       </h1>
-      {brandOnboarding ? (
+      {draft ? (
+        <p className="mt-2 text-body text-muted">
+          We found this information from your website. Review anything you&rsquo;d like to change, then add your
+          brand. Findmi will review it before it appears in discovery.
+        </p>
+      ) : brandOnboarding ? (
         <p className="mt-2 text-body text-muted">
           Check and complete your brand&rsquo;s starting profile, then add it. You&rsquo;ll own and manage it right away,
           and Findmi will review it before it appears in discovery.
@@ -200,13 +263,56 @@ export default async function AddBusinessPage({
       <div id="add-business-form" className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberBusiness} className="flex flex-col gap-4">
           {brandOnboarding && <input type="hidden" name="source" value={BRAND_SOURCE} />}
+          {draft && <input type="hidden" name="draft" value="1" />}
+
+          {/* V1.1C — Brand Identity: verified logo/cover candidates, selected
+              by default, deselectable. Only a checkbox is submitted; which
+              image it means comes from the signed draft, never the form. */}
+          {(logoPreview || coverPreview) && (
+            <div className="flex flex-col gap-3">
+              <p className="text-label font-bold uppercase text-subtle">Brand Identity</p>
+              {logoPreview && (
+                <label className="flex items-center gap-3 rounded-2xl border border-black/10 p-3">
+                  <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/5 bg-white">
+                    <Image src={logoPreview} alt="Logo found on your website" width={64} height={64} unoptimized className="h-full w-full object-contain" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body font-medium text-primary">Logo</span>
+                    <span className="block text-metadata text-subtle">From your website</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-metadata font-semibold text-primary">
+                    <input type="checkbox" name="use_logo" value="1" defaultChecked={useLogoDefault} className="h-5 w-5 accent-findmi" />
+                    Use This Logo
+                  </span>
+                </label>
+              )}
+              {coverPreview && (
+                <label className="flex flex-col gap-2 rounded-2xl border border-black/10 p-3">
+                  <span className="relative block aspect-[16/9] w-full overflow-hidden rounded-xl bg-black/5">
+                    <Image src={coverPreview} alt="Cover image found on your website" fill unoptimized className="object-cover" />
+                  </span>
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block text-body font-medium text-primary">Cover image</span>
+                      <span className="block text-metadata text-subtle">From your website</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-metadata font-semibold text-primary">
+                      <input type="checkbox" name="use_cover" value="1" defaultChecked={useCoverDefault} className="h-5 w-5 accent-findmi" />
+                      Use This Cover
+                    </span>
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
+
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
             <input
               type="text"
               name="name"
               required
-              defaultValue={submittedName ?? ""}
+              defaultValue={values.name}
               placeholder="Your business name"
               className={inputClass}
             />
@@ -214,7 +320,7 @@ export default async function AddBusinessPage({
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Primary category</span>
-            <select name="category_id" required defaultValue={submittedCategoryId ?? ""} className={inputClass}>
+            <select name="category_id" required defaultValue={values.categoryId} className={inputClass}>
               <option value="" disabled>
                 Choose a category…
               </option>
@@ -231,14 +337,9 @@ export default async function AddBusinessPage({
               required) drive a live Findmi area suggestion, shown only
               once the owner has actually typed something, instead of
               leaving them to separately solve Findmi's own taxonomy. See
-              BusinessGeographyFields' own doc comment. */}
-          <BusinessGeographyFields
-            markets={markets}
-            defaultCity={submittedCity ?? ""}
-            defaultState={submittedState ?? ""}
-            defaultMarketId={submittedMarketId ?? ""}
-            defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
-          />
+              BusinessGeographyFields' own doc comment. Brand Onboarding
+              shows the same fields after the Brand Identity ones. */}
+          {!brandOnboarding && geography}
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">
@@ -247,7 +348,7 @@ export default async function AddBusinessPage({
             <input
               type="url"
               name="website_url"
-              defaultValue={submittedWebsiteUrl ?? ""}
+              defaultValue={values.websiteUrl}
               placeholder="https://"
               className={inputClass}
             />
@@ -259,7 +360,7 @@ export default async function AddBusinessPage({
             <input
               type="url"
               name="instagram_url"
-              defaultValue={submittedInstagramUrl ?? ""}
+              defaultValue={values.instagramUrl}
               placeholder="https://instagram.com/…"
               className={inputClass}
             />
@@ -272,12 +373,29 @@ export default async function AddBusinessPage({
               name="short_description"
               rows={2}
               maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
-              defaultValue={submittedShortDescription ?? ""}
+              defaultValue={values.shortDescription}
               placeholder="A sentence about what you do"
               className={inputClass}
             />
             <span className="mt-1 block text-label text-subtle">Up to {SHORT_DESCRIPTION_MAX_LENGTH} characters.</span>
           </label>
+          {brandOnboarding && (
+            <label className="block">
+              <span className="mb-1.5 block text-body font-medium text-primary">
+                About <span className="font-normal text-subtle">(optional)</span>
+              </span>
+              <textarea
+                name="description"
+                rows={5}
+                maxLength={ABOUT_MAX_LENGTH}
+                defaultValue={values.about}
+                placeholder="A few sentences about your brand"
+                className={inputClass}
+              />
+              <span className="mt-1 block text-label text-subtle">Up to {ABOUT_MAX_LENGTH} characters. You can expand it later.</span>
+            </label>
+          )}
+          {brandOnboarding && geography}
 
           {/* Plan choice — Native Business Onboarding Pass 3, restyled by
               the Pro Positioning pass to match /join's card treatment,

@@ -12,7 +12,7 @@ import { registerHooks } from "node:module";
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "server-only") return { url: "data:text/javascript,export{}", shortCircuit: true };
-    if (specifier === "next/headers") return { url: "data:text/javascript,export const headers=async()=>new Map()", shortCircuit: true };
+    if (specifier === "next/headers") return { url: "data:text/javascript,export const headers=async()=>new Map();export const cookies=async()=>({get(){return undefined},set(){}})", shortCircuit: true };
     if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
     try {
       return next(specifier, context);
@@ -60,6 +60,9 @@ function deps(over = {}) {
       },
       listCategories: async () => [],
       isRateLimited: () => false,
+      enrich: async () => null,
+      verifyImage: async () => false,
+      draftsEnabled: false,
       acquireSlot: () => () => {},
       cache: A.createExtractionCache(),
       log: () => {},
@@ -202,7 +205,7 @@ test("Review Your Brand presentation: same form, no Free/Pro picker, Add My Bran
 
 test("createMemberBusiness: source=brand ignores plan_choice, round-trips the flag, and lands on the Profile", () => {
   assert.match(CREATE, /const brandOnboarding = parseBrandSource\(str\(formData, "source"\)\);\s*const planChoiceRaw = brandOnboarding \? null : str\(formData, "plan_choice"\);/);
-  assert.match(CREATE, /source: brandOnboarding \? BRAND_SOURCE : null,\n\s+\};/, "kept through every preservedFields error redirect");
+  assert.match(CREATE, /source: brandOnboarding \? BRAND_SOURCE : null,/, "kept through every preservedFields error redirect");
   const invite = CREATE.indexOf("if (inviteRaw) {");
   const pro = CREATE.indexOf('if (planChoiceRaw === "pro") {');
   const brand = CREATE.indexOf("if (brandOnboarding) redirect(`/account/business/${businessId}?tab=profile&created=1`);");

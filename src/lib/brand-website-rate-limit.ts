@@ -59,6 +59,20 @@ export function recordWebsiteAnalysisAttempt(userKey: string, ipKey: string, now
   return false;
 }
 
+/** V1.1C — Review Your Brand image previews (each re-fetches up to two
+ * verified candidates): 30 preview renders / 10 minutes per user. Same
+ * non-distributed caveat as above. */
+export const BRAND_IMAGE_PREVIEW_MAX_PER_WINDOW = 30;
+const previewWindow: Bucket = { hits: new Map(), windowMs: WEBSITE_ANALYSIS_WINDOW_MS, max: BRAND_IMAGE_PREVIEW_MAX_PER_WINDOW };
+
+/** Records one preview render for `userKey`; true when over the limit. */
+export function recordBrandImagePreview(userKey: string, now: number = Date.now()): boolean {
+  const times = recent(previewWindow, userKey, now);
+  if (times.length >= previewWindow.max) return true;
+  record(previewWindow, userKey, times, now);
+  return false;
+}
+
 let inFlight = 0;
 
 /** Claims one of the per-instance fetch slots; returns its release
@@ -79,6 +93,7 @@ export function resetWebsiteAnalysisRateLimit(): void {
   userWindow.hits.clear();
   userDay.hits.clear();
   ipWindow.hits.clear();
+  previewWindow.hits.clear();
   inFlight = 0;
 }
 

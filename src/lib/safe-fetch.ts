@@ -261,13 +261,15 @@ export interface TransportResponse {
   body: AsyncIterable<Buffer>;
   destroy: () => void;
 }
-export type Transport = (url: URL, signal: AbortSignal) => Promise<TransportResponse>;
+/** `accept` overrides only the Accept header (the image profile asks for
+ * images); every other request header is fixed. */
+export type Transport = (url: URL, signal: AbortSignal, accept?: string) => Promise<TransportResponse>;
 
 /** Real transport: one GET over node:https through the guarded lookup.
  * No agent reuse, no proxy, TLS verification on, bounded headers. */
 export function createHttpsTransport(resolveAll: ResolveAll = systemResolveAll): Transport {
   const lookup = createGuardedLookup(resolveAll);
-  return (url, signal) =>
+  return (url, signal, accept) =>
     new Promise((resolve, reject) => {
       const req = httpsRequest(
         {
@@ -276,7 +278,7 @@ export function createHttpsTransport(resolveAll: ResolveAll = systemResolveAll):
           port: 443,
           path: `${url.pathname}${url.search}`,
           method: "GET",
-          headers: REQUEST_HEADERS,
+          headers: accept ? { ...REQUEST_HEADERS, Accept: accept } : REQUEST_HEADERS,
           lookup: lookup as never,
           agent: false,
           rejectUnauthorized: true,
@@ -389,9 +391,32 @@ export interface SafeFetchOptions {
   timeoutMs?: number;
 }
 
-/** Retrieves ONE HTML page from a validated https URL. Never throws for
- * network/site problems — every failure is a coded result. */
-export async function safeFetchHtml(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+/** What one fetch accepts. Only these vary between profiles — every
+ * destination, DNS, redirect, TLS, timeout and header rule above is shared. */
+interface FetchProfile {
+  accept: string | undefined;
+  mediaTypes: ReadonlySet<string>;
+  maxBytes: number;
+}
+
+const HTML_PROFILE: FetchProfile = { accept: undefined, mediaTypes: HTML_TYPES, maxBytes: SAFE_FETCH_MAX_BYTES };
+
+/** Brand Onboarding V1.1C — logo/cover candidates. Raster formats the
+ * existing upload pipeline accepts (validateImageFile); SVG and ICO are
+ * never requested or accepted. Same 5 MB cap as owner uploads. */
+export const SAFE_FETCH_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const SAFE_FETCH_IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const IMAGE_PROFILE: FetchProfile = {
+  accept: "image/png,image/jpeg,image/webp,image/gif;q=0.8",
+  mediaTypes: SAFE_FETCH_IMAGE_TYPES,
+  maxBytes: SAFE_FETCH_IMAGE_MAX_BYTES,
+};
+
+type ResourceResult =
+  | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number }
+  | { ok: false; code: SafeFetchFailure; redirects: number };
+
+async function safeFetchResource(input: string | URL, profile: FetchProfile, options: SafeFetchOptions): Promise<ResourceResult> {
   const transport = options.transport ?? createHttpsTransport();
   const first = validateFetchUrl(input);
   if (!first.ok) return { ok: false, code: first.code, redirects: 0 };
@@ -401,14 +426,14 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
   let url = first.url;
   let redirects = 0;
   const visited = new Set<string>();
-  const fail = (code: SafeFetchFailure): SafeFetchResult => ({ ok: false, code, redirects });
+  const fail = (code: SafeFetchFailure): ResourceResult => ({ ok: false, code, redirects });
 
   try {
     for (;;) {
       visited.add(url.href);
       let res: TransportResponse;
       try {
-        res = await transport(url, controller.signal);
+        res = await transport(url, controller.signal, profile.accept);
       } catch (err) {
         return fail(mapTransportError(err, controller.signal.aborted));
       }
@@ -435,9 +460,9 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
         }
         const contentType = header(res.headers, "content-type") ?? "";
         const mediaType = contentType.split(";")[0].trim().toLowerCase();
-        if (!HTML_TYPES.has(mediaType)) return fail("unsupported_content");
+        if (!profile.mediaTypes.has(mediaType)) return fail("unsupported_content");
         const declaredLength = Number(header(res.headers, "content-length"));
-        if (Number.isFinite(declaredLength) && declaredLength > SAFE_FETCH_MAX_BYTES) return fail("too_large");
+        if (Number.isFinite(declaredLength) && declaredLength > profile.maxBytes) return fail("too_large");
         const encoding = (header(res.headers, "content-encoding") ?? "identity").trim().toLowerCase();
         if (!["identity", "", "gzip", "x-gzip", "deflate", "br"].includes(encoding)) return fail("unsupported_content");
         let buffer: Buffer;
@@ -446,7 +471,7 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
         const onAbort = () => res.destroy();
         controller.signal.addEventListener("abort", onAbort, { once: true });
         try {
-          const reading = readBody(res.body, encoding, SAFE_FETCH_MAX_BYTES, controller.signal);
+          const reading = readBody(res.body, encoding, profile.maxBytes, controller.signal);
           reading.catch(() => undefined); // a late rejection after the race is not unhandled
           buffer = await Promise.race([reading, abortedPromise(controller.signal)]);
         } catch (err) {
@@ -456,7 +481,7 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
         } finally {
           controller.signal.removeEventListener("abort", onAbort);
         }
-        return { ok: true, url, html: decodeHtml(buffer, contentType), bytes: buffer.length, redirects };
+        return { ok: true, url, body: buffer, contentType, bytes: buffer.length, redirects };
       } finally {
         res.destroy();
       }
@@ -464,4 +489,24 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Retrieves ONE HTML page from a validated https URL. Never throws for
+ * network/site problems — every failure is a coded result. */
+export async function safeFetchHtml(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  const r = await safeFetchResource(input, HTML_PROFILE, options);
+  if (!r.ok) return r;
+  return { ok: true, url: r.url, html: decodeHtml(r.body, r.contentType), bytes: r.bytes, redirects: r.redirects };
+}
+
+export type SafeFetchImageResult =
+  | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number }
+  | { ok: false; code: SafeFetchFailure; redirects: number };
+
+/** Retrieves ONE raster image (PNG/JPEG/WebP/GIF, ≤ 5 MB) under exactly the
+ * same destination/DNS/redirect/TLS/timeout rules as safeFetchHtml. The
+ * declared type is only a first gate — callers must still validate the
+ * actual bytes (lib/brand-images.ts → validateImageFile + sharp). */
+export async function safeFetchImage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchImageResult> {
+  return safeFetchResource(input, IMAGE_PROFILE, options);
 }

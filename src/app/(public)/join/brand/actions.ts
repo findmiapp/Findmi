@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { analyzeBrandWebsite, defaultWebsiteAnalysisDeps, manualBrandFormHref } from "@/lib/brand-website-analysis";
 import { websiteAnalysisClientIp } from "@/lib/brand-website-rate-limit";
 import { BRAND_SEED_PARAMS, sanitizeBrandSeed } from "@/lib/brand-candidate";
+import { clearBrandDraftCookie, getBrandDraftSecret, signBrandDraft, writeBrandDraftCookie } from "@/lib/brand-draft";
 
 const WEBSITE_INPUT_MAX = 200;
 
@@ -28,6 +29,24 @@ export async function buildBrandProfile(formData: FormData) {
   // Server not configured → the manual form (still behind sign-in).
   if (!deps) redirect(manualBrandFormHref(website, seed));
   const ip = await websiteAnalysisClientIp();
-  const { href } = await analyzeBrandWebsite({ website, userId: user?.id ?? null, ip, seed }, deps);
-  redirect(href);
+  const result = await analyzeBrandWebsite({ website, userId: user?.id ?? null, ip, seed }, deps);
+
+  // V1.1C — an enriched candidate travels in the signed, short-lived,
+  // user-bound draft cookie (lib/brand-draft.ts); the URL carries only
+  // minimal routing state. A new analysis always replaces/clears the
+  // previous draft. If the draft can't be signed (no BRAND_DRAFT_SECRET,
+  // or too large after the documented drops) the bounded V1.1B text
+  // prefill is used instead — never unsigned draft state.
+  if (user && result.draft) {
+    const token = signBrandDraft(result.draft, user.id, Date.now(), getBrandDraftSecret());
+    if (token) {
+      await writeBrandDraftCookie(token);
+      redirect(result.href);
+    }
+    console.info(JSON.stringify({ event: "brand_draft", outcome: getBrandDraftSecret() ? "unsignable" : "unconfigured" }));
+    await clearBrandDraftCookie();
+    redirect(result.fallbackHref ?? result.href);
+  }
+  if (user) await clearBrandDraftCookie();
+  redirect(result.href);
 }

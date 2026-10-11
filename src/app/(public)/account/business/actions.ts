@@ -22,6 +22,8 @@ import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { findBusinessMatches } from "@/lib/business-matching";
 import { BRAND_SOURCE, SHORT_DESCRIPTION_MAX_LENGTH, parseBrandSource } from "@/lib/brand-candidate";
+import { clearBrandDraftCookie, readBrandDraft } from "@/lib/brand-draft";
+import { fetchVerifiedBrandImage, storeBrandImage, type BrandImageRole } from "@/lib/brand-images";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -1154,6 +1156,9 @@ export async function removeOwnerAppearance(businessId: string, appearanceId: st
 // actually hardcoded, not trusted from here or anywhere client-side.
 
 const CREATE_BUSINESS_PATH = "/account/business/new";
+// Brand Onboarding V1.1C — About cap at onboarding (editable/longer later
+// in Business Manager, whose own About field is unchanged).
+const BRAND_ABOUT_MAX_LENGTH = 600;
 
 // Duplicate detection lives in lib/business-matching.ts (Brand Onboarding
 // V1 · Pass 1) — the one reusable, bounded, ranked Business matcher.
@@ -1235,6 +1240,14 @@ export async function createMemberBusiness(formData: FormData) {
   // no plan is chosen. An explicit invite is unaffected (handled below).
   const brandOnboarding = parseBrandSource(str(formData, "source"));
   const planChoiceRaw = brandOnboarding ? null : str(formData, "plan_choice");
+  // Brand Onboarding V1.1C — About (≤ 600 at onboarding) and the owner's
+  // choice to use the verified logo/cover candidates. Only checkboxes come
+  // from the form: WHICH image they mean is read from the signed draft
+  // cookie (never a submitted URL). Normal creation reads none of these.
+  const aboutDescription = brandOnboarding ? (str(formData, "description")?.replace(/\s+/g, " ") ?? null) : null;
+  const brandDraftFlag = brandOnboarding && str(formData, "draft") === "1";
+  const useLogo = brandDraftFlag && str(formData, "use_logo") === "1";
+  const useCover = brandDraftFlag && str(formData, "use_cover") === "1";
   const inviteRaw = str(formData, "invite");
   const referralCodeRaw = str(formData, "ref");
 
@@ -1260,6 +1273,10 @@ export async function createMemberBusiness(formData: FormData) {
     invite: inviteRaw,
     ref: referralCodeRaw,
     source: brandOnboarding ? BRAND_SOURCE : null,
+    description: aboutDescription,
+    draft: brandDraftFlag ? "1" : null,
+    use_logo: brandDraftFlag ? (useLogo ? "1" : "0") : null,
+    use_cover: brandDraftFlag ? (useCover ? "1" : "0") : null,
   };
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_BUSINESS_PATH, message, preservedFields));
@@ -1279,6 +1296,9 @@ export async function createMemberBusiness(formData: FormData) {
   if (!city || !state) fail("City and state are required.");
   if (shortDescription && shortDescription.length > SHORT_DESCRIPTION_MAX_LENGTH) {
     fail(`Keep your short description to ${SHORT_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
+  }
+  if (aboutDescription && aboutDescription.length > BRAND_ABOUT_MAX_LENGTH) {
+    fail(`Keep your About to ${BRAND_ABOUT_MAX_LENGTH} characters or fewer for now. You can expand it after your brand is added.`);
   }
   // Primary Market During Business Creation V1, extended by Consumer Area
   // Picker + Market Requests V1 — checked here for a fast, friendly error
@@ -1380,8 +1400,50 @@ export async function createMemberBusiness(formData: FormData) {
   // it, to the just-created row (an ordinary owner-editable profile
   // column). Best-effort: a failure here only drops the description — the
   // owner can add it in Business Manager — and never undoes the create.
-  if (shortDescription) {
-    await admin.from("businesses").update({ short_description: shortDescription }).eq("id", businessId);
+  if (shortDescription || aboutDescription) {
+    await admin
+      .from("businesses")
+      .update({
+        ...(shortDescription ? { short_description: shortDescription } : {}),
+        ...(aboutDescription ? { description: aboutDescription } : {}),
+      })
+      .eq("id", businessId);
+  }
+
+  // Brand Onboarding V1.1C — re-host the logo/cover the owner left
+  // selected, only now that the Business exists (so nothing is ever stored
+  // for a rejected, deselected or abandoned candidate). The candidate URL
+  // comes from the signed draft, verified for THIS user; it is re-fetched
+  // and re-validated, stored through the Findmi image pipeline, and only
+  // Findmi's resulting URL is saved. Best-effort: any failure leaves the
+  // field empty and never undoes the create. The draft is then cleared.
+  if (brandDraftFlag) {
+    if (useLogo || useCover) {
+      try {
+        const draft = await readBrandDraft(user.id);
+        const wanted: [BrandImageRole, string | undefined][] = [
+          ["logo", useLogo ? draft?.logo : undefined],
+          ["cover", useCover ? draft?.cover : undefined],
+        ];
+        const imported = await Promise.all(
+          wanted.map(async ([role, url]) => {
+            if (!url) return null;
+            const verified = await fetchVerifiedBrandImage(url, role);
+            return verified.ok ? storeBrandImage(admin, verified.image) : null;
+          })
+        );
+        const [logoUrl, coverUrl] = imported;
+        if (logoUrl || coverUrl) {
+          await admin
+            .from("businesses")
+            .update({ ...(logoUrl ? { logo_url: logoUrl } : {}), ...(coverUrl ? { cover_image_url: coverUrl } : {}) })
+            .eq("id", businessId);
+        }
+      } catch {
+        // best-effort — the Business already exists
+      }
+    }
+    await clearBrandDraftCookie();
   }
 
   // Best-effort only — the atomic RPC above already succeeded, so a

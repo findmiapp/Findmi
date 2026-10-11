@@ -11,6 +11,9 @@ import { claimHref, classifyBrandInput, searchHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
 import { extractBrandProfile, type ExtractedBrandProfile } from "./brand-website-extract";
 import { safeFetchHtml, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
+import { enrichBrandWithAi, type BrandAiInput, type BrandAiResult } from "./brand-ai-enrichment";
+import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
+import { getBrandDraftSecret, type BrandDraftCandidate } from "./brand-draft";
 import { recordWebsiteAnalysisAttempt, tryAcquireWebsiteFetchSlot } from "./brand-website-rate-limit";
 
 /** Brand Onboarding V1.1B — website-assisted brand creation, run only
@@ -50,6 +53,17 @@ export type WebsiteAnalysisOutcome =
 export interface CachedExtraction {
   profile: ExtractedBrandProfile;
   finalUrl: string;
+  /** V1.1C — memoized enrichment for this URL (AI result, verified image
+   * candidates), so a repeat analysis doesn't re-call the model or
+   * re-fetch images. Set once, after the first computation. */
+  enrichment?: Enrichment;
+}
+
+interface Enrichment {
+  ai: BrandAiResult | null;
+  aiStatus: "used" | "skipped" | "failed";
+  logo: string | null;
+  cover: string | null;
 }
 
 export interface ExtractionCache {
@@ -95,14 +109,22 @@ export interface WebsiteAnalysisLog {
   bytes: number | null;
   redirects: number | null;
   cached: boolean;
-  fields: Record<"name" | "description" | "instagram" | "city" | "state" | "category" | "logo", boolean> | null;
+  fields: Record<"name" | "description" | "about" | "instagram" | "city" | "state" | "category" | "logo" | "cover", boolean> | null;
+  ai: "used" | "skipped" | "failed" | null;
   match: "none" | "public" | "hidden" | null;
 }
 
 export interface WebsiteAnalysisDeps {
   fetchHtml: (url: URL) => Promise<SafeFetchResult>;
+  /** V1.1C — one bounded AI enrichment (null result = keep deterministic). */
+  enrich: (input: BrandAiInput) => Promise<BrandAiResult | null>;
+  /** V1.1C — fetch + fully verify a logo/cover candidate. */
+  verifyImage: (url: string, role: BrandImageRole) => Promise<boolean>;
+  /** V1.1C — BRAND_DRAFT_SECRET configured: build an enriched signed draft.
+   * Off → the bounded V1.1B text prefill (no About, no images). */
+  draftsEnabled: boolean;
   findMatches: (input: BusinessMatchInput) => Promise<BusinessMatch[]>;
-  listCategories: () => Promise<{ id: string; slug: string }[]>;
+  listCategories: () => Promise<{ id: string; slug: string; name: string }[]>;
   isRateLimited: (userKey: string, ipKey: string) => boolean;
   acquireSlot: () => (() => void) | null;
   cache: ExtractionCache;
@@ -113,7 +135,17 @@ export interface WebsiteAnalysisDeps {
 export interface WebsiteAnalysisResult {
   href: string;
   outcome: WebsiteAnalysisOutcome;
+  /** V1.1C — present only for a "prefilled" result with drafts enabled:
+   * the caller signs it into the draft cookie and redirects to `href`
+   * (the minimal Review route). If signing fails it redirects to
+   * `fallbackHref` (the bounded V1.1B text prefill) instead. */
+  draft?: BrandDraftCandidate;
+  fallbackHref?: string;
 }
+
+/** Minimal routing state for Review Your Brand — the candidate itself
+ * travels in the signed draft cookie (lib/brand-draft.ts). */
+export const BRAND_DRAFT_REVIEW_HREF = "/account/business/new?source=brand&prefill=website&draft=1";
 
 /** Where a hidden (non-public) extracted match sends the visitor: the
  * existing generic assistance state — no detail of the record. */
@@ -145,11 +177,16 @@ export async function analyzeBrandWebsite(
   const host = normalizeWebsiteHost(websiteUrl);
   const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ ...seedCandidate(seed), website_url: websiteUrl }, prefill);
 
-  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, cached: false, fields: null, match: null };
-  const finish = (href: string, outcome: WebsiteAnalysisOutcome, extra: Partial<WebsiteAnalysisLog> = {}): WebsiteAnalysisResult => {
+  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, cached: false, fields: null, ai: null, match: null };
+  const finish = (
+    href: string,
+    outcome: WebsiteAnalysisOutcome,
+    extra: Partial<WebsiteAnalysisLog> = {},
+    result: Partial<WebsiteAnalysisResult> = {}
+  ): WebsiteAnalysisResult => {
     log = { ...log, ...extra, outcome, ms: deps.now() - started };
     deps.log(log);
-    return { href, outcome };
+    return { ...result, href, outcome };
   };
 
   // HTTPS only: the visitor's site is always requested as https://host/path
@@ -196,11 +233,13 @@ export async function analyzeBrandWebsite(
   log.fields = {
     name: Boolean(profile.name),
     description: Boolean(profile.shortDescription),
+    about: Boolean(profile.aboutDescription),
     instagram: Boolean(profile.instagramHandle),
     city: Boolean(profile.city),
     state: Boolean(profile.state),
     category: Boolean(profile.categorySlug),
     logo: Boolean(profile.logoCandidateUrl),
+    cover: Boolean(profile.coverCandidateUrl),
   };
   const igUrl = (handle: string | null | undefined) => (handle ? `https://www.instagram.com/${handle}` : null);
   const name = seed.name ?? profile.name;
@@ -231,28 +270,78 @@ export async function analyzeBrandWebsite(
   if (publicMatch) return finish(claimHref(publicMatch.slug, true), "public_match", { match: "public" });
   if (matches.length > 0) return finish(ALREADY_LISTED_HREF, "hidden_match", { match: "hidden" });
 
-  let categoryId: string | null = null;
-  if (profile.categorySlug) {
-    try {
-      categoryId = (await deps.listCategories()).find((c) => c.slug === profile.categorySlug)?.id ?? null;
-    } catch {
-      categoryId = null;
-    }
+  let categories: { id: string; slug: string; name: string }[] = [];
+  try {
+    categories = await deps.listCategories();
+  } catch {
+    categories = [];
   }
+  // Deterministic structured type wins; AI is only a fallback below.
+  const deterministicCategoryId = profile.categorySlug
+    ? (categories.find((c) => c.slug === profile.categorySlug)?.id ?? null)
+    : null;
 
-  const href = brandCandidateHref(
+  // V1.1C enrichment — computed once per URL (cached with the
+  // extraction): the bounded AI call only when deterministic extraction
+  // left the category or a description empty, and (drafts only) the
+  // logo/cover candidates fetched and fully verified, in parallel.
+  let enrichment = cached.enrichment;
+  if (!enrichment) {
+    const needsAi = !deterministicCategoryId || !profile.shortDescription || !profile.aboutDescription;
+    const verify = async (url: string | null, role: BrandImageRole) => {
+      if (!deps.draftsEnabled || !url) return null;
+      try {
+        return (await deps.verifyImage(url, role)) ? url : null;
+      } catch {
+        return null;
+      }
+    };
+    const [ai, logo, cover] = await Promise.all([
+      needsAi
+        ? deps
+            .enrich({ brandName: name, website: websiteUrl, excerpt: profile.excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
+            .catch(() => null)
+        : Promise.resolve(null),
+      verify(profile.logoCandidateUrl, "logo"),
+      verify(profile.coverCandidateUrl, "cover"),
+    ]);
+    enrichment = { ai, aiStatus: !needsAi ? "skipped" : ai ? "used" : "failed", logo, cover };
+    cached.enrichment = enrichment;
+  }
+  log.ai = enrichment.aiStatus;
+
+  const ai = enrichment.ai;
+  const categoryId = deterministicCategoryId ?? ai?.categoryId ?? null;
+  const shortDescription = profile.shortDescription ?? ai?.shortDescription ?? null;
+  const about = profile.aboutDescription ?? ai?.about ?? null;
+
+  const fallbackHref = brandCandidateHref(
     {
       name,
       website_url: websiteUrl,
       instagram_url: instagramUrl,
-      short_description: profile.shortDescription,
+      short_description: shortDescription,
       city: profile.city,
       state: profile.state,
       category_id: categoryId,
     },
     "website"
   );
-  return finish(href, "prefilled", { match: "none" });
+  if (!deps.draftsEnabled) return finish(fallbackHref, "prefilled", { match: "none" });
+
+  const draft: BrandDraftCandidate = {
+    site: websiteUrl,
+    name,
+    cat: categoryId,
+    sd: shortDescription,
+    about,
+    ig: seed.instagram ?? profile.instagramHandle,
+    city: profile.city,
+    state: profile.state,
+    logo: enrichment.logo,
+    cover: enrichment.cover,
+  };
+  return finish(BRAND_DRAFT_REVIEW_HREF, "prefilled", { match: "none" }, { draft, fallbackHref });
 }
 
 const sharedCache = createExtractionCache();
@@ -265,7 +354,10 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
   return {
     fetchHtml: (url) => safeFetchHtml(url),
     findMatches: (matchInput) => findBusinessMatches(admin, matchInput),
-    listCategories: async () => (await getCategories()).map((c) => ({ id: c.id, slug: c.slug })),
+    listCategories: async () => (await getCategories()).map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
+    enrich: (input) => enrichBrandWithAi(input),
+    verifyImage: async (url, role) => (await fetchVerifiedBrandImage(url, role)).ok,
+    draftsEnabled: Boolean(getBrandDraftSecret()),
     isRateLimited: (userKey, ipKey) => recordWebsiteAnalysisAttempt(userKey, ipKey),
     acquireSlot: tryAcquireWebsiteFetchSlot,
     cache: sharedCache,

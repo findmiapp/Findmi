@@ -38,6 +38,22 @@ export const SCHEMA_TYPE_CATEGORY_SLUG: Readonly<Record<string, string>> = {
   BarOrPub: "food-drink",
   Brewery: "food-drink",
   Winery: "food-drink",
+  // V1.1C — slugs verified against supabase/migrations/
+  // 20260902230000_business_category_taxonomy_update.sql (and the base
+  // seed). Only types whose Findmi category is unambiguous.
+  HealthAndBeautyBusiness: "beauty-self-care",
+  BeautySalon: "beauty-self-care",
+  DaySpa: "beauty-self-care",
+  HairSalon: "beauty-self-care",
+  NailSalon: "beauty-self-care",
+  ClothingStore: "fashion-apparel",
+  ShoeStore: "fashion-apparel",
+  JewelryStore: "jewelry-accessories",
+  Florist: "flowers",
+  PetStore: "pets",
+  HomeGoodsStore: "home-decor",
+  FurnitureStore: "home-decor",
+  ToyStore: "kids-family",
 };
 
 const ORG_TYPES = new Set([
@@ -89,16 +105,35 @@ const US_STATES: Readonly<Record<string, string>> = {
 };
 const US_COUNTRY = new Set(["us", "usa", "united states", "united states of america"]);
 
+export const EXTRACT_ABOUT_MAX = 600;
+
+/** Bounded, cleaned page text for the optional AI enrichment step — never
+ * raw HTML. Every string is already normalized and capped. */
+export interface BrandPageExcerpt {
+  title: string | null;
+  descriptions: string[];
+  jsonLdName: string | null;
+  jsonLdTypes: string[];
+  headings: string[];
+  paragraphs: string[];
+}
+
 export interface ExtractedBrandProfile {
   name: string | null;
   shortDescription: string | null;
+  /** About text (≤ 600) — only when the page itself offers a useful
+   * description longer than a short description; never padded. */
+  aboutDescription: string | null;
   instagramHandle: string | null;
   city: string | null;
   state: string | null;
   /** An existing-category SLUG from SCHEMA_TYPE_CATEGORY_SLUG, or null. */
   categorySlug: string | null;
-  /** Internal only (future V1.1C) — never fetched, rendered or stored. */
+  /** Untrusted candidate URL — fetched/validated only by lib/brand-images. */
   logoCandidateUrl: string | null;
+  /** og:image / twitter:image — a COVER candidate, never a logo. */
+  coverCandidateUrl: string | null;
+  excerpt: BrandPageExcerpt;
 }
 
 // ── Text normalization ────────────────────────────────────────────────────
@@ -127,6 +162,36 @@ export function cleanText(value: unknown, max: number): string | null {
   return s || null;
 }
 
+const GENERIC_DESCRIPTION =
+  /^(welcome to\b|official (web)?site\b|official (online )?store\b|shop (the latest|now|our)\b|free shipping\b|sign up\b|subscribe\b|home ?page\b)/i;
+const BOILERPLATE =
+  /(cookies?\b.*\b(policy|settings|consent|use)|use cookies|enable javascript|javascript is (disabled|required)|checking your browser|just a moment|attention required|access denied|page not found|404\b)/i;
+
+/** Description quality gate (exported for tests): rejects values that are
+ * the brand name (or the name plus a couple of words), too short to say
+ * anything, generic greetings/shop prompts, or site boilerplate. */
+export function isUsefulDescription(value: unknown, name: string | null): boolean {
+  const text = cleanText(value, 2000);
+  if (!text || text.length < 25 || text.split(" ").length < 4) return false;
+  if (GENERIC_DESCRIPTION.test(text) || BOILERPLATE.test(text)) return false;
+  const brand = name ? compact(name) : "";
+  if (brand) {
+    const body = compact(text);
+    if (body === brand || body.replace(brand, "").length < 15) return false;
+  }
+  return true;
+}
+
+/** ≤160-character short description: whole sentence(s) when one ends late
+ * enough, else a word-boundary cut (exported for tests). */
+export function toShortDescription(text: string): string | null {
+  if (text.length <= EXTRACT_DESCRIPTION_MAX) return text;
+  const window = text.slice(0, EXTRACT_DESCRIPTION_MAX + 1);
+  const end = Math.max(window.lastIndexOf(". "), window.lastIndexOf("! "), window.lastIndexOf("? "));
+  if (end >= 60) return window.slice(0, end + 1);
+  return cleanText(text, EXTRACT_DESCRIPTION_MAX);
+}
+
 function cleanName(value: unknown): string | null {
   const s = cleanText(value, EXTRACT_NAME_MAX);
   if (!s || /:\/\/|^www\./i.test(s) || normalizeBusinessName(s) === "") return null;
@@ -138,6 +203,7 @@ function cleanName(value: unknown): string | null {
 interface HtmlNode {
   nodeName: string;
   tagName?: string;
+  parentNode?: HtmlNode | null;
   namespaceURI?: string;
   attrs?: { name: string; value: string }[];
   childNodes?: HtmlNode[];
@@ -150,6 +216,38 @@ interface Collected {
   links: { rel: string[]; href: string; sizes: string; type: string }[];
   jsonLd: string[];
   instagramHrefs: string[];
+  headings: string[];
+  paragraphs: string[];
+}
+
+const MAX_HEADINGS = 4;
+const MAX_PARAGRAPHS = 4;
+const EXCERPT_TEXT_MAX = 400;
+const NON_TEXT_TAGS = new Set(["script", "style", "noscript", "template", "svg", "math", "iframe", "button", "select", "nav", "footer", "form"]);
+
+/** True inside navigation/footer/form/header chrome — excerpt text there
+ * is menus and legal copy, not a description of the brand. */
+function insideChrome(node: HtmlNode): boolean {
+  let n = node.parentNode;
+  for (let depth = 0; n && depth < 40; depth++, n = n.parentNode) {
+    if (n.tagName && (NON_TEXT_TAGS.has(n.tagName) || n.tagName === "header" || n.tagName === "aside")) return true;
+  }
+  return false;
+}
+
+/** Visible-ish text of an element (descendant text nodes), bounded, skipping
+ * script/style/template/navigation subtrees. */
+function deepText(node: HtmlNode, max: number): string {
+  let out = "";
+  const stack: HtmlNode[] = [...(node.childNodes ?? [])].reverse();
+  let steps = 0;
+  while (stack.length && out.length < max * 2 && steps < 2000) {
+    steps += 1;
+    const n = stack.pop()!;
+    if (n.nodeName === "#text") out += `${n.value ?? ""} `;
+    else if (n.tagName && !NON_TEXT_TAGS.has(n.tagName)) stack.push(...[...(n.childNodes ?? [])].reverse());
+  }
+  return out;
 }
 
 function attr(node: HtmlNode, name: string): string | null {
@@ -164,7 +262,7 @@ function textOf(node: HtmlNode): string {
 }
 
 function collect(html: string): Collected {
-  const out: Collected = { title: null, meta: new Map(), links: [], jsonLd: [], instagramHrefs: [] };
+  const out: Collected = { title: null, meta: new Map(), links: [], jsonLd: [], instagramHrefs: [], headings: [], paragraphs: [] };
   const doc = parse(html) as unknown as HtmlNode;
   const stack: HtmlNode[] = [doc];
   let visited = 0;
@@ -190,6 +288,12 @@ function collect(html: string): Collected {
       } else if (tag === "a" && out.instagramHrefs.length < MAX_ANCHORS) {
         const href = attr(node, "href");
         if (href && /instagr(\.am|am\.com)/i.test(href)) out.instagramHrefs.push(href);
+      } else if ((tag === "h1" || tag === "h2") && out.headings.length < MAX_HEADINGS && !insideChrome(node)) {
+        const text = cleanText(deepText(node, EXCERPT_TEXT_MAX), 160);
+        if (text && text.length >= 3) out.headings.push(text);
+      } else if (tag === "p" && out.paragraphs.length < MAX_PARAGRAPHS && !insideChrome(node)) {
+        const text = cleanText(deepText(node, EXCERPT_TEXT_MAX), EXCERPT_TEXT_MAX);
+        if (text && text.length >= 40 && !BOILERPLATE.test(text)) out.paragraphs.push(text);
       }
     }
     const children = node.childNodes ?? [];
@@ -352,11 +456,30 @@ function logoFrom(entity: Entity | null, links: Collected["links"], base: URL): 
     const url = absoluteHttps(value, base);
     if (url) return url;
   }
+  // apple-touch-icon only (typically 180×180); a declared size under 120px
+  // is skipped. Plain favicons / ICO are never logo candidates; the real
+  // dimensions are re-checked after fetching (lib/brand-images.ts).
   const size = (s: string) => Math.max(0, ...s.split(/\s+/).map((p) => parseInt(p, 10) || 0));
-  const touch = links.filter((l) => l.rel.includes("apple-touch-icon")).sort((a, b) => size(b.sizes) - size(a.sizes));
-  const pngIcons = links.filter((l) => l.rel.includes("icon") && (l.type === "image/png" || /\.png(\?|$)/i.test(l.href)));
-  for (const l of [...touch, ...pngIcons]) {
+  const touch = links
+    .filter((l) => l.rel.includes("apple-touch-icon") || l.rel.includes("apple-touch-icon-precomposed"))
+    .filter((l) => !l.sizes || size(l.sizes) >= 120)
+    .filter((l) => !/\.(ico|svg)(\?|#|$)/i.test(l.href))
+    .sort((a, b) => size(b.sizes) - size(a.sizes));
+  for (const l of touch) {
     const url = absoluteHttps(l.href, base);
+    if (url) return url;
+  }
+  return null;
+}
+
+const COVER_META_KEYS = ["og:image:secure_url", "og:image", "og:image:url", "twitter:image", "twitter:image:src"];
+
+/** Share image → COVER candidate (never a logo). */
+function coverFrom(meta: (key: string) => string | null, base: URL): string | null {
+  for (const key of COVER_META_KEYS) {
+    const value = meta(key);
+    if (value && /\.(ico|svg)(\?|#|$)/i.test(value)) continue;
+    const url = absoluteHttps(value, base);
     if (url) return url;
   }
   return null;
@@ -399,10 +522,21 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     (distinctWebsiteNames.length === 1 ? websiteNames[0] : null) ??
     nameFromTitle(c.title, host);
 
-  const shortDescription =
-    cleanText(meta("description"), EXTRACT_DESCRIPTION_MAX) ??
-    cleanText(meta("og:description"), EXTRACT_DESCRIPTION_MAX) ??
-    cleanText(firstString(entity?.node.description), EXTRACT_DESCRIPTION_MAX);
+  // Description candidates in order; only USEFUL ones count (never the
+  // brand name echoed back, greetings or boilerplate). About only when the
+  // page itself offers more than a short description's worth — never
+  // padded from a short one.
+  const descriptionCandidates = [
+    meta("description"),
+    meta("og:description"),
+    meta("twitter:description"),
+    firstString(entity?.node.description),
+  ]
+    .map((d) => cleanText(d, 2000))
+    .filter((d): d is string => Boolean(d) && isUsefulDescription(d, name));
+  const shortDescription = descriptionCandidates.length ? toShortDescription(descriptionCandidates[0]) : null;
+  const aboutSource = descriptionCandidates.find((d) => d.length > EXTRACT_DESCRIPTION_MAX);
+  const aboutDescription = aboutSource ? cleanText(aboutSource, EXTRACT_ABOUT_MAX) : null;
 
   // Instagram: the chosen entity's sameAs decides when it names exactly one
   // account (several → none); otherwise rel=me + page links, again only
@@ -419,5 +553,29 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
   const slugs = new Set((entity?.types ?? []).filter((t) => Object.hasOwn(SCHEMA_TYPE_CATEGORY_SLUG, t)).map((t) => SCHEMA_TYPE_CATEGORY_SLUG[t]));
   const categorySlug = slugs.size === 1 ? [...slugs][0] : null;
 
-  return { name, shortDescription, instagramHandle, city, state, categorySlug, logoCandidateUrl: logoFrom(entity, c.links, pageUrl) };
+  const excerpt: BrandPageExcerpt = {
+    title: cleanText(c.title, 200),
+    descriptions: [...new Set(
+      [meta("description"), meta("og:description"), meta("twitter:description"), firstString(entity?.node.description)]
+        .map((d) => cleanText(d, 400))
+        .filter((d): d is string => Boolean(d))
+    )].slice(0, 4),
+    jsonLdName: cleanName(firstString(entity?.node.name)),
+    jsonLdTypes: (entity?.types ?? []).slice(0, 5),
+    headings: c.headings,
+    paragraphs: c.paragraphs,
+  };
+
+  return {
+    name,
+    shortDescription,
+    aboutDescription,
+    instagramHandle,
+    city,
+    state,
+    categorySlug,
+    logoCandidateUrl: logoFrom(entity, c.links, pageUrl),
+    coverCandidateUrl: coverFrom(meta, pageUrl),
+    excerpt,
+  };
 }

@@ -11,7 +11,7 @@ import { registerHooks } from "node:module";
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "server-only") return { url: "data:text/javascript,export{}", shortCircuit: true };
-    if (specifier === "next/headers") return { url: "data:text/javascript,export const headers=async()=>new Map()", shortCircuit: true };
+    if (specifier === "next/headers") return { url: "data:text/javascript,export const headers=async()=>new Map();export const cookies=async()=>({get(){return undefined},set(){}})", shortCircuit: true };
     if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
     try {
       return next(specifier, context);
@@ -55,6 +55,9 @@ function makeDeps(over = {}) {
       return [{ id: CATEGORY_ID, slug: "coffee" }, { id: "00000000-0000-4000-8000-000000000001", slug: "food-drink" }];
     },
     isRateLimited: () => false,
+    enrich: async () => null,
+    verifyImage: async () => false,
+    draftsEnabled: false,
     acquireSlot: () => () => {},
     cache: A.createExtractionCache(),
     log: (entry) => calls.logs.push(entry),
@@ -263,7 +266,7 @@ test("logging: host/outcome/timings/counts/booleans only — no HTML, text, quer
   const { deps, calls } = makeDeps();
   await run(deps, "https://lavazza.com/us?secret=token", "user-secret-id");
   const entry = calls.logs[0];
-  assert.deepEqual(Object.keys(entry).sort(), ["bytes", "cached", "event", "fields", "host", "match", "ms", "outcome", "redirects"]);
+  assert.deepEqual(Object.keys(entry).sort(), ["ai", "bytes", "cached", "event", "fields", "host", "match", "ms", "outcome", "redirects"]);
   const json = JSON.stringify(calls.logs);
   for (const leak of ["Italian coffee", "<html", "secret=token", "user-secret-id", "lavazzausa", "New York", "203.0.113.5"]) {
     assert.ok(!json.includes(leak), `log leaks ${leak}`);
@@ -361,7 +364,7 @@ test("creation: optional short_description (≤160), preserved on failure, writt
   assert.match(fn, /shortDescription\.length > SHORT_DESCRIPTION_MAX_LENGTH/);
   const matcher = fn.indexOf("await findBusinessMatches(admin");
   const rpc = fn.indexOf('admin.rpc("create_owned_business"');
-  const update = fn.indexOf('update({ short_description: shortDescription }).eq("id", businessId)');
+  const update = fn.indexOf("...(shortDescription ? { short_description: shortDescription } : {}),");
   const limit = fn.indexOf("SHORT_DESCRIPTION_MAX_LENGTH");
   assert.ok(limit > 0 && limit < matcher && matcher < rpc && rpc < update, "validate → match → create → describe");
   const rpcArgs = fn.slice(rpc, fn.indexOf("});", rpc));
@@ -371,7 +374,8 @@ test("creation: optional short_description (≤160), preserved on failure, writt
 
 test("create form: editable/clearable short description, prefill banner, authorization never prefilled by analysis", () => {
   const page = readFileSync("src/app/(public)/account/business/new/page.tsx", "utf8");
-  assert.match(page, /<textarea\s+name="short_description"\s+rows=\{2\}\s+maxLength=\{SHORT_DESCRIPTION_MAX_LENGTH\}\s+defaultValue=\{submittedShortDescription \?\? ""\}/);
+  assert.match(page, /<textarea\s+name="short_description"\s+rows=\{2\}\s+maxLength=\{SHORT_DESCRIPTION_MAX_LENGTH\}\s+defaultValue=\{values\.shortDescription\}/);
+  assert.match(page, /shortDescription: fromDraft \? \(fromDraft\.sd \?\? ""\) : \(submittedShortDescription \?\? ""\)/);
   assert.doesNotMatch(page, /name="short_description"[^>]*required/);
   assert.match(page, /We filled in some details from \$\{prefillHost \?\? "your website"\}\. Check everything before adding your brand\./);
   assert.match(page, /parseBrandPrefillStatus\(prefill\)/);

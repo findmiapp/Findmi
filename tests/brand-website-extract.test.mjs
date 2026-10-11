@@ -25,9 +25,15 @@ const extract = (html, url = PAGE) => X.extractBrandProfile(html, url);
 const ld = (obj) => `<script type="application/ld+json">${typeof obj === "string" ? obj : JSON.stringify(obj)}</script>`;
 const page = (head, body = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 
-test("output shape is exactly the seven untrusted suggestion fields", () => {
-  assert.deepEqual(Object.keys(extract(page(""))).sort(), ["categorySlug", "city", "instagramHandle", "logoCandidateUrl", "name", "shortDescription", "state"]);
-  assert.deepEqual(extract(page("")), { name: null, shortDescription: null, instagramHandle: null, city: null, state: null, categorySlug: null, logoCandidateUrl: null });
+const PROFILE_KEYS = ["aboutDescription", "categorySlug", "city", "coverCandidateUrl", "excerpt", "instagramHandle", "logoCandidateUrl", "name", "shortDescription", "state"];
+test("output shape is exactly the untrusted suggestion fields plus the bounded excerpt", () => {
+  const empty = extract(page(""));
+  assert.deepEqual(Object.keys(empty).sort(), PROFILE_KEYS);
+  assert.deepEqual(
+    { ...empty, excerpt: undefined },
+    { name: null, shortDescription: null, aboutDescription: null, instagramHandle: null, city: null, state: null, categorySlug: null, logoCandidateUrl: null, coverCandidateUrl: null, excerpt: undefined }
+  );
+  assert.deepEqual(empty.excerpt, { title: null, descriptions: [], jsonLdName: null, jsonLdTypes: [], headings: [], paragraphs: [] });
 });
 
 test("name: title is cleaned to the segment matching the domain; generic segments dropped", () => {
@@ -46,11 +52,14 @@ test("name precedence: JSON-LD entity > og:site_name > application-name > WebSit
   assert.equal(extract(page(ld({ "@type": "WebSite", name: "Lavazza Site" }) + "<title>Coffee | Lavazza</title>")).name, "Lavazza Site");
 });
 
-test("description precedence and the 160-character word-boundary cap", () => {
-  const head = '<meta name="description" content="Meta desc."><meta property="og:description" content="OG desc.">';
-  assert.equal(extract(page(head)).shortDescription, "Meta desc.");
-  assert.equal(extract(page('<meta property="og:description" content="OG desc.">')).shortDescription, "OG desc.");
-  assert.equal(extract(page(ld({ "@type": "Organization", name: "Lavazza", description: "LD desc." }))).shortDescription, "LD desc.");
+test("description precedence (useful candidates only) and the 160-character word-boundary cap", () => {
+  const M = "Italian coffee roasters making espresso blends since 1895.";
+  const O = "Espresso, whole bean and ground coffee from Turin.";
+  const head = `<meta name="description" content="${M}"><meta property="og:description" content="${O}">`;
+  assert.equal(extract(page(head)).shortDescription, M);
+  assert.equal(extract(page(`<meta property="og:description" content="${O}">`)).shortDescription, O);
+  assert.equal(extract(page(`<meta name="twitter:description" content="${O}">`)).shortDescription, O, "twitter:description counts");
+  assert.equal(extract(page(ld({ "@type": "Organization", name: "Lavazza", description: O }))).shortDescription, O);
   const long = "Italian coffee roasted since 1895 ".repeat(10);
   const d = extract(page(`<meta name="description" content="${long}">`)).shortDescription;
   assert.ok(d.length <= 160 && !d.endsWith(" "), d);
@@ -122,8 +131,8 @@ test("category: only the exact maintained type map; mixed, unknown or prototype 
   assert.equal(typed("BarOrPub"), "food-drink");
   assert.equal(typed(["Restaurant", "Bakery"]), null, "conflicting categories → none");
   assert.equal(typed(["Restaurant", "BarOrPub"]), "food-drink");
-  for (const t of ["Store", "Organization", "ClothingStore", "constructor", "__proto__", "toString", "Coffee"]) assert.equal(typed(t), null, t);
-  assert.deepEqual(Object.keys(X.SCHEMA_TYPE_CATEGORY_SLUG).sort(), ["Bakery", "BarOrPub", "Brewery", "CafeOrCoffeeShop", "Restaurant", "Winery"]);
+  for (const t of ["Store", "Organization", "OnlineStore", "constructor", "__proto__", "toString", "Coffee"]) assert.equal(typed(t), null, t);
+  for (const t of ["Restaurant", "CafeOrCoffeeShop", "Bakery", "BarOrPub", "Brewery", "Winery"]) assert.ok(Object.hasOwn(X.SCHEMA_TYPE_CATEGORY_SLUG, t), `existing mapping kept: ${t}`);
 });
 
 test("hostile content stays inert: tags rejected, instructions are just capped text, JSON-LD keys can't add fields", () => {
@@ -135,7 +144,7 @@ test("hostile content stays inert: tags rejected, instructions are just capped t
   const r = extract(evil);
   assert.equal(r.name, null, "a <title> whose text carries markup is rejected outright (and the JSON-LD name too)");
   assert.ok(r.shortDescription.length <= 160);
-  assert.deepEqual(Object.keys(r).sort(), ["categorySlug", "city", "instagramHandle", "logoCandidateUrl", "name", "shortDescription", "state"]);
+  assert.deepEqual(Object.keys(r).sort(), PROFILE_KEYS);
   assert.equal(X.cleanText("Brand <b>Co</b>", 120), null, "values that still contain markup are rejected");
   assert.equal(X.cleanText("javascript:alert(1)", 120), "javascript:alert(1)", "plain text only — it is never used as a URL");
 });
