@@ -21,7 +21,7 @@ import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptio
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { findBusinessMatches } from "@/lib/business-matching";
-import { SHORT_DESCRIPTION_MAX_LENGTH } from "@/lib/brand-candidate";
+import { BRAND_SOURCE, SHORT_DESCRIPTION_MAX_LENGTH, parseBrandSource } from "@/lib/brand-candidate";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -1229,7 +1229,12 @@ export async function createMemberBusiness(formData: FormData) {
   // must be present.
   const requestedMarketText = str(formData, "requested_market_text");
   const authorized = bool(formData, "authorized");
-  const planChoiceRaw = str(formData, "plan_choice");
+  // Brand Onboarding (source=brand from /join/brand) — presentation and
+  // landing only, no authority: its form shows no Free/Pro picker, so any
+  // plan_choice is ignored and the business is created Free exactly as when
+  // no plan is chosen. An explicit invite is unaffected (handled below).
+  const brandOnboarding = parseBrandSource(str(formData, "source"));
+  const planChoiceRaw = brandOnboarding ? null : str(formData, "plan_choice");
   const inviteRaw = str(formData, "invite");
   const referralCodeRaw = str(formData, "ref");
 
@@ -1254,6 +1259,7 @@ export async function createMemberBusiness(formData: FormData) {
     plan_choice: planChoiceRaw,
     invite: inviteRaw,
     ref: referralCodeRaw,
+    source: brandOnboarding ? BRAND_SOURCE : null,
   };
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_BUSINESS_PATH, message, preservedFields));
@@ -1470,6 +1476,10 @@ export async function createMemberBusiness(formData: FormData) {
     redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);
   }
 
+  // Brand Onboarding lands inside the new Business, on its Profile (logo,
+  // gallery, links) — the next thing to complete. Every other creation
+  // path keeps its existing landing.
+  if (brandOnboarding) redirect(`/account/business/${businessId}?tab=profile&created=1`);
   redirect(`/account/business/${businessId}?created=1`);
 }
 

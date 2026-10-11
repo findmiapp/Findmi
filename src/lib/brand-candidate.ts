@@ -39,6 +39,17 @@ export type BrandPrefillStatus = (typeof BRAND_PREFILL_STATUSES)[number];
 
 export const CREATE_BUSINESS_PATH = "/account/business/new";
 
+/** Presentation flag for the create form when it is reached from Brand
+ * Onboarding (/join/brand): "Review Your Brand" copy, no Free/Pro picker,
+ * and a Business Profile landing after creation. It carries NO authority —
+ * it never sets a plan, grants anything or skips a check. Every URL built
+ * by this module is a Brand Onboarding URL, so it always carries it. */
+export const BRAND_SOURCE = "brand";
+
+export function parseBrandSource(value: string | null | undefined): boolean {
+  return value === BRAND_SOURCE;
+}
+
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 
@@ -90,8 +101,49 @@ export function brandCandidateHref(candidate: Record<string, unknown>, prefill?:
     if (value) params.set(field, value);
   }
   if (prefill && (BRAND_PREFILL_STATUSES as readonly string[]).includes(prefill)) params.set("prefill", prefill);
-  const query = params.toString();
-  return query ? `${CREATE_BUSINESS_PATH}?${query}` : CREATE_BUSINESS_PATH;
+  params.set("source", BRAND_SOURCE);
+  return `${CREATE_BUSINESS_PATH}?${params.toString()}`;
+}
+
+// ── Seeds ─────────────────────────────────────────────────────────────────
+
+/** What the visitor originally searched for (a name or an Instagram
+ * handle) when they then add a website on /join/brand. Bounded,
+ * validated, and only ever re-serialized through this module; it
+ * pre-fills the create form's name / Instagram, which stay editable. */
+export interface BrandSeed {
+  name?: string;
+  /** Canonical handle, no "@". */
+  instagram?: string;
+}
+
+export const BRAND_SEED_PARAMS = { name: "seed_name", instagram: "seed_instagram" } as const;
+
+export function sanitizeBrandSeed(input: { name?: unknown; instagram?: unknown }): BrandSeed {
+  const seed: BrandSeed = {};
+  const name = plain(input.name, NAME_MAX);
+  if (name) seed.name = name;
+  const handle = typeof input.instagram === "string" ? normalizeInstagramHandle(input.instagram) : null;
+  if (handle) seed.instagram = handle;
+  return seed;
+}
+
+/** The seed as /join/brand query/form fields (only these two names). */
+export function brandSeedEntries(seed: BrandSeed | null | undefined): [string, string][] {
+  const clean = sanitizeBrandSeed(seed ?? {});
+  const entries: [string, string][] = [];
+  if (clean.name) entries.push([BRAND_SEED_PARAMS.name, clean.name]);
+  if (clean.instagram) entries.push([BRAND_SEED_PARAMS.instagram, clean.instagram]);
+  return entries;
+}
+
+/** Candidate fields a seed contributes to the create form. */
+export function seedCandidate(seed: BrandSeed | null | undefined): { name?: string; instagram_url?: string } {
+  const clean = sanitizeBrandSeed(seed ?? {});
+  return {
+    ...(clean.name ? { name: clean.name } : {}),
+    ...(clean.instagram ? { instagram_url: `https://www.instagram.com/${clean.instagram}` } : {}),
+  };
 }
 
 /** Parses the create form's `prefill` banner flag (unknown → null). */

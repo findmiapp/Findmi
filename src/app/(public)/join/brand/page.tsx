@@ -17,6 +17,7 @@ import {
   type PublicBrandCard,
 } from "@/lib/brand-lookup";
 import { isBrandLookupRateLimited } from "@/lib/brand-lookup-rate-limit";
+import { brandSeedEntries, sanitizeBrandSeed, type BrandSeed } from "@/lib/brand-candidate";
 import { buildBrandProfile } from "./actions";
 import BuildProfileButton from "./BuildProfileButton";
 
@@ -80,9 +81,14 @@ async function resolveState(q: string | undefined, as: string | undefined, authe
 export default async function FindYourBrandPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; as?: string; notice?: string }>;
+  searchParams: Promise<{ q?: string; as?: string; notice?: string; seed_name?: string; seed_instagram?: string }>;
 }) {
-  const { q, as, notice } = await searchParams;
+  const { q, as, notice, seed_name: seedName, seed_instagram: seedInstagram } = await searchParams;
+  // V1.1B correction — a website searched from the name/Instagram website
+  // prompt carries the original search as a bounded seed (validated here,
+  // only ever used for a website search).
+  const seed = as === "website" ? sanitizeBrandSeed({ name: seedName, instagram: seedInstagram }) : {};
+  const hasSeed = Boolean(seed.name || seed.instagram);
   const supabase = await getServerSupabase();
   const {
     data: { user },
@@ -118,7 +124,17 @@ export default async function FindYourBrandPage({
         </>
       )}
 
-      {state.kind === "invalid" && (
+      {state.kind === "invalid" && hasSeed && (
+        <WebsitePrompt
+          title="Check Your Website"
+          body={state.message}
+          seed={seed}
+          addHref={seed.name ? createHref({ kind: "name", value: seed.name }) : createHref({ kind: "instagram", value: seed.instagram ?? "" })}
+          value={state.value}
+        />
+      )}
+
+      {state.kind === "invalid" && !hasSeed && (
         <StateBlock title="Check Your Entry" body={state.message}>
           <SearchForm value={state.value} />
           {state.nameFallback && <AltLink href={searchHref(state.value, "name")} label="Search as a Name Instead" />}
@@ -144,6 +160,7 @@ export default async function FindYourBrandPage({
           alternative={state.alternative}
           result={state.result}
           authenticated={authenticated}
+          seed={seed}
         />
       )}
     </div>
@@ -156,14 +173,16 @@ function ResultView({
   alternative,
   result,
   authenticated,
+  seed,
 }: {
   value: string;
   inputKind: BrandInputKind;
   alternative: BrandInputKind | null;
   result: BrandLookupResult;
   authenticated: boolean;
+  seed: BrandSeed;
 }) {
-  const addHref = createHref({ kind: inputKind, value });
+  const addHref = createHref({ kind: inputKind, value }, inputKind === "website" ? seed : null);
   const searched = (
     <p className="mt-1.5 text-xs text-ink/50">
       Searched by {KIND_LABEL[inputKind]}: <span className="font-semibold text-ink/70">{value}</span>
@@ -212,10 +231,11 @@ function ResultView({
         {authenticated ? (
           <form action={buildBrandProfile} className="mt-5">
             <input type="hidden" name="website" value={value} />
+            <SeedFields seed={seed} />
             <BuildProfileButton />
           </form>
         ) : (
-          <PrimaryLink href={`/login?next=${encodeURIComponent(searchHref(value, "website"))}`} label="Build My Brand Profile" />
+          <PrimaryLink href={`/login?next=${encodeURIComponent(searchHref(value, "website", seed))}`} label="Build My Brand Profile" />
         )}
         <p className="mt-2 text-center text-xs text-ink/50">
           {authenticated
@@ -228,10 +248,84 @@ function ResultView({
     );
   }
 
+  // V1.1B correction — a name or Instagram with no match asks for the
+  // brand's website (never searched for automatically). It goes through
+  // the ordinary website lookup first (an existing Business → Claim), then
+  // the website no-match state above. The original search rides along as
+  // a bounded seed. Adding it manually stays available.
+  const instagramSeed = inputKind === "instagram" ? sanitizeBrandSeed({ instagram: value }).instagram : undefined;
   return (
-    <StateBlock title="Add Your Brand" body="We didn't find this brand on Findmi. Add it now — it only takes a few minutes.">
+    <WebsitePrompt
+      title={`We Couldn't Find ${instagramSeed ? `@${instagramSeed}` : value}`}
+      body="Add your website and Findmi will build the starting profile for you."
+      seed={inputKind === "name" ? { name: value } : { instagram: instagramSeed }}
+      addHref={addHref}
+    >
       {searched}
-      <PrimaryLink href={addHref} label="Add Your Brand" />
+    </WebsitePrompt>
+  );
+}
+
+function SeedFields({ seed }: { seed: BrandSeed }) {
+  return (
+    <>
+      {brandSeedEntries(seed).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
+    </>
+  );
+}
+
+/** The website step for a name/Instagram search: a GET back into the
+ * ordinary website lookup (as=website), carrying the bounded seed. */
+function WebsitePrompt({
+  title,
+  body,
+  seed,
+  addHref,
+  value = "",
+  children,
+}: {
+  title: string;
+  body: string;
+  seed: BrandSeed;
+  addHref: string;
+  value?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <StateBlock title={title} body={body}>
+      {children}
+      <form method="get" action="/join/brand" className="mt-5 flex flex-col gap-3">
+        <input type="hidden" name="as" value="website" />
+        <SeedFields seed={seed} />
+        <label htmlFor="brand-website" className="text-sm font-semibold text-ink">
+          Website
+        </label>
+        <input
+          id="brand-website"
+          name="q"
+          type="text"
+          inputMode="url"
+          required
+          minLength={2}
+          maxLength={BRAND_QUERY_MAX_LENGTH}
+          defaultValue={value}
+          autoComplete="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="yourbrand.com"
+          className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
+        />
+        <button
+          type="submit"
+          className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        >
+          Build My Brand Profile
+        </button>
+      </form>
+      <SecondaryLink href={addHref} label="Add It Myself" />
       <SecondaryLink href="/join/brand" label="Search Again" subtle />
     </StateBlock>
   );

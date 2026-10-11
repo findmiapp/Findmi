@@ -9,7 +9,7 @@ import {
   type BusinessMatch,
   type BusinessMatchInput,
 } from "./business-matching";
-import { brandCandidateHref } from "./brand-candidate";
+import { brandCandidateHref, brandSeedEntries, seedCandidate, type BrandSeed } from "./brand-candidate";
 
 /** Brand Onboarding V1 · Pass 2B — the server-only layer behind the public
  * /join/brand "Find Your Brand" page:
@@ -200,17 +200,20 @@ export function claimHref(slug: string, authenticated: boolean): string {
  * are made absolute because the field is type="url"; Instagram becomes the
  * canonical profile URL. Middleware keeps the full query string through
  * /login → signup → auth callback. */
-export function createHref(input: { kind: BrandInputKind; value: string }): string {
+export function createHref(input: { kind: BrandInputKind; value: string }, seed?: BrandSeed | null): string {
   if (input.kind === "name") return brandCandidateHref({ name: input.value });
   if (input.kind === "website") {
-    return brandCandidateHref({ website_url: HAS_SCHEME.test(input.value) ? input.value : `https://${input.value}` });
+    // A website reached from a name/Instagram search keeps that original
+    // name/handle (bounded seed) for the form — never matcher data.
+    return brandCandidateHref({ ...seedCandidate(seed), website_url: HAS_SCHEME.test(input.value) ? input.value : `https://${input.value}` });
   }
   return brandCandidateHref({ instagram_url: input.value });
 }
 
 /** Re-search link for an alternate interpretation of the same input. */
-export function searchHref(value: string, as?: BrandInputKind): string {
+export function searchHref(value: string, as?: BrandInputKind, seed?: BrandSeed | null): string {
   const params = new URLSearchParams({ q: value });
   if (as) params.set("as", as);
+  for (const [key, v] of brandSeedEntries(seed)) params.set(key, v);
   return `/join/brand?${params.toString()}`;
 }

@@ -6,7 +6,13 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarkets, getCategories } from "@/lib/data";
 import BusinessGeographyFields from "@/components/BusinessGeographyFields";
 import { createMemberBusiness } from "../actions";
-import { SHORT_DESCRIPTION_MAX_LENGTH, parseBrandPrefillStatus, prefillHostLabel } from "@/lib/brand-candidate";
+import {
+  BRAND_SOURCE,
+  SHORT_DESCRIPTION_MAX_LENGTH,
+  parseBrandPrefillStatus,
+  parseBrandSource,
+  prefillHostLabel,
+} from "@/lib/brand-candidate";
 
 export const metadata: Metadata = {
   title: "Add a Business",
@@ -46,6 +52,7 @@ export default async function AddBusinessPage({
     instagram_url?: string;
     short_description?: string;
     prefill?: string;
+    source?: string;
     market_id?: string;
     requested_market_text?: string;
     authorized?: string;
@@ -67,6 +74,7 @@ export default async function AddBusinessPage({
     instagram_url: submittedInstagramUrl,
     short_description: submittedShortDescription,
     prefill,
+    source,
     market_id: submittedMarketId,
     requested_market_text: submittedRequestedMarketText,
     authorized: submittedAuthorized,
@@ -118,6 +126,12 @@ export default async function AddBusinessPage({
   // ordinary, editable form values and createMemberBusiness re-validates
   // everything on submit.
   const prefillStatus = parseBrandPrefillStatus(prefill);
+  // Brand Onboarding presentation (source=brand from /join/brand): "Review
+  // Your Brand", no Free/Pro picker (the business is created Free, exactly
+  // as when no plan is chosen), Business Profile landing after creation.
+  // Presentation only — an explicit ?invite= still shows its own existing
+  // invite block, and a stray ?plan=pro never brings the picker back here.
+  const brandOnboarding = parseBrandSource(source);
   const prefillHost = prefillHostLabel(submittedWebsiteUrl);
   const prefillNotice =
     prefillStatus === "website"
@@ -131,8 +145,15 @@ export default async function AddBusinessPage({
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-label font-bold uppercase text-accent">My Findmi</p>
-      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add a Business</h1>
-      {hasInvite ? (
+      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
+        {brandOnboarding ? "Review Your Brand" : "Add a Business"}
+      </h1>
+      {brandOnboarding ? (
+        <p className="mt-2 text-body text-muted">
+          Check and complete your brand&rsquo;s starting profile, then add it. You&rsquo;ll own and manage it right away,
+          and Findmi will review it before it appears in discovery.
+        </p>
+      ) : hasInvite ? (
         <p className="mt-2 text-body text-muted">
           You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery.
         </p>
@@ -178,6 +199,7 @@ export default async function AddBusinessPage({
 
       <div id="add-business-form" className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberBusiness} className="flex flex-col gap-4">
+          {brandOnboarding && <input type="hidden" name="source" value={BRAND_SOURCE} />}
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
             <input
@@ -299,7 +321,7 @@ export default async function AddBusinessPage({
                 </p>
               </div>
             </>
-          ) : (
+          ) : brandOnboarding ? null : (
             <div>
               {/* Business Acquisition + Stale Plan Copy Cleanup pass —
                   was unconditionally "Choose your plan", framing every
@@ -418,7 +440,7 @@ export default async function AddBusinessPage({
           </label>
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            Create My Business
+            {brandOnboarding ? "Add My Brand" : "Create My Business"}
           </button>
           {/* Add Business Copy Compression (#19) — this restated, word for
               word, what the Free/Pro cards directly above the submit

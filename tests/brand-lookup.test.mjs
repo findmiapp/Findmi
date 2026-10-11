@@ -148,12 +148,12 @@ test("claim links reuse ClaimButton's ?claim=1, guests go through /login with an
 });
 
 test("create links prefill only the visitor's own input, safely encoded", () => {
-  assert.equal(B.createHref({ kind: "name", value: "Joe's Pizza & Co" }), "/account/business/new?name=Joe%27s+Pizza+%26+Co");
-  assert.equal(B.createHref({ kind: "website", value: "lavazza.com/us" }), "/account/business/new?website_url=https%3A%2F%2Flavazza.com%2Fus");
-  assert.equal(B.createHref({ kind: "website", value: "http://lavazza.com" }), "/account/business/new?website_url=http%3A%2F%2Flavazza.com");
+  assert.equal(B.createHref({ kind: "name", value: "Joe's Pizza & Co" }), "/account/business/new?name=Joe%27s+Pizza+%26+Co&source=brand");
+  assert.equal(B.createHref({ kind: "website", value: "lavazza.com/us" }), "/account/business/new?website_url=https%3A%2F%2Flavazza.com%2Fus&source=brand");
+  assert.equal(B.createHref({ kind: "website", value: "http://lavazza.com" }), "/account/business/new?website_url=http%3A%2F%2Flavazza.com&source=brand");
   assert.equal(
     B.createHref({ kind: "instagram", value: "https://instagram.com/LavazzaUSA?igsh=abc" }),
-    "/account/business/new?instagram_url=https%3A%2F%2Fwww.instagram.com%2Flavazzausa"
+    "/account/business/new?instagram_url=https%3A%2F%2Fwww.instagram.com%2Flavazzausa&source=brand"
   );
   const page = readFileSync("src/app/(public)/account/business/new/page.tsx", "utf8");
   for (const field of ["name", "website_url", "instagram_url"]) assert.match(page, new RegExp(`${field}\\?: string;`), `create form reads ${field}`);

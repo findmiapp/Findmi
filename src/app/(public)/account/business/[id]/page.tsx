@@ -1785,6 +1785,13 @@ export default async function ManageBusinessPage({
         {activeTab === "profile" && (
           <div className="flex flex-col gap-4 lg:max-w-5xl">
           <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Business Profile</h1>
+          {/* Brand Onboarding lands here (?tab=profile&created=1) — same
+              confirmation the Overview shows for other creation paths. */}
+          {created && (
+            <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
+              Business created! Add your logo, photos and links below to finish your profile.
+            </p>
+          )}
           <Panel title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
             <form action={profileAction} className="flex flex-col gap-4">
               <label className="block">

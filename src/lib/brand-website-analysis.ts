@@ -8,7 +8,7 @@ import {
   type BusinessMatchInput,
 } from "./business-matching";
 import { claimHref, classifyBrandInput, searchHref } from "./brand-lookup";
-import { brandCandidateHref, type BrandPrefillStatus } from "./brand-candidate";
+import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
 import { extractBrandProfile, type ExtractedBrandProfile } from "./brand-website-extract";
 import { safeFetchHtml, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
 import { recordWebsiteAnalysisAttempt, tryAcquireWebsiteFetchSlot } from "./brand-website-rate-limit";
@@ -125,22 +125,25 @@ function hasAnyField(p: ExtractedBrandProfile): boolean {
 
 /** Pure orchestration core (exported for tests; real deps below). */
 export async function analyzeBrandWebsite(
-  input: { website: string; userId: string | null; ip: string },
+  input: { website: string; userId: string | null; ip: string; seed?: BrandSeed | null },
   deps: WebsiteAnalysisDeps
 ): Promise<WebsiteAnalysisResult> {
   const started = deps.now();
   const value = (input.website ?? "").trim();
+  // The visitor's original name / Instagram search (bounded, validated) —
+  // preferred over the weaker extracted equivalents, still editable.
+  const seed = sanitizeBrandSeed(input.seed ?? {});
   if (!input.userId) {
     // Analysis is account-only: sign in, then return to the same no-match
     // result to choose Build My Brand Profile again explicitly.
-    return { href: `/login?next=${encodeURIComponent(searchHref(value, "website"))}`, outcome: "auth_required" };
+    return { href: `/login?next=${encodeURIComponent(searchHref(value, "website", seed))}`, outcome: "auth_required" };
   }
 
   const classified = classifyBrandInput(value, "website");
   if (!classified.ok) return { href: "/join/brand", outcome: "invalid_input" };
   const websiteUrl = HAS_SCHEME.test(classified.value) ? classified.value : `https://${classified.value}`;
   const host = normalizeWebsiteHost(websiteUrl);
-  const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ website_url: websiteUrl }, prefill);
+  const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ ...seedCandidate(seed), website_url: websiteUrl }, prefill);
 
   let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, cached: false, fields: null, match: null };
   const finish = (href: string, outcome: WebsiteAnalysisOutcome, extra: Partial<WebsiteAnalysisLog> = {}): WebsiteAnalysisResult => {
@@ -199,18 +202,27 @@ export async function analyzeBrandWebsite(
     category: Boolean(profile.categorySlug),
     logo: Boolean(profile.logoCandidateUrl),
   };
-  const instagramUrl = profile.instagramHandle ? `https://www.instagram.com/${profile.instagramHandle}` : null;
+  const igUrl = (handle: string | null | undefined) => (handle ? `https://www.instagram.com/${handle}` : null);
+  const name = seed.name ?? profile.name;
+  const instagramUrl = igUrl(seed.instagram ?? profile.instagramHandle);
 
-  // Match AGAIN with the strongest extracted identity signals: the
-  // visitor's website + extracted Instagram + extracted name/location, and
-  // the post-redirect website when it is a different host.
+  // Match AGAIN with the strongest identity signals: the visitor's website
+  // + Instagram + name/location (seed first, else extracted), plus any
+  // extracted name / Instagram the seed overrode and the post-redirect
+  // website when it is a different host — none of them may be a duplicate.
   let matches: BusinessMatch[];
   try {
     const finalHost = normalizeWebsiteHost(finalUrl);
     const lookups: Promise<BusinessMatch[]>[] = [
-      deps.findMatches({ websiteUrl, instagramUrl, name: profile.name, city: profile.city, state: profile.state }),
+      deps.findMatches({ websiteUrl, instagramUrl, name, city: profile.city, state: profile.state }),
     ];
     if (finalHost && finalHost !== host) lookups.push(deps.findMatches({ websiteUrl: finalUrl }));
+    if (seed.instagram && profile.instagramHandle && profile.instagramHandle !== seed.instagram) {
+      lookups.push(deps.findMatches({ instagramUrl: igUrl(profile.instagramHandle) }));
+    }
+    if (seed.name && profile.name && profile.name !== seed.name) {
+      lookups.push(deps.findMatches({ name: profile.name, city: profile.city, state: profile.state }));
+    }
     matches = (await Promise.all(lookups)).flat();
   } catch {
     return finish(manual("unavailable"), "match_failed");
@@ -230,7 +242,7 @@ export async function analyzeBrandWebsite(
 
   const href = brandCandidateHref(
     {
-      name: profile.name,
+      name,
       website_url: websiteUrl,
       instagram_url: instagramUrl,
       short_description: profile.shortDescription,
@@ -265,7 +277,7 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
 }
 
 /** Manual-form fallback for a website when analysis can't run at all. */
-export function manualBrandFormHref(website: string): string {
+export function manualBrandFormHref(website: string, seed?: BrandSeed | null): string {
   const value = website.trim();
-  return brandCandidateHref({ website_url: HAS_SCHEME.test(value) ? value : `https://${value}` }, "unavailable");
+  return brandCandidateHref({ ...seedCandidate(seed), website_url: HAS_SCHEME.test(value) ? value : `https://${value}` }, "unavailable");
 }

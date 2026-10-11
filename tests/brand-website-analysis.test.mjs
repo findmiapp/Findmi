@@ -65,7 +65,7 @@ function makeDeps(over = {}) {
 }
 const run = (deps, website = "lavazza.com", userId = "user-1") => A.analyzeBrandWebsite({ website, userId, ip: "203.0.113.5" }, deps);
 const params = (href) => new URL(href, "https://findmi.app").searchParams;
-const ALLOWED_KEYS = new Set([...C.BRAND_CANDIDATE_FIELDS, "prefill"]);
+const ALLOWED_KEYS = new Set([...C.BRAND_CANDIDATE_FIELDS, "prefill", "source"]);
 
 // ── Candidate serializer ──────────────────────────────────────────────────
 test("serializer: strict whitelist — authority/plan/ownership/ids can never be serialized", () => {
@@ -85,7 +85,7 @@ test("serializer: strict whitelist — authority/plan/ownership/ids can never be
     duplicate_slug: "x",
     error: "x",
   });
-  assert.equal(href, "/account/business/new?name=Lavazza");
+  assert.equal(href, "/account/business/new?name=Lavazza&source=brand");
 });
 
 test("serializer: per-field validation (url schemes, Instagram canonical form, UUID category, 160-char description)", () => {
@@ -161,6 +161,7 @@ test("genuinely new website → existing create form with ONLY whitelisted candi
     state: "NY",
     category_id: CATEGORY_ID,
     prefill: "website",
+    source: "brand",
   });
   assert.deepEqual(calls.fetch, ["https://lavazza.com/"], "https only, one page");
   assert.equal(p.get("authorized"), null);
@@ -203,14 +204,14 @@ test("every fetch failure → the manual form with the website preserved (never 
     const { deps, calls } = makeDeps({ fetchHtml: async () => ({ ok: false, code, redirects: 0 }) });
     const r = await run(deps, "https://lavazza.com/us?utm=1");
     assert.equal(r.outcome, code);
-    assert.equal(r.href, "/account/business/new?website_url=https%3A%2F%2Flavazza.com%2Fus%3Futm%3D1&prefill=unavailable", code);
+    assert.equal(r.href, "/account/business/new?website_url=https%3A%2F%2Flavazza.com%2Fus%3Futm%3D1&prefill=unavailable&source=brand", code);
     assert.equal(calls.match.length, 0);
   }
 });
 
 test("no metadata, extraction error, matcher error, busy, unsupported site → manual form", async () => {
   const empty = makeDeps({ fetchHtml: async (url) => ({ ok: true, url, html: "<html></html>", bytes: 13, redirects: 0 }) });
-  assert.deepEqual(await run(empty.deps), { href: "/account/business/new?website_url=https%3A%2F%2Flavazza.com&prefill=unavailable", outcome: "no_metadata" });
+  assert.deepEqual(await run(empty.deps), { href: "/account/business/new?website_url=https%3A%2F%2Flavazza.com&prefill=unavailable&source=brand", outcome: "no_metadata" });
   const broken = makeDeps({ findMatches: async () => Promise.reject(new Error("db down")) });
   assert.equal((await run(broken.deps)).outcome, "match_failed");
   assert.match((await run(broken.deps)).href, /prefill=unavailable/, "never prefill without the post-extraction match");
@@ -226,7 +227,7 @@ test("no metadata, extraction error, matcher error, busy, unsupported site → m
 test("rate limited → manual form with the 'limited' notice; no fetch", async () => {
   const { deps, calls } = makeDeps({ isRateLimited: () => true });
   const r = await run(deps);
-  assert.deepEqual(r, { href: "/account/business/new?website_url=https%3A%2F%2Flavazza.com&prefill=limited", outcome: "rate_limited" });
+  assert.deepEqual(r, { href: "/account/business/new?website_url=https%3A%2F%2Flavazza.com&prefill=limited&source=brand", outcome: "rate_limited" });
   assert.equal(calls.fetch.length, 0);
 });
 
@@ -326,9 +327,9 @@ test("limiter: at most 3 concurrent fetches per instance; release is idempotent"
 test("/join/brand: Build My Brand Profile only for a website no-match; signed-in POST, guests sign in first", () => {
   const page = readFileSync("src/app/(public)/join/brand/page.tsx", "utf8");
   assert.match(page, /if \(inputKind === "website"\) \{/);
-  assert.match(page, /<form action=\{buildBrandProfile\} className="mt-5">\s*<input type="hidden" name="website" value=\{value\} \/>/);
+  assert.match(page, /<form action=\{buildBrandProfile\} className="mt-5">\s*<input type="hidden" name="website" value=\{value\} \/>\s*<SeedFields seed=\{seed\} \/>/);
   assert.match(page, /authenticated \? \(\s*<form action=\{buildBrandProfile\}/);
-  assert.match(page, /href=\{`\/login\?next=\$\{encodeURIComponent\(searchHref\(value, "website"\)\)\}`\}/);
+  assert.match(page, /href=\{`\/login\?next=\$\{encodeURIComponent\(searchHref\(value, "website", seed\)\)\}`\}/);
   assert.match(page, /label="Add It Myself"/, "manual creation stays available");
   assert.match(page, /<form method="get" action="\/join\/brand"/, "anonymous GET lookup unchanged");
   assert.match(page, /export const maxDuration = 30;/);
