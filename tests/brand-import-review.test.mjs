@@ -673,7 +673,12 @@ test("the review module and its client button never reach the browser bundle wit
   }
 });
 
-test("no schema migration for P4", () => {
+test("no schema migration for P4 (later, unrelated migrations never touch Brand Import or Business media)", () => {
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261012020000_business_select_privacy_boundary.sql");
+  const PHASE_0B = "20261012020000_business_select_privacy_boundary.sql";
+  assert.ok(files.includes(PHASE_0B));
+  for (const f of files.filter((f) => f > PHASE_0B)) {
+    const sql = read(join("supabase/migrations", f)).replace(/--.*$/gm, "");
+    assert.doesNotMatch(sql, /brand_import|public\.businesses\s*(add|alter|drop)|alter table (public\.)?businesses/i, f);
+  }
 });
