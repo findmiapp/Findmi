@@ -139,6 +139,9 @@ export interface ExtractedBrandProfile {
    * Untrusted URLs — each is fetched and verified before any use. */
   logoCandidates: string[];
   coverCandidates: string[];
+  /** VCL A3 — the page's declared web app manifest (https), consulted for
+   * its icons only when no logo candidate verifies. Untrusted. */
+  manifestUrl?: string | null;
   excerpt: BrandPageExcerpt;
 }
 
@@ -719,6 +722,38 @@ export function logoCandidatesFrom(
   return rankedUnique(out, LOGO_CANDIDATE_MAX);
 }
 
+/** VCL A3 — identity candidates from a web app manifest's `icons` (exported
+ * for tests): an app icon is a first-party, square, compact identity mark —
+ * the same kind of evidence as apple-touch-icon. Bounded and defensive:
+ * ≤ 64 KB of JSON (the fetch caps it), ≤ 20 icons read, raster only (SVG /
+ * ICO never), a DECLARED size ≥ 192, and only "any"-purpose icons
+ * (maskable/monochrome variants are padded or single-colour). Largest
+ * first, resolved against the manifest's own URL, https only. Never
+ * throws; malformed JSON → []. */
+export const MANIFEST_ICON_MIN_SIZE = 192;
+export function manifestIconCandidates(text: string, manifestUrl: URL): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.length > 65_536 ? "" : text);
+  } catch {
+    return [];
+  }
+  const icons = parsed && typeof parsed === "object" ? (parsed as JsonObject).icons : null;
+  if (!Array.isArray(icons)) return [];
+  const out: Ranked[] = [];
+  for (const icon of icons.slice(0, 20)) {
+    if (!icon || typeof icon !== "object") continue;
+    const { src, sizes, type, purpose } = icon as JsonObject;
+    if (typeof purpose === "string" && !purpose.toLowerCase().split(/\s+/).includes("any")) continue;
+    if (typeof type === "string" && !/^image\/(png|jpeg|webp|gif)$/i.test(type.trim())) continue;
+    const size = typeof sizes === "string" ? Math.max(0, ...sizes.split(/\s+/).map((p) => parseInt(p, 10) || 0)) : 0;
+    if (size < MANIFEST_ICON_MIN_SIZE) continue;
+    const url = rasterUrl(src, manifestUrl);
+    if (url) out.push({ url, rank: size });
+  }
+  return rankedUnique(out, LOGO_CANDIDATE_MAX);
+}
+
 /** Same image regardless of query/fragment (CDN size/version params). */
 export function sameImageSource(a: string | null, b: string | null): boolean {
   if (!a || !b) return false;
@@ -866,6 +901,7 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     coverCandidateUrl: coverCandidates[0] ?? null,
     logoCandidates,
     coverCandidates,
+    manifestUrl: absoluteHttps(c.links.find((l) => l.rel.includes("manifest"))?.href, pageUrl),
     excerpt,
   };
 }

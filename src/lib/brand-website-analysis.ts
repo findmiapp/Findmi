@@ -4,8 +4,8 @@ import { getCategories } from "./data";
 import { findBusinessMatches, type BusinessMatch, type BusinessMatchInput } from "./business-matching";
 import { brandBuildSignInHref, claimHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
-import type { ExtractedBrandProfile } from "./brand-website-extract";
-import { safeFetchHtml, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
+import { manifestIconCandidates, type ExtractedBrandProfile } from "./brand-website-extract";
+import { safeFetchHtml, safeFetchManifest, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
 import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput } from "./brand-ai-enrichment";
 import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
 import {
@@ -147,6 +147,8 @@ export interface WebsiteAnalysisDeps {
   enrich: (input: BrandAiInput) => Promise<BrandAiEnrichment>;
   /** V1.1C — fetch + fully verify a logo/cover candidate. */
   verifyImage: (url: string, role: BrandImageRole) => Promise<boolean>;
+  /** VCL A3 — manifest icons as identity candidates (failure path only). */
+  fetchManifestIcons?: (manifestUrl: string) => Promise<string[]>;
   /** V1.1C — BRAND_DRAFT_SECRET configured: build an enriched signed draft.
    * Off → the bounded V1.1B text prefill (no About, no images). */
   draftsEnabled: boolean;
@@ -377,6 +379,10 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
     listCategories: async () => (await getCategories()).map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
     enrich: (input) => enrichBrandWithAi(input),
     verifyImage: async (url, role) => (await fetchVerifiedBrandImage(url, role)).ok,
+    fetchManifestIcons: async (manifestUrl) => {
+      const fetched = await safeFetchManifest(manifestUrl);
+      return fetched.ok ? manifestIconCandidates(fetched.text, fetched.url) : [];
+    },
     draftsEnabled: Boolean(getBrandDraftSecret()),
     isRateLimited: (userKey, ipKey) => recordWebsiteAnalysisAttempt(userKey, ipKey),
     acquireSlot: tryAcquireWebsiteFetchSlot,

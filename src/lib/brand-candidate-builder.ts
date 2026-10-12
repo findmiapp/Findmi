@@ -193,6 +193,9 @@ export interface BrandCandidateDeps {
   enrich: (input: BrandAiInput) => Promise<BrandAiEnrichment>;
   /** Fetch + fully verify a logo/cover candidate. */
   verifyImage: (url: string, role: BrandImageRole) => Promise<boolean>;
+  /** VCL A3 — a site's web app manifest → its ranked identity icon URLs
+   * (safe fetch + manifestIconCandidates). Optional; [] on any failure. */
+  fetchManifestIcons?: (manifestUrl: string) => Promise<string[]>;
 }
 
 export interface BrandCandidateOptions {
@@ -277,6 +280,28 @@ export async function selectVerifiedImage(
   return pool.find((_, i) => passed[i]) ?? null;
 }
 
+/** VCL A3 — the identity (logo) choice: the page's own ranked candidates
+ * first, exactly as before; ONLY when none of them verifies, the site's
+ * web app manifest icons (an extra small fetch on the failure path only —
+ * never when the page already supplied a usable identity). A cover is
+ * never considered here. Exported for tests. */
+export async function selectVerifiedLogo(
+  logoPool: readonly string[],
+  manifestUrl: string | null | undefined,
+  deps: Pick<BrandCandidateDeps, "verifyImage" | "fetchManifestIcons">
+): Promise<string | null> {
+  const fromPage = await selectVerifiedImage(logoPool, "logo", deps.verifyImage);
+  if (fromPage || !manifestUrl || !deps.fetchManifestIcons) return fromPage;
+  let icons: string[];
+  try {
+    icons = await deps.fetchManifestIcons(manifestUrl);
+  } catch {
+    return null;
+  }
+  const fresh = icons.filter((url) => !logoPool.some((tried) => sameImageSource(tried, url)));
+  return selectVerifiedImage(fresh, "logo", deps.verifyImage);
+}
+
 const instagramUrlOf = (handle: string | null | undefined) => (handle ? `https://www.instagram.com/${handle}` : null);
 
 /** Matching, AI and images for one extraction. Never throws for a
@@ -343,7 +368,7 @@ export async function buildCandidateFromExtraction(
     const logoPool = pool(profile.logoCandidates, profile.logoCandidateUrl);
     const coverPool = pool(profile.coverCandidates, profile.coverCandidateUrl);
     const images = options.verifyImages
-      ? Promise.all([selectVerifiedImage(logoPool, "logo", deps.verifyImage), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
+      ? Promise.all([selectVerifiedLogo(logoPool, profile.manifestUrl, deps), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
       : Promise.resolve<[string | null, string | null]>([null, null]);
     const [enriched, verifiedImages] = await Promise.all([
       needsAi

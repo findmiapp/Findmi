@@ -409,7 +409,10 @@ export default async function AccountHomePage({
         ],
         href: `/account/business/${b.id}`,
         cta: b.pendingReview ? "Finish Your Business" : "Open Workspace",
-        imageUrl: b.logoUrl ?? b.coverImageUrl,
+        // VCL A3 — a Business row shows its identity (logo) only; a wide
+        // cover is never squeezed into the identity tile (the storefront
+        // icon is the fallback).
+        imageUrl: b.logoUrl,
       })
     ),
   ];
@@ -444,7 +447,7 @@ export default async function AccountHomePage({
             id: createdBusiness.id,
             name: createdBusiness.name,
             slug: createdBusiness.slug,
-            imageUrl: createdBusiness.logoUrl ?? createdBusiness.coverImageUrl,
+            imageUrl: createdBusiness.logoUrl,
           }}
         />
       )}
@@ -840,7 +843,15 @@ function ManagedRow({ entity }: { entity: ManagedEntity }) {
     <Link href={entity.href} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-black/[0.03]">
       <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-findmi-50 text-findmi-700">
         {entity.imageUrl ? (
-          <SupabaseImage src={entity.imageUrl} alt="" fill sizes="36px" className="object-cover" />
+          <SupabaseImage
+            src={entity.imageUrl}
+            alt=""
+            fill
+            sizes="36px"
+            // A Business image here is always its logo: contained, never
+            // cropped (wordmarks included). Events/Locations keep their photo crop.
+            className={entity.kind === "business" ? "bg-white object-contain p-0.5" : "object-cover"}
+          />
         ) : (
           <NavIcon name={MANAGED_ICON[entity.kind]} className="h-4 w-4" />
         )}

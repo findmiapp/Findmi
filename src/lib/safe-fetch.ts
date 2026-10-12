@@ -611,3 +611,28 @@ export async function safeFetchImage(input: string | URL, options: SafeFetchOpti
   if (!r.ok) return r;
   return { ok: true, url: r.url, body: r.body, contentType: r.contentType, bytes: r.bytes, redirects: r.redirects };
 }
+
+/** VCL A3 — a site's web app manifest (`<link rel="manifest">`), read only
+ * for its declared icons when no logo candidate on the page verified.
+ * Small JSON document, same destination/DNS/redirect/TLS/timeout rules as
+ * every other fetch here. */
+export const SAFE_FETCH_MANIFEST_MAX_BYTES = 64 * 1024;
+export const SAFE_FETCH_MANIFEST_TYPES: ReadonlySet<string> = new Set(["application/manifest+json", "application/json", "text/json"]);
+const MANIFEST_PROFILE: FetchProfile = {
+  accept: "application/manifest+json,application/json;q=0.9",
+  mediaTypes: SAFE_FETCH_MANIFEST_TYPES,
+  maxBytes: SAFE_FETCH_MANIFEST_MAX_BYTES,
+  rejectDeclaredOverMax: true,
+};
+
+export type SafeFetchManifestResult =
+  | { ok: true; url: URL; text: string }
+  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
+
+/** Retrieves ONE web app manifest (≤ 64 KB JSON). The text is untrusted;
+ * callers parse it with bounds (see manifestIconCandidates). */
+export async function safeFetchManifest(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchManifestResult> {
+  const r = await safeFetchResource(input, MANIFEST_PROFILE, options);
+  if (!r.ok) return r;
+  return { ok: true, url: r.url, text: r.body.toString("utf8") };
+}
