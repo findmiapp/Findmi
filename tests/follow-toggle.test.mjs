@@ -133,42 +133,59 @@ function harness({ signedIn = true, write, initial = false } = {}) {
   return { t, states, pendings, writes, get state() { return state; } };
 }
 
-test("optimistic flip, then the server's answer; explicit desired state is sent", async () => {
+test("follow(): one tap, optimistic, explicit following:true, then the server's answer", async () => {
   const h = harness();
-  assert.deepEqual(await h.t.toggle(), { kind: "done", ok: true, following: true });
+  assert.deepEqual(await h.t.follow(), { kind: "done", ok: true, following: true });
   assert.deepEqual(h.writes, [true]);
   assert.deepEqual(h.states, [true, true], "optimistic, then confirmed");
-  assert.deepEqual(await h.t.toggle(), { kind: "done", ok: true, following: false });
-  assert.deepEqual(h.writes, [true, false]);
-  assert.deepEqual(h.pendings, [true, false, true, false]);
+  assert.deepEqual(h.pendings, [true, false]);
 });
 
-test("optimistic state reverts on failure (null or a thrown write)", async () => {
-  const h = harness({ write: async () => null, initial: true });
-  assert.deepEqual(await h.t.toggle(), { kind: "done", ok: false, following: true });
-  assert.deepEqual(h.states, [false, true], "flipped, then reverted");
+test("follow(): optimistic state reverts on failure (null or a thrown write)", async () => {
+  const h = harness({ write: async () => null });
+  assert.deepEqual(await h.t.follow(), { kind: "done", ok: false, following: false });
+  assert.deepEqual(h.states, [true, false], "flipped, then reverted");
   const thrown = harness({ write: async () => { throw new Error("network"); } });
-  assert.equal((await thrown.t.toggle()).ok, false);
+  assert.equal((await thrown.t.follow()).ok, false);
   assert.equal(thrown.state, false);
+});
+
+test("unfollow(): NOT optimistic — state changes only after the server confirms; exactly one following:false", async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const h = harness({ initial: true, write: async (d) => (await gate, d) });
+  const p = h.t.unfollow();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(h.state, true, "still Following while the request is in flight");
+  assert.deepEqual(h.states, []);
+  release();
+  assert.deepEqual(await p, { kind: "done", ok: true, following: false });
+  assert.deepEqual(h.writes, [false]);
+  assert.equal(h.state, false);
+});
+
+test("unfollow() failure keeps Following (no flicker)", async () => {
+  const h = harness({ initial: true, write: async () => null });
+  assert.deepEqual(await h.t.unfollow(), { kind: "done", ok: false, following: true });
+  assert.equal(h.state, true);
+  assert.deepEqual(h.states, [], "never set to Follow at any point");
 });
 
 test("duplicate/in-flight taps cannot race — extra taps are ignored, one write", async () => {
   let release;
   const gate = new Promise((r) => (release = r));
   const h = harness({ write: async (d) => (await gate, d) });
-  const first = h.t.toggle();
-  const second = await h.t.toggle();
-  const third = await h.t.toggle();
-  assert.deepEqual([second, third], [{ kind: "busy" }, { kind: "busy" }]);
+  const first = h.t.follow();
+  assert.deepEqual([await h.t.follow(), await h.t.unfollow()], [{ kind: "busy" }, { kind: "busy" }]);
   release();
   assert.deepEqual(await first, { kind: "done", ok: true, following: true });
   assert.deepEqual(h.writes, [true]);
   assert.equal(h.t.writes(), 1);
 });
 
-test("guests are handed back to the component (email flow) — no write, no state change", async () => {
+test("guests are handed back to the component (account prompt) — no write, no state change", async () => {
   const h = harness({ signedIn: false });
-  assert.deepEqual(await h.t.toggle(), { kind: "guest" });
+  assert.deepEqual(await h.t.follow(), { kind: "guest" });
   assert.deepEqual([h.writes, h.states], [[], []]);
 });
 
@@ -176,8 +193,8 @@ test("early tap: a signed-in visitor tapping before the session check settles st
   let resolveSession;
   const session = new Promise((r) => (resolveSession = r));
   const h = harness({ signedIn: () => session });
-  const tap = h.t.toggle();
-  assert.deepEqual(await h.t.toggle(), { kind: "busy" }, "no second path while resolving");
+  const tap = h.t.follow();
+  assert.deepEqual(await h.t.follow(), { kind: "busy" }, "no second path while resolving");
   resolveSession(true);
   assert.deepEqual(await tap, { kind: "done", ok: true, following: true });
   assert.deepEqual(h.writes, [true]);
@@ -194,67 +211,271 @@ test("writeAccountFollow posts { slug, following } and maps failures to null", a
   assert.deepEqual(C.ACCOUNT_FOLLOW_ENDPOINT, { business: "/api/account/follow", event: "/api/account/follow-event", location: "/api/account/follow-location" });
 });
 
+// ── Pending Follow across sign-up / log-in ────────────────────────────────
+
+function memStorage() {
+  const m = new Map();
+  return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+}
+const T0 = Date.parse("2026-10-12T12:00:00Z");
+const H24 = 24 * 60 * 60 * 1000;
+
+test("marker: device-bound, intent + kind + slug bound; claimed (removed) on match", () => {
+  const s = memStorage();
+  C.writePendingFollow(s, "business", "acme-beauty", T0);
+  assert.deepEqual(JSON.parse(s.getItem(C.PENDING_FOLLOW_KEY)), { v: 1, intent: "follow", kind: "business", slug: "acme-beauty", at: T0 });
+  assert.equal(C.takePendingFollow(s, "business", "acme-beauty", T0 + 1000), true);
+  assert.equal(s.getItem(C.PENDING_FOLLOW_KEY), null, "removed once claimed");
+  assert.equal(C.takePendingFollow(s, "business", "acme-beauty", T0 + 2000), false, "can't be claimed twice");
+});
+
+test("marker: 24-hour boundary — exactly 24 h is valid, one ms later is expired and cleared", () => {
+  assert.equal(C.PENDING_FOLLOW_TTL_MS, H24);
+  const ok = memStorage();
+  C.writePendingFollow(ok, "event", "spring-market", T0);
+  assert.equal(C.takePendingFollow(ok, "event", "spring-market", T0 + H24), true);
+  const late = memStorage();
+  C.writePendingFollow(late, "event", "spring-market", T0);
+  assert.equal(C.takePendingFollow(late, "event", "spring-market", T0 + H24 + 1), false);
+  assert.equal(late.getItem(C.PENDING_FOLLOW_KEY), null, "expired marker cleared");
+  const future = memStorage();
+  C.writePendingFollow(future, "event", "spring-market", T0 + 60 * 60 * 1000);
+  assert.equal(C.takePendingFollow(future, "event", "spring-market", T0), false, "a marker from the future is invalid");
+});
+
+test("marker: mismatched entity cannot create a Follow (and is left for its own control)", () => {
+  const s = memStorage();
+  C.writePendingFollow(s, "business", "acme-beauty", T0);
+  assert.equal(C.takePendingFollow(s, "business", "other-brand", T0 + 1), false);
+  assert.equal(C.takePendingFollow(s, "location", "acme-beauty", T0 + 1), false, "kind must match too");
+  assert.notEqual(s.getItem(C.PENDING_FOLLOW_KEY), null);
+  assert.equal(C.takePendingFollow(s, "business", "acme-beauty", T0 + 2), true);
+});
+
+test("marker: malformed or wrong-intent markers are ignored and cleared; missing storage never throws", () => {
+  for (const raw of ["not json", "{}", JSON.stringify({ v: 1, intent: "save", kind: "business", slug: "a", at: T0 }), JSON.stringify({ v: 1, intent: "follow", kind: "product", slug: "a", at: T0 }), JSON.stringify({ v: 1, intent: "follow", kind: "business", slug: "", at: T0 })]) {
+    const s = memStorage();
+    s.setItem(C.PENDING_FOLLOW_KEY, raw);
+    assert.equal(C.takePendingFollow(s, "business", "a", T0), false, raw);
+    assert.equal(s.getItem(C.PENDING_FOLLOW_KEY), null, raw);
+  }
+  const broken = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); }, removeItem() { throw new Error("blocked"); } };
+  assert.doesNotThrow(() => C.writePendingFollow(broken, "business", "a", T0));
+  assert.equal(C.takePendingFollow(broken, "business", "a", T0), false);
+});
+
+test("crafted ?follow=1 without a marker cannot create a Follow", () => {
+  assert.equal(C.hasFollowResume("?follow=1"), true);
+  assert.equal(C.takePendingFollow(memStorage(), "business", "acme-beauty", T0), false);
+});
+
+test("return URL: path + legitimate query + follow=1, accepted by the existing safe-redirect", async () => {
+  const { getSafeRedirect } = await import("../src/lib/auth/safe-redirect.ts");
+  const next = C.followResumeNext("/event/spring-market", "?occurrence=abc&ref=home");
+  assert.equal(next, "/event/spring-market?occurrence=abc&ref=home&follow=1");
+  assert.equal(getSafeRedirect(next), next);
+  assert.equal(C.followResumeNext("/business/acme", ""), "/business/acme?follow=1");
+  assert.deepEqual(C.accountEntryHrefs(next), {
+    signup: `/signup?next=${encodeURIComponent(next)}`,
+    login: `/login?next=${encodeURIComponent(next)}`,
+  });
+});
+
+test("URL cleanup removes only the resume parameter, preserving unrelated params and hash", () => {
+  assert.equal(C.withoutFollowResume("/event/x", "?occurrence=abc&follow=1&ref=home", "#hours"), "/event/x?occurrence=abc&ref=home#hours");
+  assert.equal(C.withoutFollowResume("/business/x", "?follow=1", ""), "/business/x");
+  assert.equal(C.withoutFollowResume("/business/x", "?ref=home", ""), null, "nothing to clean");
+});
+
+/** Simulates the hook's resume step exactly as written (claim → clean URL
+ * → at most one follow), against the real controller. */
+async function resume({ signedIn, marker, search, kind = "business", slug = "acme-beauty", serverFollowing = false, write }) {
+  const s = memStorage();
+  if (marker) C.writePendingFollow(s, marker.kind, marker.slug, marker.at);
+  let url = `/business/${slug}${search}`;
+  const h = harness({ signedIn, initial: serverFollowing, write });
+  if (!signedIn || !C.hasFollowResume(search)) return { writes: h.writes, url, storage: s };
+  const claimed = C.takePendingFollow(s, kind, slug, T0 + 1000);
+  url = C.withoutFollowResume(`/business/${slug}`, search, "") ?? url;
+  if (claimed && !h.state) await h.t.follow();
+  return { writes: h.writes, url, storage: s, state: h.state };
+}
+
+test("successful resume creates exactly one Follow, clears the marker and cleans the URL", async () => {
+  const r = await resume({ signedIn: true, marker: { kind: "business", slug: "acme-beauty", at: T0 }, search: "?ref=home&follow=1" });
+  assert.deepEqual(r.writes, [true]);
+  assert.equal(r.state, true);
+  assert.equal(r.url, "/business/acme-beauty?ref=home");
+  assert.equal(r.storage.getItem(C.PENDING_FOLLOW_KEY), null);
+});
+
+test("resume never writes without the marker, for a mismatched entity, when signed out, or when already following", async () => {
+  assert.deepEqual((await resume({ signedIn: true, marker: null, search: "?follow=1" })).writes, [], "crafted link");
+  assert.deepEqual((await resume({ signedIn: true, marker: { kind: "business", slug: "other", at: T0 }, search: "?follow=1" })).writes, [], "mismatch");
+  assert.deepEqual((await resume({ signedIn: false, marker: { kind: "business", slug: "acme-beauty", at: T0 }, search: "?follow=1" })).writes, [], "useless without a session");
+  assert.deepEqual((await resume({ signedIn: true, marker: { kind: "business", slug: "acme-beauty", at: T0 - H24 - 5000 }, search: "?follow=1" })).writes, [], "expired");
+  assert.deepEqual((await resume({ signedIn: true, marker: { kind: "business", slug: "acme-beauty", at: T0 }, search: "?follow=1", serverFollowing: true })).writes, [], "already following");
+});
+
+test("failed automatic completion does not loop: one attempt, marker gone, URL clean, Follow still available", async () => {
+  let attempts = 0;
+  const r = await resume({ signedIn: true, marker: { kind: "business", slug: "acme-beauty", at: T0 }, search: "?follow=1", write: async () => (attempts++, null) });
+  assert.equal(attempts, 1);
+  assert.equal(r.state, false, "reverted to Follow");
+  assert.equal(r.storage.getItem(C.PENDING_FOLLOW_KEY), null, "nothing left to retry");
+  assert.equal(r.url, "/business/acme-beauty", "no follow=1 left to retrigger");
+});
+
+test("hook wires the resume exactly that way (claim before the single attempt, URL cleaned, no retry)", () => {
+  const src = code("src/lib/useAccountFollow.ts");
+  assert.match(src, /const resume = typeof window !== "undefined" && hasFollowResume\(window\.location\.search\);/, "captured at mount");
+  assert.match(src, /if \(cancelled \|\| !isAuthed\) return;/, "signed-in only");
+  assert.match(src, /claimed = takePendingFollow\(window\.localStorage, kind, slug, Date\.now\(\)\);/);
+  assert.match(src, /window\.history\.replaceState\(window\.history\.state, "", clean\)/);
+  assert.match(src, /if \(claimed && !followingRef\.current\) await controller\(\)\.follow\(\);/);
+  assert.equal((src.match(/\.follow\(\)/g) ?? []).length, 2, "resume + the tap — no retry loop");
+  assert.match(src, /controller\(\)\.writes\(\) === writesAtStart/, "late initial read never overwrites a tap");
+});
+
+// ── Copy ──────────────────────────────────────────────────────────────────
+
+test("unfollow confirmation copy — approved, entity-aware, no notification promises", () => {
+  assert.deepEqual(C.unfollowConfirmCopy("business", "Acme"), {
+    title: "Unfollow Acme?",
+    message: "Acme will be removed from your Following list, and its upcoming appearances won't show in your Findmi schedule.",
+  });
+  assert.equal(C.unfollowConfirmCopy("location", "The Hall").message, "The Hall will be removed from your Following list, and what's happening there won't show in your Findmi schedule.");
+  assert.equal(C.unfollowConfirmCopy("event", "Spring Market").message, "Spring Market will be removed from your Following list, and its dates won't show in your Findmi schedule.");
+  for (const k of ["business", "location", "event"]) assert.doesNotMatch(C.unfollowConfirmCopy(k, "X").message, /notif|alert|email|update/i);
+  assert.equal(C.UNFOLLOW_FAILED_MESSAGE, "Couldn't unfollow. Please try again.");
+});
+
+test("account prompt copy — follow and legacy-device variants", () => {
+  assert.deepEqual(C.followPromptCopy("follow", "Acme"), {
+    title: "Follow Acme on Findmi",
+    body: "Create a free Findmi account to follow the brands, places and events you care about and keep your discoveries together.",
+  });
+  const legacy = C.followPromptCopy("legacy", "Acme");
+  assert.match(legacy.body, /manage/);
+  assert.match(legacy.body, /account/);
+  assert.doesNotMatch(`${legacy.title} ${legacy.body}`, /notif|save/i, "never blurs Follow with Save");
+});
+
 // ── Components ────────────────────────────────────────────────────────────
 
 const COMPONENTS = [
-  ["business", "src/components/FollowButton.tsx", "businessName", "/api/follow"],
-  ["event", "src/components/EventFollowButton.tsx", "eventName", "/api/follow-event"],
-  ["location", "src/components/LocationFollowButton.tsx", "locationName", "/api/follow-location"],
+  ["business", "src/components/FollowButton.tsx", "/api/follow"],
+  ["event", "src/components/EventFollowButton.tsx", "/api/follow-event"],
+  ["location", "src/components/LocationFollowButton.tsx", "/api/follow-location"],
 ];
+const CONTROL = "src/components/useFollowControl.tsx";
 
-for (const [kind, file, nameProp, guestRoute] of COMPONENTS) {
-  test(`${kind}: authenticated Following is the same interactive control (tap to unfollow)`, () => {
+for (const [kind, file, guestRoute] of COMPONENTS) {
+  test(`${kind}: one shared control; guest Follow opens the account prompt, never an email form`, () => {
     const src = code(file);
-    assert.match(src, new RegExp(`useAccountFollow\\("${kind}", `));
-    assert.doesNotMatch(src, /getAccountSession|handleAuthedFollow|setFollowing\(/, "no private signed-in logic left");
-    // The one button: both states, one onClick, aria-pressed reflects state.
-    assert.match(src, /<button\s+ref=\{buttonRef\}\s+type="button"\s+onClick=\{handleTap\}\s+aria-pressed=\{authed \? following : undefined\}/);
-    assert.match(src, new RegExp("aria-label=\\{following \\? `Unfollow \\$\\{" + nameProp + "\\}` : undefined\\}"));
-    assert.match(src, /if \(result\.kind === "guest"\) \{\s*openModal\(\);/);
-    // No separate Unfollow control.
-    assert.doesNotMatch(src, />\s*Unfollow\s*</);
-  });
-
-  test(`${kind}: guest Following stays non-interactive; guest email flow unchanged`, () => {
-    const src = code(file);
-    assert.match(src, /if \(following && !authed( && action)?\) \{\s*return \(\s*<span\s+role="status"/);
-    assert.match(src, new RegExp(`fetch\\("${guestRoute}", \\{`));
-    assert.match(src, /markGuestFollowing\(\);/);
+    assert.match(src, new RegExp(`useFollowControl\\(\\{\\s*kind: "${kind}",`));
+    assert.match(src, /<button\s+\{\.\.\.buttonProps\}/);
+    assert.match(src, /\{overlays\}/);
+    assert.doesNotMatch(src, /type="email"|Email address|handleSubmit|createPortal|<form/, "email form removed");
+    assert.doesNotMatch(src, new RegExp(`fetch\\("${guestRoute}"`), "guest email API no longer called");
+    assert.doesNotMatch(src, /role="status"/, "no dead read-only chip");
+    assert.doesNotMatch(src, />\s*Unfollow\s*</, "no separate Unfollow control");
   });
 }
 
-test("compact Following check is interactive and accessible (Business + Location), footprint preserved", () => {
+test("shared control: guest → prompt; legacy guest Following → prompt; signed-in Following → confirmation (no write)", () => {
+  const src = code(CONTROL);
+  const click = src.slice(src.indexOf("async function onClick()"), src.indexOf("const closePrompt"));
+  assert.match(click, /if \(following\) \{\s*if \(await isSignedIn\(\)\) \{\s*setConfirmError\(null\);\s*setConfirming\(true\);\s*\} else \{\s*setPrompt\("legacy"\);/);
+  assert.doesNotMatch(click.slice(0, click.indexOf("const result")), /unfollow\(|fetch\(/, "opening the confirmation writes nothing");
+  assert.match(click, /const result = await follow\(\);\s*if \(result\.kind === "guest"\) setPrompt\("follow"\);/);
+});
+
+test("shared control: Keep Following writes nothing; Unfollow sends one following:false; failure keeps dialog + Following", () => {
+  const src = code(CONTROL);
+  const cancel = src.slice(src.indexOf("const cancelConfirm"), src.indexOf("async function confirmUnfollow"));
+  assert.doesNotMatch(cancel, /unfollow|fetch|follow\(/, "Keep Following = zero writes");
+  assert.match(cancel, /buttonRef\.current\?\.focus\(\);/, "focus returns to the control");
+  const confirm = src.slice(src.indexOf("async function confirmUnfollow"), src.indexOf("const copy ="));
+  assert.equal((confirm.match(/unfollow\(\)/g) ?? []).length, 1);
+  assert.match(confirm, /if \(result\.kind === "done" && result\.ok && !result\.following\) \{\s*setConfirming\(false\);\s*track\("unfollow"\);\s*refocus\(\);\s*return;\s*\}\s*setConfirmError\(UNFOLLOW_FAILED_MESSAGE\);/);
+  assert.match(src, /cancelLabel="Keep Following"\s+confirmLabel="Unfollow"/);
+  assert.match(src, /const closePrompt = useCallback\(\(\) => \{\s*setPrompt\(null\);\s*buttonRef\.current\?\.focus\(\);/, "prompt close returns focus");
+});
+
+test("compact Following ✓ stays an accessible button with the same footprint", () => {
+  const src = code(CONTROL);
+  assert.match(src, /"aria-label": following \? \(legacyGuest \? `Following \$\{name\}: log in to manage` : `Unfollow \$\{name\}`\) : undefined/);
   const biz = code("src/components/FollowButton.tsx");
-  assert.match(biz, /\? `flex \$\{h\} w-9 shrink-0 items-center justify-center rounded-lg bg-findmi text-white transition hover:bg-findmi-600`/, "same w-9 square");
-  assert.match(biz, /\{!compact && "Following"\}/, "check-only when compact");
+  assert.match(biz, /\? `flex \$\{h\} w-9 shrink-0 items-center justify-center rounded-lg bg-findmi text-white transition hover:bg-findmi-600`/);
+  assert.match(biz, /\{!compact && "Following"\}/);
   const loc = code("src/components/LocationFollowButton.tsx");
-  assert.match(loc, /: `flex \$\{h\} w-9 shrink-0 items-center justify-center rounded-lg transition \$\{/, "same w-9 square");
-  assert.match(loc, /action \? \(\s*<>\s*<CheckGlyph className="hidden h-3\.5 w-3\.5 shrink-0 min-\[375px\]:block" \/>\s*Following\s*<\/>\s*\) : \(\s*<CheckGlyph className="h-4 w-4" \/>/);
-  // Cards still render the compact variants.
-  assert.match(read("src/components/BusinessLogoCard.tsx"), /<FollowButton businessId=\{business\.id\} businessSlug=\{business\.slug\} businessName=\{business\.name\} size="compact" \/>/);
-  assert.match(read("src/components/discover/FeaturedLocationCard.tsx"), /<LocationFollowButton locationId=\{location\.id\} locationSlug=\{location\.slug\} locationName=\{location\.name\} size="compact" \/>/);
+  assert.match(loc, /: `flex \$\{h\} w-9 shrink-0 items-center justify-center rounded-lg transition \$\{followingTone\}`/);
 });
 
-test("shared hook: resolves auth + server state, never lets a late initial read overwrite a tap", () => {
-  const src = code("src/lib/useAccountFollow.ts");
-  assert.match(src, /^"use client";/);
-  assert.match(src, /getAccountSession\(\)\.then\(\(isAuthed\) =>/);
-  assert.match(src, /controller\(\)\.writes\(\) === writesAtStart/);
-  assert.match(src, /if \(controllerRef\.current === null\) \{\s*controllerRef\.current = createFollowToggle\(/, "one controller per control");
+test("prompt: existing /signup and /login with safe next; marker written only for a Follow, only on choosing an account action", () => {
+  const src = code("src/components/FollowSignInPrompt.tsx");
+  assert.match(src, /const next = variant === "follow" \? followResumeNext\(pathname, search\) : `\$\{pathname\}\$\{search\}`;/);
+  assert.match(src, /function rememberIntent\(\) \{\s*if \(variant !== "follow"\) return;/, "legacy prompt migrates/writes nothing");
+  assert.match(src, /href=\{hrefs\.signup\}\s+onClick=\{rememberIntent\}/);
+  assert.match(src, /href=\{hrefs\.login\} onClick=\{rememberIntent\}/);
+  assert.match(src, />\s*Create Free Account\s*</);
+  assert.match(src, /Already have an account\?\{" "\}/);
+  assert.match(src, />\s*Not Now\s*</);
+  assert.doesNotMatch(src, /fetch\(|type="email"/);
 });
 
-test("account Following × sends following:false (never toggle) and hides only on success", () => {
+test("ConfirmDialog: the one confirmation primitive — safe-action focus, Escape/backdrop cancel, focus trap, inline error", () => {
+  const src = code("src/components/ConfirmDialog.tsx");
+  assert.match(src, /role="alertdialog"/);
+  assert.match(src, /cancelRef\.current\?\.focus\(\);/);
+  assert.match(src, /if \(e\.key === "Escape"\) onCancel\(\);/);
+  assert.match(src, /onClick=\{onCancel\} aria-hidden="true"/);
+  assert.match(src, /\{error && \(\s*<p role="alert"/);
+});
+
+test("SignOutConfirm has no regression — same copy and labels through the shared dialog", () => {
+  const src = code("src/components/SignOutConfirm.tsx");
+  assert.match(src, /import ConfirmDialog from "\.\/ConfirmDialog";/);
+  assert.match(src, /title="Sign out\?"\s+message="Are you sure you want to sign out of Findmi\?"\s+cancelLabel="Cancel"\s+confirmLabel="Sign Out"\s+pendingLabel="Signing Out…"/);
+  assert.match(src, /onCancel=\{close\}\s+onConfirm=\{confirmSignOut\}/);
+  assert.match(src, /function close\(\) \{\s*setOpen\(false\);\s*triggerRef\.current\?\.focus\(\);/);
+  assert.match(src, /await action\(\);/);
+  // Dialog look unchanged.
+  const dialog = code("src/components/ConfirmDialog.tsx");
+  for (const cls of [
+    "relative w-full max-w-xs rounded-3xl border border-black/5 bg-white p-5 shadow-xl",
+    "rounded-full border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-black/[0.03] disabled:opacity-60",
+    "rounded-full border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60",
+    "fixed inset-0 z-[70] flex items-center justify-center p-4",
+  ]) assert.ok(dialog.includes(cls), cls);
+});
+
+test("account Following ×: confirmation first; Unfollow sends following:false; failure keeps dialog and card", () => {
   const src = code("src/app/(public)/account/following/FollowingUnfollowButton.tsx");
+  const trigger = src.slice(src.indexOf("onClick={() => {"), src.indexOf("className=\"absolute"));
+  assert.match(trigger, /setConfirming\(true\);/);
+  assert.doesNotMatch(trigger, /fetch/, "the × itself writes nothing");
   assert.match(src, /body: JSON\.stringify\(\{ slug, following: false \}\)/);
   assert.doesNotMatch(src, /JSON\.stringify\(\{ slug \}\)/);
-  assert.match(src, /if \(!res\.ok\) return;/);
-  assert.match(src, /aria-label=\{`Unfollow \$\{name\}`\}/);
+  assert.match(src, /if \(!ok\) \{\s*setError\(UNFOLLOW_FAILED_MESSAGE\);\s*return;\s*\}/);
+  assert.match(src, /cancelLabel="Keep Following"\s+confirmLabel="Unfollow"/);
+  const cancel = src.slice(src.indexOf("const cancel = useCallback"), src.indexOf("async function confirmUnfollow"));
+  assert.doesNotMatch(cancel, /fetch/);
+  assert.match(cancel, /triggerRef\.current\?\.focus\(\);/);
   const page = read("src/app/(public)/account/following/page.tsx");
   for (const k of ["business", "event", "location"]) assert.match(page, new RegExp(`<FollowingUnfollowButton kind="${k}" slug=\\{\\w\\.slug\\} name=\\{\\w\\.name\\} />`), k);
 });
 
+test("legacy guest infrastructure stays dormant, not deleted", () => {
+  for (const f of ["src/app/api/follow/route.ts", "src/app/api/follow-event/route.ts", "src/app/api/follow-location/route.ts", "src/lib/followed.ts", "src/lib/followedEvents.ts", "src/lib/followedLocations.ts", "src/lib/accountSync.ts"]) {
+    assert.ok(read(f).length > 0, f);
+  }
+  assert.match(read("src/lib/accountSync.ts"), /followedBusinessSlugs/, "sign-in sync still carries legacy device follows");
+});
+
 test("Saved behavior untouched — Saved code never uses the Follow modules", () => {
-  for (const f of ["src/lib/saved.ts", "src/app/api/account/save/route.ts", "src/app/api/saved/route.ts", "src/components/EventSaveButton.tsx", "src/app/(public)/account/saved/page.tsx"]) {
-    assert.doesNotMatch(read(f), /useAccountFollow|account-follow-(client|server)|account_followed_/, f);
+  for (const f of ["src/lib/saved.ts", "src/app/api/account/save/route.ts", "src/app/api/saved/route.ts", "src/components/SaveButton.tsx", "src/components/EventSaveButton.tsx", "src/components/LocationSaveButton.tsx", "src/app/(public)/account/saved/page.tsx"]) {
+    assert.doesNotMatch(read(f), /useAccountFollow|useFollowControl|account-follow-(client|server)|account_followed_|FollowSignInPrompt/, f);
   }
 });

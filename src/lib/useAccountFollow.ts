@@ -2,15 +2,27 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccountSession } from "@/lib/accountSession";
-import { ACCOUNT_FOLLOW_ENDPOINT, createFollowToggle, writeAccountFollow, type AccountFollowKind } from "@/lib/account-follow-client";
+import {
+  ACCOUNT_FOLLOW_ENDPOINT,
+  createFollowToggle,
+  hasFollowResume,
+  takePendingFollow,
+  withoutFollowResume,
+  writeAccountFollow,
+  type AccountFollowKind,
+} from "@/lib/account-follow-client";
 
 /** Shared signed-in Follow state for FollowButton / EventFollowButton /
- * LocationFollowButton. Starts from this device's own guest flag
+ * LocationFollowButton. Starts from this device's own legacy guest flag
  * (`guestFollowed`), then — once the visitor is known to be signed in —
- * the account's real server state. `toggle()` returns "guest" for a
- * visitor who isn't signed in, so the component runs its own (unchanged)
- * email-capture flow; signed-in taps are explicit, optimistic,
- * single-flight writes (lib/account-follow-client.ts). */
+ * the account's real server state.
+ *
+ * follow(): one tap, optimistic, reverted on failure; "guest" for a
+ * visitor who isn't signed in (the component opens the account prompt).
+ * unfollow(): only after the component's confirmation; waits for the
+ * server. Returning from sign-up/log-in with follow=1 completes a pending
+ * Follow ONCE when this device holds a matching, unexpired marker
+ * (lib/account-follow-client.ts) — never from the URL alone. */
 export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFollowed: () => boolean) {
   const [following, setFollowingState] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -41,18 +53,34 @@ export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFol
 
   useEffect(() => {
     setFollowing(guestFollowed());
+    // Captured synchronously at mount — before any control on the page
+    // removes the parameter from the URL.
+    const resume = typeof window !== "undefined" && hasFollowResume(window.location.search);
     let cancelled = false;
     const writesAtStart = controller().writes();
-    getAccountSession().then((isAuthed) => {
+    getAccountSession().then(async (isAuthed) => {
       if (cancelled || !isAuthed) return;
       setAuthed(true);
-      fetch(`${ACCOUNT_FOLLOW_ENDPOINT[kind]}?slug=${encodeURIComponent(slug)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { following?: boolean } | null) => {
-          // A tap made meanwhile already holds the newer state.
-          if (!cancelled && data && controller().writes() === writesAtStart) setFollowing(Boolean(data.following));
-        })
-        .catch(() => {});
+      try {
+        const res = await fetch(`${ACCOUNT_FOLLOW_ENDPOINT[kind]}?slug=${encodeURIComponent(slug)}`);
+        const data = res.ok ? ((await res.json()) as { following?: boolean }) : null;
+        // A tap made meanwhile already holds the newer state.
+        if (!cancelled && data && controller().writes() === writesAtStart) setFollowing(Boolean(data.following));
+      } catch {
+        // Keep the current state.
+      }
+      if (cancelled || !resume) return;
+      // Pending Follow from before sign-up/log-in: claimed (removed) before
+      // the single attempt; never retried, so a failure can't loop.
+      let claimed = false;
+      try {
+        claimed = takePendingFollow(window.localStorage, kind, slug, Date.now());
+      } catch {
+        claimed = false;
+      }
+      const clean = withoutFollowResume(window.location.pathname, window.location.search, window.location.hash);
+      if (clean !== null) window.history.replaceState(window.history.state, "", clean);
+      if (claimed && !followingRef.current) await controller().follow();
     });
     return () => {
       cancelled = true;
@@ -61,8 +89,14 @@ export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, slug, setFollowing]);
 
-  const toggle = useCallback(async () => {
-    const result = await (controllerRef.current as ReturnType<typeof createFollowToggle>).toggle();
+  const follow = useCallback(async () => {
+    const result = await (controllerRef.current as ReturnType<typeof createFollowToggle>).follow();
+    if (result.kind === "done") setAuthed(true);
+    return result;
+  }, []);
+
+  const unfollow = useCallback(async () => {
+    const result = await (controllerRef.current as ReturnType<typeof createFollowToggle>).unfollow();
     if (result.kind === "done") setAuthed(true);
     return result;
   }, []);
@@ -71,8 +105,9 @@ export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFol
     following,
     authed,
     pending,
-    toggle,
-    /** The guest email flow succeeded on this device. */
-    markGuestFollowing: () => setFollowing(true),
+    follow,
+    unfollow,
+    /** Resolves the signed-in state (cached per page load). */
+    isSignedIn: getAccountSession,
   };
 }
