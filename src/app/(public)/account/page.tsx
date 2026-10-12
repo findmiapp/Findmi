@@ -24,6 +24,8 @@ import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import PersonalAppShell from "./PersonalAppShell";
 import AccountErrorBanner from "./AccountErrorBanner";
+import CreatedBusinessCard from "./CreatedBusinessCard";
+import { resolveCreatedBusiness } from "@/lib/account-created-business";
 import type { ManagedEntity } from "./ManageOnFindmiList";
 import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
@@ -114,9 +116,9 @@ async function getProBusinessIdSet(
 export default async function AccountHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; event_management?: string }>;
+  searchParams: Promise<{ error?: string; event_management?: string; created?: string }>;
 }) {
-  const { error, event_management: eventManagementGranted } = await searchParams;
+  const { error, event_management: eventManagementGranted, created } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
@@ -357,6 +359,13 @@ export default async function AccountHomePage({
   addWorld(personalGraph.followedEvents, "event", (r) => `/event/${r.slug}`);
   addWorld(personalGraph.savedLocations, "location", (r) => `/location/${r.slug}`);
   addWorld(personalGraph.followedLocations, "location", (r) => `/location/${r.slug}`);
+  // VCL A2 — `created` (set by Brand onboarding's redirect) is only a
+  // hint: it is honored solely when it names one of THIS user's own
+  // Businesses (myBusinesses comes from their own business_members rows)
+  // that is still pending review. Anything else — malformed, someone
+  // else's, unknown, or already live — renders the ordinary Account Home.
+  const createdBusiness = resolveCreatedBusiness(created, myBusinesses);
+
   const worldTiles = [...worldByEntity.values()]
     .sort((a, b) => (a.relatedAt < b.relatedAt ? 1 : a.relatedAt > b.relatedAt ? -1 : 0))
     .slice(0, WORLD_LIMIT);
@@ -428,6 +437,17 @@ export default async function AccountHomePage({
       <header className="[&>h1]:text-page-title [&>h1]:font-semibold [&>h1]:text-secondary">
         <Greeting />
       </header>
+
+      {createdBusiness && (
+        <CreatedBusinessCard
+          business={{
+            id: createdBusiness.id,
+            name: createdBusiness.name,
+            slug: createdBusiness.slug,
+            imageUrl: createdBusiness.logoUrl ?? createdBusiness.coverImageUrl,
+          }}
+        />
+      )}
 
       {error && <AccountErrorBanner error={error} />}
       {eventManagementGranted === "1" && !error && (

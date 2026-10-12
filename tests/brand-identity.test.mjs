@@ -491,7 +491,7 @@ test("creation: images imported only after the RPC, only if selected, from the s
   const store = CREATE.indexOf("storeBrandImage(admin, verified.image)");
   const save = CREATE.indexOf("...(logoUrl ? { logo_url: logoUrl } : {})");
   const clear = CREATE.indexOf("await clearBrandDraftCookie();");
-  const brandRedirect = CREATE.indexOf("if (brandOnboarding) redirect(`/account/business/${businessId}?tab=profile&created=1`);");
+  const brandRedirect = CREATE.indexOf("if (brandOnboarding) redirect(`/account?created=${businessId}`);");
   assert.ok(rpc > 0 && rpc < text && text < read_ && read_ < verify && verify < store && store < save && save < clear && clear < brandRedirect);
   assert.match(CREATE, /\["logo", useLogo \? draft\?\.logo : undefined\]/, "deselected → nothing fetched or stored");
   assert.match(CREATE, /const useLogo = brandDraftFlag && str\(formData, "use_logo"\) === "1";/);

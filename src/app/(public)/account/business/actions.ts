@@ -1538,10 +1538,12 @@ export async function createMemberBusiness(formData: FormData) {
     redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);
   }
 
-  // Brand Onboarding lands inside the new Business, on its Profile (logo,
-  // gallery, links) — the next thing to complete. Every other creation
-  // path keeps its existing landing.
-  if (brandOnboarding) redirect(`/account/business/${businessId}?tab=profile&created=1`);
+  // VCL A2 — Brand Onboarding completes on Account Home (top), which
+  // confirms the submission and its Pending Review status for THIS
+  // Business (validated there against the user's own memberships), with
+  // Preview and Manage. Every other creation path keeps its existing
+  // landing (the Business workspace Overview).
+  if (brandOnboarding) redirect(`/account?created=${businessId}`);
   redirect(`/account/business/${businessId}?created=1`);
 }
 

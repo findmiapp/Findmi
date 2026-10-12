@@ -204,14 +204,14 @@ test("Review Your Brand presentation: same form, no Free/Pro picker, Add My Bran
   assert.equal(C.parseBrandSource("admin"), false);
 });
 
-test("createMemberBusiness: source=brand ignores plan_choice, round-trips the flag, and lands on the Profile", () => {
+test("createMemberBusiness: source=brand ignores plan_choice, round-trips the flag, and lands on Account Home (VCL A2)", () => {
   assert.match(CREATE, /const brandOnboarding = parseBrandSource\(str\(formData, "source"\)\);\s*const planChoiceRaw = brandOnboarding \? null : str\(formData, "plan_choice"\);/);
   assert.match(CREATE, /source: brandOnboarding \? BRAND_SOURCE : null,/, "kept through every preservedFields error redirect");
   const invite = CREATE.indexOf("if (inviteRaw) {");
   const pro = CREATE.indexOf('if (planChoiceRaw === "pro") {');
-  const brand = CREATE.indexOf("if (brandOnboarding) redirect(`/account/business/${businessId}?tab=profile&created=1`);");
+  const brand = CREATE.indexOf("if (brandOnboarding) redirect(`/account?created=${businessId}`);");
   const normal = CREATE.lastIndexOf("redirect(`/account/business/${businessId}?created=1`);");
-  assert.ok(invite > 0 && invite < pro && pro < brand && brand < normal, "invite → Pro (non-brand only) → brand profile → unchanged default");
+  assert.ok(invite > 0 && invite < pro && pro < brand && brand < normal, "invite → Pro (non-brand only) → brand → Account Home → unchanged default");
   // Matcher still runs before the unchanged create RPC.
   assert.ok(CREATE.indexOf("await findBusinessMatches(admin") < CREATE.indexOf('admin.rpc("create_owned_business"'));
   assert.doesNotMatch(CREATE.slice(CREATE.indexOf('admin.rpc("create_owned_business"'), CREATE.indexOf("});", CREATE.indexOf('admin.rpc("create_owned_business"'))), /source|plan/);

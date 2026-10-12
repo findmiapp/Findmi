@@ -1785,8 +1785,9 @@ export default async function ManageBusinessPage({
         {activeTab === "profile" && (
           <div className="flex flex-col gap-4 lg:max-w-5xl">
           <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Business Profile</h1>
-          {/* Brand Onboarding lands here (?tab=profile&created=1) — same
-              confirmation the Overview shows for other creation paths. */}
+          {/* ?tab=profile&created=1 shows the same confirmation the
+              Overview shows (Brand onboarding now completes on Account
+              Home — /account?created=<id>, VCL A2). */}
           {created && (
             <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
               Business created! Add your logo, photos and links below to finish your profile.
