@@ -289,7 +289,7 @@ test("logging: host/outcome/timings/counts/booleans only — no HTML, text, quer
   const { deps, calls } = makeDeps();
   await run(deps, "https://lavazza.com/us?secret=token", "user-secret-id");
   const entry = calls.logs[0];
-  assert.deepEqual(Object.keys(entry).sort(), ["ai", "aiCacheCreationInputTokens", "aiCacheReadInputTokens", "aiCalled", "aiEstimatedCostUsd", "aiFromCache", "aiInputTokens", "aiModel", "aiOutputTokens", "bytes", "cached", "declaredSizeExceededOldLimit", "event", "fields", "host", "match", "ms", "outcome", "redirects", "size", "truncated"]);
+  assert.deepEqual(Object.keys(entry).sort(), ["ai", "aiCacheCreationInputTokens", "aiCacheReadInputTokens", "aiCalled", "aiEstimatedCostUsd", "aiFromCache", "aiInputTokens", "aiModel", "aiOutputTokens", "bytes", "cached", "declaredSizeExceededOldLimit", "event", "fields", "host", "igSearch", "igSearchCostUsd", "igSearches", "match", "ms", "outcome", "redirects", "size", "truncated"]);
   const json = JSON.stringify(calls.logs);
   for (const leak of ["Italian coffee", "<html", "secret=token", "user-secret-id", "lavazzausa", "New York", "203.0.113.5"]) {
     assert.ok(!json.includes(leak), `log leaks ${leak}`);

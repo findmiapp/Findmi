@@ -269,15 +269,15 @@ test("22/23/24. malformed / wrong-platform / reserved Instagram URLs are rejecte
   }
 });
 
-test("13/14/19/28. no factual search: nothing is searched, and no Instagram URL is ever generated or AI-supplied", () => {
-  const sources = readdirSync("src/lib").filter((f) => f.startsWith("brand-")).map((f) => code(`src/lib/${f}`)).join("\n");
-  assert.doesNotMatch(sources, /\b(web_search|serpapi|bing|tavily|customsearch|brave)\b/i, "no search provider");
+test("13/14/19/28. no Instagram URL is ever generated or AI-supplied; search (A3b) is a gated fallback only", () => {
   // AI enrichment's output schema has no social/URL fields.
   const ai = code("src/lib/brand-ai-enrichment.ts");
   assert.doesNotMatch(ai, /instagram|sameAs|url:\s*z\./i);
-  // The proposal's Instagram is only the visitor's own seed or the page's evidenced handle.
-  assert.match(code("src/lib/brand-candidate-builder.ts"), /const instagramHandle = identity\.instagram \?\? profile\.instagramHandle;/);
-  // A site with no social evidence → no Instagram (missing beats invented).
+  // Deterministic Instagram wins; a searched one is used only at HIGH confidence (see A3b tests).
+  const builder = code("src/lib/brand-candidate-builder.ts");
+  assert.match(builder, /const instagramHandle = identity\.instagram \?\? profile\.instagramHandle;/);
+  assert.match(builder, /const proposedInstagram = instagramHandle \?\? searchedHandle;/);
+  // A site with no social evidence → no Instagram from extraction (missing beats invented).
   assert.equal(extract(page(ORG(), "<footer>Follow us</footer>")).instagramHandle, null);
 });
 

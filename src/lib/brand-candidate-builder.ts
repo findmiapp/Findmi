@@ -5,6 +5,7 @@ import { extractBrandProfile, sameImageSource, type ExtractedBrandProfile } from
 import { SAFE_FETCH_MAX_BYTES, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
 import type { BrandAiEnrichment, BrandAiInput, BrandAiResult, BrandAiUsage } from "./brand-ai-enrichment";
 import type { BrandImageRole } from "./brand-images";
+import type { InstagramDiscovery, InstagramDiscoveryInput, InstagramDiscoveryResult, InstagramDiscoveryStatus, InstagramDiscoveryUsage } from "./brand-instagram-discovery";
 
 /** Brand Ingestion P1 — the shared Brand candidate core: the actual
  * candidate-building work behind the public Brand Builder (and, later,
@@ -184,6 +185,9 @@ export interface BrandEnrichment {
   aiStatus: "used" | "skipped" | "failed";
   logo: string | null;
   cover: string | null;
+  /** VCL A3b — the search-fallback Instagram verdict (memoized so a site is
+   * never searched twice within the cache lifetime). Absent → no search ran. */
+  instagram?: InstagramDiscoveryResult | null;
 }
 
 export interface BrandCandidateDeps {
@@ -196,6 +200,9 @@ export interface BrandCandidateDeps {
   /** VCL A3 — a site's web app manifest → its ranked identity icon URLs
    * (safe fetch + manifestIconCandidates). Optional; [] on any failure. */
   fetchManifestIcons?: (manifestUrl: string) => Promise<string[]>;
+  /** VCL A3b — one bounded, verified Instagram search. Provided only when
+   * paid search is explicitly enabled; absent → never searched. */
+  discoverInstagram?: (input: InstagramDiscoveryInput) => Promise<InstagramDiscovery>;
 }
 
 export interface BrandCandidateOptions {
@@ -215,6 +222,8 @@ export interface BrandAiActivity {
   reused: boolean;
   called: boolean;
   usage: BrandAiUsage | null;
+  /** VCL A3b — this invocation's Instagram search, if one ran (telemetry). */
+  instagramSearch?: { status: InstagramDiscoveryStatus; called: boolean; usage: InstagramDiscoveryUsage | null } | null;
 }
 
 /** The proposed Brand — untrusted candidate values for human review. */
@@ -370,7 +379,16 @@ export async function buildCandidateFromExtraction(
     const images = options.verifyImages
       ? Promise.all([selectVerifiedLogo(logoPool, profile.manifestUrl, deps), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
       : Promise.resolve<[string | null, string | null]>([null, null]);
-    const [enriched, verifiedImages] = await Promise.all([
+    // VCL A3b — search ONLY when no Instagram exists from the visitor's own
+    // seed or the page itself, and only on the enriched (signed-in, drafts)
+    // path with search explicitly enabled. Runs in parallel; never blocks.
+    const searchInstagram = Boolean(options.verifyImages && deps.discoverInstagram && !instagramHandle);
+    const discovery = searchInstagram
+      ? deps.discoverInstagram!({ name, host: website.host }).catch(
+          (): InstagramDiscovery => ({ result: { handle: null, confidence: "none", status: "failed" }, called: true, usage: null })
+        )
+      : Promise.resolve<InstagramDiscovery | null>(null);
+    const [enriched, verifiedImages, discovered] = await Promise.all([
       needsAi
         ? deps
             .enrich({ brandName: name, website: websiteUrl, excerpt: profile.excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
@@ -379,6 +397,7 @@ export async function buildCandidateFromExtraction(
             .catch((): BrandAiEnrichment => ({ result: null, called: true, usage: null }))
         : Promise.resolve<BrandAiEnrichment | null>(null),
       images,
+      discovery,
     ]);
     // The cover is never the selected logo (pools already exclude every
     // logo candidate; this holds even for an older single-pick extraction).
@@ -386,17 +405,26 @@ export async function buildCandidateFromExtraction(
     const cover = sameImageSource(logo, verifiedCover) ? null : verifiedCover;
     const result = enriched?.result ?? null;
     const aiStatus = !needsAi ? "skipped" : result ? "used" : "failed";
-    enrichment = { ai: result, aiStatus, logo, cover };
-    ai = { status: aiStatus, reused: false, called: enriched?.called ?? false, usage: enriched?.usage ?? null };
+    enrichment = { ai: result, aiStatus, logo, cover, ...(discovered ? { instagram: discovered.result } : {}) };
+    ai = {
+      status: aiStatus,
+      reused: false,
+      called: enriched?.called ?? false,
+      usage: enriched?.usage ?? null,
+      ...(discovered ? { instagramSearch: { status: discovered.result.status, called: discovered.called, usage: discovered.usage } } : {}),
+    };
   }
 
   const aiResult = enrichment.ai;
+  // Deterministic Instagram always wins; a searched one only at HIGH confidence.
+  const searchedHandle = enrichment.instagram?.confidence === "high" ? enrichment.instagram.handle : null;
+  const proposedInstagram = instagramHandle ?? searchedHandle;
   const proposal: BrandCandidateProposal = {
     name,
     websiteUrl,
     finalUrl,
-    instagramHandle,
-    instagramUrl,
+    instagramHandle: proposedInstagram,
+    instagramUrl: instagramUrlOf(proposedInstagram),
     categoryId: deterministicCategoryId ?? aiResult?.categoryId ?? null,
     shortDescription: profile.shortDescription ?? aiResult?.shortDescription ?? null,
     about: profile.aboutDescription ?? aiResult?.about ?? null,

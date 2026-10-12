@@ -7,6 +7,13 @@ import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefill
 import { manifestIconCandidates, type ExtractedBrandProfile } from "./brand-website-extract";
 import { safeFetchHtml, safeFetchManifest, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
 import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput } from "./brand-ai-enrichment";
+import {
+  discoverInstagram,
+  instagramSearchEnabled,
+  type InstagramDiscovery,
+  type InstagramDiscoveryInput,
+  type InstagramDiscoveryStatus,
+} from "./brand-instagram-discovery";
 import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
 import {
   buildCandidateFromExtraction,
@@ -138,6 +145,12 @@ export interface WebsiteAnalysisLog {
   aiCacheCreationInputTokens: number | null;
   aiCacheReadInputTokens: number | null;
   aiEstimatedCostUsd: number | null;
+  /** VCL A3b — THIS request's Instagram search (null when none ran):
+   * outcome status, paid searches actually performed and estimated cost
+   * (tokens + searches). Never the query, results or handle. */
+  igSearch: InstagramDiscoveryStatus | null;
+  igSearches: number | null;
+  igSearchCostUsd: number | null;
   match: "none" | "public" | "hidden" | null;
 }
 
@@ -149,6 +162,8 @@ export interface WebsiteAnalysisDeps {
   verifyImage: (url: string, role: BrandImageRole) => Promise<boolean>;
   /** VCL A3 — manifest icons as identity candidates (failure path only). */
   fetchManifestIcons?: (manifestUrl: string) => Promise<string[]>;
+  /** VCL A3b — present only when paid Instagram search is enabled. */
+  discoverInstagram?: (input: InstagramDiscoveryInput) => Promise<InstagramDiscovery>;
   /** V1.1C — BRAND_DRAFT_SECRET configured: build an enriched signed draft.
    * Off → the bounded V1.1B text prefill (no About, no images). */
   draftsEnabled: boolean;
@@ -210,7 +225,7 @@ export async function analyzeBrandWebsite(
   const host = prepared.ok ? prepared.website.host : prepared.host;
   const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ ...seedCandidate(seed), website_url: websiteUrl }, prefill);
 
-  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, size: null, truncated: null, declaredSizeExceededOldLimit: null, cached: false, fields: null, ai: null, aiFromCache: null, aiCalled: null, aiModel: null, aiInputTokens: null, aiOutputTokens: null, aiCacheCreationInputTokens: null, aiCacheReadInputTokens: null, aiEstimatedCostUsd: null, match: null };
+  let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, size: null, truncated: null, declaredSizeExceededOldLimit: null, cached: false, fields: null, ai: null, aiFromCache: null, aiCalled: null, aiModel: null, aiInputTokens: null, aiOutputTokens: null, aiCacheCreationInputTokens: null, aiCacheReadInputTokens: null, aiEstimatedCostUsd: null, igSearch: null, igSearches: null, igSearchCostUsd: null, match: null };
   const finish = (
     href: string,
     outcome: WebsiteAnalysisOutcome,
@@ -334,6 +349,11 @@ async function analyzeSource(
     log.aiEstimatedCostUsd = built.ai.usage.estimatedCostUsd;
   }
   log.ai = built.ai.status;
+  if (built.ai.instagramSearch) {
+    log.igSearch = built.ai.instagramSearch.status;
+    log.igSearches = built.ai.instagramSearch.usage?.searches ?? null;
+    log.igSearchCostUsd = built.ai.instagramSearch.usage?.estimatedCostUsd ?? null;
+  }
 
   const { proposal } = built;
   const fallbackHref = brandCandidateHref(
@@ -383,6 +403,9 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
       const fetched = await safeFetchManifest(manifestUrl);
       return fetched.ok ? manifestIconCandidates(fetched.text, fetched.url) : [];
     },
+    // VCL A3b — paid search only when explicitly enabled (server-only
+    // BRAND_INSTAGRAM_SEARCH_ENABLED=1 + ANTHROPIC_API_KEY); off by default.
+    ...(instagramSearchEnabled() ? { discoverInstagram: (input: InstagramDiscoveryInput) => discoverInstagram(input) } : {}),
     draftsEnabled: Boolean(getBrandDraftSecret()),
     isRateLimited: (userKey, ipKey) => recordWebsiteAnalysisAttempt(userKey, ipKey),
     acquireSlot: tryAcquireWebsiteFetchSlot,
