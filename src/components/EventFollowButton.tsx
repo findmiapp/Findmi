@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isEventFollowed, markEventFollowed } from "@/lib/followedEvents";
-import { getAccountSession } from "@/lib/accountSession";
+import { useAccountFollow } from "@/lib/useAccountFollow";
 import { trackEvent } from "@/lib/analytics/track";
 
 // Restore Event Follow pass — exact event-side mirror of
@@ -31,33 +31,17 @@ export default function EventFollowButton({
    * action). Default "pill" is unchanged. */
   shape?: "pill" | "block";
 }) {
-  const [following, setFollowing] = useState(false);
-  const [authed, setAuthed] = useState(false);
+  // Signed-in state + explicit, optimistic, single-flight writes
+  // (lib/useAccountFollow.ts); guests keep the email flow below.
+  const { following, authed, pending, toggle, markGuestFollowing } = useAccountFollow("event", eventSlug, () =>
+    isEventFollowed(eventId)
+  );
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [mounted, setMounted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setFollowing(isEventFollowed(eventId));
-
-    let cancelled = false;
-    getAccountSession().then((isAuthed) => {
-      if (cancelled || !isAuthed) return;
-      setAuthed(true);
-      fetch(`/api/account/follow-event?slug=${encodeURIComponent(eventSlug)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { following?: boolean } | null) => {
-          if (!cancelled && data) setFollowing(Boolean(data.following));
-        })
-        .catch(() => {});
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, eventSlug]);
 
   useEffect(() => setMounted(true), []);
 
@@ -103,7 +87,7 @@ export default function EventFollowButton({
       });
       if (res.ok) {
         markEventFollowed(eventId);
-        setFollowing(true);
+        markGuestFollowing();
         setOpen(false);
         setEmail("");
         setStatus("idle");
@@ -116,26 +100,22 @@ export default function EventFollowButton({
     }
   }
 
-  async function handleAuthedFollow() {
-    try {
-      const res = await fetch("/api/account/follow-event", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: eventSlug }),
+  // Signed in: explicit desired-state write (Follow ⇄ Following),
+  // optimistic and reverted on failure. Not signed in (resolved on the
+  // tap itself): the email-capture modal.
+  async function handleTap() {
+    const result = await toggle();
+    if (result.kind === "guest") {
+      openModal();
+      return;
+    }
+    if (result.kind === "done" && result.ok) {
+      trackEvent({
+        event_name: result.following ? "follow" : "unfollow",
+        subject_type: "event",
+        subject_id: eventId,
+        event_id: eventId,
       });
-      if (res.ok) {
-        const data = (await res.json()) as { following?: boolean };
-        const nowFollowing = Boolean(data.following);
-        setFollowing(nowFollowing);
-        trackEvent({
-          event_name: nowFollowing ? "follow" : "unfollow",
-          subject_type: "event",
-          subject_id: eventId,
-          event_id: eventId,
-        });
-      }
-    } catch {
-      // Best-effort — button just stays in its current state on failure.
     }
   }
 
@@ -144,53 +124,56 @@ export default function EventFollowButton({
   const text = compact ? "text-xs" : "text-sm";
   const shapeCls = shape === "block" ? "w-full justify-center rounded-xl" : "rounded-full";
 
-  if (following) {
-    // A guest's "Following" is a per-device localStorage flag, not a
-    // real identity anything can look up to unfollow — same reasoning
-    // FollowButton.tsx's own guest-following state is a non-interactive
-    // status chip, not a button. Only the authed path (a real
-    // account_followed_events row this session actually owns) gets a
-    // real tap-to-unfollow toggle.
-    if (!authed) {
-      return (
-        <span
-          role="status"
-          aria-label="Following"
-          title="Following"
-          className={`flex ${h} items-center gap-1.5 ${shapeCls} bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white`}
-        >
-          <CheckGlyph className="h-3.5 w-3.5" />
-          Following
-        </span>
-      );
-    }
+  if (following && !authed) {
+    // A guest's "Following" is a per-device localStorage flag, not a real
+    // identity anything can look up to unfollow — a non-interactive status
+    // chip, exactly as FollowButton/LocationFollowButton. Signed in, the
+    // button below is the tap-to-unfollow toggle.
     return (
-      <button
-        type="button"
-        onClick={handleAuthedFollow}
-        title="Following: tap to unfollow"
-        className={`flex ${h} items-center gap-1.5 ${shapeCls} bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
+      <span
+        role="status"
+        aria-label="Following"
+        title="Following"
+        className={`flex ${h} items-center gap-1.5 ${shapeCls} bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white`}
       >
         <CheckGlyph className="h-3.5 w-3.5" />
         Following
-      </button>
+      </span>
     );
   }
 
   return (
     <>
+      {/* One element for both signed-in states (Follow ⇄ Following), so a
+          tap never remounts it and keyboard focus stays put. Public Event
+          V2 — outline until followed, so it never competes with the
+          organizer's primary action (RSVP/Tickets); the filled "✓
+          Following" state is the confirmation (and, signed in, the tap to
+          unfollow). */}
       <button
         ref={buttonRef}
         type="button"
-        onClick={authed ? handleAuthedFollow : openModal}
+        onClick={handleTap}
+        aria-pressed={authed ? following : undefined}
+        aria-busy={pending || undefined}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} items-center justify-center ${shapeCls} border border-findmi/40 bg-white px-5 ${text} font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50`}
+        aria-label={following ? `Unfollow ${eventName}` : undefined}
+        title={following ? `Following — tap to unfollow ${eventName}` : undefined}
+        className={
+          following
+            ? `flex ${h} items-center gap-1.5 ${shapeCls} bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`
+            : `flex ${h} items-center justify-center ${shapeCls} border border-findmi/40 bg-white px-5 ${text} font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50`
+        }
       >
-        {/* Public Event V2 — outline until followed, so it never competes
-            with the organizer's primary action (RSVP/Tickets); the filled
-            "Following" state above is the confirmation. */}
-        Follow
+        {following ? (
+          <>
+            <CheckGlyph className="h-3.5 w-3.5" />
+            Following
+          </>
+        ) : (
+          "Follow"
+        )}
       </button>
 
       {mounted &&

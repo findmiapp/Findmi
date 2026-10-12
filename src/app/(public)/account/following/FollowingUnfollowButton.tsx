@@ -2,30 +2,25 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ACCOUNT_FOLLOW_ENDPOINT } from "@/lib/account-follow-client";
 
-const ENDPOINT = {
-  business: "/api/account/follow",
-  event: "/api/account/follow-event",
-  // Surface Followed Locations pass — same toggle shape as
-  // business/event above (POST {slug} flips the current account's
-  // follow row), already used by LocationFollowButton on the public
-  // Location page.
-  location: "/api/account/follow-location",
-} as const;
+const ENDPOINT = ACCOUNT_FOLLOW_ENDPOINT;
 
-/** Small overlay "×" on each card in /account/following — this account
- * is already confirmed following every item shown on this page (that's
- * why it's here), so a single POST always toggles it OFF; it never needs
- * to check current state first the way the public Follow buttons do.
- * router.refresh() re-runs the page's own server query afterward, so the
- * removed card simply stops appearing rather than needing local list
- * state here. */
+/** Small overlay "×" on each card in /account/following. Always sends
+ * the explicit desired state `following: false` — never the legacy
+ * toggle — so a stale page (already unfollowed in another tab) can never
+ * re-follow anything; repeating it is harmless. The card hides only once
+ * the server confirms; router.refresh() then re-runs the page's own
+ * server query so the removed card simply stops appearing. */
 export default function FollowingUnfollowButton({
   kind,
   slug,
+  name,
 }: {
   kind: "business" | "event" | "location";
   slug: string;
+  /** For the accessible label ("Unfollow <name>"). */
+  name: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [hidden, setHidden] = useState(false);
@@ -37,16 +32,17 @@ export default function FollowingUnfollowButton({
     <button
       type="button"
       disabled={pending}
-      aria-label="Unfollow"
-      title="Unfollow"
+      aria-label={`Unfollow ${name}`}
+      title={`Unfollow ${name}`}
       onClick={() => {
         startTransition(async () => {
           try {
-            await fetch(ENDPOINT[kind], {
+            const res = await fetch(ENDPOINT[kind], {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ slug }),
+              body: JSON.stringify({ slug, following: false }),
             });
+            if (!res.ok) return; // stays visible and clickable
             setHidden(true);
             router.refresh();
           } catch {

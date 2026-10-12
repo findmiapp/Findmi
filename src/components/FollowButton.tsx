@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isFollowed, markFollowed } from "@/lib/followed";
-import { getAccountSession } from "@/lib/accountSession";
+import { useAccountFollow } from "@/lib/useAccountFollow";
 import { trackEvent } from "@/lib/analytics/track";
 
 // The single Follow action for a business profile — Follow / Following.
@@ -42,33 +42,17 @@ export default function FollowButton({
   businessName: string;
   size?: "default" | "compact";
 }) {
-  const [following, setFollowing] = useState(false);
-  const [authed, setAuthed] = useState(false);
+  // Signed-in state + explicit, optimistic, single-flight writes
+  // (lib/useAccountFollow.ts); guests keep the email flow below.
+  const { following, authed, pending, toggle, markGuestFollowing } = useAccountFollow("business", businessSlug, () =>
+    isFollowed(businessSlug)
+  );
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [mounted, setMounted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setFollowing(isFollowed(businessSlug));
-
-    let cancelled = false;
-    getAccountSession().then((isAuthed) => {
-      if (cancelled || !isAuthed) return;
-      setAuthed(true);
-      fetch(`/api/account/follow?slug=${encodeURIComponent(businessSlug)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { following?: boolean } | null) => {
-          if (!cancelled && data) setFollowing(Boolean(data.following));
-        })
-        .catch(() => {});
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [businessSlug]);
 
   useEffect(() => setMounted(true), []);
 
@@ -115,7 +99,7 @@ export default function FollowButton({
       });
       if (res.ok) {
         markFollowed(businessSlug);
-        setFollowing(true);
+        markGuestFollowing();
         setOpen(false);
         setEmail("");
         setStatus("idle");
@@ -128,29 +112,23 @@ export default function FollowButton({
     }
   }
 
-  // Signed-in path — no email needed, the account already identifies who's
-  // following. Writes to account_followed_businesses via /api/account/follow,
-  // entirely separate from the guest `followers` table above.
-  async function handleAuthedFollow() {
-    try {
-      const res = await fetch("/api/account/follow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: businessSlug }),
+  // One tap handler for both states. Signed in: explicit desired-state
+  // write (Follow ⇄ Following), applied optimistically and reverted on
+  // failure. Not signed in (resolved on the tap itself, so an early tap
+  // never sends a signed-in visitor to the email modal): email capture.
+  async function handleTap() {
+    const result = await toggle();
+    if (result.kind === "guest") {
+      openModal();
+      return;
+    }
+    if (result.kind === "done" && result.ok) {
+      trackEvent({
+        event_name: result.following ? "follow" : "unfollow",
+        subject_type: "business",
+        subject_id: businessId,
+        business_id: businessId,
       });
-      if (res.ok) {
-        const data = (await res.json()) as { following?: boolean };
-        const nowFollowing = Boolean(data.following);
-        setFollowing(nowFollowing);
-        trackEvent({
-          event_name: nowFollowing ? "follow" : "unfollow",
-          subject_type: "business",
-          subject_id: businessId,
-          business_id: businessId,
-        });
-      }
-    } catch {
-      // Best-effort — button just stays in its current state on failure.
     }
   }
 
@@ -158,15 +136,10 @@ export default function FollowButton({
   const h = compact ? "h-9" : "h-12";
   const text = compact ? "text-xs" : "text-sm";
 
-  if (following) {
-    // "✓ Following" no longer fits the compact button without crowding it
-    // — collapsed to a checkmark-only state (still aqua, same button
-    // footprint) with the meaning carried by aria-label/title instead of
-    // visible text, rather than widening the button. Public Message
-    // Action pass — rounded-lg (not rounded-full) to match MessageButton's
-    // own rounded-rectangle geometry on the Business page; shrink-0
-    // instead of w-full since this no longer relies on a fixed-width
-    // wrapper div (see BusinessPublicView.tsx).
+  if (following && !authed) {
+    // A guest's "Following" is this device's own record of an email
+    // follow — there is no account follow to remove, so it stays a
+    // read-only status (unchanged).
     return (
       <span
         role="status"
@@ -181,15 +154,36 @@ export default function FollowButton({
 
   return (
     <>
+      {/* One element for both signed-in states (Follow ⇄ Following), so a
+          tap never remounts it and keyboard focus stays put. Compact keeps
+          the check-only square footprint when following (meaning carried
+          by aria-label/title); default size spells out "Following". */}
       <button
         ref={buttonRef}
         type="button"
-        onClick={authed ? handleAuthedFollow : openModal}
+        onClick={handleTap}
+        aria-pressed={authed ? following : undefined}
+        aria-busy={pending || undefined}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-findmi px-2.5 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
+        aria-label={following ? `Unfollow ${businessName}` : undefined}
+        title={following ? `Following — tap to unfollow ${businessName}` : undefined}
+        className={
+          following
+            ? compact
+              ? `flex ${h} w-9 shrink-0 items-center justify-center rounded-lg bg-findmi text-white transition hover:bg-findmi-600`
+              : `flex ${h} shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-findmi px-3 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`
+            : `flex ${h} shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-findmi px-2.5 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`
+        }
       >
-        Follow
+        {following ? (
+          <>
+            <CheckGlyph className={compact ? "h-4 w-4" : "h-3.5 w-3.5"} />
+            {!compact && "Following"}
+          </>
+        ) : (
+          "Follow"
+        )}
       </button>
 
       {mounted &&

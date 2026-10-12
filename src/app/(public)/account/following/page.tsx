@@ -120,7 +120,7 @@ export default async function AccountFollowingPage() {
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {businesses.map((b) => (
                   <div key={b.id} className="relative">
-                    <FollowingUnfollowButton kind="business" slug={b.slug} />
+                    <FollowingUnfollowButton kind="business" slug={b.slug} name={b.name} />
                     <BusinessCard business={b} />
                   </div>
                 ))}
@@ -134,7 +134,7 @@ export default async function AccountFollowingPage() {
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {events.map((e) => (
                   <div key={e.id} className="relative">
-                    <FollowingUnfollowButton kind="event" slug={e.slug} />
+                    <FollowingUnfollowButton kind="event" slug={e.slug} name={e.name} />
                     <CompactCard
                       href={`/event/${e.slug}`}
                       image={e.cover_image_url}
@@ -155,7 +155,7 @@ export default async function AccountFollowingPage() {
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {locations.map((l) => (
                   <div key={l.id} className="relative">
-                    <FollowingUnfollowButton kind="location" slug={l.slug} />
+                    <FollowingUnfollowButton kind="location" slug={l.slug} name={l.name} />
                     <LocationCard location={l} />
                   </div>
                 ))}

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { accountFollowPost } from "@/lib/account-follow-server";
 
 export const dynamic = "force-dynamic";
 
@@ -36,32 +37,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ following: Boolean(data) });
 }
 
+/** POST { slug, following?: boolean } — explicit desired state
+ * (idempotent), or the legacy toggle when `following` is omitted. See
+ * lib/account-follow-server.ts. */
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
-  const slug = typeof body?.slug === "string" ? body.slug : null;
-  if (!slug) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-
-  const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-
-  const eventId = await resolveEventId(supabase, slug);
-  if (!eventId) return NextResponse.json({ error: "Not found." }, { status: 404 });
-
-  const { data: existing } = await supabase
-    .from("account_followed_events")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("event_id", eventId)
-    .maybeSingle();
-
-  if (existing) {
-    await supabase.from("account_followed_events").delete().eq("id", (existing as { id: string }).id);
-    return NextResponse.json({ following: false });
-  }
-
-  await supabase.from("account_followed_events").insert({ user_id: user.id, event_id: eventId });
-  return NextResponse.json({ following: true });
+  return accountFollowPost(request, { entityTable: "events", followTable: "account_followed_events", column: "event_id" });
 }
