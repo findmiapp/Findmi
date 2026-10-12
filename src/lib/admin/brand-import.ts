@@ -137,6 +137,10 @@ export const BrandImportProposalSchema = z
     state: z.string().min(1).max(40).optional(),
     logo: httpsUrl(512).optional(),
     cover: httpsUrl(512).optional(),
+    // P4 review: whether Admin keeps the proposed logo/cover for creation
+    // (absent = keep). Removing never deletes the candidate URL history.
+    useLogo: z.boolean().optional(),
+    useCover: z.boolean().optional(),
   })
   .strict();
 
@@ -522,6 +526,9 @@ export interface BrandImportCandidateView {
   processingStartedAt: string | null;
   proposal: BrandImportProposal | null;
   matchedBusiness: { id: string; name: string } | null;
+  createdBusiness: { id: string; name: string } | null;
+  /** Optimistic-concurrency token for Save Review. */
+  updatedAt: string;
   aiStatus: "used" | "skipped" | "failed" | null;
   aiModel: string | null;
   aiInputTokens: number | null;
@@ -532,18 +539,21 @@ export interface BrandImportCandidateView {
 }
 
 const VIEW_COLUMNS =
-  "id, batch_id, position, submitted_input, normalized_host, status, failure_code, attempt_count, processing_started_at, proposal, matched_business_id, ai_status, ai_model, ai_input_tokens, ai_output_tokens, ai_cache_creation_input_tokens, ai_cache_read_input_tokens, ai_estimated_cost_usd";
+  "id, batch_id, position, submitted_input, normalized_host, status, failure_code, attempt_count, processing_started_at, proposal, matched_business_id, ai_status, ai_model, ai_input_tokens, ai_output_tokens, ai_cache_creation_input_tokens, ai_cache_read_input_tokens, ai_estimated_cost_usd, created_business_id, updated_at";
 
 async function toViews(admin: SupabaseClient, rows: Record<string, unknown>[]): Promise<BrandImportCandidateView[]> {
-  const matchedIds = [...new Set(rows.map((r) => r.matched_business_id).filter((v): v is string => typeof v === "string"))];
+  const matchedIds = [
+    ...new Set(rows.flatMap((r) => [r.matched_business_id, r.created_business_id]).filter((v): v is string => typeof v === "string")),
+  ];
   const names = new Map<string, string>();
   if (matchedIds.length > 0) {
-    // Read-only lookup of the matched Businesses' names (Admin sees all).
+    // Read-only lookup of the matched/created Businesses' names (Admin sees all).
     const { data } = await admin.from("businesses").select("id, name").in("id", matchedIds);
     for (const b of (data ?? []) as { id: string; name: string }[]) names.set(b.id, b.name);
   }
   return rows.map((r) => {
     const matchedId = typeof r.matched_business_id === "string" ? r.matched_business_id : null;
+    const createdId = typeof r.created_business_id === "string" ? r.created_business_id : null;
     return {
       id: String(r.id),
       position: Number(r.position),
@@ -555,6 +565,8 @@ async function toViews(admin: SupabaseClient, rows: Record<string, unknown>[]): 
       processingStartedAt: (r.processing_started_at as string | null) ?? null,
       proposal: r.proposal == null ? null : parseBrandImportProposal(r.proposal),
       matchedBusiness: matchedId ? { id: matchedId, name: names.get(matchedId) ?? "Business" } : null,
+      createdBusiness: createdId ? { id: createdId, name: names.get(createdId) ?? "Business" } : null,
+      updatedAt: String(r.updated_at ?? ""),
       aiStatus: (r.ai_status as BrandImportCandidateView["aiStatus"]) ?? null,
       aiModel: (r.ai_model as string | null) ?? null,
       aiInputTokens: numOrNull(r.ai_input_tokens),

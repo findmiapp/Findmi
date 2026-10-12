@@ -21,7 +21,9 @@ export const maxDuration = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Deterministic input failures — a retry would only spend attempts.
 const NOT_RETRYABLE = new Set(["invalid_input", "unsupported_site"]);
-const COUNTED: BrandImportStatus[] = ["queued", "processing", "ready", "existing_business", "failed", "discarded"];
+const COUNTED: BrandImportStatus[] = ["queued", "processing", "ready", "creating", "created", "existing_business", "failed", "discarded"];
+// Shown only when present (the rest always show, including zero).
+const OPTIONAL_COUNT = new Set<string>(["creating", "created", "discarded"]);
 
 const STATUS_TONE: Record<string, string> = {
   ready: "bg-findmi-50 text-findmi-700",
@@ -29,6 +31,9 @@ const STATUS_TONE: Record<string, string> = {
   failed: "bg-red-50 text-red-700",
   processing: "bg-amber-50 text-amber-800",
   queued: "bg-black/[0.03] text-ink/55",
+  creating: "bg-amber-50 text-amber-800",
+  created: "bg-findmi-50 text-findmi-700",
+  discarded: "bg-black/[0.03] text-ink/45",
 };
 
 export default async function BrandImportBatchPage({
@@ -79,7 +84,7 @@ export default async function BrandImportBatchPage({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="rounded-full border border-black/10 px-3 py-1 text-xs text-ink/70">Submitted {batch.submittedCount}</span>
-        {COUNTED.filter((s) => s !== "discarded" || counts.get(s)).map((s) => (
+        {COUNTED.filter((s) => !OPTIONAL_COUNT.has(s) || counts.get(s)).map((s) => (
           <span key={s} className="rounded-full border border-black/10 px-3 py-1 text-xs text-ink/70">
             {s === "existing_business" ? "Existing" : BRAND_IMPORT_STATUS_LABEL[s]} {counts.get(s) ?? 0}
           </span>
@@ -122,6 +127,7 @@ export default async function BrandImportBatchPage({
                 {c.status === "existing_business" && c.matchedBusiness && (
                   <p className="mt-1 text-sm text-ink/80">Existing On Findmi: {c.matchedBusiness.name}</p>
                 )}
+                {c.status === "created" && c.createdBusiness && <p className="mt-1 text-sm text-ink/80">Created: {c.createdBusiness.name}</p>}
                 {failure && <p className="mt-1 text-xs text-red-700">{failure}</p>}
                 {(c.aiStatus || cost) && (
                   <p className="mt-1 text-xs text-ink/45">
@@ -132,9 +138,14 @@ export default async function BrandImportBatchPage({
                 )}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {c.status === "ready" && (
+                {c.status !== "queued" && c.status !== "processing" && (
                   <Link href={`/admin/businesses/import/${batch.id}/${c.id}`} className="text-xs font-bold uppercase tracking-wide text-findmi-700 hover:underline">
-                    View Candidate
+                    {c.status === "ready" ? "Review" : "View Candidate"}
+                  </Link>
+                )}
+                {c.status === "created" && c.createdBusiness && (
+                  <Link href={`/admin/businesses/${c.createdBusiness.id}`} className="text-xs font-bold uppercase tracking-wide text-findmi-700 hover:underline">
+                    Open Business
                   </Link>
                 )}
                 {c.status === "existing_business" && c.matchedBusiness && (

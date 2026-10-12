@@ -476,7 +476,10 @@ test("security 29: no public route or API touches import candidates", () => {
   assert.deepEqual(walk("src/app/api").filter((f) => /import/i.test(f) && /brand/i.test(read(f))), []);
 });
 
-test("security 30: P3 has no canonical Business write path", () => {
+// P4 adds the ONE canonical Business writer in lib/admin/brand-import-review.ts
+// (guarded by tests/brand-import-review.test.mjs); P3 files and the import
+// pages/actions still never write a Business directly.
+test("security 30: P3 files have no canonical Business write path", () => {
   for (const f of P3_FILES) {
     const src = code(f);
     assert.doesNotMatch(src, /from\("businesses"\)\s*\.(insert|update|upsert|delete)\(/, f);
