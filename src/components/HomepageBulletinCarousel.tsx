@@ -15,9 +15,6 @@ const TRANSITION_MS = 300;
 /** Minimum horizontal travel (px) before a touch gesture counts as a
  * swipe — small finger jitter/taps never navigate. */
 const SWIPE_THRESHOLD_PX = 45;
-/** A press while an automatically rotated-in slide is still fading in
- * (not yet fully visible) was aimed at the slide that just left. */
-const AIM_GUARD_MS = TRANSITION_MS;
 
 /** Wraps the exact, unchanged HomepageBulletin card design in a small
  * rotation shell — the carousel swaps which resolved Bulletin is passed
@@ -38,23 +35,17 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   // synthetic click a touch-drag can still produce never opens the
   // Bulletin's own link — swipes must never double as a destination tap.
   const justSwipedRef = useRef(false);
-  // Interaction model for taps (reproduced in a hydrated production build:
-  // every surface of the card is inside its one link and navigates, but
-  // auto-rotation kept swapping the slide for touch users, who never get a
-  // hover-pause):
-  //  - The first press anywhere on the carousel stops auto-rotation for the
-  //    rest of the page view, so the slide a visitor touched stays put
-  //    while its destination loads, and a repeat tap hits the same slide.
-  //    The ref blocks a tick due before React re-renders; the state tears
-  //    the interval down.
-  //  - A press landing within AIM_GUARD_MS of an AUTOMATIC rotation was
-  //    aimed at the slide that just left. That tap is not sent to a
-  //    destination the visitor never saw: the aimed slide is restored
-  //    instead, and the next tap opens it.
+  // The first press anywhere on the carousel stops auto-rotation for the
+  // rest of the page view, and that same press carries on untouched: a
+  // tap on a card is a normal link activation (navigates on the first
+  // tap), a swipe changes slides, a control does its job. Touch users get
+  // no hover-pause, so without this the slide kept changing while they
+  // read, aimed or waited for a destination to load. The ref blocks a tick
+  // due before React re-renders; the state tears the interval down. A
+  // press never swaps or remounts the card it lands on — the slide under
+  // the finger, even mid-fade-in, is the one that opens.
   const [stopped, setStopped] = useState(false);
   const stoppedRef = useRef(false);
-  const lastAutoAdvanceRef = useRef<{ at: number; from: number } | null>(null);
-  const suppressClickRef = useRef(false);
 
   // Auto-rotate. Depends on resetTick so a manual nav (which bumps it)
   // tears down and restarts this interval instead of stacking a second
@@ -64,10 +55,7 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
     if (count < 2 || paused || stopped) return;
     const timer = setInterval(() => {
       if (stoppedRef.current) return;
-      setIndex((i) => {
-        lastAutoAdvanceRef.current = { at: Date.now(), from: i };
-        return (i + 1) % count;
-      });
+      setIndex((i) => (i + 1) % count);
     }, ROTATE_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [count, paused, stopped, resetTick]);
@@ -99,15 +87,8 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   // full start-to-finish delta, and touch-pan-y below just stops the
   // browser from treating small horizontal jitter as a cancel-worthy pan.
   function handlePointerDown(e: React.PointerEvent) {
-    suppressClickRef.current = false;
     stoppedRef.current = true;
     setStopped(true);
-    const recent = lastAutoAdvanceRef.current;
-    lastAutoAdvanceRef.current = null;
-    if (recent && Date.now() - recent.at < AIM_GUARD_MS && (e.target as Element).closest("a")) {
-      suppressClickRef.current = true;
-      setIndex(recent.from);
-    }
     if (e.pointerType !== "touch") return;
     touchStartRef.current = { x: e.clientX, y: e.clientY };
   }
@@ -129,7 +110,6 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
 
   function handlePointerCancel() {
     touchStartRef.current = null;
-    suppressClickRef.current = false;
   }
 
   return (
@@ -146,8 +126,7 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onClickCapture={(e) => {
-        if (justSwipedRef.current || suppressClickRef.current) {
-          suppressClickRef.current = false;
+        if (justSwipedRef.current) {
           e.preventDefault();
           e.stopPropagation();
         }

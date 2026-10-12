@@ -49,17 +49,29 @@ test("carousel: the first press stops auto-rotation for good — a touched slide
   assert.doesNotMatch(c, /heldRef|addEventListener\("pointerup"/, "the superseded d874d87 hold/release is gone — no stacked touch hacks");
 });
 
-test("carousel: a press within AIM_GUARD_MS of an automatic rotation restores the aimed slide instead of opening one never seen", () => {
+test("carousel: the first tap navigates — a press never consumes the click, swaps or remounts the tapped card", () => {
   const c = code(CAROUSEL);
-  assert.match(c, /const AIM_GUARD_MS = TRANSITION_MS;/, "only while the incoming slide is still fading in (300ms)");
-  assert.match(c, /setIndex\(\(i\) => \{\s*lastAutoAdvanceRef\.current = \{ at: Date\.now\(\), from: i \};\s*return \(i \+ 1\) % count;/, "only AUTOMATIC rotation is recorded");
-  assert.doesNotMatch(c.slice(c.indexOf("function goTo"), c.indexOf("function handlePointerDown")), /lastAutoAdvanceRef/, "manual navigation never arms the guard");
   const down = c.slice(c.indexOf("function handlePointerDown"), c.indexOf("function handlePointerUp"));
-  assert.match(down, /suppressClickRef\.current = false;/, "a stale suppression never leaks into a later tap");
-  assert.match(down, /if \(recent && Date\.now\(\) - recent\.at < AIM_GUARD_MS && \(e\.target as Element\)\.closest\("a"\)\) \{\s*suppressClickRef\.current = true;\s*setIndex\(recent\.from\);/);
-  assert.match(down, /lastAutoAdvanceRef\.current = null;/, "one-shot: the next press navigates normally");
-  assert.match(c, /if \(justSwipedRef\.current \|\| suppressClickRef\.current\) \{\s*suppressClickRef\.current = false;\s*e\.preventDefault\(\);/);
-  assert.match(c.slice(c.indexOf("function handlePointerCancel")), /suppressClickRef\.current = false;/);
+  assert.doesNotMatch(down, /setIndex|preventDefault|stopPropagation|goTo|setPointerCapture/, "pressing a card changes nothing but the rotation flag");
+  assert.doesNotMatch(c, /suppressClickRef|lastAutoAdvanceRef|AIM_GUARD_MS/, "the rejected restore-then-second-tap guard is gone");
+  // The ONLY click suppression is a recognized swipe.
+  const capture = c.slice(c.indexOf("onClickCapture="), c.indexOf("onClickCapture=") + 200);
+  assert.match(capture, /if \(justSwipedRef\.current\) \{\s*e\.preventDefault\(\);/);
+  assert.equal((c.match(/preventDefault\(\)/g) ?? []).length, 1, "no other code path blocks a link activation");
+  // Stopping rotation is a ref + state flip; the slide key (which would
+  // remount the card under the finger) depends only on index.
+  assert.match(c, /key=\{bulletins\[index\]\.id\}/);
+});
+
+test("carousel: a tap during or right after an automatic transition opens the card it lands on", () => {
+  const c = code(CAROUSEL);
+  // The interval is the only automatic slide change, and it is blocked the
+  // moment a press starts (ref), so the card under the finger cannot be
+  // replaced between press and click; whichever card is under the finger —
+  // even mid-fade-in — receives the click and navigates.
+  const tick = c.slice(c.indexOf("setInterval("), c.indexOf("ROTATE_INTERVAL_MS);"));
+  assert.match(tick, /if \(stoppedRef\.current\) return;\s*setIndex\(\(i\) => \(i \+ 1\) % count\);/);
+  assert.equal((c.match(/setIndex\(/g) ?? []).length, 2, "only the auto tick and goTo (controls/swipe) change slides — never a press");
 });
 
 test("carousel: hover/focus pause, swipe, controls and timing preserved", () => {
@@ -70,7 +82,7 @@ test("carousel: hover/focus pause, swipe, controls and timing preserved", () => 
   assert.match(c, /onFocusCapture=\{\(\) => setPaused\(true\)\}/);
   assert.match(c, /if \(count < 2 \|\| paused \|\| stopped\) return;/, "hover/focus pause still gates rotation");
   assert.match(c, /goTo\(deltaX < 0 \? index \+ 1 : index - 1\);/);
-  assert.match(c, /if \(justSwipedRef\.current \|\| suppressClickRef\.current\) \{[^}]*e\.preventDefault\(\);/, "a swipe still never doubles as a tap");
+  assert.match(c, /if \(justSwipedRef\.current\) \{\s*e\.preventDefault\(\);/, "a swipe still never doubles as a tap");
   for (const label of ['"Previous announcement"', '"Next announcement"']) assert.ok(c.includes(`aria-label=${label}`), label);
   // Controls are siblings of the slide, never inside the card link.
   const slide = c.indexOf("<HomepageBulletin bulletin={bulletins[index]} />");
