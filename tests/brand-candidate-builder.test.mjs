@@ -278,7 +278,7 @@ test("core boundary: no redirects, cookies, auth, request IP, public limits, slo
   }
   // The adapter keeps every public concern.
   const adapter = readFileSync("src/lib/brand-website-analysis.ts", "utf8");
-  for (const kept of ["isRateLimited(input.userId, input.ip)", "deps.acquireSlot()", "deps.cache.get(cacheKey", "claimHref(built.publicMatch.slug, true)", "ALREADY_LISTED_HREF", "BRAND_DRAFT_REVIEW_HREF", "sanitizeBrandSeed", "/login?next="]) {
+  for (const kept of ["isRateLimited(input.userId, input.ip)", "deps.acquireSlot()", "deps.cache.get(cacheKey", "claimHref(built.publicMatch.slug, true)", "ALREADY_LISTED_HREF", "BRAND_DRAFT_REVIEW_HREF", "sanitizeBrandSeed", "brandBuildSignInHref(value, seed)"]) {
     assert.ok(adapter.includes(kept), kept);
   }
 });

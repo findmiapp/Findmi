@@ -210,6 +210,25 @@ export function createHref(input: { kind: BrandInputKind; value: string }, seed?
   return brandCandidateHref({ instagram_url: input.value });
 }
 
+/** Explicit "Build My Brand Profile was pressed" marker carried through
+ * sign-in. It only asks /join/brand to resume the SAME no-match website
+ * result and submit the existing Build form once; it is never trusted for
+ * anything privileged (the server action re-checks the session, the
+ * website, the rate limits and matching on its own). */
+export const BRAND_BUILD_RESUME_PARAM = "build";
+
+/** Where a signed-out "Build My Brand Profile" returns after sign-in /
+ * sign-up: the same website lookup, with the build intent marker. */
+export function brandBuildResumeHref(website: string, seed?: BrandSeed | null): string {
+  return `${searchHref(website, "website", seed)}&${BRAND_BUILD_RESUME_PARAM}=1`;
+}
+
+/** Sign in first, then resume the requested Build (the login page carries
+ * `next` into Sign Up and the email-confirmation callback). */
+export function brandBuildSignInHref(website: string, seed?: BrandSeed | null): string {
+  return `/login?next=${encodeURIComponent(brandBuildResumeHref(website, seed))}`;
+}
+
 /** Re-search link for an alternate interpretation of the same input. */
 export function searchHref(value: string, as?: BrandInputKind, seed?: BrandSeed | null): string {
   const params = new URLSearchParams({ q: value });

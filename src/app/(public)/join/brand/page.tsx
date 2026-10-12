@@ -5,7 +5,9 @@ import NavIcon from "@/components/NavIcon";
 import ChevronIcon from "@/components/ChevronIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import {
+  BRAND_BUILD_RESUME_PARAM,
   BRAND_QUERY_MAX_LENGTH,
+  brandBuildSignInHref,
   claimHref,
   classifyBrandInput,
   createHref,
@@ -20,6 +22,7 @@ import { isBrandLookupRateLimited } from "@/lib/brand-lookup-rate-limit";
 import { brandSeedEntries, sanitizeBrandSeed, type BrandSeed } from "@/lib/brand-candidate";
 import { buildBrandProfile } from "./actions";
 import BuildProfileButton from "./BuildProfileButton";
+import AutoBuild from "./AutoBuild";
 
 export const metadata: Metadata = {
   title: "Find Your Brand",
@@ -81,9 +84,9 @@ async function resolveState(q: string | undefined, as: string | undefined, authe
 export default async function FindYourBrandPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; as?: string; notice?: string; seed_name?: string; seed_instagram?: string }>;
+  searchParams: Promise<{ q?: string; as?: string; notice?: string; seed_name?: string; seed_instagram?: string; build?: string }>;
 }) {
-  const { q, as, notice, seed_name: seedName, seed_instagram: seedInstagram } = await searchParams;
+  const { q, as, notice, seed_name: seedName, seed_instagram: seedInstagram, build } = await searchParams;
   // V1.1B correction — a website searched from the name/Instagram website
   // prompt carries the original search as a bounded seed (validated here,
   // only ever used for a website search).
@@ -109,7 +112,10 @@ export default async function FindYourBrandPage({
   return (
     <div className="mx-auto max-w-lg px-6 py-8 sm:py-12">
       {state.kind === "initial" && (
-        <>
+        // On tall screens the search sits a little lower instead of being
+        // pinned under the header above a large empty viewport; short
+        // screens (and an open keyboard) keep the compact layout.
+        <div className="[@media(min-height:700px)]:pt-[8vh]">
           <h1 className="font-display text-page-title font-bold tracking-tight text-ink">Find Your Brand</h1>
           <p className="mt-1.5 text-sm text-ink/60">
             Search for your business on Findmi. If it&rsquo;s already here, claim it. If not, add it in a few minutes.
@@ -121,7 +127,7 @@ export default async function FindYourBrandPage({
               Explore Businesses
             </Link>
           </p>
-        </>
+        </div>
       )}
 
       {state.kind === "invalid" && hasSeed && (
@@ -161,6 +167,7 @@ export default async function FindYourBrandPage({
           result={state.result}
           authenticated={authenticated}
           seed={seed}
+          resumeBuild={build === "1"}
         />
       )}
     </div>
@@ -174,6 +181,7 @@ function ResultView({
   result,
   authenticated,
   seed,
+  resumeBuild,
 }: {
   value: string;
   inputKind: BrandInputKind;
@@ -181,16 +189,18 @@ function ResultView({
   result: BrandLookupResult;
   authenticated: boolean;
   seed: BrandSeed;
+  /** Back from sign-in / sign-up after pressing Build (build=1). */
+  resumeBuild: boolean;
 }) {
   const addHref = createHref({ kind: inputKind, value }, inputKind === "website" ? seed : null);
   const searched = (
     <p className="mt-1.5 text-xs text-ink/50">
       Searched by {KIND_LABEL[inputKind]}: <span className="font-semibold text-ink/70">{value}</span>
-      {alternative && (
+      {alternative === "name" && (
         <>
           {" · "}
           <Link href={searchHref(value, alternative)} className="font-semibold text-findmi-700 hover:underline">
-            Search as {alternative === "name" ? "a Name" : "Instagram"} Instead
+            Search as a Name Instead
           </Link>
         </>
       )}
@@ -222,26 +232,26 @@ function ResultView({
   if (result.state === "assistance") return <AssistanceBlock>{searched}</AssistanceBlock>;
 
   // V1.1B — a website with no match can be read (signed-in only, explicit
-  // POST) to prefill the existing create form. Guests sign in first and
-  // come back to this same result; adding it manually stays available.
+  // POST) to prefill the existing create form. This is the ONE Build action
+  // in the journey. Guests sign in first and come back here with the build
+  // intent marker (brandBuildSignInHref), and the same form then submits
+  // itself once (AutoBuild) — no second press. Adding it manually stays
+  // available.
   if (inputKind === "website") {
     return (
-      <StateBlock title="Add Your Brand" body="We didn't find this brand on Findmi. Add it now — it only takes a few minutes.">
+      <StateBlock title="Add Your Brand" body="We didn't find this brand on Findmi. Findmi will build a starting profile from your website, and you'll review everything before it's added.">
         {searched}
+        {!authenticated && <p className="mt-4 text-sm text-ink/60">You&rsquo;ll sign in or create an account to review and add your brand.</p>}
         {authenticated ? (
           <form action={buildBrandProfile} className="mt-5">
             <input type="hidden" name="website" value={value} />
             <SeedFields seed={seed} />
             <BuildProfileButton />
+            {resumeBuild && <AutoBuild guardKey={[value, seed.name ?? "", seed.instagram ?? ""].join("|")} param={BRAND_BUILD_RESUME_PARAM} />}
           </form>
         ) : (
-          <PrimaryLink href={`/login?next=${encodeURIComponent(searchHref(value, "website", seed))}`} label="Build My Brand Profile" />
+          <PrimaryLink href={brandBuildSignInHref(value, seed)} label="Build My Brand Profile" />
         )}
-        <p className="mt-2 text-center text-xs text-ink/50">
-          {authenticated
-            ? "We'll read your website's homepage and fill in what we can. You'll review everything before adding your brand."
-            : "Sign in and we'll read your website's homepage to fill in what we can. You'll review everything before adding your brand."}
-        </p>
         <SecondaryLink href={addHref} label="Add It Myself" />
         <SecondaryLink href="/join/brand" label="Search Again" subtle />
       </StateBlock>
@@ -322,7 +332,7 @@ function WebsitePrompt({
           type="submit"
           className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          Build My Brand Profile
+          Continue
         </button>
       </form>
       <SecondaryLink href={addHref} label="Add It Myself" />

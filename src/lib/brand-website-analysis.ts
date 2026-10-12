@@ -2,7 +2,7 @@ import "server-only";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { getCategories } from "./data";
 import { findBusinessMatches, type BusinessMatch, type BusinessMatchInput } from "./business-matching";
-import { claimHref, searchHref } from "./brand-lookup";
+import { brandBuildSignInHref, claimHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
 import type { ExtractedBrandProfile } from "./brand-website-extract";
 import { safeFetchHtml, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
@@ -155,6 +155,13 @@ export interface WebsiteAnalysisDeps {
   isRateLimited: (userKey: string, ipKey: string) => boolean;
   acquireSlot: () => (() => void) | null;
   cache: ExtractionCache;
+  /** Analyses currently running in this process, by normalized source.
+   * A second analysis of the same source waits for the first and then
+   * reuses its cached extraction + enrichment instead of independently
+   * fetching and calling the model (e.g. a double submit, or an automatic
+   * post-sign-in resume racing a manual press). Optional: absent → no
+   * sharing (each call runs on its own, as before). */
+  inflight?: Map<string, Promise<void>>;
   log: (entry: WebsiteAnalysisLog) => void;
   now: () => number;
 }
@@ -192,7 +199,7 @@ export async function analyzeBrandWebsite(
   if (!input.userId) {
     // Analysis is account-only: sign in, then return to the same no-match
     // result to choose Build My Brand Profile again explicitly.
-    return { href: `/login?next=${encodeURIComponent(searchHref(value, "website", seed))}`, outcome: "auth_required" };
+    return { href: brandBuildSignInHref(value, seed), outcome: "auth_required" };
   }
 
   const prepared = prepareBrandWebsite(value);
@@ -219,8 +226,46 @@ export async function analyzeBrandWebsite(
   if (deps.isRateLimited(input.userId, input.ip)) return finish(manual("limited"), "rate_limited");
 
   // The public 10-minute cache sits between the core's fetch and
-  // candidate stages; the fetch slot covers the fetch only.
-  const cacheKey = website.fetchUrl.href;
+  // candidate stages; the fetch slot covers the fetch only. Keyed by the
+  // normalized source (lowercased host without a leading "www.", plus the
+  // path without a trailing slash) so equivalent addresses share one
+  // extraction/enrichment.
+  const cacheKey = websiteAnalysisCacheKey(website.fetchUrl);
+  const running = deps.inflight?.get(cacheKey);
+  if (running) await running.catch(() => {});
+  let settleInflight = () => {};
+  if (deps.inflight) {
+    let resolve!: () => void;
+    const mine = new Promise<void>((r) => (resolve = r));
+    deps.inflight.set(cacheKey, mine);
+    settleInflight = () => {
+      if (deps.inflight?.get(cacheKey) === mine) deps.inflight.delete(cacheKey);
+      resolve();
+    };
+  }
+  try {
+    return await analyzeSource(website, cacheKey, deps, log, finish, manual, seed);
+  } finally {
+    settleInflight();
+  }
+}
+
+/** Normalized analysis source key (see analyzeBrandWebsite). */
+export function websiteAnalysisCacheKey(url: URL): string {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  const path = url.pathname.replace(/\/+$/, "");
+  return `${host}${path}`;
+}
+
+async function analyzeSource(
+  website: Extract<ReturnType<typeof prepareBrandWebsite>, { ok: true }>["website"],
+  cacheKey: string,
+  deps: WebsiteAnalysisDeps,
+  log: WebsiteAnalysisLog,
+  finish: (href: string, outcome: WebsiteAnalysisOutcome, extra?: Partial<WebsiteAnalysisLog>, result?: Partial<WebsiteAnalysisResult>) => WebsiteAnalysisResult,
+  manual: (prefill: BrandPrefillStatus) => string,
+  seed: BrandSeed
+): Promise<WebsiteAnalysisResult> {
   let cached = deps.cache.get(cacheKey, deps.now());
   if (cached) {
     log.cached = true;
@@ -319,6 +364,7 @@ export async function analyzeBrandWebsite(
 }
 
 const sharedCache = createExtractionCache();
+const sharedInflight = new Map<string, Promise<void>>();
 
 /** Real dependencies. Null when the server isn't configured (no service
  * role), in which case callers fall back to the manual form. */
@@ -335,6 +381,7 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
     isRateLimited: (userKey, ipKey) => recordWebsiteAnalysisAttempt(userKey, ipKey),
     acquireSlot: tryAcquireWebsiteFetchSlot,
     cache: sharedCache,
+    inflight: sharedInflight,
     // Host, outcome, timings, counts and booleans only — never HTML,
     // extracted text, query strings, headers, cookies or user ids.
     log: (entry) => console.info(JSON.stringify(entry)),

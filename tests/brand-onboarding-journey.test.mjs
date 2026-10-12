@@ -86,7 +86,8 @@ test("name first: 'Fenty Beauty' is a name; no match → the website prompt (not
   const prompt = PAGE.slice(PAGE.indexOf("function WebsitePrompt"));
   assert.match(prompt, /<form method="get" action="\/join\/brand"[^>]*>\s*<input type="hidden" name="as" value="website" \/>\s*<SeedFields seed=\{seed\} \/>/);
   assert.match(prompt, /name="q"/);
-  assert.match(prompt, />\s*Build My Brand Profile\s*</);
+  assert.match(prompt, />\s*Continue\s*</, "establishing the website is not the Build");
+  assert.doesNotMatch(prompt, /Build My Brand Profile/);
   assert.match(prompt, /label="Add It Myself"/);
   assert.match(prompt, /autoCapitalize="none"\s+autoCorrect="off"\s+spellCheck=\{false\}/);
 });
@@ -112,7 +113,7 @@ test("name first: the website goes through the existing website LOOKUP before an
 
 test("name first: new website → Build (signed-in POST carries the seed; guests sign in and return with it)", () => {
   assert.match(PAGE, /<input type="hidden" name="website" value=\{value\} \/>\s*<SeedFields seed=\{seed\} \/>\s*<BuildProfileButton \/>/);
-  assert.match(PAGE, /searchHref\(value, "website", seed\)/);
+  assert.match(PAGE, /brandBuildSignInHref\(value, seed\)/, "guests sign in and come back to the same website result, with the seed");
   assert.match(PAGE, /const seed = as === "website" \? sanitizeBrandSeed\(\{ name: seedName, instagram: seedInstagram \}\) : \{\};/, "seed only for website searches");
   const action = read("src/app/(public)/join/brand/actions.ts");
   assert.match(action, /sanitizeBrandSeed\(\{ name: formData\.get\(BRAND_SEED_PARAMS\.name\), instagram: formData\.get\(BRAND_SEED_PARAMS\.instagram\) \}\)/);

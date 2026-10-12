@@ -144,7 +144,7 @@ test("auth required: no account → sign-in back to the same website no-match re
   const { deps, calls } = makeDeps();
   const r = await run(deps, "lavazza.com", null);
   assert.equal(r.outcome, "auth_required");
-  assert.equal(r.href, "/login?next=" + encodeURIComponent("/join/brand?q=lavazza.com&as=website"));
+  assert.equal(r.href, "/login?next=" + encodeURIComponent("/join/brand?q=lavazza.com&as=website&build=1"), "build intent survives sign-in");
   assert.deepEqual([calls.fetch.length, calls.match.length], [0, 0]);
 });
 
@@ -355,7 +355,7 @@ test("/join/brand: Build My Brand Profile only for a website no-match; signed-in
   assert.match(page, /if \(inputKind === "website"\) \{/);
   assert.match(page, /<form action=\{buildBrandProfile\} className="mt-5">\s*<input type="hidden" name="website" value=\{value\} \/>\s*<SeedFields seed=\{seed\} \/>/);
   assert.match(page, /authenticated \? \(\s*<form action=\{buildBrandProfile\}/);
-  assert.match(page, /href=\{`\/login\?next=\$\{encodeURIComponent\(searchHref\(value, "website", seed\)\)\}`\}/);
+  assert.match(page, /<PrimaryLink href=\{brandBuildSignInHref\(value, seed\)\} label="Build My Brand Profile" \/>/);
   assert.match(page, /label="Add It Myself"/, "manual creation stays available");
   assert.match(page, /<form method="get" action="\/join\/brand"/, "anonymous GET lookup unchanged");
   assert.match(page, /export const maxDuration = 30;/);
@@ -405,4 +405,63 @@ test("create form: editable/clearable short description, prefill banner, authori
   assert.ok(!C.BRAND_CANDIDATE_FIELDS.includes("authorized"));
   assert.ok(!C.BRAND_CANDIDATE_FIELDS.includes("market_id"));
   assert.ok(!C.BRAND_CANDIDATE_FIELDS.includes("plan_choice"));
+});
+
+// ── A1: duplicate-analysis protection for auth resume / double submits ───
+const THIN_HTML = "<!doctype html><html><head><title>Spotify</title></head><body></body></html>";
+function aiCountingDeps(over = {}) {
+  const ai = { calls: 0 };
+  const { deps, calls } = makeDeps({
+    fetchHtml: async (url) => {
+      calls.fetch.push(url.href);
+      return { ok: true, url: new URL(url.href), html: THIN_HTML, bytes: THIN_HTML.length, redirects: 0 };
+    },
+    enrich: async () => {
+      ai.calls += 1;
+      await new Promise((r) => setTimeout(r, 30));
+      return { result: null, called: true, usage: null };
+    },
+    ...over,
+  });
+  return { deps, calls, ai };
+}
+
+test("A1: equivalent addresses share one cache key (case, leading www., trailing slash)", () => {
+  const k = (u) => A.websiteAnalysisCacheKey(new URL(u));
+  assert.equal(k("https://www.Spotify.com/"), "spotify.com");
+  assert.equal(k("https://spotify.com"), "spotify.com");
+  assert.equal(k("https://spotify.com/us/"), "spotify.com/us");
+  assert.notEqual(k("https://open.spotify.com/"), k("https://spotify.com/"), "a different subdomain is a different source");
+});
+
+test("A1: concurrent analyses of the same source share ONE fetch and ONE AI call (in-flight sharing)", async () => {
+  const { deps, calls, ai } = aiCountingDeps({ inflight: new Map() });
+  const [a, b] = await Promise.all([run(deps, "spotify.com", "user-1"), run(deps, "www.spotify.com", "user-1")]);
+  assert.equal(a.outcome, "prefilled");
+  assert.equal(b.outcome, "prefilled");
+  assert.equal(ai.calls, 1, "the second analysis waited and reused the first enrichment");
+  assert.equal(calls.fetch.length, 1);
+  assert.deepEqual(calls.logs.map((l) => l.aiCalled), [true, false]);
+  assert.equal(deps.inflight.size, 0, "no in-flight entry is left behind");
+});
+
+test("A1: a failed in-flight analysis never blocks the next one", async () => {
+  let n = 0;
+  const { deps } = aiCountingDeps({
+    inflight: new Map(),
+    fetchHtml: async (url) => {
+      n += 1;
+      if (n === 1) throw new Error("boom");
+      return { ok: true, url: new URL(url.href), html: THIN_HTML, bytes: THIN_HTML.length, redirects: 0 };
+    },
+  });
+  await assert.rejects(run(deps, "spotify.com"));
+  assert.equal(deps.inflight.size, 0);
+  assert.equal((await run(deps, "spotify.com")).outcome, "prefilled");
+});
+
+test("A1: without the optional in-flight map, behavior is unchanged (each call runs on its own)", async () => {
+  const { deps, ai } = aiCountingDeps();
+  await Promise.all([run(deps, "spotify.com"), run(deps, "spotify.com")]);
+  assert.equal(ai.calls, 2);
 });
