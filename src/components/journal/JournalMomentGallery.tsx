@@ -45,9 +45,9 @@ export default function JournalMomentGallery({
   /** The mobile Admin toolbar is showing — the fixed mobile header sits
    * 1.75rem lower, so the sticky strip must too. */
   adminToolbar: boolean;
-  /** The existing Add Moment entry point for this Moment's source Event
-   * (/event/<slug>/journal), or null when there's no legitimate source to
-   * scope a new Moment to — then no end-of-stream CTA renders. */
+  /** Where "Add Your Moment" goes: the source Event's entry point
+   * (/event/<slug>/journal) when there is one, else the generic composer.
+   * Omitted/null → no end-of-stream CTA. */
   addMomentHref?: string | null;
 }) {
   const [filter, setFilter] = useState<string | null>(null);

@@ -70,13 +70,12 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   // for that Event — never a guessed/first occurrence.
   const occurrenceForEvent = (eventId: string) => occurrences.find((o) => o.event_id === eventId) ?? null;
   const primaryOccurrence = events.length > 0 ? occurrenceForEvent(events[0].id) : null;
-  // "+ Add Your Moment" — only when this Moment's primary context is a real
-  // Event: it opens that Event's existing Add Moment entry point (the same
-  // one every Event page links to), which handles sign-in and prefills a
-  // NEW Moment with the Event. No Event → no CTA (never a blank or
-  // wrongly-scoped Moment). Its occurrence is resolved there, as for any
-  // Event-started Moment.
-  const addMomentHref = events[0]?.slug ? `/event/${events[0].slug}/journal` : null;
+  // "+ Add Your Moment" — offered on every Moment. A real connected Event
+  // only SCOPES it: the Event's own Add Moment entry point (the same one
+  // every Event page links to — sign-in, then a NEW Moment prefilled with
+  // that Event). Without an Event it opens the canonical generic composer
+  // (the global "Add Moment" route) — never an invented Event.
+  const addMomentHref = events[0]?.slug ? `/event/${events[0].slug}/journal` : "/my-world/journal/new";
   // Visit Details' time line prefers the connected occurrence's real
   // start–end range (authoritative) over the manually-typed entry_time —
   // available data this pass surfaces without redesigning the section.
@@ -270,14 +269,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           <div className="mt-4">
             <div className="flex min-h-8 items-center justify-between gap-3">
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
-              {primaryKind === "event" && addMomentHref && (
-                <Link
-                  href={addMomentHref}
-                  className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
-                >
-                  + Add Your Moment
-                </Link>
-              )}
+              <AddYourMomentPill href={addMomentHref} />
             </div>
             <div className="mt-1.5">
               {primaryKind === "event" && primaryEvent && (
@@ -311,6 +303,14 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
 
+        {/* No source connection at all: the same pill on its own row, in the
+            spot the source block would start — no stand-in label or card. */}
+        {!primaryKind && (
+          <div className="mt-4 flex">
+            <AddYourMomentPill href={addMomentHref} />
+          </div>
+        )}
+
         {/* The author's overall story — plain, restrained text. */}
         {entry.notes && (
           <div className="mt-5 max-w-xl">
@@ -323,7 +323,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             sections={gallerySections}
             title={entry.title}
             adminToolbar={isAuthorizedAdmin}
-            addMomentHref={primaryKind === "event" ? addMomentHref : null}
+            addMomentHref={addMomentHref}
           />}
 
         {/* Visit Details — where/when, plus whatever else is connected
@@ -542,5 +542,18 @@ function EditPencilGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/** The compact "+ Add Your Moment" pill — same secondary pill as the
+ * Event page's own "+ Add Moment". */
+function AddYourMomentPill({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+    >
+      + Add Your Moment
+    </Link>
   );
 }
