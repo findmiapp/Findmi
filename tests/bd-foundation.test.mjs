@@ -146,8 +146,16 @@ test("scope: additive only — no public changes, no functions, no data, no ledg
   assert.deepEqual(publicRefs, ["public.businesses", "public.set_updated_at"]);
 });
 
-test("app boundary: nothing in the app reads the bd schema yet (Checkpoint 1 is database-only)", () => {
+test("app boundary: only the approved private Admin BD server boundary reads the bd schema", () => {
+  // Checkpoint 3A narrowed this from "nothing reads bd": the ONE file
+  // allowed to select the schema is the server-only, admin-authorized
+  // client. Any other `.schema("bd")` or raw `bd.<table>` reference in src
+  // fails here (tests/bd-admin.test.mjs guards the rest of the boundary).
+  const APPROVED = join("src", "lib", "admin", "bd", "client.ts");
   const walk = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
-  const offenders = walk("src").filter((f) => /\.(ts|tsx)$/.test(f) && /\.schema\(\s*["']bd["']\s*\)|["']bd\.(organizations|contacts|projects|project_parties|activities)["']/.test(readFileSync(f, "utf8")));
+  const offenders = walk("src").filter((f) => f !== APPROVED && /\.(ts|tsx)$/.test(f) && /\.schema\(\s*["']bd["']\s*\)|["']bd\.(organizations|contacts|projects|project_parties|activities)["']/.test(readFileSync(f, "utf8")));
   assert.deepEqual(offenders, []);
+  const client = readFileSync(APPROVED, "utf8");
+  assert.match(client, /^import "server-only";/);
+  assert.match(client, /await requireAdminSupabase\(\);\s*return supabase\.schema\("bd"\);/);
 });
