@@ -89,7 +89,7 @@ test("a category: exactly that section's photos in order, its cover included", (
 // ── Page composition ─────────────────────────────────────────────────────
 test("page: one continuous gallery — no section headings, carousels or More Photos", () => {
   const c = code(PAGE);
-  assert.match(c, /<JournalMomentGallery photos=\{galleryPhotos\} sections=\{gallerySections\} title=\{entry\.title\} adminToolbar=\{isAuthorizedAdmin\} \/>/);
+  assert.match(c, /<JournalMomentGallery\s+photos=\{galleryPhotos\}\s+sections=\{gallerySections\}\s+title=\{entry\.title\}\s+adminToolbar=\{isAuthorizedAdmin\}\s+addMomentHref=\{primaryKind === "event" \? addMomentHref : null\}\s+\/>/);
   assert.doesNotMatch(c, /JournalSectionCarousel|More Photos|journalSectionLabel|section-\$\{|photoSections|<JournalPhotoGallery/);
   assert.equal(existsSync("src/components/journal/JournalSectionCarousel.tsx"), false, "carousel deleted");
   assert.equal(existsSync("tests/journal-section-carousel.test.mjs"), false);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { MediaViewerItem } from "@/components/MediaViewer";
 import JournalPhotoGallery, { type JournalGalleryItem } from "./JournalPhotoGallery";
 import { JournalMediaViewerRoot } from "./JournalMediaViewer";
@@ -35,6 +36,7 @@ export default function JournalMomentGallery({
   sections,
   title,
   adminToolbar,
+  addMomentHref = null,
 }: {
   photos: MomentGalleryMedia[];
   sections: MomentGallerySection[];
@@ -43,6 +45,10 @@ export default function JournalMomentGallery({
   /** The mobile Admin toolbar is showing — the fixed mobile header sits
    * 1.75rem lower, so the sticky strip must too. */
   adminToolbar: boolean;
+  /** The existing Add Moment entry point for this Moment's source Event
+   * (/event/<slug>/journal), or null when there's no legitimate source to
+   * scope a new Moment to — then no end-of-stream CTA renders. */
+  addMomentHref?: string | null;
 }) {
   const [filter, setFilter] = useState<string | null>(null);
   const rootRef = useRef<HTMLElement>(null);
@@ -132,6 +138,21 @@ export default function JournalMomentGallery({
       <JournalMediaViewerRoot key={active?.id ?? "all"} items={viewerItems}>
         <JournalPhotoGallery items={items} />
       </JournalMediaViewerRoot>
+      {/* The natural end of whichever stream is showing — All or the
+          selected category — since it follows the filtered grid itself. */}
+      {addMomentHref && (
+        <Link
+          href={addMomentHref}
+          className="mt-4 flex min-h-[44px] w-full items-center justify-center gap-2.5 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink/85 transition hover:border-black/20"
+        >
+          <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-findmi text-white">
+            <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none">
+              <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </span>
+          Add Your Moment
+        </Link>
+      )}
     </section>
   );
 }

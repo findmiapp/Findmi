@@ -70,6 +70,13 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   // for that Event — never a guessed/first occurrence.
   const occurrenceForEvent = (eventId: string) => occurrences.find((o) => o.event_id === eventId) ?? null;
   const primaryOccurrence = events.length > 0 ? occurrenceForEvent(events[0].id) : null;
+  // "+ Add Your Moment" — only when this Moment's primary context is a real
+  // Event: it opens that Event's existing Add Moment entry point (the same
+  // one every Event page links to), which handles sign-in and prefills a
+  // NEW Moment with the Event. No Event → no CTA (never a blank or
+  // wrongly-scoped Moment). Its occurrence is resolved there, as for any
+  // Event-started Moment.
+  const addMomentHref = events[0]?.slug ? `/event/${events[0].slug}/journal` : null;
   // Visit Details' time line prefers the connected occurrence's real
   // start–end range (authoritative) over the manually-typed entry_time —
   // available data this pass surfaces without redesigning the section.
@@ -261,7 +268,17 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             photos: "what real-world experience was this?" */}
         {primaryKind && (
           <div className="mt-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
+            <div className="flex min-h-8 items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
+              {primaryKind === "event" && addMomentHref && (
+                <Link
+                  href={addMomentHref}
+                  className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+                >
+                  + Add Your Moment
+                </Link>
+              )}
+            </div>
             <div className="mt-1.5">
               {primaryKind === "event" && primaryEvent && (
                 <ContextCard
@@ -301,7 +318,13 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        {hasGallery && <JournalMomentGallery photos={galleryPhotos} sections={gallerySections} title={entry.title} adminToolbar={isAuthorizedAdmin} />}
+        {hasGallery && <JournalMomentGallery
+            photos={galleryPhotos}
+            sections={gallerySections}
+            title={entry.title}
+            adminToolbar={isAuthorizedAdmin}
+            addMomentHref={primaryKind === "event" ? addMomentHref : null}
+          />}
 
         {/* Visit Details — where/when, plus whatever else is connected
             (never the primary context card again). */}
