@@ -516,5 +516,5 @@ test("env + scope: BRAND_DRAFT_SECRET documented without a value; no migration, 
   const env = read(".env.example");
   assert.match(env, /^BRAND_DRAFT_SECRET=$/m);
   assert.doesNotMatch(read("src/lib/brand-draft.ts"), /ADMIN_PASSWORD|SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(CREATE, /if \(!city \|\| !state\) fail\("City and state are required\."\);/);
+  assert.match(CREATE, /if \(!brandOnboarding && \(!city \|\| !state\)\) fail\("City and state are required\."\);/);
 });

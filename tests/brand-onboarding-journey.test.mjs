@@ -224,9 +224,10 @@ test("Profile tab shows the created confirmation; Overview keeps its own", () =>
 });
 
 test("scope guard: matcher, safe-fetch and geography untouched by this correction", () => {
-  // Geography: city/state/market still required at creation, RPC args unchanged.
-  assert.match(CREATE, /if \(!city \|\| !state\) fail\("City and state are required\."\);/);
-  assert.match(CREATE, /if \(!marketId && !requestedMarketText\) \{/);
+  // Geography: city/state/market still required for ordinary creation
+  // (optional for Brand onboarding since VCL A2b), RPC args unchanged.
+  assert.match(CREATE, /if \(!brandOnboarding && \(!city \|\| !state\)\) fail\("City and state are required\."\);/);
+  assert.match(CREATE, /if \(!marketId && !requestedMarketText && \(!brandOnboarding \|\| hasGeography\)\) \{/);
   assert.match(CREATE, /p_market_id: effectiveMarketId,/);
   assert.doesNotMatch(read("src/lib/brand-website-analysis.ts"), /safeFetchHtml\(url, \{/, "default safe-fetch options");
 });

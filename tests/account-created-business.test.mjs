@@ -100,7 +100,7 @@ test("card actions: Preview = the existing member-only owner preview; Manage = t
 
 test("A2 adds no schema, migration or privileged write", () => {
   const migrations = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(migrations.at(-1), "20261013000000_bd_foundation.sql", "no new migration");
+  assert.deepEqual(migrations.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql"], "no new migration (A2b's later one aside)");
   for (const src of [CARD, read("src/lib/account-created-business.ts")]) {
     assert.doesNotMatch(src, /getAdminSupabase|\.insert\(|\.update\(|\.rpc\(|cookies\(/);
   }

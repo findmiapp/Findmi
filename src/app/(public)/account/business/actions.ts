@@ -1293,7 +1293,13 @@ export async function createMemberBusiness(formData: FormData) {
   // retroactively requires it on an existing business (Business Manager's
   // own profile-edit form is untouched), so no legitimate already-created
   // business is affected.
-  if (!city || !state) fail("City and state are required.");
+  //
+  // VCL A2b — Brand onboarding: geography is optional ("No geography is
+  // better than false geography"). Blank City/State (already normalized to
+  // null by str()) create the Business with no Market and no Market
+  // Request; anything the owner DID enter is validated exactly as before.
+  const hasGeography = Boolean(city || state);
+  if (!brandOnboarding && (!city || !state)) fail("City and state are required.");
   if (shortDescription && shortDescription.length > SHORT_DESCRIPTION_MAX_LENGTH) {
     fail(`Keep your short description to ${SHORT_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
   }
@@ -1306,7 +1312,7 @@ export async function createMemberBusiness(formData: FormData) {
   // re-validates existence/active status/exactly-one-choice itself
   // (market_required/invalid_market/market_choice_ambiguous) as the real,
   // untrusted-client-input enforcement — this is only a UX shortcut.
-  if (!marketId && !requestedMarketText) {
+  if (!marketId && !requestedMarketText && (!brandOnboarding || hasGeography)) {
     fail("Choose a Primary Market, or request one below.");
   }
   if (marketId && requestedMarketText) {

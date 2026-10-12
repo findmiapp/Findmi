@@ -1263,7 +1263,9 @@ export default async function ManageBusinessPage({
   // "Materially affects discovery" — the same fields a visitor would
   // actually need to find/trust this business, not every optional field
   // on the Profile tab (e.g. website/social links are never required here).
-  const profileIncomplete = !business.logo_url || !business.short_description || !business.city || !business.state || !currentCategoryId;
+  // VCL A2b — City/State are optional for a Business (no geography beats
+  // false geography), so their absence alone never flags Complete Profile.
+  const profileIncomplete = !business.logo_url || !business.short_description || !currentCategoryId;
   const needsAttention = buildNeedsAttentionItems({
     businessId: id,
     hasPrimaryMarket: Boolean(primaryMarket),

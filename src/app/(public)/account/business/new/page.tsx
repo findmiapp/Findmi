@@ -197,6 +197,7 @@ export default async function AddBusinessPage({
       defaultState={values.state}
       defaultMarketId={submittedMarketId ?? ""}
       defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
+      optional={brandOnboarding}
     />
   );
 

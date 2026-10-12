@@ -13,6 +13,10 @@ export interface BusinessGeographyFieldsProps {
   defaultState: string;
   defaultMarketId: string;
   defaultRequestedMarketText: string;
+  /** VCL A2b — Brand onboarding: City/State are optional ("No geography is
+   * better than false geography"). Blank stays blank: no Market, no Market
+   * Request. Anything typed still gets the same area matching below. */
+  optional?: boolean;
 }
 
 /** "Staten Island · New York City" for an Area match, plain "North Jersey"
@@ -45,9 +49,9 @@ function formatSuggestionHeadline(suggestion: GeographyMatch): string {
  * reachable ONLY via the explicit "Change area" / "Choose an existing area
  * instead" actions (`overridden`), never automatically.
  *
- * City/State are now `required` (see this pass's own report for why no
- * existing Business type needed them optional) — still plain text
- * fields, no geocoding, no country field added.
+ * City/State are `required` for the ordinary creation form and optional
+ * (`optional`) for Brand onboarding (VCL A2b) — still plain text fields,
+ * no geocoding, no country field added.
  */
 export default function BusinessGeographyFields({
   markets,
@@ -55,6 +59,7 @@ export default function BusinessGeographyFields({
   defaultState,
   defaultMarketId,
   defaultRequestedMarketText,
+  optional = false,
 }: BusinessGeographyFieldsProps) {
   const [city, setCity] = useState(defaultCity);
   const [state, setState] = useState(defaultState);
@@ -89,14 +94,20 @@ export default function BusinessGeographyFields({
             city/state this business is based in, feeding the Findmi area
             match below. Copy-only fix; City/State fields and the area
             matching logic above are unchanged. */}
-        <span className="mb-1.5 block text-sm font-medium text-ink">Where is your business based?</span>
+        {optional ? (
+          <p className="mb-1.5 text-label font-bold uppercase text-subtle">
+            Location <span className="font-normal normal-case">Optional</span>
+          </p>
+        ) : (
+          <span className="mb-1.5 block text-sm font-medium text-ink">Where is your business based?</span>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-ink/60">City</span>
             <input
               type="text"
               name="city"
-              required
+              required={!optional}
               value={city}
               onChange={(e) => setCity(e.target.value)}
               className={inputClass}
@@ -107,14 +118,14 @@ export default function BusinessGeographyFields({
             <input
               type="text"
               name="state"
-              required
+              required={!optional}
               value={state}
               onChange={(e) => setState(e.target.value)}
               className={inputClass}
             />
           </label>
         </div>
-        {!hasInput && (
+        {!hasInput && !optional && (
           <p className="mt-1.5 text-xs text-ink/45">
             Enter where your business is based. Findmi will determine the best area for discovery.
           </p>
