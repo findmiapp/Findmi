@@ -510,3 +510,111 @@ test("entry point: Import Brands is reachable from Admin Businesses; Title Case 
   assert.match(read(`${IMPORT_DIR}/[batchId]/page.tsx`), /Retry Limit Reached/);
   assert.doesNotMatch(page, /type="file"|csv/i, "website input only");
 });
+
+// ── View Candidate: link → route → loader (production 404 regression) ─────
+const BATCH_ID = "e085e544-0399-4d4e-aade-ba3aab3e0338";
+const CAND_ID = "305b8c4a-acdb-4fbd-a859-989597607874";
+const OTHER_BATCH_ID = "11111111-2222-4333-8444-555555555555";
+const CANDIDATE_ROW = {
+  id: CAND_ID, batch_id: BATCH_ID, position: 1, submitted_input: "milkmakeup.com", normalized_host: "milkmakeup.com", status: "ready",
+  failure_code: null, attempt_count: 1, processing_started_at: null,
+  proposal: { site: "https://milkmakeup.com", finalUrl: "https://milkmakeup.com/", name: "Milk Makeup", cat: CAT.id },
+  matched_business_id: null, ai_status: "used", ai_model: "claude-opus-5", ai_input_tokens: 2100, ai_output_tokens: 150,
+  ai_cache_creation_input_tokens: null, ai_cache_read_input_tokens: null, ai_estimated_cost_usd: 0.0143,
+};
+/** A fake service-role client: applies eq/in filters like PostgREST; can
+ * fail one table's query with a PostgREST-style error. */
+function fakeAdmin(tables, failTable = null) {
+  return {
+    from(table) {
+      const filters = [];
+      let single = false;
+      const q = {
+        select: () => q,
+        order: () => q,
+        eq: (col, val) => (filters.push((r) => r[col] === val), q),
+        in: (col, vals) => (filters.push((r) => vals.includes(r[col])), q),
+        maybeSingle: () => ((single = true), q),
+        then(resolve, reject) {
+          if (failTable === table) {
+            return Promise.resolve({ data: null, error: { code: "PGRST000", message: "connection failed https://db.example/?token=SECRET" } }).then(resolve, reject);
+          }
+          const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+          return Promise.resolve(single ? { data: rows[0] ?? null, error: null } : { data: rows, error: null }).then(resolve, reject);
+        },
+      };
+      return q;
+    },
+  };
+}
+const TABLES = { brand_import_batches: [{ id: BATCH_ID, created_at: "2026-10-12T02:00:00Z", submitted_count: 5 }], brand_import_candidates: [CANDIDATE_ROW], businesses: [] };
+
+async function captureConsoleError(fn) {
+  const original = console.error;
+  const lines = [];
+  console.error = (...args) => lines.push(args.join(" "));
+  try {
+    return { result: await fn().catch((e) => ({ thrown: e })), lines };
+  } finally {
+    console.error = original;
+  }
+}
+
+test("view candidate 1: the batch page's href matches the real route shape and param names", () => {
+  const batchPage = read(`${IMPORT_DIR}/[batchId]/page.tsx`);
+  const template = batchPage.match(/href=\{`(\/admin\/businesses\/import\/\$\{batch\.id\}\/\$\{c\.id\})`\}/);
+  assert.ok(template, "View Candidate links to /admin/businesses/import/${batch.id}/${c.id}");
+  assert.ok(statSync(`${IMPORT_DIR}/[batchId]/[candidateId]/page.tsx`).isFile(), "route file exists");
+  const detail = read(`${IMPORT_DIR}/[batchId]/[candidateId]/page.tsx`);
+  assert.match(detail, /params: Promise<\{ batchId: string; candidateId: string \}>/);
+  // The concrete production URL matches the route pattern and passes the
+  // page's own id check.
+  const href = template[1].replace("${batch.id}", BATCH_ID).replace("${c.id}", CAND_ID);
+  const m = href.match(/^\/admin\/businesses\/import\/([^/]+)\/([^/]+)$/);
+  assert.deepEqual([m[1], m[2]], [BATCH_ID, CAND_ID]);
+  const UUID = new RegExp(detail.match(/const UUID = \/(.+)\/i;/)[1], "i");
+  assert.ok(UUID.test(m[1]) && UUID.test(m[2]));
+});
+
+test("view candidate 2: a valid batchId + candidateId resolves through the loader", async () => {
+  const view = await I.loadBrandImportCandidate(fakeAdmin(TABLES), BATCH_ID, CAND_ID);
+  assert.equal(view.id, CAND_ID);
+  assert.equal(view.status, "ready");
+  assert.equal(view.proposal.name, "Milk Makeup");
+  assert.equal(view.aiEstimatedCostUsd, 0.0143);
+});
+
+test("view candidate 3–4: wrong batch and nonexistent candidate stay not found (null → 404)", async () => {
+  assert.equal(await I.loadBrandImportCandidate(fakeAdmin(TABLES), OTHER_BATCH_ID, CAND_ID), null, "candidate of another batch");
+  assert.equal(await I.loadBrandImportCandidate(fakeAdmin(TABLES), BATCH_ID, "99999999-9999-4999-8999-999999999999"), null);
+  assert.equal(await I.loadBrandImportBatch(fakeAdmin(TABLES), OTHER_BATCH_ID), null);
+});
+
+test("view candidate: a failed query is NOT a 404 — it throws a generic error and logs safely", async () => {
+  for (const [fn, table, target] of [
+    [() => I.loadBrandImportCandidate(fakeAdmin(TABLES, "brand_import_candidates"), BATCH_ID, CAND_ID), "brand_import_candidates", "candidate"],
+    [() => I.loadBrandImportBatch(fakeAdmin(TABLES, "brand_import_batches"), BATCH_ID), "brand_import_batches", "batch"],
+    [() => I.loadBrandImportBatch(fakeAdmin(TABLES, "brand_import_candidates"), BATCH_ID), "brand_import_candidates", "batch_candidates"],
+  ]) {
+    const { result, lines } = await captureConsoleError(fn);
+    assert.ok(result?.thrown instanceof I.BrandImportLoadError, `${table}: throws, not null`);
+    assert.equal(result.thrown.target, target);
+    assert.equal(result.thrown.message, "brand_import_load_failed", "generic message for the browser");
+    assert.deepEqual(JSON.parse(lines[0]), { event: "brand_import_load", outcome: "query_failed", target, code: "PGRST000" });
+    assert.ok(!lines.join("").includes("SECRET") && !lines.join("").includes(CAND_ID), "no message, URL or ids in the log");
+  }
+});
+
+test("view candidate 5: the detail page keeps the Admin boundary and 404s only for invalid ids or a missing candidate", () => {
+  const detail = code(`${IMPORT_DIR}/[batchId]/[candidateId]/page.tsx`);
+  const guard = detail.indexOf("await requireAdminSupabase()");
+  assert.ok(guard > 0 && guard < detail.indexOf("loadBrandImportCandidate(admin"), "admin session verified before loading");
+  assert.deepEqual(detail.match(/notFound\(\)/g).length, 2);
+  assert.match(detail, /if \(!UUID\.test\(batchId\) \|\| !UUID\.test\(candidateId\)\) notFound\(\);/);
+  assert.match(detail, /if \(!candidate\) notFound\(\);/);
+  assert.doesNotMatch(detail, /catch\s*\(/, "load errors are not swallowed into a 404");
+  // The loader itself scopes by both ids and never swallows its error.
+  const loader = code(LIB).slice(code(LIB).indexOf("export async function loadBrandImportCandidate"));
+  assert.match(loader, /\.eq\("id", candidateId\)\.eq\("batch_id", batchId\)\.maybeSingle\(\)/);
+  assert.match(loader, /if \(error\) loadFailed\("candidate", error\);\s*if \(!data\) return null;/);
+});

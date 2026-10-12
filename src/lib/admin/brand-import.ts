@@ -566,13 +566,37 @@ async function toViews(admin: SupabaseClient, rows: Record<string, unknown>[]): 
   });
 }
 
+/** A read-model query FAILED (as opposed to legitimately finding no row).
+ * Thrown so the page shows an error state, never a misleading 404; the
+ * message is generic — no database detail reaches the browser. */
+export class BrandImportLoadError extends Error {
+  readonly target: "batch" | "batch_candidates" | "candidate";
+  readonly code: string | null;
+  constructor(target: BrandImportLoadError["target"], code: string | null) {
+    super("brand_import_load_failed");
+    this.name = "BrandImportLoadError";
+    this.target = target;
+    this.code = code;
+  }
+}
+
+/** Logs the failure safely (target + PostgREST error code only — never
+ * the message, ids or values) and throws. */
+function loadFailed(target: BrandImportLoadError["target"], error: { code?: unknown } | null): never {
+  const code = typeof error?.code === "string" ? error.code.slice(0, 16) : null;
+  console.error(JSON.stringify({ event: "brand_import_load", outcome: "query_failed", target, code }));
+  throw new BrandImportLoadError(target, code);
+}
+
 export async function loadBrandImportBatch(
   admin: SupabaseClient,
   batchId: string
 ): Promise<{ id: string; createdAt: string; submittedCount: number; candidates: BrandImportCandidateView[] } | null> {
-  const { data: batch } = await admin.from("brand_import_batches").select("id, created_at, submitted_count").eq("id", batchId).maybeSingle();
+  const { data: batch, error: batchError } = await admin.from("brand_import_batches").select("id, created_at, submitted_count").eq("id", batchId).maybeSingle();
+  if (batchError) loadFailed("batch", batchError);
   if (!batch) return null;
-  const { data: rows } = await admin.from("brand_import_candidates").select(VIEW_COLUMNS).eq("batch_id", batchId).order("position");
+  const { data: rows, error: rowsError } = await admin.from("brand_import_candidates").select(VIEW_COLUMNS).eq("batch_id", batchId).order("position");
+  if (rowsError) loadFailed("batch_candidates", rowsError);
   const b = batch as { id: string; created_at: string; submitted_count: number };
   return { id: b.id, createdAt: b.created_at, submittedCount: b.submitted_count, candidates: await toViews(admin, (rows ?? []) as Record<string, unknown>[]) };
 }
@@ -582,7 +606,10 @@ export async function loadBrandImportCandidate(
   batchId: string,
   candidateId: string
 ): Promise<BrandImportCandidateView | null> {
-  const { data } = await admin.from("brand_import_candidates").select(VIEW_COLUMNS).eq("id", candidateId).eq("batch_id", batchId).maybeSingle();
+  // Scoped to the requested batch: a candidate from another batch is
+  // "not found" exactly like a nonexistent one. A failed query throws.
+  const { data, error } = await admin.from("brand_import_candidates").select(VIEW_COLUMNS).eq("id", candidateId).eq("batch_id", batchId).maybeSingle();
+  if (error) loadFailed("candidate", error);
   if (!data) return null;
   return (await toViews(admin, [data as Record<string, unknown>]))[0];
 }
