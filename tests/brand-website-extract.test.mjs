@@ -93,11 +93,12 @@ test("JSON-LD conflicts: entity on this site wins → else name matching the dom
   assert.equal(extract(page(ld([e, f]) + '<meta property="og:site_name" content="Lavazza">')).name, "Lavazza", "conflict → falls back to og:site_name");
 });
 
-test("Instagram: one sameAs account wins; several → none; page links only when exactly one account", () => {
+test("Instagram: one sameAs account wins; several → the one the page also links; page links only when unambiguous", () => {
   const sameAs = (list) => ld({ "@type": "Organization", name: "Lavazza", sameAs: list });
   assert.equal(extract(page(sameAs(["https://www.instagram.com/lavazzausa/", "https://facebook.com/lavazza"]))).instagramHandle, "lavazzausa");
   assert.equal(extract(page(sameAs("https://instagram.com/LavazzaUSA?igsh=x"))).instagramHandle, "lavazzausa");
-  assert.equal(extract(page(sameAs(["https://instagram.com/a_one", "https://instagram.com/b_two"]), '<a href="https://instagram.com/a_one">IG</a>')).instagramHandle, null);
+  assert.equal(extract(page(sameAs(["https://instagram.com/a_one", "https://instagram.com/b_two"]), '<a href="https://instagram.com/a_one">IG</a>')).instagramHandle, "a_one", "several sameAs: the one also linked on the page");
+  assert.equal(extract(page(sameAs(["https://instagram.com/a_one", "https://instagram.com/b_two"]))).instagramHandle, null, "several sameAs, no tie-break evidence");
   assert.equal(extract(page("", '<a href="https://instagram.com/lavazzausa">IG</a><a href="https://www.instagram.com/lavazzausa/">IG</a>')).instagramHandle, "lavazzausa");
   assert.equal(extract(page("", '<a href="https://instagram.com/one_brand">1</a><a href="https://instagram.com/other_brand">2</a>')).instagramHandle, null);
   assert.equal(extract(page('<link rel="me" href="https://instagram.com/lavazzausa">')).instagramHandle, "lavazzausa");

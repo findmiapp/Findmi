@@ -158,16 +158,14 @@ export function brandProfileFields(profile: ExtractedBrandProfile): BrandProfile
 
 // ── Stage 3: match → AI → images → candidate ──────────────────────────────
 
-/** The CURRENT (V1.1C) AI policy, unchanged: AI is needed when
- * deterministic extraction left the category, the short description OR
- * the About empty. A later phase may change this deliberately; this is
- * the single place it is decided. */
-export function brandAiNeed(input: {
-  deterministicCategoryId: string | null;
-  shortDescription: string | null;
-  aboutDescription: string | null;
-}): boolean {
-  return !input.deterministicCategoryId || !input.shortDescription || !input.aboutDescription;
+/** The AI policy (Brand Candidate Quality pass): the one bounded AI call
+ * runs only when deterministic extraction left the CATEGORY or a usable
+ * neutral SHORT DESCRIPTION missing. About is optional — a missing About
+ * alone never pays for a call (when the call does run for category or
+ * short description, it may still return an About). Shared by the public
+ * Brand Builder and Admin Brand Import; the single place it is decided. */
+export function brandAiNeed(input: { deterministicCategoryId: string | null; shortDescription: string | null }): boolean {
+  return !input.deterministicCategoryId || !input.shortDescription;
 }
 
 /** Caller-supplied identity values that take precedence over the weaker
@@ -312,11 +310,7 @@ export async function buildCandidateFromExtraction(
   if (enrichment) {
     ai = { status: enrichment.aiStatus, reused: true, called: false, usage: null };
   } else {
-    const needsAi = brandAiNeed({
-      deterministicCategoryId,
-      shortDescription: profile.shortDescription,
-      aboutDescription: profile.aboutDescription,
-    });
+    const needsAi = brandAiNeed({ deterministicCategoryId, shortDescription: profile.shortDescription });
     const verify = async (url: string | null, role: BrandImageRole) => {
       if (!options.verifyImages || !url) return null;
       try {

@@ -99,7 +99,12 @@ Return:
 - short_description: one neutral, factual sentence (at most 160 characters) describing what the brand offers, or null.
 - about: a neutral, factual description (at most 600 characters, plain prose), or null.
 
-Use only facts stated in the website data. Do not invent history, founding dates, locations, people, awards, certifications, product properties, prices or claims. No superlatives or marketing language that the data doesn't support. Do not repeat the brand name as the whole description. If the data is too thin to describe the brand, return null for that field.`;
+Write both descriptions as a neutral directory profile, in the third person, the way a reference listing describes a brand — for example: "Acme is a beverage brand offering sparkling water made with fruit juice." The website's own copy is often written to sell; restate its facts neutrally instead of copying its voice:
+- never open with a call to action or sales verb (Shop, Buy, Discover, Explore, Get, Order, Browse, Try, Meet, Experience, Introducing);
+- never write in the first person ("we", "our", "us") or address the reader ("you", "your");
+- no hype, slogans, exclamation marks or superlatives (best, ultimate, world-class, revolutionary) unless stated as a verifiable fact in the data.
+
+Use only facts stated in the website data. Do not invent history, founding dates, locations, people, awards, certifications, product properties, prices or claims. Do not repeat the brand name as the whole description. If the data is too thin to describe the brand, return null for that field.`;
 
 /** Builds the bounded, JSON-encoded website data (exported for tests).
  * Drops lowest-value content first until it fits the cap: paragraphs,

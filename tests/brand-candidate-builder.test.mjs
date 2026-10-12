@@ -101,22 +101,30 @@ test("core: a fully deterministic candidate is built with no AI call", async () 
   assert.equal(r.fields.category, true);
 });
 
-test("brandAiNeed: the CURRENT policy — category OR short description OR About missing", () => {
+test("brandAiNeed: AI only when the category or a usable short description is missing — About alone never", () => {
+  // The approved matrix (About is not an input any more).
+  const rows = [
+    // category, short, about → AI?
+    ["c", "s", "a", false],
+    ["c", "s", null, false],
+    [null, "s", "a", true],
+    ["c", null, "a", true],
+    [null, null, null, true],
+  ];
+  for (const [category, short, about, expected] of rows) {
+    assert.equal(B.brandAiNeed({ deterministicCategoryId: category, shortDescription: short, aboutDescription: about }), expected, JSON.stringify({ category, short, about }));
+  }
   for (const category of [null, "c"]) {
     for (const short of [null, "s"]) {
-      for (const about of [null, "a"]) {
-        const expected = !category || !short || !about;
-        assert.equal(B.brandAiNeed({ deterministicCategoryId: category, shortDescription: short, aboutDescription: about }), expected, JSON.stringify({ category, short, about }));
-      }
+      assert.equal(B.brandAiNeed({ deterministicCategoryId: category, shortDescription: short }), !category || !short);
     }
   }
-  // About alone still triggers AI in P1 (deliberately unchanged).
-  assert.equal(B.brandAiNeed({ deterministicCategoryId: "c", shortDescription: "s", aboutDescription: null }), true);
   const src = readFileSync("src/lib/brand-candidate-builder.ts", "utf8");
   assert.equal((src.match(/brandAiNeed\(\{/g) ?? []).length, 1, "the one decision point is used by the core");
+  assert.doesNotMatch(src.slice(src.indexOf("export function brandAiNeed")), /^[^}]*aboutDescription/, "About is not part of the rule");
 });
 
-test("core: AI merges exactly as before — deterministic values win, AI fills only what is missing", async () => {
+test("core: AI merges as before — deterministic values win, AI fills only what is missing (About alone triggers nothing)", async () => {
   const thin = deps({ fetchHtml: html(THIN) });
   const r = await B.buildBrandCandidate("milkmakeup.com", thin.deps, OPTS);
   assert.equal(r.status, "candidate");
@@ -126,14 +134,22 @@ test("core: AI merges exactly as before — deterministic values win, AI fills o
   assert.equal(thin.calls.enrich[0].website, "https://milkmakeup.com", "the submitted website, as before");
   assert.deepEqual([r.proposal.categoryId, r.proposal.shortDescription, r.proposal.about], [AI_CAT, AI_RESULT.shortDescription, AI_RESULT.about]);
   assert.equal(r.ai.status, "used");
-  // Only About missing → AI runs, but deterministic category/short win.
+  // Only About missing → NO AI call (Quality pass): About stays empty.
   const SHORT_ONLY = page(ld({ "@type": "BeautySalon", name: "Glow Studio", url: "https://glow.example.com/", description: "Facials, brows and lash treatments for every skin type." }));
   const partial = deps({ fetchHtml: html(SHORT_ONLY) });
   const p = await B.buildBrandCandidate("glow.example.com", partial.deps, OPTS);
-  assert.equal(partial.calls.enrich.length, 1);
-  assert.equal(p.proposal.categoryId, CAT.id, "deterministic category wins");
+  assert.equal(partial.calls.enrich.length, 0, "About alone never calls Anthropic");
+  assert.deepEqual(p.ai, { status: "skipped", reused: false, called: false, usage: null });
+  assert.equal(p.proposal.categoryId, CAT.id);
   assert.equal(p.proposal.shortDescription, "Facials, brows and lash treatments for every skin type.");
-  assert.equal(p.proposal.about, AI_RESULT.about, "AI fills only the About");
+  assert.equal(p.proposal.about, null);
+  // Category missing (deterministic short present) → AI runs; deterministic
+  // short wins, AI fills category and About in the SAME call.
+  const NO_CAT = page(ld({ "@type": "Organization", name: "Glow Studio", url: "https://glow.example.com/", description: "Facials, brows and lash treatments for every skin type." }));
+  const cat = deps({ fetchHtml: html(NO_CAT) });
+  const c = await B.buildBrandCandidate("glow.example.com", cat.deps, OPTS);
+  assert.equal(cat.calls.enrich.length, 1);
+  assert.deepEqual([c.proposal.categoryId, c.proposal.shortDescription, c.proposal.about], [AI_CAT, "Facials, brows and lash treatments for every skin type.", AI_RESULT.about]);
   // AI failure → deterministic values only, status failed.
   const failed = deps({ fetchHtml: html(THIN), enrich: async () => ({ result: null, called: true, usage: null }) });
   const f = await B.buildBrandCandidate("milkmakeup.com", failed.deps, OPTS);

@@ -164,16 +164,27 @@ export function cleanText(value: unknown, max: number): string | null {
 
 const GENERIC_DESCRIPTION =
   /^(welcome to\b|official (web)?site\b|official (online )?store\b|shop (the latest|now|our)\b|free shipping\b|sign up\b|subscribe\b|home ?page\b)/i;
+/** Merchant CTA / first- or second-person brand voice at the START of a
+ * description ("Shop …", "Discover …", "We …", "Our …", "Your …"). Such
+ * copy is not neutral directory text: it is not used as a deterministic
+ * description (so the bounded AI step can write a neutral one), and AI
+ * output in that voice is rejected too. Only the opening is checked —
+ * "… made by our founders" mid-sentence is not penalised. */
+const PROMOTIONAL_OPENING =
+  /^(shop|buy|discover|explore|browse|get|order|find|save|enjoy|experience|try|meet|introducing|check out|join|visit|see|treat yourself|elevate|upgrade|unlock|transform|we|we're|we’re|we've|we’ve|our|us|you|your|you're|you’re)\b/i;
+
 const BOILERPLATE =
   /(cookies?\b.*\b(policy|settings|consent|use)|use cookies|enable javascript|javascript is (disabled|required)|checking your browser|just a moment|attention required|access denied|page not found|404\b)/i;
 
 /** Description quality gate (exported for tests): rejects values that are
  * the brand name (or the name plus a couple of words), too short to say
- * anything, generic greetings/shop prompts, or site boilerplate. */
+ * anything, generic greetings/shop prompts, site boilerplate, or that open
+ * as merchant CTA / first- or second-person copy (PROMOTIONAL_OPENING).
+ * Shared by deterministic extraction and AI-output sanitizing. */
 export function isUsefulDescription(value: unknown, name: string | null): boolean {
   const text = cleanText(value, 2000);
   if (!text || text.length < 25 || text.split(" ").length < 4) return false;
-  if (GENERIC_DESCRIPTION.test(text) || BOILERPLATE.test(text)) return false;
+  if (GENERIC_DESCRIPTION.test(text) || BOILERPLATE.test(text) || PROMOTIONAL_OPENING.test(text)) return false;
   const brand = name ? compact(name) : "";
   if (brand) {
     const body = compact(text);
@@ -428,6 +439,30 @@ export function usStateCode(value: unknown): string | null {
   return Object.keys(US_STATES).find((code) => US_STATES[code] === lower) ?? null;
 }
 
+/** Deterministic choice among Instagram handles the site itself exposes
+ * (exported for tests). Never invents a handle — it only picks among
+ * evidenced ones:
+ *   1. the brand entity's JSON-LD sameAs names exactly one account → it;
+ *   2. sameAs names several → the one ALSO linked from the page, if exactly
+ *      one; else the one whose handle equals the site's domain label;
+ *   3. no sameAs account → the page's links (rel=me + <a>): exactly one
+ *      distinct account → it; several → the one equal to the domain label;
+ *   4. otherwise none. */
+export function chooseInstagramHandle(fromSameAs: Set<string>, fromPage: Set<string>, host: string | null): string | null {
+  const label = host ? domainLabel(host).replace(/[^a-z0-9]/gi, "").toLowerCase() : "";
+  const byLabel = (handles: Set<string>) => {
+    const hits = label.length >= 3 ? [...handles].filter((h) => h.replace(/[._]/g, "") === label) : [];
+    return hits.length === 1 ? hits[0] : null;
+  };
+  if (fromSameAs.size === 1) return [...fromSameAs][0];
+  if (fromSameAs.size > 1) {
+    const both = [...fromSameAs].filter((h) => fromPage.has(h));
+    return both.length === 1 ? both[0] : byLabel(fromSameAs);
+  }
+  if (fromPage.size === 1) return [...fromPage][0];
+  return byLabel(fromPage);
+}
+
 function instagramFrom(values: unknown[]): Set<string> {
   const handles = new Set<string>();
   for (const v of values.slice(0, MAX_ANCHORS)) {
@@ -448,28 +483,59 @@ function absoluteHttps(value: unknown, base: URL): string | null {
   }
 }
 
-function logoFrom(entity: Entity | null, links: Collected["links"], base: URL): string | null {
+const NOT_RASTER = /\.(ico|svg)(\?|#|$)/i;
+
+/** Logo candidate from first-party evidence, strongest first (the fetched
+ * image is still validated and size-checked in lib/brand-images.ts):
+ *   1. the brand entity's JSON-LD `logo` (raster only);
+ *   2. explicit logo metadata: <meta itemprop|property="logo"/"og:logo">;
+ *   3. apple-touch-icon (declared size ≥ 120 or undeclared);
+ *   4. <link rel="icon"> with a DECLARED size ≥ 120 (plain favicons are
+ *      tiny and never qualify).
+ * SVG and ICO are never candidates (the upload pipeline rejects them). */
+function logoFrom(entity: Entity | null, meta: (key: string) => string | null, links: Collected["links"], base: URL): string | null {
   const logo = entity?.node.logo;
   const candidates = Array.isArray(logo) ? logo : [logo];
   for (const c of candidates.slice(0, 5)) {
     const value = c && typeof c === "object" ? ((c as JsonObject).url ?? (c as JsonObject).contentUrl) : c;
+    if (typeof value === "string" && NOT_RASTER.test(value)) continue;
     const url = absoluteHttps(value, base);
     if (url) return url;
   }
-  // apple-touch-icon only (typically 180×180); a declared size under 120px
-  // is skipped. Plain favicons / ICO are never logo candidates; the real
-  // dimensions are re-checked after fetching (lib/brand-images.ts).
+  for (const key of ["og:logo", "logo"]) {
+    const value = meta(key);
+    if (value && NOT_RASTER.test(value)) continue;
+    const url = absoluteHttps(value, base);
+    if (url) return url;
+  }
   const size = (s: string) => Math.max(0, ...s.split(/\s+/).map((p) => parseInt(p, 10) || 0));
+  const raster = (l: Collected["links"][number]) => !NOT_RASTER.test(l.href) && l.type !== "image/svg+xml" && l.type !== "image/x-icon";
   const touch = links
     .filter((l) => l.rel.includes("apple-touch-icon") || l.rel.includes("apple-touch-icon-precomposed"))
     .filter((l) => !l.sizes || size(l.sizes) >= 120)
-    .filter((l) => !/\.(ico|svg)(\?|#|$)/i.test(l.href))
+    .filter(raster)
     .sort((a, b) => size(b.sizes) - size(a.sizes));
-  for (const l of touch) {
+  const icons = links
+    .filter((l) => l.rel.includes("icon") && size(l.sizes) >= 120)
+    .filter(raster)
+    .sort((a, b) => size(b.sizes) - size(a.sizes));
+  for (const l of [...touch, ...icons]) {
     const url = absoluteHttps(l.href, base);
     if (url) return url;
   }
   return null;
+}
+
+/** Same image regardless of query/fragment (CDN size/version params). */
+export function sameImageSource(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    return x.host.toLowerCase() === y.host.toLowerCase() && x.pathname === y.pathname;
+  } catch {
+    return a === b;
+  }
 }
 
 const COVER_META_KEYS = ["og:image:secure_url", "og:image", "og:image:url", "twitter:image", "twitter:image:src"];
@@ -478,7 +544,7 @@ const COVER_META_KEYS = ["og:image:secure_url", "og:image", "og:image:url", "twi
 function coverFrom(meta: (key: string) => string | null, base: URL): string | null {
   for (const key of COVER_META_KEYS) {
     const value = meta(key);
-    if (value && /\.(ico|svg)(\?|#|$)/i.test(value)) continue;
+    if (value && NOT_RASTER.test(value)) continue;
     const url = absoluteHttps(value, base);
     if (url) return url;
   }
@@ -538,20 +604,22 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
   const aboutSource = descriptionCandidates.find((d) => d.length > EXTRACT_DESCRIPTION_MAX);
   const aboutDescription = aboutSource ? cleanText(aboutSource, EXTRACT_ABOUT_MAX) : null;
 
-  // Instagram: the chosen entity's sameAs decides when it names exactly one
-  // account (several → none); otherwise rel=me + page links, again only
-  // when exactly one distinct account appears.
+  // Instagram: first-party evidence only (the brand entity's JSON-LD
+  // sameAs, rel=me links, <a href>s on the page) — see
+  // chooseInstagramHandle for the deterministic rule.
   const sameAs = entity?.node.sameAs;
   const fromSameAs = instagramFrom(Array.isArray(sameAs) ? sameAs : [sameAs]);
   const fromPage = instagramFrom([...c.links.filter((l) => l.rel.includes("me")).map((l) => l.href), ...c.instagramHrefs]);
-  const instagramHandle =
-    fromSameAs.size === 1 ? [...fromSameAs][0] : fromSameAs.size === 0 && fromPage.size === 1 ? [...fromPage][0] : null;
+  const instagramHandle = chooseInstagramHandle(fromSameAs, fromPage, host);
 
   const { city, state } = addressOf(entity);
   // Own-property lookup only — a hostile "@type": "constructor" must not
   // reach Object.prototype.
   const slugs = new Set((entity?.types ?? []).filter((t) => Object.hasOwn(SCHEMA_TYPE_CATEGORY_SLUG, t)).map((t) => SCHEMA_TYPE_CATEGORY_SLUG[t]));
   const categorySlug = slugs.size === 1 ? [...slugs][0] : null;
+
+  const logoCandidateUrl = logoFrom(entity, meta, c.links, pageUrl);
+  const coverCandidateUrl = coverFrom(meta, pageUrl);
 
   const excerpt: BrandPageExcerpt = {
     title: cleanText(c.title, 200),
@@ -574,8 +642,9 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     city,
     state,
     categorySlug,
-    logoCandidateUrl: logoFrom(entity, c.links, pageUrl),
-    coverCandidateUrl: coverFrom(meta, pageUrl),
+    logoCandidateUrl,
+    // Never the same image as the logo (a share image that IS the logo).
+    coverCandidateUrl: sameImageSource(logoCandidateUrl, coverCandidateUrl) ? null : coverCandidateUrl,
     excerpt,
   };
 }

@@ -15,6 +15,7 @@ import { storePublicImage } from "./image-variants-server";
  *   → validateImageFile (actual bytes decide the format; SVG refused;
  *     HEIC refused here) and declared type must match the bytes
  *   → sharp metadata under a pixel limit → logo/cover suitability rules
+ *   → covers only: not a low-information graphic (isLowInformationGraphic)
  *
  * Previews are small re-encoded WebP data URIs (never a hotlink, never
  * stored). Storage happens ONLY via storeBrandImage, called by
@@ -47,7 +48,39 @@ export interface VerifiedBrandImage {
   height: number;
 }
 
-export type BrandImageRejection = "fetch_failed" | "invalid_file" | "type_mismatch" | "unreadable" | "unsuitable";
+export type BrandImageRejection = "fetch_failed" | "invalid_file" | "type_mismatch" | "unreadable" | "unsuitable" | "graphic";
+
+/** Low-information graphic test for COVER candidates (exported for
+ * tests): a 64px thumbnail (transparency flattened onto white), colours
+ * quantized to 3 bits per channel. A wordmark/logo on a flat background is
+ * dominated by one colour with only a handful of others; photographs and
+ * rich illustrations are not. Deliberately conservative — BOTH must hold:
+ *   - the most common colour covers ≥ 60% of the image, AND
+ *   - at most 6 colours each cover ≥ 1% of it.
+ * Limits: it measures colour distribution, not meaning — a minimal
+ * product shot on a seamless backdrop can look "graphic", and a busy
+ * multicolour wordmark can pass. */
+export const GRAPHIC_TOP_COLOR_MIN = 0.6;
+export const GRAPHIC_MAX_SIGNIFICANT_COLORS = 6;
+export async function isLowInformationGraphic(body: Buffer): Promise<boolean> {
+  const { data, info } = await sharp(body, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT, animated: false })
+    .flatten({ background: "#ffffff" })
+    .resize(64, 64, { fit: "inside" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const pixels = info.width * info.height;
+  if (!pixels) return false;
+  const counts = new Map<number, number>();
+  for (let i = 0; i + 2 < data.length; i += info.channels) {
+    const key = ((data[i] >> 5) << 6) | ((data[i + 1] >> 5) << 3) | (data[i + 2] >> 5);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const values = [...counts.values()];
+  const top = Math.max(...values) / pixels;
+  const significant = values.filter((n) => n / pixels >= 0.01).length;
+  return top >= GRAPHIC_TOP_COLOR_MIN && significant <= GRAPHIC_MAX_SIGNIFICANT_COLORS;
+}
 
 export interface BrandImageDeps {
   fetchImage: (url: string) => Promise<SafeFetchImageResult>;
@@ -81,6 +114,15 @@ export async function fetchVerifiedBrandImage(
       return { ok: false, reason: "unreadable" };
     }
     if (!width || !height || !isSuitableBrandImage(role, width, height)) return { ok: false, reason: "unsuitable" };
+    // A cover must be a picture, not a wordmark/logo share graphic. When
+    // in doubt the cover is dropped (a human can add one at review).
+    if (role === "cover") {
+      try {
+        if (await isLowInformationGraphic(fetched.body)) return { ok: false, reason: "graphic" };
+      } catch {
+        return { ok: false, reason: "unreadable" };
+      }
+    }
     return { ok: true, image: { role, body: fetched.body, validated, width, height } };
   } catch {
     return { ok: false, reason: "fetch_failed" };
