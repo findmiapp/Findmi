@@ -324,7 +324,14 @@ test("49 (updated after the classification correction). Pass 3 itself added no m
   const migrations = readdirSync(new URL("../supabase/migrations", import.meta.url)).filter((f) => f.endsWith(".sql")).sort();
   const after = migrations.slice(migrations.indexOf("20261011000000_opportunity_commercial_terms_unit_value.sql") + 1);
   assert.ok(migrations.includes("20261011000000_opportunity_commercial_terms_unit_value.sql"));
-  assert.deepEqual(after, ["20261012000000_commercial_terms_brand_contribution_classification.sql"]);
+  // The classification correction directly follows the unit-value migration…
+  assert.equal(after[0], "20261012000000_commercial_terms_brand_contribution_classification.sql");
+  // …and is the only Opportunity / Commercial Terms migration after it.
+  // Unrelated later migrations (other features) are outside this guard.
+  assert.deepEqual(
+    after.filter((f) => /opportunit|commercial_terms/.test(f)),
+    ["20261012000000_commercial_terms_brand_contribution_classification.sql"]
+  );
 });
 
 test("50. opportunity_recipients.option_id is still never referenced anywhere in src/ — Interested/Not Interested stays Option-less", () => {
