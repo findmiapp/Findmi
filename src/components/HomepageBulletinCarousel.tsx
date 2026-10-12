@@ -34,6 +34,13 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   // synthetic click a touch-drag can still produce never opens the
   // Bulletin's own link — swipes must never double as a destination tap.
   const justSwipedRef = useRef(false);
+  // True while a finger/pointer is down on the carousel. Auto-rotation
+  // skips its tick while held, so the slide under an in-progress tap can
+  // never be swapped for another one between press and release (which
+  // would drop the tap or send it to a different Bulletin). Checked inside
+  // the interval callback itself — not via state/effect re-subscription —
+  // so a tick due mid-tap is blocked immediately, with no render lag.
+  const heldRef = useRef(false);
 
   // Auto-rotate. Depends on resetTick so a manual nav (which bumps it)
   // tears down and restarts this interval instead of stacking a second
@@ -42,6 +49,7 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   useEffect(() => {
     if (count < 2 || paused) return;
     const timer = setInterval(() => {
+      if (heldRef.current) return;
       setIndex((i) => (i + 1) % count);
     }, ROTATE_INTERVAL_MS);
     return () => clearInterval(timer);
@@ -74,6 +82,20 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   // full start-to-finish delta, and touch-pan-y below just stops the
   // browser from treating small horizontal jitter as a cancel-worthy pan.
   function handlePointerDown(e: React.PointerEvent) {
+    // Any pointer (touch, pen, mouse) holds rotation until it's released —
+    // anywhere, even outside the carousel, hence the window listeners.
+    heldRef.current = true;
+    const release = () => {
+      // Released on the next task, after the tap's own click has been
+      // dispatched, so no tick queued in between can swap the slide first.
+      setTimeout(() => {
+        heldRef.current = false;
+      }, 0);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
     if (e.pointerType !== "touch") return;
     touchStartRef.current = { x: e.clientX, y: e.clientY };
   }
