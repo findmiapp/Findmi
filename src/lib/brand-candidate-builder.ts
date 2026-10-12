@@ -1,7 +1,7 @@
 import "server-only";
 import { normalizeWebsiteHost, type BusinessMatch, type BusinessMatchInput } from "./business-matching";
 import { classifyBrandInput } from "./brand-lookup";
-import { extractBrandProfile, type ExtractedBrandProfile } from "./brand-website-extract";
+import { extractBrandProfile, sameImageSource, type ExtractedBrandProfile } from "./brand-website-extract";
 import { SAFE_FETCH_MAX_BYTES, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
 import type { BrandAiEnrichment, BrandAiInput, BrandAiResult, BrandAiUsage } from "./brand-ai-enrichment";
 import type { BrandImageRole } from "./brand-images";
@@ -250,6 +250,33 @@ export type BrandCandidateBuild =
       enrichment: BrandEnrichment;
     };
 
+/** At most this many ranked candidates per role are fetched + verified
+ * (in parallel); the highest-ranked one that passes is used. */
+export const BRAND_IMAGE_VERIFY_MAX = 3;
+
+/** The best VERIFIED candidate of a ranked pool, or null: the first
+ * BRAND_IMAGE_VERIFY_MAX candidates (minus `exclude`) are verified in
+ * parallel and the highest-ranked pass wins. Missing beats wrong — a pool
+ * with no verified candidate yields none. Exported for tests. */
+export async function selectVerifiedImage(
+  ranked: readonly string[],
+  role: BrandImageRole,
+  verifyImage: BrandCandidateDeps["verifyImage"],
+  exclude: string | null = null
+): Promise<string | null> {
+  const pool = ranked.filter((url) => !sameImageSource(url, exclude)).slice(0, BRAND_IMAGE_VERIFY_MAX);
+  const passed = await Promise.all(
+    pool.map(async (url) => {
+      try {
+        return await verifyImage(url, role);
+      } catch {
+        return false;
+      }
+    })
+  );
+  return pool.find((_, i) => passed[i]) ?? null;
+}
+
 const instagramUrlOf = (handle: string | null | undefined) => (handle ? `https://www.instagram.com/${handle}` : null);
 
 /** Matching, AI and images for one extraction. Never throws for a
@@ -311,15 +338,14 @@ export async function buildCandidateFromExtraction(
     ai = { status: enrichment.aiStatus, reused: true, called: false, usage: null };
   } else {
     const needsAi = brandAiNeed({ deterministicCategoryId, shortDescription: profile.shortDescription });
-    const verify = async (url: string | null, role: BrandImageRole) => {
-      if (!options.verifyImages || !url) return null;
-      try {
-        return (await deps.verifyImage(url, role)) ? url : null;
-      } catch {
-        return null;
-      }
-    };
-    const [enriched, logo, cover] = await Promise.all([
+    // Ranked pools (an older extraction without pools → its single pick).
+    const pool = (list: string[] | undefined, single: string | null) => (list && list.length ? list : single ? [single] : []);
+    const logoPool = pool(profile.logoCandidates, profile.logoCandidateUrl);
+    const coverPool = pool(profile.coverCandidates, profile.coverCandidateUrl);
+    const images = options.verifyImages
+      ? Promise.all([selectVerifiedImage(logoPool, "logo", deps.verifyImage), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
+      : Promise.resolve<[string | null, string | null]>([null, null]);
+    const [enriched, verifiedImages] = await Promise.all([
       needsAi
         ? deps
             .enrich({ brandName: name, website: websiteUrl, excerpt: profile.excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
@@ -327,9 +353,12 @@ export async function buildCandidateFromExtraction(
             // counted as a call with unknown usage, never as zero tokens.
             .catch((): BrandAiEnrichment => ({ result: null, called: true, usage: null }))
         : Promise.resolve<BrandAiEnrichment | null>(null),
-      verify(profile.logoCandidateUrl, "logo"),
-      verify(profile.coverCandidateUrl, "cover"),
+      images,
     ]);
+    // The cover is never the selected logo (pools already exclude every
+    // logo candidate; this holds even for an older single-pick extraction).
+    const [logo, verifiedCover] = verifiedImages;
+    const cover = sameImageSource(logo, verifiedCover) ? null : verifiedCover;
     const result = enriched?.result ?? null;
     const aiStatus = !needsAi ? "skipped" : result ? "used" : "failed";
     enrichment = { ai: result, aiStatus, logo, cover };

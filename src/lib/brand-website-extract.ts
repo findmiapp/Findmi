@@ -4,7 +4,8 @@ import { normalizeBusinessName, normalizeInstagramHandle, normalizeWebsiteHost }
 /** Brand Onboarding V1.1B — deterministic, single-page brand metadata
  * extraction. Pure: HTML string in, a small set of UNTRUSTED suggestions
  * out. It reads only <title>, <meta>, <link rel>, JSON-LD
- * <script type="application/ld+json"> text and Instagram <a href>s, via
+ * <script type="application/ld+json"> text, Instagram <a href>s and the
+ * attributes of a bounded number of <img>s (logo/hero evidence), via
  * the parse5 WHATWG parser (no regex HTML parsing, no DOM, nothing is
  * executed, nothing is fetched — logo URLs are recorded, never requested).
  * Visible/hidden body text is never read, so instructions hidden in a
@@ -129,10 +130,15 @@ export interface ExtractedBrandProfile {
   state: string | null;
   /** An existing-category SLUG from SCHEMA_TYPE_CATEGORY_SLUG, or null. */
   categorySlug: string | null;
-  /** Untrusted candidate URL — fetched/validated only by lib/brand-images. */
+  /** The strongest LOGO candidate. Untrusted — fetched/validated only by
+   * lib/brand-images. */
   logoCandidateUrl: string | null;
-  /** og:image / twitter:image — a COVER candidate, never a logo. */
+  /** The strongest COVER candidate (share image / hero) — never a logo. */
   coverCandidateUrl: string | null;
+  /** Ranked, deduped, capped candidate pools (first = the field above).
+   * Untrusted URLs — each is fetched and verified before any use. */
+  logoCandidates: string[];
+  coverCandidates: string[];
   excerpt: BrandPageExcerpt;
 }
 
@@ -229,9 +235,35 @@ interface Collected {
   instagramHrefs: string[];
   headings: string[];
   paragraphs: string[];
+  images: ImageEvidence[];
+}
+
+/** One <img> worth considering as a logo or cover — attributes only (it
+ * is never fetched here). */
+interface ImageEvidence {
+  /** src / data-src (raw, unresolved). */
+  src: string | null;
+  /** Parsed srcset / data-srcset (raw URLs, width descriptor or 0). */
+  srcset: { url: string; w: number }[];
+  /** Lowercased alt + class + id + file name — hint text only. */
+  hints: string;
+  alt: string;
+  itempropLogo: boolean;
+  inHeader: boolean;
+  inHero: boolean;
+  /** href of the nearest enclosing <a>, if any (raw). */
+  linkHref: string | null;
+  /** Declared width/height attributes (0 = undeclared). */
+  width: number;
+  height: number;
 }
 
 const MAX_HEADINGS = 4;
+/** <img> elements examined / kept as evidence — strict, small caps. */
+const MAX_IMAGES_SCANNED = 300;
+const MAX_IMAGE_EVIDENCE = 40;
+const HEADER_CONTEXT = /header|navbar|masthead|topbar/;
+const HERO_CONTEXT = /hero|banner|slideshow|slider|carousel|jumbotron|masthead/;
 const MAX_PARAGRAPHS = 4;
 const EXCERPT_TEXT_MAX = 400;
 const NON_TEXT_TAGS = new Set(["script", "style", "noscript", "template", "svg", "math", "iframe", "button", "select", "nav", "footer", "form"]);
@@ -272,8 +304,65 @@ function textOf(node: HtmlNode): string {
     .join("");
 }
 
+const ATTR_MAX = 300;
+const lowerAttr = (node: HtmlNode, name: string) => (attr(node, name) ?? "").slice(0, ATTR_MAX).toLowerCase();
+
+/** Parses a srcset value (bounded) into URLs with a width hint: "800w" →
+ * 800, "2x" → 2000, none → 0. */
+function parseSrcset(value: string | null): { url: string; w: number }[] {
+  if (!value) return [];
+  return value
+    .slice(0, 4000)
+    .split(/,\s+/)
+    .slice(0, 20)
+    .map((part) => {
+      const [url, descriptor = ""] = part.trim().split(/\s+/);
+      const w = descriptor.endsWith("w") ? parseInt(descriptor, 10) : descriptor.endsWith("x") ? Math.round(parseFloat(descriptor) * 1000) : 0;
+      return { url, w: Number.isFinite(w) ? w : 0 };
+    })
+    .filter((c) => Boolean(c.url));
+}
+
+/** <img> → evidence when it is a plausible logo or hero image; tracking
+ * pixels and images without a usable source are skipped. Context comes
+ * from a bounded walk up the ancestors. */
+function imageEvidence(node: HtmlNode): ImageEvidence | null {
+  const src = [attr(node, "src"), attr(node, "data-src")].find((v) => v && !/^data:/i.test(v.trim())) ?? null;
+  const srcset = parseSrcset(attr(node, "srcset") ?? attr(node, "data-srcset"));
+  if (!src && srcset.length === 0) return null;
+  const width = parseInt(attr(node, "width") ?? "", 10) || 0;
+  const height = parseInt(attr(node, "height") ?? "", 10) || 0;
+  if ((width > 0 && width <= 2) || (height > 0 && height <= 2)) return null; // tracking pixel
+  const alt = (attr(node, "alt") ?? "").slice(0, ATTR_MAX);
+  const file = (src ?? srcset[0]?.url ?? "").split(/[?#]/)[0].split("/").pop() ?? "";
+  let inHeader = false;
+  let inHero = false;
+  let linkHref: string | null = null;
+  let n = node.parentNode;
+  for (let depth = 0; n && depth < 15; depth++, n = n.parentNode) {
+    if (!n.tagName) continue;
+    const context = `${lowerAttr(n, "class")} ${lowerAttr(n, "id")}`;
+    if (n.tagName === "header" || n.tagName === "nav" || HEADER_CONTEXT.test(context)) inHeader = true;
+    if (HERO_CONTEXT.test(context)) inHero = true;
+    if (n.tagName === "a" && linkHref === null) linkHref = attr(n, "href");
+  }
+  return {
+    src,
+    srcset,
+    hints: `${alt} ${lowerAttr(node, "class")} ${lowerAttr(node, "id")} ${file.slice(0, 120)}`.toLowerCase(),
+    alt,
+    itempropLogo: lowerAttr(node, "itemprop") === "logo",
+    inHeader,
+    inHero,
+    linkHref,
+    width,
+    height,
+  };
+}
+
 function collect(html: string): Collected {
-  const out: Collected = { title: null, meta: new Map(), links: [], jsonLd: [], instagramHrefs: [], headings: [], paragraphs: [] };
+  const out: Collected = { title: null, meta: new Map(), links: [], jsonLd: [], instagramHrefs: [], headings: [], paragraphs: [], images: [] };
+  let imagesScanned = 0;
   const doc = parse(html) as unknown as HtmlNode;
   const stack: HtmlNode[] = [doc];
   let visited = 0;
@@ -296,6 +385,10 @@ function collect(html: string): Collected {
       } else if (tag === "script") {
         const type = (attr(node, "type") ?? "").split(";")[0].trim().toLowerCase();
         if (type === "application/ld+json" && out.jsonLd.length < JSONLD_MAX_BLOCKS) out.jsonLd.push(textOf(node));
+      } else if (tag === "img" && imagesScanned < MAX_IMAGES_SCANNED) {
+        imagesScanned += 1;
+        const evidence = imageEvidence(node);
+        if (evidence && out.images.length < MAX_IMAGE_EVIDENCE) out.images.push(evidence);
       } else if (tag === "a" && out.instagramHrefs.length < MAX_ANCHORS) {
         const href = attr(node, "href");
         if (href && /instagr(\.am|am\.com)/i.test(href)) out.instagramHrefs.push(href);
@@ -485,31 +578,127 @@ function absoluteHttps(value: unknown, base: URL): string | null {
 
 const NOT_RASTER = /\.(ico|svg)(\?|#|$)/i;
 
-/** Logo candidate from first-party evidence, strongest first (the fetched
- * image is still validated and size-checked in lib/brand-images.ts):
- *   1. the brand entity's JSON-LD `logo` (raster only);
- *   2. explicit logo metadata: <meta itemprop|property="logo"/"og:logo">;
- *   3. apple-touch-icon (declared size ≥ 120 or undeclared);
- *   4. <link rel="icon"> with a DECLARED size ≥ 120 (plain favicons are
- *      tiny and never qualify).
- * SVG and ICO are never candidates (the upload pipeline rejects them). */
-function logoFrom(entity: Entity | null, meta: (key: string) => string | null, links: Collected["links"], base: URL): string | null {
-  const logo = entity?.node.logo;
-  const candidates = Array.isArray(logo) ? logo : [logo];
-  for (const c of candidates.slice(0, 5)) {
-    const value = c && typeof c === "object" ? ((c as JsonObject).url ?? (c as JsonObject).contentUrl) : c;
-    if (typeof value === "string" && NOT_RASTER.test(value)) continue;
-    const url = absoluteHttps(value, base);
+/** Strict caps on each ranked candidate pool (only the first few are ever
+ * fetched — see BRAND_IMAGE_VERIFY_MAX in lib/brand-candidate-builder). */
+export const LOGO_CANDIDATE_MAX = 4;
+export const COVER_CANDIDATE_MAX = 4;
+
+/** Image hint words: a logo/wordmark (never a cover), and things that are
+ * neither a brand logo nor a cover (payment marks, badges, press/partner
+ * strips, sprites, pixels). */
+const LOGO_HINT = /logo|wordmark|brandmark|brand-mark|logotype/;
+const NOT_BRAND_IMAGE = new RegExp(
+  "(?<![a-z])(badges?|payments?|visa|mastercard|amex|paypal|klarna|afterpay|affirm|apple-?pay|google-?pay|shop-?pay|trustpilot|awards?|flags?|press|featured|as-seen|seen-in|partners?|sponsors?|sprites?|pixel|spacer|tracking|avatars?|stars?|ratings?|reviews?)(?![a-z])|icon-"
+);
+
+/** Evidence strength for each source (higher wins; ties keep page order). */
+export const LOGO_SOURCE_RANK = { jsonld_logo: 100, meta_logo: 90, img_itemprop_logo: 85, header_logo_img: 75, apple_touch_icon: 40, site_icon: 30 } as const;
+export const COVER_SOURCE_RANK = { og_image: 90, twitter_image: 80, jsonld_image: 70, hero_img: 60 } as const;
+
+interface Ranked {
+  url: string;
+  rank: number;
+}
+
+/** Ranked → deduped (same host + path, i.e. CDN size/version params
+ * ignored), highest evidence first, capped. */
+function rankedUnique(list: Ranked[], max: number, exclude: string[] = []): string[] {
+  const out: string[] = [];
+  const sorted = list.map((c, i) => ({ ...c, i })).sort((x, y) => y.rank - x.rank || x.i - y.i);
+  for (const c of sorted) {
+    if (out.length >= max) break;
+    if (exclude.some((e) => sameImageSource(e, c.url)) || out.some((o) => sameImageSource(o, c.url))) continue;
+    out.push(c.url);
+  }
+  return out;
+}
+
+/** A raster https URL (SVG/ICO never: the upload pipeline rejects them). */
+function rasterUrl(value: unknown, base: URL): string | null {
+  if (typeof value === "string" && NOT_RASTER.test(value)) return null;
+  const url = absoluteHttps(value, base);
+  return url && !NOT_RASTER.test(url) ? url : null;
+}
+
+/** JSON-LD image-ish values: "url", { url | contentUrl }, or a list. */
+function jsonLdImageUrls(value: unknown, base: URL): string[] {
+  const list = Array.isArray(value) ? value : [value];
+  return list
+    .slice(0, 5)
+    .map((c) => (c && typeof c === "object" ? ((c as JsonObject).url ?? (c as JsonObject).contentUrl) : c))
+    .map((v) => rasterUrl(v, base))
+    .filter((u): u is string => Boolean(u));
+}
+
+/** The <img> source to use for a role: from srcset the largest width not
+ * above `maxW` (else the smallest listed), otherwise src/data-src. */
+function imageUrl(img: ImageEvidence, maxW: number, base: URL): string | null {
+  if (img.srcset.length) {
+    const fits = img.srcset.filter((c) => c.w > 0 && c.w <= maxW).sort((a, b) => b.w - a.w)[0];
+    const pick = fits ?? [...img.srcset].sort((a, b) => (a.w || Infinity) - (b.w || Infinity))[0];
+    const url = rasterUrl(pick?.url, base);
     if (url) return url;
   }
+  return rasterUrl(img.src, base);
+}
+
+/** True when an <a href> points at this site's home page. */
+function isHomeLink(href: string | null, base: URL): boolean {
+  if (href === null) return false;
+  try {
+    const url = new URL(href, base);
+    return normalizeWebsiteHost(url.href) === normalizeWebsiteHost(base.href) && (url.pathname === "/" || url.pathname === base.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** The page's own brand-mark image: a logo hint (or alt naming the brand)
+ * AND brand-mark placement (header/nav, or a link to the home page).
+ * Logo-like images elsewhere (press strips, partner logos) never count. */
+function isPageLogo(img: ImageEvidence, brandKeys: string[], base: URL): boolean {
+  if (NOT_BRAND_IMAGE.test(img.hints)) return false;
+  if (img.width > 0 && img.height > 0 && Math.max(img.width, img.height) < 60) return false;
+  const altKey = compact(img.alt);
+  const namesBrand = altKey.length >= 3 && brandKeys.some((k) => k.length >= 3 && (altKey === k || altKey.startsWith(k)));
+  return (LOGO_HINT.test(img.hints) || namesBrand) && (img.inHeader || isHomeLink(img.linkHref, base));
+}
+
+/** Ranked LOGO candidates from first-party evidence (each still fetched
+ * and verified by lib/brand-images before it is used):
+ *   1. the brand entity's JSON-LD `logo`;
+ *   2. explicit logo metadata: <meta property|name|itemprop = og:logo/logo>;
+ *   3. <img itemprop="logo">;
+ *   4. the page's header / home-link brand-mark <img> (see isPageLogo);
+ *   5. apple-touch-icon (declared size ≥ 120 or undeclared);
+ *   6. <link rel="icon"> with a DECLARED size ≥ 120 (plain favicons are
+ *      tiny and never qualify).
+ * SVG and ICO are never candidates. Exported for tests. */
+export function logoCandidatesFrom(
+  entity: { node: Record<string, unknown> } | null,
+  meta: (key: string) => string | null,
+  links: Collected["links"],
+  images: ImageEvidence[],
+  base: URL,
+  brandKeys: string[]
+): string[] {
+  const out: Ranked[] = [];
+  for (const url of jsonLdImageUrls(entity?.node.logo, base)) out.push({ url, rank: LOGO_SOURCE_RANK.jsonld_logo });
   for (const key of ["og:logo", "logo"]) {
-    const value = meta(key);
-    if (value && NOT_RASTER.test(value)) continue;
-    const url = absoluteHttps(value, base);
-    if (url) return url;
+    const url = rasterUrl(meta(key), base);
+    if (url) out.push({ url, rank: LOGO_SOURCE_RANK.meta_logo });
+  }
+  for (const img of images) {
+    if (img.itempropLogo && !NOT_BRAND_IMAGE.test(img.hints)) {
+      const url = imageUrl(img, 1000, base);
+      if (url) out.push({ url, rank: LOGO_SOURCE_RANK.img_itemprop_logo });
+    } else if (isPageLogo(img, brandKeys, base)) {
+      const url = imageUrl(img, 1000, base);
+      if (url) out.push({ url, rank: LOGO_SOURCE_RANK.header_logo_img });
+    }
   }
   const size = (s: string) => Math.max(0, ...s.split(/\s+/).map((p) => parseInt(p, 10) || 0));
-  const raster = (l: Collected["links"][number]) => !NOT_RASTER.test(l.href) && l.type !== "image/svg+xml" && l.type !== "image/x-icon";
+  const raster = (l: Collected["links"][number]) => l.type !== "image/svg+xml" && l.type !== "image/x-icon";
   const touch = links
     .filter((l) => l.rel.includes("apple-touch-icon") || l.rel.includes("apple-touch-icon-precomposed"))
     .filter((l) => !l.sizes || size(l.sizes) >= 120)
@@ -519,11 +708,15 @@ function logoFrom(entity: Entity | null, meta: (key: string) => string | null, l
     .filter((l) => l.rel.includes("icon") && size(l.sizes) >= 120)
     .filter(raster)
     .sort((a, b) => size(b.sizes) - size(a.sizes));
-  for (const l of [...touch, ...icons]) {
-    const url = absoluteHttps(l.href, base);
-    if (url) return url;
+  for (const l of touch) {
+    const url = rasterUrl(l.href, base);
+    if (url) out.push({ url, rank: LOGO_SOURCE_RANK.apple_touch_icon });
   }
-  return null;
+  for (const l of icons) {
+    const url = rasterUrl(l.href, base);
+    if (url) out.push({ url, rank: LOGO_SOURCE_RANK.site_icon });
+  }
+  return rankedUnique(out, LOGO_CANDIDATE_MAX);
 }
 
 /** Same image regardless of query/fragment (CDN size/version params). */
@@ -538,17 +731,42 @@ export function sameImageSource(a: string | null, b: string | null): boolean {
   }
 }
 
-const COVER_META_KEYS = ["og:image:secure_url", "og:image", "og:image:url", "twitter:image", "twitter:image:src"];
+const OG_IMAGE_KEYS = ["og:image:secure_url", "og:image", "og:image:url"];
+const TWITTER_IMAGE_KEYS = ["twitter:image", "twitter:image:src"];
 
-/** Share image → COVER candidate (never a logo). */
-function coverFrom(meta: (key: string) => string | null, base: URL): string | null {
-  for (const key of COVER_META_KEYS) {
-    const value = meta(key);
-    if (value && NOT_RASTER.test(value)) continue;
-    const url = absoluteHttps(value, base);
-    if (url) return url;
+/** Ranked COVER candidates (never a logo): share images (og: then
+ * twitter:), the brand entity's JSON-LD `image`, then at most two hero /
+ * banner <img>s. Anything evidenced as a logo — any logo candidate URL,
+ * or a logo/wordmark hint in the file name — is excluded; so are badges,
+ * sprites and images declared too small to be a cover. Exported for
+ * tests. */
+export function coverCandidatesFrom(
+  entity: { node: Record<string, unknown> } | null,
+  meta: (key: string) => string | null,
+  images: ImageEvidence[],
+  base: URL,
+  logoCandidates: string[]
+): string[] {
+  const out: Ranked[] = [];
+  const fileHint = (url: string) => (url.split(/[?#]/)[0].split("/").pop() ?? "").toLowerCase();
+  const push = (url: string | null, rank: number) => {
+    if (url && !LOGO_HINT.test(fileHint(url)) && !NOT_BRAND_IMAGE.test(fileHint(url))) out.push({ url, rank });
+  };
+  for (const key of OG_IMAGE_KEYS) push(rasterUrl(meta(key), base), COVER_SOURCE_RANK.og_image);
+  for (const key of TWITTER_IMAGE_KEYS) push(rasterUrl(meta(key), base), COVER_SOURCE_RANK.twitter_image);
+  for (const url of jsonLdImageUrls(entity?.node.image, base)) push(url, COVER_SOURCE_RANK.jsonld_image);
+  let heroes = 0;
+  for (const img of images) {
+    if (heroes >= 2) break;
+    if (!img.inHero || img.inHeader || img.itempropLogo || LOGO_HINT.test(img.hints) || NOT_BRAND_IMAGE.test(img.hints)) continue;
+    if (img.width > 0 && img.width < 600) continue;
+    const url = imageUrl(img, 2000, base);
+    if (url) {
+      push(url, COVER_SOURCE_RANK.hero_img);
+      heroes += 1;
+    }
   }
-  return null;
+  return rankedUnique(out, COVER_CANDIDATE_MAX, logoCandidates);
 }
 
 const TITLE_SEPARATOR = /\s+[|–—·:•-]\s+/;
@@ -618,8 +836,10 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
   const slugs = new Set((entity?.types ?? []).filter((t) => Object.hasOwn(SCHEMA_TYPE_CATEGORY_SLUG, t)).map((t) => SCHEMA_TYPE_CATEGORY_SLUG[t]));
   const categorySlug = slugs.size === 1 ? [...slugs][0] : null;
 
-  const logoCandidateUrl = logoFrom(entity, meta, c.links, pageUrl);
-  const coverCandidateUrl = coverFrom(meta, pageUrl);
+  const brandKeys = [name ? compact(name) : "", host ? domainLabel(host) : ""].filter(Boolean);
+  const logoCandidates = logoCandidatesFrom(entity, meta, c.links, c.images, pageUrl, brandKeys);
+  // Never the same image as any logo candidate (a share image that IS the logo).
+  const coverCandidates = coverCandidatesFrom(entity, meta, c.images, pageUrl, logoCandidates);
 
   const excerpt: BrandPageExcerpt = {
     title: cleanText(c.title, 200),
@@ -642,9 +862,10 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     city,
     state,
     categorySlug,
-    logoCandidateUrl,
-    // Never the same image as the logo (a share image that IS the logo).
-    coverCandidateUrl: sameImageSource(logoCandidateUrl, coverCandidateUrl) ? null : coverCandidateUrl,
+    logoCandidateUrl: logoCandidates[0] ?? null,
+    coverCandidateUrl: coverCandidates[0] ?? null,
+    logoCandidates,
+    coverCandidates,
     excerpt,
   };
 }

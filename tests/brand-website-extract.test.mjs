@@ -25,13 +25,13 @@ const extract = (html, url = PAGE) => X.extractBrandProfile(html, url);
 const ld = (obj) => `<script type="application/ld+json">${typeof obj === "string" ? obj : JSON.stringify(obj)}</script>`;
 const page = (head, body = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 
-const PROFILE_KEYS = ["aboutDescription", "categorySlug", "city", "coverCandidateUrl", "excerpt", "instagramHandle", "logoCandidateUrl", "name", "shortDescription", "state"];
+const PROFILE_KEYS = ["aboutDescription", "categorySlug", "city", "coverCandidateUrl", "coverCandidates", "excerpt", "instagramHandle", "logoCandidateUrl", "logoCandidates", "name", "shortDescription", "state"];
 test("output shape is exactly the untrusted suggestion fields plus the bounded excerpt", () => {
   const empty = extract(page(""));
   assert.deepEqual(Object.keys(empty).sort(), PROFILE_KEYS);
   assert.deepEqual(
     { ...empty, excerpt: undefined },
-    { name: null, shortDescription: null, aboutDescription: null, instagramHandle: null, city: null, state: null, categorySlug: null, logoCandidateUrl: null, coverCandidateUrl: null, excerpt: undefined }
+    { name: null, shortDescription: null, aboutDescription: null, instagramHandle: null, city: null, state: null, categorySlug: null, logoCandidateUrl: null, coverCandidateUrl: null, logoCandidates: [], coverCandidates: [], excerpt: undefined }
   );
   assert.deepEqual(empty.excerpt, { title: null, descriptions: [], jsonLdName: null, jsonLdTypes: [], headings: [], paragraphs: [] });
 });

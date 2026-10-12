@@ -619,8 +619,8 @@ test("image review: an unavailable preview never defaults to Keep; Create waits 
 
 test("page: previews are verified data URIs (no hotlink); unavailable is labelled; Create is gated on undecided images", () => {
   const src = code(PAGE);
-  assert.match(src, /previewBrandCandidate\(p\.cover, "cover"\)/);
-  assert.match(src, /previewBrandCandidate\(p\.logo, "logo"\)/);
+  assert.match(src, /previewBrandCandidateResult\(p\.cover, "cover"\)/);
+  assert.match(src, /previewBrandCandidateResult\(p\.logo, "logo"\)/);
   assert.doesNotMatch(src, /src=\{p\.(logo|cover)\}|src=\{img\.url\}/, "never hotlinks the candidate URL");
   assert.match(src, /<img src=\{img\.preview\} alt="Cover preview"/);
   assert.match(src, /<img src=\{img\.preview\} alt="Logo preview"/);

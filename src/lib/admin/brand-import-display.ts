@@ -80,3 +80,22 @@ export function brandImageReviewItems(
   }
   return { items, undecided };
 }
+
+/** Why a candidate image has no preview — fixed, safe copy per reason code
+ * (never the URL or an error message). */
+export function brandImagePreviewUnavailableLabel(role: "logo" | "cover", reason: string | null): string {
+  switch (reason) {
+    case "graphic":
+      return "It looks like a logo or wordmark, not a cover photo.";
+    case "unsuitable":
+      return role === "cover" ? "It's too small or not landscape enough for a cover." : "It's too small or the wrong shape for a logo.";
+    case "fetch_failed":
+      return "It couldn't be loaded from the website right now. Reload to try again.";
+    case "invalid_file":
+    case "type_mismatch":
+    case "unreadable":
+      return "It isn't a supported image file.";
+    default:
+      return "This image can't be shown.";
+  }
+}

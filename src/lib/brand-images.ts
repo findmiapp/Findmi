@@ -129,17 +129,23 @@ export async function fetchVerifiedBrandImage(
   }
 }
 
+/** Preview re-encode qualities, tried in order until the data URI fits
+ * PREVIEW_MAX_BYTES (a detailed photo can exceed it at the first). */
+const PREVIEW_QUALITIES = [72, 60, 45];
+
 /** A small re-encoded WebP preview as a data URI (first frame only), or
  * null. Never stored, never a remote URL. */
 export async function brandImagePreview(image: VerifiedBrandImage): Promise<string | null> {
   try {
     const box = image.role === "logo" ? { width: 256, height: 256 } : { width: 640, height: 360 };
-    const out = await sharp(image.body, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT, animated: false })
-      .resize({ ...box, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 72 })
-      .toBuffer();
-    if (out.length > PREVIEW_MAX_BYTES) return null;
-    return `data:image/webp;base64,${out.toString("base64")}`;
+    for (const quality of PREVIEW_QUALITIES) {
+      const out = await sharp(image.body, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT, animated: false })
+        .resize({ ...box, fit: "inside", withoutEnlargement: true })
+        .webp({ quality })
+        .toBuffer();
+      if (out.length <= PREVIEW_MAX_BYTES) return `data:image/webp;base64,${out.toString("base64")}`;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -164,31 +170,64 @@ export async function storeBrandImage(admin: SupabaseClient, image: VerifiedBran
 // ── Preview cache ─────────────────────────────────────────────────────────
 
 const PREVIEW_TTL_MS = 10 * 60 * 1000;
+/** A failed FETCH (network/timeout/remote refusal) may be transient: it is
+ * remembered only briefly, so a reload soon retries. Deterministic
+ * rejections (not an image, wrong shape, a logo-like cover) keep the
+ * normal TTL. */
+const PREVIEW_TRANSIENT_TTL_MS = 60 * 1000;
 const PREVIEW_CACHE_MAX = 100;
-const previewCache = new Map<string, { dataUri: string | null; at: number }>();
 
-/** Review-page preview for a candidate URL: verify (fetch + validate +
- * suitability) then thumbnail. In-memory per-instance cache of the
- * RESULT only (data URI or "rejected"), 10 minutes. */
+export type BrandPreviewFailure = BrandImageRejection | "preview_failed";
+export interface BrandPreviewResult {
+  /** Verified, re-encoded WebP data URI — or null. */
+  preview: string | null;
+  /** Why there is no preview (null when there is one). Safe codes only. */
+  reason: BrandPreviewFailure | null;
+}
+
+const previewCache = new Map<string, { result: BrandPreviewResult; at: number }>();
+
+/** Review-page preview for a candidate URL with the reason when there is
+ * none: verify (fetch + validate + suitability, the SAME checks storage
+ * uses) then thumbnail. Not a proxy — only a URL already recorded on a
+ * candidate is ever passed in, and only a re-encoded thumbnail of a fully
+ * verified image comes out. In-memory per-instance cache of the RESULT
+ * only. */
+export async function previewBrandCandidateResult(
+  url: string,
+  role: BrandImageRole,
+  now: number = Date.now(),
+  deps: BrandImageDeps = defaultDeps
+): Promise<BrandPreviewResult> {
+  const key = `${role}|${url}`;
+  const hit = previewCache.get(key);
+  const ttl = hit?.result.reason === "fetch_failed" ? PREVIEW_TRANSIENT_TTL_MS : PREVIEW_TTL_MS;
+  if (hit && now - hit.at < ttl) return hit.result;
+  const verified = await fetchVerifiedBrandImage(url, role, deps);
+  let result: BrandPreviewResult;
+  if (!verified.ok) result = { preview: null, reason: verified.reason };
+  else {
+    const preview = await brandImagePreview(verified.image);
+    result = preview ? { preview, reason: null } : { preview: null, reason: "preview_failed" };
+  }
+  previewCache.delete(key);
+  previewCache.set(key, { result, at: now });
+  while (previewCache.size > PREVIEW_CACHE_MAX) {
+    const oldest = previewCache.keys().next().value;
+    if (oldest === undefined) break;
+    previewCache.delete(oldest);
+  }
+  return result;
+}
+
+/** previewBrandCandidateResult → the data URI or null (unchanged API). */
 export async function previewBrandCandidate(
   url: string,
   role: BrandImageRole,
   now: number = Date.now(),
   deps: BrandImageDeps = defaultDeps
 ): Promise<string | null> {
-  const key = `${role}|${url}`;
-  const hit = previewCache.get(key);
-  if (hit && now - hit.at < PREVIEW_TTL_MS) return hit.dataUri;
-  const verified = await fetchVerifiedBrandImage(url, role, deps);
-  const dataUri = verified.ok ? await brandImagePreview(verified.image) : null;
-  previewCache.delete(key);
-  previewCache.set(key, { dataUri, at: now });
-  while (previewCache.size > PREVIEW_CACHE_MAX) {
-    const oldest = previewCache.keys().next().value;
-    if (oldest === undefined) break;
-    previewCache.delete(oldest);
-  }
-  return dataUri;
+  return (await previewBrandCandidateResult(url, role, now, deps)).preview;
 }
 
 /** Test helper. */

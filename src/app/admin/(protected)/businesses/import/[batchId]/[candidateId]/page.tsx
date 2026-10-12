@@ -4,10 +4,11 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { getAllCategories } from "@/lib/admin/queries";
 import { loadBrandImportCandidate } from "@/lib/admin/brand-import";
 import { creatableProposal, REVIEW_ABOUT_MAX, REVIEW_NAME_MAX, REVIEW_SHORT_MAX } from "@/lib/admin/brand-import-review";
-import { previewBrandCandidate } from "@/lib/brand-images";
+import { previewBrandCandidateResult, type BrandPreviewResult } from "@/lib/brand-images";
 import {
   BRAND_IMPORT_AI_LABEL,
   BRAND_IMPORT_STATUS_LABEL,
+  brandImagePreviewUnavailableLabel,
   brandImageReviewItems,
   brandImportFailureLabel,
   formatAiCost,
@@ -47,13 +48,16 @@ export default async function BrandImportCandidatePage({
   const editable = status === "ready";
   // Previews only while a decision is still open; verified, re-encoded
   // data URIs — never a hotlinked URL.
-  const [logo, cover] =
-    editable || status === "creating"
-      ? await Promise.all([
-          p?.logo ? previewBrandCandidate(p.logo, "logo") : Promise.resolve(null),
-          p?.cover ? previewBrandCandidate(p.cover, "cover") : Promise.resolve(null),
-        ])
-      : [null, null];
+  const none: BrandPreviewResult = { preview: null, reason: null };
+  const [logoPreview, coverPreview] = editable
+    ? await Promise.all([
+        p?.logo ? previewBrandCandidateResult(p.logo, "logo") : Promise.resolve(none),
+        p?.cover ? previewBrandCandidateResult(p.cover, "cover") : Promise.resolve(none),
+      ])
+    : [none, none];
+  const logo = logoPreview.preview;
+  const cover = coverPreview.preview;
+  const unavailableReason = { logo: logoPreview.reason, cover: coverPreview.reason };
   const category = p?.cat ? (categories.find((c) => c.id === p.cat)?.name ?? "Unknown category") : null;
   const cost = formatAiCost(candidate.aiEstimatedCostUsd);
   const creatable = p ? creatableProposal(p) : null;
@@ -205,7 +209,8 @@ export default async function BrandImportCandidatePage({
                       ) : (
                         <div className="rounded-lg border border-dashed border-black/15 bg-black/[0.02] px-3 py-4 text-sm">
                           <p className="font-semibold text-ink/70">Preview unavailable</p>
-                          <p className="mt-0.5 text-xs text-ink/50">This image can&apos;t be shown, so it isn&apos;t kept unless you choose Keep.</p>
+                          <p className="mt-0.5 text-xs text-ink/50">{brandImagePreviewUnavailableLabel(img.role, unavailableReason[img.role])}</p>
+                          <p className="mt-0.5 text-xs text-ink/50">It isn&apos;t kept unless you choose Keep.</p>
                         </div>
                       )}
                     </div>
