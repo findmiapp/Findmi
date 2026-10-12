@@ -1217,28 +1217,31 @@ export async function createMemberBusiness(formData: FormData) {
   } = await sessionSupabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(CREATE_BUSINESS_PATH)}`);
 
-  const name = str(formData, "name");
-  const categoryId = str(formData, "category_id");
-  const city = str(formData, "city");
-  const state = str(formData, "state");
-  const websiteUrl = str(formData, "website_url");
-  const instagramUrl = str(formData, "instagram_url");
-  // Brand Onboarding V1.1B — optional, owner-editable (website analysis
-  // may have suggested it; never authoritative). Whitespace collapsed.
-  const shortDescription = str(formData, "short_description")?.replace(/\s+/g, " ") ?? null;
-  const marketId = str(formData, "market_id");
-  // Consumer Area Picker + Market Requests V1 — the alternative to
-  // marketId: the business is still created, but with a linked
-  // market_requests row instead of a business_markets row (see
-  // create_owned_business()'s own new branch). Exactly one of the two
-  // must be present.
-  const requestedMarketText = str(formData, "requested_market_text");
-  const authorized = bool(formData, "authorized");
   // Brand Onboarding (source=brand from /join/brand) — presentation and
   // landing only, no authority: its form shows no Free/Pro picker, so any
   // plan_choice is ignored and the business is created Free exactly as when
   // no plan is chosen. An explicit invite is unaffected (handled below).
   const brandOnboarding = parseBrandSource(str(formData, "source"));
+  const name = str(formData, "name");
+  const categoryId = str(formData, "category_id");
+  // VCL A2b — Brand onboarding collects no geography: its Review form has
+  // no Location fields, and anything submitted anyway is ignored, so a
+  // Brand is created with no city/state, no Market and no Market Request.
+  const city = brandOnboarding ? null : str(formData, "city");
+  const state = brandOnboarding ? null : str(formData, "state");
+  const websiteUrl = str(formData, "website_url");
+  const instagramUrl = str(formData, "instagram_url");
+  // Brand Onboarding V1.1B — optional, owner-editable (website analysis
+  // may have suggested it; never authoritative). Whitespace collapsed.
+  const shortDescription = str(formData, "short_description")?.replace(/\s+/g, " ") ?? null;
+  const marketId = brandOnboarding ? null : str(formData, "market_id");
+  // Consumer Area Picker + Market Requests V1 — the alternative to
+  // marketId: the business is still created, but with a linked
+  // market_requests row instead of a business_markets row (see
+  // create_owned_business()'s own new branch). Exactly one of the two
+  // must be present.
+  const requestedMarketText = brandOnboarding ? null : str(formData, "requested_market_text");
+  const authorized = bool(formData, "authorized");
   const planChoiceRaw = brandOnboarding ? null : str(formData, "plan_choice");
   // Brand Onboarding V1.1C — About (≤ 600 at onboarding) and the owner's
   // choice to use the verified logo/cover candidates. Only checkboxes come
@@ -1293,12 +1296,7 @@ export async function createMemberBusiness(formData: FormData) {
   // retroactively requires it on an existing business (Business Manager's
   // own profile-edit form is untouched), so no legitimate already-created
   // business is affected.
-  //
-  // VCL A2b — Brand onboarding: geography is optional ("No geography is
-  // better than false geography"). Blank City/State (already normalized to
-  // null by str()) create the Business with no Market and no Market
-  // Request; anything the owner DID enter is validated exactly as before.
-  const hasGeography = Boolean(city || state);
+  // VCL A2b — except Brand onboarding, which collects no geography at all.
   if (!brandOnboarding && (!city || !state)) fail("City and state are required.");
   if (shortDescription && shortDescription.length > SHORT_DESCRIPTION_MAX_LENGTH) {
     fail(`Keep your short description to ${SHORT_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
@@ -1312,7 +1310,7 @@ export async function createMemberBusiness(formData: FormData) {
   // re-validates existence/active status/exactly-one-choice itself
   // (market_required/invalid_market/market_choice_ambiguous) as the real,
   // untrusted-client-input enforcement — this is only a UX shortcut.
-  if (!marketId && !requestedMarketText && (!brandOnboarding || hasGeography)) {
+  if (!brandOnboarding && !marketId && !requestedMarketText) {
     fail("Choose a Primary Market, or request one below.");
   }
   if (marketId && requestedMarketText) {

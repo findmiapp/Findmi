@@ -197,7 +197,6 @@ export default async function AddBusinessPage({
       defaultState={values.state}
       defaultMarketId={submittedMarketId ?? ""}
       defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
-      optional={brandOnboarding}
     />
   );
 
@@ -339,7 +338,8 @@ export default async function AddBusinessPage({
               once the owner has actually typed something, instead of
               leaving them to separately solve Findmi's own taxonomy. See
               BusinessGeographyFields' own doc comment. Brand Onboarding
-              shows the same fields after the Brand Identity ones. */}
+              (VCL A2b) shows no geography at all: a new Brand establishes
+              its identity without being asked where it is based. */}
           {!brandOnboarding && geography}
 
           <label className="block">
@@ -396,7 +396,6 @@ export default async function AddBusinessPage({
               <span className="mt-1 block text-label text-subtle">Up to {ABOUT_MAX_LENGTH} characters. You can expand it later.</span>
             </label>
           )}
-          {brandOnboarding && geography}
 
           {/* Plan choice — Native Business Onboarding Pass 3, restyled by
               the Pro Positioning pass to match /join's card treatment,

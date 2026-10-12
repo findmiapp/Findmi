@@ -1,11 +1,12 @@
 // VCL A2b — Optional Business geography. A Business does not require City,
 // State or a Market ("No geography is better than false geography"). Brand
-// onboarding's Review Your Brand shows City/State as an optional Location;
-// blank geography creates the Business with no business_markets row and no
-// market_requests row, while anything entered keeps the existing Market /
-// Market Request behavior. Source guards on the form, server action and the
-// one forward-only migration (no rendering harness, no database here — the
-// migration itself was exercised against a disposable Postgres).
+// onboarding's Review Your Brand shows NO geography and the server ignores
+// any submitted for source=brand, so a Brand is created with no city/state,
+// no business_markets row and no market_requests row. The ordinary creation
+// form keeps its required City/State → Market / Market Request behavior.
+// Source guards on the form, server action and the one forward-only
+// migration (no rendering harness, no database here — the migration itself
+// was exercised against a disposable Postgres).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -27,37 +28,48 @@ const fnBody = (src) => {
 };
 
 // ── Review Your Brand ────────────────────────────────────────────────────
-test("Brand review: City and State are optional, under a 'Location / Optional' label", () => {
-  assert.match(NEW_PAGE, /optional=\{brandOnboarding\}/);
-  assert.match(FIELDS, /Location <span className="font-normal normal-case">Optional<\/span>/);
-  assert.equal((FIELDS.match(/required=\{!optional\}/g) ?? []).length, 2, "city and state");
-  assert.doesNotMatch(FIELDS, /^\s*required\s*$/m, "no unconditional required");
-  assert.match(FIELDS, /\{!hasInput && !optional && \(/, "no explanatory paragraph in the optional state");
+test("Brand review renders no geography section: no Location, City, State, Market or Market request UI", () => {
+  // The only geography render is gated to the ordinary (non-Brand) form.
+  assert.match(NEW_PAGE, /\{!brandOnboarding && geography\}/);
+  assert.equal((NEW_PAGE.match(/\bgeography\}/g) ?? []).length, 1, "rendered in exactly one, non-Brand place");
+  assert.doesNotMatch(NEW_PAGE, /(?<!!)brandOnboarding && geography/);
+  assert.doesNotMatch(NEW_PAGE, /optional=\{brandOnboarding\}/);
+  // The page itself carries no geography inputs of its own.
+  assert.doesNotMatch(NEW_PAGE, /name="(city|state|market_id|requested_market_text|postal_code|zip|address|country)"/);
+  assert.doesNotMatch(NEW_PAGE, />\s*Location\b/);
 });
 
-test("no National/Online selector, ZIP, address, country or HQ inference added", () => {
-  for (const src of [FIELDS, NEW_PAGE, CREATE, MIGRATION]) {
-    assert.doesNotMatch(src, /National|Online Market|"Online"|headquarters/i);
-  }
-  assert.doesNotMatch(FIELDS, /name="(postal_code|zip|address|country)"/);
+test("extracted city/state can't become submitted Brand geography: the server ignores it for source=brand", () => {
+  assert.match(CREATE, /const brandOnboarding = parseBrandSource\(str\(formData, "source"\)\);[\s\S]*?const city = brandOnboarding \? null : str\(formData, "city"\);\s*const state = brandOnboarding \? null : str\(formData, "state"\);/);
+  assert.match(CREATE, /const marketId = brandOnboarding \? null : str\(formData, "market_id"\);/);
+  assert.match(CREATE, /const requestedMarketText = brandOnboarding \? null : str\(formData, "requested_market_text"\);/);
+  // No later code reads geography from the form or the brand draft.
+  const body = CREATE.slice(CREATE.indexOf("export async function createMemberBusiness"));
+  const fn = body.slice(0, body.indexOf("\nexport async function", 10));
+  assert.equal((fn.match(/str\(formData, "(city|state|market_id|requested_market_text)"\)/g) ?? []).length, 4);
+  assert.doesNotMatch(fn, /draft\??\.(city|state)/);
 });
 
-test("ordinary (non-Brand) creation keeps City/State required", () => {
-  assert.match(FIELDS, /optional = false,/);
+test("Brand creation needs no geography; ordinary creation keeps City/State + Market-or-request required", () => {
   assert.match(CREATE, /if \(!brandOnboarding && \(!city \|\| !state\)\) fail\("City and state are required\."\);/);
-});
-
-// ── Server action ────────────────────────────────────────────────────────
-test("server: blank geography is allowed for Brand creation; entered geography still needs a Market or request", () => {
-  assert.match(CREATE, /const city = str\(formData, "city"\);\s*const state = str\(formData, "state"\);/, "blanks normalize to null");
-  assert.match(CREATE, /const hasGeography = Boolean\(city \|\| state\);/);
-  assert.match(CREATE, /if \(!marketId && !requestedMarketText && \(!brandOnboarding \|\| hasGeography\)\) \{\s*fail\("Choose a Primary Market, or request one below\."\);/);
+  assert.match(CREATE, /if \(!brandOnboarding && !marketId && !requestedMarketText\) \{\s*fail\("Choose a Primary Market, or request one below\."\);/);
   assert.match(CREATE, /if \(marketId && requestedMarketText\) \{\s*fail\("Choose an existing Market OR request one, not both\."\);/);
-  // Nothing manufactures geography: the RPC gets exactly what was resolved.
+  // The shared geography component is unchanged for the ordinary form.
+  assert.equal((FIELDS.match(/^\s*required\s*$/gm) ?? []).length, 2, "city and state required");
+  assert.doesNotMatch(FIELDS, /optional/);
+  // Nothing manufactures geography: the RPC gets exactly what was resolved
+  // (all null for a Brand — no Market, no request).
   const rpc = CREATE.slice(CREATE.indexOf('admin.rpc("create_owned_business"'), CREATE.indexOf("});", CREATE.indexOf('admin.rpc("create_owned_business"')));
   assert.match(rpc, /p_city: city,\s*p_state: state,/);
   assert.match(rpc, /p_market_id: effectiveMarketId,\s*p_requested_market_text: effectiveRequestedMarketText,/);
-  assert.match(CREATE, /let effectiveRequestedMarketText = requestedMarketText;/);
+  assert.match(CREATE, /let effectiveMarketId = marketId;\s*let effectiveRequestedMarketText = requestedMarketText;/);
+  assert.match(CREATE, /if \(requestedMarketText\) \{\s*const match = await findExistingGeographyMatch/, "matching only runs on real requested text");
+});
+
+test("no National/Online Market, ZIP, address, country or HQ inference added", () => {
+  for (const src of [FIELDS, NEW_PAGE, CREATE, MIGRATION]) {
+    assert.doesNotMatch(src, /National|Online Market|"Online"|headquarters/i);
+  }
 });
 
 test("creation authorization, duplicate protection and the A2 redirect remain", () => {

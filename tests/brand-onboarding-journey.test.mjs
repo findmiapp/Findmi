@@ -205,7 +205,7 @@ test("Review Your Brand presentation: same form, no Free/Pro picker, Add My Bran
 });
 
 test("createMemberBusiness: source=brand ignores plan_choice, round-trips the flag, and lands on Account Home (VCL A2)", () => {
-  assert.match(CREATE, /const brandOnboarding = parseBrandSource\(str\(formData, "source"\)\);\s*const planChoiceRaw = brandOnboarding \? null : str\(formData, "plan_choice"\);/);
+  assert.match(CREATE, /const brandOnboarding = parseBrandSource\(str\(formData, "source"\)\);[\s\S]*?const planChoiceRaw = brandOnboarding \? null : str\(formData, "plan_choice"\);/);
   assert.match(CREATE, /source: brandOnboarding \? BRAND_SOURCE : null,/, "kept through every preservedFields error redirect");
   const invite = CREATE.indexOf("if (inviteRaw) {");
   const pro = CREATE.indexOf('if (planChoiceRaw === "pro") {');
@@ -227,7 +227,7 @@ test("scope guard: matcher, safe-fetch and geography untouched by this correctio
   // Geography: city/state/market still required for ordinary creation
   // (optional for Brand onboarding since VCL A2b), RPC args unchanged.
   assert.match(CREATE, /if \(!brandOnboarding && \(!city \|\| !state\)\) fail\("City and state are required\."\);/);
-  assert.match(CREATE, /if \(!marketId && !requestedMarketText && \(!brandOnboarding \|\| hasGeography\)\) \{/);
+  assert.match(CREATE, /if \(!brandOnboarding && !marketId && !requestedMarketText\) \{/);
   assert.match(CREATE, /p_market_id: effectiveMarketId,/);
   assert.doesNotMatch(read("src/lib/brand-website-analysis.ts"), /safeFetchHtml\(url, \{/, "default safe-fetch options");
 });
