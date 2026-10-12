@@ -15,13 +15,17 @@ const TRANSITION_MS = 300;
 /** Minimum horizontal travel (px) before a touch gesture counts as a
  * swipe — small finger jitter/taps never navigate. */
 const SWIPE_THRESHOLD_PX = 45;
+/** A press while an automatically rotated-in slide is still fading in
+ * (not yet fully visible) was aimed at the slide that just left. */
+const AIM_GUARD_MS = TRANSITION_MS;
 
 /** Wraps the exact, unchanged HomepageBulletin card design in a small
  * rotation shell — the carousel swaps which resolved Bulletin is passed
  * in as `bulletin`, it never adds a second visual shell around the card.
  * 0 published: page.tsx never renders this. Exactly 1 published: static,
  * no timer, no controls (early return below). 2+: auto-rotates with
- * manual prev/next + dot nav, pausing on hover/focus. */
+ * manual prev/next + dot nav, pausing on hover/focus and stopping for
+ * good once the visitor presses anywhere on it. */
 export default function HomepageBulletinCarousel({ bulletins }: { bulletins: ResolvedHomepageBulletin[] }) {
   const count = bulletins.length;
   const [index, setIndex] = useState(0);
@@ -34,26 +38,39 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   // synthetic click a touch-drag can still produce never opens the
   // Bulletin's own link — swipes must never double as a destination tap.
   const justSwipedRef = useRef(false);
-  // True while a finger/pointer is down on the carousel. Auto-rotation
-  // skips its tick while held, so the slide under an in-progress tap can
-  // never be swapped for another one between press and release (which
-  // would drop the tap or send it to a different Bulletin). Checked inside
-  // the interval callback itself — not via state/effect re-subscription —
-  // so a tick due mid-tap is blocked immediately, with no render lag.
-  const heldRef = useRef(false);
+  // Interaction model for taps (reproduced in a hydrated production build:
+  // every surface of the card is inside its one link and navigates, but
+  // auto-rotation kept swapping the slide for touch users, who never get a
+  // hover-pause):
+  //  - The first press anywhere on the carousel stops auto-rotation for the
+  //    rest of the page view, so the slide a visitor touched stays put
+  //    while its destination loads, and a repeat tap hits the same slide.
+  //    The ref blocks a tick due before React re-renders; the state tears
+  //    the interval down.
+  //  - A press landing within AIM_GUARD_MS of an AUTOMATIC rotation was
+  //    aimed at the slide that just left. That tap is not sent to a
+  //    destination the visitor never saw: the aimed slide is restored
+  //    instead, and the next tap opens it.
+  const [stopped, setStopped] = useState(false);
+  const stoppedRef = useRef(false);
+  const lastAutoAdvanceRef = useRef<{ at: number; from: number } | null>(null);
+  const suppressClickRef = useRef(false);
 
   // Auto-rotate. Depends on resetTick so a manual nav (which bumps it)
   // tears down and restarts this interval instead of stacking a second
   // one on top of it; depends on `paused` so hover/focus cleanly stops
   // and later resumes rotation with a fresh full interval.
   useEffect(() => {
-    if (count < 2 || paused) return;
+    if (count < 2 || paused || stopped) return;
     const timer = setInterval(() => {
-      if (heldRef.current) return;
-      setIndex((i) => (i + 1) % count);
+      if (stoppedRef.current) return;
+      setIndex((i) => {
+        lastAutoAdvanceRef.current = { at: Date.now(), from: i };
+        return (i + 1) % count;
+      });
     }, ROTATE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [count, paused, resetTick]);
+  }, [count, paused, stopped, resetTick]);
 
   // Drives the per-slide crossfade: freshly false on every index change,
   // flipped true one frame later so the transition classes actually
@@ -82,20 +99,15 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   // full start-to-finish delta, and touch-pan-y below just stops the
   // browser from treating small horizontal jitter as a cancel-worthy pan.
   function handlePointerDown(e: React.PointerEvent) {
-    // Any pointer (touch, pen, mouse) holds rotation until it's released —
-    // anywhere, even outside the carousel, hence the window listeners.
-    heldRef.current = true;
-    const release = () => {
-      // Released on the next task, after the tap's own click has been
-      // dispatched, so no tick queued in between can swap the slide first.
-      setTimeout(() => {
-        heldRef.current = false;
-      }, 0);
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
-    };
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
+    suppressClickRef.current = false;
+    stoppedRef.current = true;
+    setStopped(true);
+    const recent = lastAutoAdvanceRef.current;
+    lastAutoAdvanceRef.current = null;
+    if (recent && Date.now() - recent.at < AIM_GUARD_MS && (e.target as Element).closest("a")) {
+      suppressClickRef.current = true;
+      setIndex(recent.from);
+    }
     if (e.pointerType !== "touch") return;
     touchStartRef.current = { x: e.clientX, y: e.clientY };
   }
@@ -117,6 +129,7 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
 
   function handlePointerCancel() {
     touchStartRef.current = null;
+    suppressClickRef.current = false;
   }
 
   return (
@@ -133,7 +146,8 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onClickCapture={(e) => {
-        if (justSwipedRef.current) {
+        if (justSwipedRef.current || suppressClickRef.current) {
+          suppressClickRef.current = false;
           e.preventDefault();
           e.stopPropagation();
         }

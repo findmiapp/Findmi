@@ -38,16 +38,28 @@ test("no destination: identical content in a plain wrapper — never a fake link
   assert.equal((c.match(/<a /g) ?? []).length, 1);
 });
 
-test("carousel: a pointer held on a slide blocks auto-rotation until after release", () => {
+test("carousel: the first press stops auto-rotation for good — a touched slide can't be swapped while its destination loads", () => {
   const c = code(CAROUSEL);
-  assert.match(c, /const heldRef = useRef\(false\);/);
-  assert.match(c, /setInterval\(\(\) => \{\s*if \(heldRef\.current\) return;\s*setIndex/, "a tick due mid-tap is skipped, not applied");
+  assert.match(c, /const \[stopped, setStopped\] = useState\(false\);/);
+  assert.match(c, /if \(count < 2 \|\| paused \|\| stopped\) return;/, "state tears the interval down");
+  assert.match(c, /setInterval\(\(\) => \{\s*if \(stoppedRef\.current\) return;/, "a tick due before React re-renders is skipped");
   const down = c.slice(c.indexOf("function handlePointerDown"), c.indexOf("function handlePointerUp"));
-  assert.ok(down.indexOf("heldRef.current = true;") < down.indexOf('if (e.pointerType !== "touch") return;'), "held for every pointer type, before the touch-only swipe tracking");
-  assert.match(down, /window\.addEventListener\("pointerup", release\);/, "released wherever the pointer lifts");
-  assert.match(down, /window\.addEventListener\("pointercancel", release\);/);
-  assert.match(down, /setTimeout\(\(\) => \{\s*heldRef\.current = false;\s*\}, 0\);/, "released only after the tap's click dispatches");
-  assert.match(down, /window\.removeEventListener\("pointerup", release\);\s*window\.removeEventListener\("pointercancel", release\);/, "no leaked listeners");
+  assert.ok(down.indexOf("stoppedRef.current = true;") < down.indexOf('if (e.pointerType !== "touch") return;'), "every pointer type, before the touch-only swipe tracking");
+  assert.match(down, /setStopped\(true\);/);
+  assert.doesNotMatch(c, /heldRef|addEventListener\("pointerup"/, "the superseded d874d87 hold/release is gone — no stacked touch hacks");
+});
+
+test("carousel: a press within AIM_GUARD_MS of an automatic rotation restores the aimed slide instead of opening one never seen", () => {
+  const c = code(CAROUSEL);
+  assert.match(c, /const AIM_GUARD_MS = TRANSITION_MS;/, "only while the incoming slide is still fading in (300ms)");
+  assert.match(c, /setIndex\(\(i\) => \{\s*lastAutoAdvanceRef\.current = \{ at: Date\.now\(\), from: i \};\s*return \(i \+ 1\) % count;/, "only AUTOMATIC rotation is recorded");
+  assert.doesNotMatch(c.slice(c.indexOf("function goTo"), c.indexOf("function handlePointerDown")), /lastAutoAdvanceRef/, "manual navigation never arms the guard");
+  const down = c.slice(c.indexOf("function handlePointerDown"), c.indexOf("function handlePointerUp"));
+  assert.match(down, /suppressClickRef\.current = false;/, "a stale suppression never leaks into a later tap");
+  assert.match(down, /if \(recent && Date\.now\(\) - recent\.at < AIM_GUARD_MS && \(e\.target as Element\)\.closest\("a"\)\) \{\s*suppressClickRef\.current = true;\s*setIndex\(recent\.from\);/);
+  assert.match(down, /lastAutoAdvanceRef\.current = null;/, "one-shot: the next press navigates normally");
+  assert.match(c, /if \(justSwipedRef\.current \|\| suppressClickRef\.current\) \{\s*suppressClickRef\.current = false;\s*e\.preventDefault\(\);/);
+  assert.match(c.slice(c.indexOf("function handlePointerCancel")), /suppressClickRef\.current = false;/);
 });
 
 test("carousel: hover/focus pause, swipe, controls and timing preserved", () => {
@@ -56,9 +68,9 @@ test("carousel: hover/focus pause, swipe, controls and timing preserved", () => 
   assert.match(c, /const TRANSITION_MS = 300;/);
   assert.match(c, /onMouseEnter=\{\(\) => setPaused\(true\)\}/);
   assert.match(c, /onFocusCapture=\{\(\) => setPaused\(true\)\}/);
-  assert.match(c, /if \(count < 2 \|\| paused\) return;/);
+  assert.match(c, /if \(count < 2 \|\| paused \|\| stopped\) return;/, "hover/focus pause still gates rotation");
   assert.match(c, /goTo\(deltaX < 0 \? index \+ 1 : index - 1\);/);
-  assert.match(c, /if \(justSwipedRef\.current\) \{\s*e\.preventDefault\(\);/, "a swipe still never doubles as a tap");
+  assert.match(c, /if \(justSwipedRef\.current \|\| suppressClickRef\.current\) \{[^}]*e\.preventDefault\(\);/, "a swipe still never doubles as a tap");
   for (const label of ['"Previous announcement"', '"Next announcement"']) assert.ok(c.includes(`aria-label=${label}`), label);
   // Controls are siblings of the slide, never inside the card link.
   const slide = c.indexOf("<HomepageBulletin bulletin={bulletins[index]} />");

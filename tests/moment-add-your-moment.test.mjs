@@ -108,7 +108,7 @@ test("unchanged: source resolution, gallery filtering, viewer, cover; no Bulleti
   assert.match(g, /<JournalMediaViewerRoot key=\{active\?\.id \?\? "all"\} items=\{viewerItems\}>\s*<JournalPhotoGallery items=\{items\} \/>\s*<\/JournalMediaViewerRoot>/);
   assert.match(g, /if \(momentGalleryPhotos\(photos, null\)\.length === 0\) return null;/);
   assert.match(PAGE, /isCover: m\.id === cover\?\.id,/);
-  assert.match(BULLETIN, /if \(heldRef\.current\) return;/, "Bulletin fix intact");
+  assert.match(BULLETIN, /if \(stoppedRef\.current\) return;/, "Bulletin carousel interaction guard intact");
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
   assert.equal(files.at(-1), "20261013000000_bd_foundation.sql");
 });
