@@ -33,6 +33,7 @@ export default function EventOccurrenceQuickView({
   occurrence,
   eventName,
   eventId,
+  eventUrl,
   canonicalLocation,
   coverImageUrl,
   ticketsEnabled,
@@ -48,6 +49,9 @@ export default function EventOccurrenceQuickView({
   eventName: string;
   /** Analytics attribution only — passed straight through to EventScheduleCtas. */
   eventId: string;
+  /** The Event's public canonical URL (the same one its share/metadata
+   * use) — carried into the calendar entry. */
+  eventUrl: string;
   canonicalLocation: EventLocationCardLocation | null;
   coverImageUrl: string | null;
   ticketsEnabled: boolean;
@@ -101,6 +105,9 @@ export default function EventOccurrenceQuickView({
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : [venueLabel, occurrence.address, cityState(occurrence.city, occurrence.state)].filter(Boolean).join(", ");
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : null;
+  // Calendar "where" — the same venue + address this sheet displays for
+  // THIS occurrence (never geocoded or invented); null when there's none.
+  const calendarLocation = [venueLabel, fullAddress].filter((v, i, all) => v && all.indexOf(v) === i).join(", ") || null;
 
   return (
     <div
@@ -207,7 +214,8 @@ export default function EventOccurrenceQuickView({
             <div className="flex-1">
               <AddToCalendarButton
                 title={eventName}
-                location={venueLabel}
+                location={calendarLocation}
+                url={eventUrl}
                 startAt={occurrence.start_at}
                 endAt={occurrence.end_at}
                 layout="row"

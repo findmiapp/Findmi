@@ -52,6 +52,7 @@ export default function UpcomingDatesRail({
   occurrences,
   eventName,
   eventId,
+  eventUrl,
   canonicalLocation,
   coverImageUrl,
   galleryImages,
@@ -66,6 +67,8 @@ export default function UpcomingDatesRail({
   occurrences: EventOccurrenceWithLocation[];
   eventName: string;
   eventId: string;
+  /** Public canonical Event URL — threaded to the Quick View's calendar entry. */
+  eventUrl: string;
   canonicalLocation: EventLocationCardLocation | null;
   coverImageUrl: string | null;
   /** Location + Event Moment Continuity pass — the Event's own gallery
@@ -189,6 +192,7 @@ export default function UpcomingDatesRail({
           occurrence={openOccurrence}
           eventName={eventName}
           eventId={eventId}
+          eventUrl={eventUrl}
           canonicalLocation={canonicalLocation}
           coverImageUrl={coverImageUrl}
           ticketsEnabled={ticketsEnabled}

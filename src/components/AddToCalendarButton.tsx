@@ -2,56 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { buildCalendarPayload } from "@/lib/calendar";
 
-// Event Detail V2 polish pass, item 9 — real event data only (title,
-// start, end, venue/address, description), no paid third-party calendar
-// service. Google Calendar opens a pre-filled web page (no auth/API key
-// needed); .ics is generated client-side and downloaded directly, which
-// covers Apple Calendar/Outlook/every other calendar app that reads the
-// standard format.
-function toIcsDate(iso: string): string {
-  return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-}
-
-function escapeIcsText(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
-}
-
-function buildIcs({
-  title,
-  description,
-  location,
-  startAt,
-  endAt,
-}: {
-  title: string;
-  description?: string | null;
-  location?: string | null;
-  startAt: string;
-  endAt: string;
-}): string {
-  const lines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Findmi//Event//EN",
-    "BEGIN:VEVENT",
-    `UID:${crypto.randomUUID()}@findmi.app`,
-    `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
-    `DTSTART:${toIcsDate(startAt)}`,
-    `DTEND:${toIcsDate(endAt)}`,
-    `SUMMARY:${escapeIcsText(title)}`,
-    ...(location ? [`LOCATION:${escapeIcsText(location)}`] : []),
-    ...(description ? [`DESCRIPTION:${escapeIcsText(description)}`] : []),
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ];
-  return lines.join("\r\n");
-}
+// Approximate open-menu height (two h-10 options + padding/border) — used
+// only to decide whether the menu fits below the trigger or opens above it.
+const MENU_HEIGHT = 96;
 
 export default function AddToCalendarButton({
   title,
   description,
   location,
+  url,
   startAt,
   endAt,
   layout = "pill",
@@ -59,6 +20,10 @@ export default function AddToCalendarButton({
   title: string;
   description?: string | null;
   location?: string | null;
+  /** Public canonical Findmi URL for this Event/Appearance — appended to
+   * the calendar entry's description (and the .ics URL field). Omit when
+   * there's no public destination. */
+  url?: string | null;
   startAt: string;
   /** Falls back to a 2-hour block when the event has no real end time —
    * calendar apps require SOME end, so this is the least presumptuous
@@ -95,7 +60,6 @@ export default function AddToCalendarButton({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const resolvedEnd = endAt ?? new Date(new Date(startAt).getTime() + 2 * 60 * 60 * 1000).toISOString();
 
   // Calendar Functional Repair pass — this dropdown is portaled to
   // document.body rather than rendered as a normal DOM descendant of its
@@ -136,23 +100,17 @@ export default function AddToCalendarButton({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [open]);
 
-  const gcalParams = new URLSearchParams({
-    action: "TEMPLATE",
-    text: title,
-    dates: `${toIcsDate(startAt)}/${toIcsDate(resolvedEnd)}`,
-    ...(location ? { location } : {}),
-    ...(description ? { details: description } : {}),
-  });
-  const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
+  // Built at tap time (never during render) from this button's own props —
+  // i.e. the exact occurrence/appearance the caller rendered it for.
+  const payload = () => buildCalendarPayload({ title, description, location, url, startAt, endAt });
 
   function openGoogleCalendar() {
-    window.location.assign(gcalUrl);
+    window.location.assign(payload().gcalUrl);
     setOpen(false);
   }
 
   function downloadIcs() {
-    const ics = buildIcs({ title, description, location, startAt, endAt: resolvedEnd });
-    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const blob = new Blob([payload().ics], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -181,14 +139,21 @@ export default function AddToCalendarButton({
         ref={triggerRef}
         type="button"
         aria-label={layout === "glass" || layout === "icon" ? "Add to Calendar" : undefined}
+        aria-haspopup="menu"
+        aria-expanded={open}
         title={layout === "icon" ? "Add to Calendar" : undefined}
         onClick={() => {
           if (!open && triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
-            // Icon layout sits at the right edge of the Event action row —
-            // keep its menu inside the viewport (other layouts unchanged).
-            const left = layout === "icon" ? Math.max(8, Math.min(rect.left, window.innerWidth - 232)) : rect.left;
-            setCoords({ top: rect.bottom + 6, left });
+            // Keep the menu inside the viewport: the icon layout sits at the
+            // right edge of the Event action row, and the w-48 menu would
+            // otherwise overhang a narrow phone's right edge from the
+            // quick-view sheets' Calendar button too.
+            const left = Math.max(8, Math.min(rect.left, window.innerWidth - (layout === "icon" ? 232 : 200)));
+            // Open above the trigger when the menu wouldn't fit below it
+            // (e.g. the Calendar button near the bottom of a mobile sheet).
+            const fitsBelow = rect.bottom + 6 + MENU_HEIGHT <= window.innerHeight;
+            setCoords({ top: fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - MENU_HEIGHT), left });
           }
           setOpen((o) => !o);
         }}
@@ -219,11 +184,18 @@ export default function AddToCalendarButton({
         createPortal(
           <div
             ref={panelRef}
-            className="fixed z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
+            role="menu"
+            aria-label="Add to Calendar"
+            // Above every page layer (z-[80]), incl. the z-50 quick-view dialogs
+            // this button sits inside — the menu is portaled to <body>, so
+            // at z-20 it opened BEHIND an open dialog (an invisible menu:
+            // tapping Calendar appeared to do nothing).
+            className="fixed z-[80] w-48 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
             style={{ top: coords.top, left: coords.left }}
           >
             <button
               type="button"
+              role="menuitem"
               onClick={openGoogleCalendar}
               className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
             >
@@ -231,6 +203,7 @@ export default function AddToCalendarButton({
             </button>
             <button
               type="button"
+              role="menuitem"
               onClick={downloadIcs}
               className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
             >

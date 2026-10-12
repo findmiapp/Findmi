@@ -659,6 +659,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           occurrences={datedOccurrences}
           eventName={event.name}
           eventId={event.id}
+          eventUrl={canonicalUrl}
           canonicalLocation={canonicalLocation}
           coverImageUrl={coverAndGallery[0] ?? null}
           galleryImages={images.gallery}
