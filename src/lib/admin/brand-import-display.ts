@@ -45,3 +45,38 @@ export function formatAiCost(usd: number | null | undefined): string | null {
   if (usd == null || !Number.isFinite(usd)) return null;
   return `$${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
 }
+
+export interface BrandImageReviewItem {
+  role: "cover" | "logo";
+  label: "Cover" | "Logo";
+  field: "use_cover" | "use_logo";
+  preview: string | null;
+  /** Default selection of the Keep/Remove control. */
+  keep: boolean;
+}
+
+/** P4 review — Keep/Remove defaults for the candidate images. A verified
+ * preview defaults to Keep (unless the saved review removed it); an image
+ * that can't be previewed defaults to Remove — only an explicit, saved
+ * Keep counts. `undecided` lists unpreviewable images with no saved
+ * decision: Create stays unavailable until the review is saved, because
+ * creation keeps an undecided image. */
+export function brandImageReviewItems(
+  proposal: { cover?: string; logo?: string; useCover?: boolean; useLogo?: boolean } | null,
+  previews: { cover: string | null; logo: string | null }
+): { items: BrandImageReviewItem[]; undecided: ("cover" | "logo")[] } {
+  if (!proposal) return { items: [], undecided: [] };
+  const slots = [
+    { role: "cover", label: "Cover", field: "use_cover", url: proposal.cover, saved: proposal.useCover },
+    { role: "logo", label: "Logo", field: "use_logo", url: proposal.logo, saved: proposal.useLogo },
+  ] as const;
+  const items: BrandImageReviewItem[] = [];
+  const undecided: ("cover" | "logo")[] = [];
+  for (const s of slots) {
+    if (!s.url) continue;
+    const preview = previews[s.role];
+    items.push({ role: s.role, label: s.label, field: s.field, preview, keep: preview ? s.saved !== false : s.saved === true });
+    if (!preview && s.saved === undefined) undecided.push(s.role);
+  }
+  return { items, undecided };
+}

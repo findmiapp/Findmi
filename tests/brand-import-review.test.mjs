@@ -564,10 +564,14 @@ test("page: Ready is editable; Created/Existing/Discarded are display-only; fail
   const src = code(PAGE);
   assert.match(src, /const editable = status === "ready";/);
   assert.match(src, /\{editable && p && \(/);
-  for (const name of ["name", "category_id", "website", "instagram", "short_description", "about", "use_logo", "use_cover", "expected_updated_at", "batch_id", "candidate_id"]) {
+  for (const name of ["name", "category_id", "website", "instagram", "short_description", "about", "expected_updated_at", "batch_id", "candidate_id"]) {
     assert.match(src, new RegExp(`name="${name}"`), name);
   }
+  // Keep/Remove: one radio pair per image, posting use_cover / use_logo = 1 | 0.
+  assert.match(src, /<input type="radio" name=\{img\.field\} value="1" defaultChecked=\{img\.keep\}/);
+  assert.match(src, /<input type="radio" name=\{img\.field\} value="0" defaultChecked=\{!img\.keep\}/);
   assert.doesNotMatch(src, /name="(city|state|market|owner|email|phone|plan|referral)/, "no geography/owner/plan fields");
+  assert.doesNotMatch(src, />\s*(City|State)\s*</, "no City/State controls or labels");
   assert.match(src, /status === "created" && openBusiness\(candidate\.createdBusiness, "Created"\)/);
   assert.match(src, /status === "existing_business" && openBusiness\(candidate\.matchedBusiness, "Existing On Findmi"\)/);
   assert.match(src, /Open Business/);
@@ -581,6 +585,74 @@ test("page: Ready is editable; Created/Existing/Discarded are display-only; fail
   const outside = src.replace(/\{editable && p && \([\s\S]*?\n {6}\)\}/, "").replace(/\{status === "creating" && \([\s\S]*?\n {6}\)\}/, "");
   assert.doesNotMatch(outside, /Save Review|label="Create Business"/);
   assert.doesNotMatch(src, /JSON\.stringify|<pre/);
+});
+
+const D = await import("../src/lib/admin/brand-import-display.ts");
+
+test("image review: a verified preview renders and defaults to Keep (unless the saved review removed it)", () => {
+  const { items, undecided } = D.brandImageReviewItems(PROPOSAL, { cover: "data:image/webp;base64,AAA", logo: "data:image/webp;base64,BBB" });
+  assert.deepEqual(items.map((i) => [i.role, i.label, i.field, i.keep]), [["cover", "Cover", "use_cover", true], ["logo", "Logo", "use_logo", true]]);
+  assert.equal(items[0].preview, "data:image/webp;base64,AAA");
+  assert.deepEqual(undecided, []);
+  const removed = D.brandImageReviewItems({ ...PROPOSAL, useCover: false }, { cover: "data:x", logo: "data:y" });
+  assert.equal(removed.items[0].keep, false);
+  // Only images the candidate actually has.
+  assert.deepEqual(D.brandImageReviewItems({ site: PROPOSAL.site, logo: PROPOSAL.logo }, { cover: null, logo: "data:y" }).items.map((i) => i.role), ["logo"]);
+  assert.deepEqual(D.brandImageReviewItems(null, { cover: null, logo: null }), { items: [], undecided: [] });
+});
+
+test("image review: an unavailable preview never defaults to Keep; Create waits for a saved decision", () => {
+  const unsaved = D.brandImageReviewItems(PROPOSAL, { cover: null, logo: "data:y" });
+  assert.equal(unsaved.items.find((i) => i.role === "cover").keep, false);
+  assert.equal(unsaved.items.find((i) => i.role === "cover").preview, null);
+  assert.equal(unsaved.items.find((i) => i.role === "logo").keep, true);
+  assert.deepEqual(unsaved.undecided, ["cover"]);
+  // Saved Remove → decided; saved explicit Keep → an informed choice, kept.
+  assert.deepEqual(D.brandImageReviewItems({ ...PROPOSAL, useCover: false }, { cover: null, logo: "data:y" }).undecided, []);
+  const keptBlind = D.brandImageReviewItems({ ...PROPOSAL, useCover: true }, { cover: null, logo: "data:y" });
+  assert.equal(keptBlind.items[0].keep, true);
+  assert.deepEqual(keptBlind.undecided, []);
+  // A saved review always records both flags, so the decision persists.
+  const saved = V.applyBrandReview(PROPOSAL, review({ useCover: false }), CATS);
+  assert.equal(saved.proposal.useCover, false);
+});
+
+test("page: previews are verified data URIs (no hotlink); unavailable is labelled; Create is gated on undecided images", () => {
+  const src = code(PAGE);
+  assert.match(src, /previewBrandCandidate\(p\.cover, "cover"\)/);
+  assert.match(src, /previewBrandCandidate\(p\.logo, "logo"\)/);
+  assert.doesNotMatch(src, /src=\{p\.(logo|cover)\}|src=\{img\.url\}/, "never hotlinks the candidate URL");
+  assert.match(src, /<img src=\{img\.preview\} alt="Cover preview"/);
+  assert.match(src, /<img src=\{img\.preview\} alt="Logo preview"/);
+  assert.match(src, /Preview unavailable/);
+  assert.match(src, /brandImageReviewItems\(p, \{ cover, logo \}\)/);
+  assert.match(src, /undecidedImages\.length > 0 \? \([\s\S]*?save the review before creating[\s\S]*?\) : \(\s*<form action=\{createBusinessFromCandidateAction\}/);
+});
+
+test("page: Create Business card uses the simplified copy — no implementation details", () => {
+  const src = code(PAGE);
+  const card = src.slice(src.indexOf('id="create-business-heading"'), src.indexOf("Not adding this brand?"));
+  assert.match(card, /Create Business/);
+  assert.match(card, /Ready to add this brand to Findmi\?/);
+  assert.match(card, /<dt className="text-ink\/50">Status<\/dt>\s*<dd className="text-ink">Pending Review<\/dd>/);
+  assert.match(card, /<dt className="text-ink\/50">Category<\/dt>/);
+  assert.match(card, /Save any edits before creating\./);
+  assert.match(card, /label="Create Business"/);
+  assert.doesNotMatch(card, /owner|location|market|saved<\/strong>|pending-review Business/i);
+  // Create never submits the review form's fields (no implicit save).
+  const createForm = card.slice(card.indexOf("<form action={createBusinessFromCandidateAction}"), card.indexOf("</form>"));
+  assert.doesNotMatch(createForm, /name="(name|website|about|short_description|use_cover|use_logo)"/);
+});
+
+test("page: action hierarchy — Save in the review form, Create primary, Discard separated and destructive", () => {
+  const src = code(PAGE);
+  const reviewForm = src.slice(src.indexOf("<form action={saveBrandReviewAction}"), src.indexOf("</form>", src.indexOf("<form action={saveBrandReviewAction}")));
+  assert.match(reviewForm, /<ReviewSubmitButton label="Save Review" pendingLabel="Saving…" wide \/>/);
+  assert.match(src, /<ReviewSubmitButton label="Create Business" pendingLabel="Creating…" primary wide \/>/);
+  const discardAt = src.indexOf("Not adding this brand?");
+  assert.ok(discardAt > src.indexOf("create-business-heading"), "Discard comes after Create");
+  assert.match(src.slice(discardAt, discardAt + 400), /<DeleteButton action=\{discard\} label="Discard Candidate"/);
+  assert.match(read("src/components/admin/DeleteButton.tsx"), /text-red-600/, "Discard stays visually destructive");
 });
 
 test("batch page: Open Business for created; settled candidates link to their page", () => {

@@ -5,7 +5,13 @@ import { getAllCategories } from "@/lib/admin/queries";
 import { loadBrandImportCandidate } from "@/lib/admin/brand-import";
 import { creatableProposal, REVIEW_ABOUT_MAX, REVIEW_NAME_MAX, REVIEW_SHORT_MAX } from "@/lib/admin/brand-import-review";
 import { previewBrandCandidate } from "@/lib/brand-images";
-import { BRAND_IMPORT_AI_LABEL, BRAND_IMPORT_STATUS_LABEL, brandImportFailureLabel, formatAiCost } from "@/lib/admin/brand-import-display";
+import {
+  BRAND_IMPORT_AI_LABEL,
+  BRAND_IMPORT_STATUS_LABEL,
+  brandImageReviewItems,
+  brandImportFailureLabel,
+  formatAiCost,
+} from "@/lib/admin/brand-import-display";
 import DeleteButton from "@/components/admin/DeleteButton";
 import { createBusinessFromCandidateAction, discardBrandCandidateAction, saveBrandReviewAction } from "../../actions";
 import ReviewSubmitButton from "../../ReviewSubmitButton";
@@ -51,6 +57,9 @@ export default async function BrandImportCandidatePage({
   const category = p?.cat ? (categories.find((c) => c.id === p.cat)?.name ?? "Unknown category") : null;
   const cost = formatAiCost(candidate.aiEstimatedCostUsd);
   const creatable = p ? creatableProposal(p) : null;
+  // Unpreviewable images default to Remove; Create waits for a saved
+  // decision on them (see brandImageReviewItems).
+  const { items: images, undecided: undecidedImages } = brandImageReviewItems(p, { cover, logo });
   const imageWarnings = (sp.image_warning ?? "").split(",").filter((r) => r === "logo" || r === "cover");
   const discard = discardBrandCandidateAction.bind(null, batchId, candidateId);
   const batchHref = `/admin/businesses/import/${batchId}`;
@@ -169,72 +178,86 @@ export default async function BrandImportCandidatePage({
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Short Description</span>
-              <textarea name="short_description" defaultValue={p.sd ?? ""} rows={2} maxLength={REVIEW_SHORT_MAX} className={inputClass} />
+              <textarea name="short_description" defaultValue={p.sd ?? ""} rows={3} maxLength={REVIEW_SHORT_MAX} className={`${inputClass} resize-y`} />
               <span className="mt-1 block text-xs text-ink/45">Up to {REVIEW_SHORT_MAX} characters.</span>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">About</span>
-              <textarea name="about" defaultValue={p.about ?? ""} rows={5} maxLength={REVIEW_ABOUT_MAX} className={inputClass} />
+              <textarea name="about" defaultValue={p.about ?? ""} rows={6} maxLength={REVIEW_ABOUT_MAX} className={`${inputClass} resize-y`} />
               <span className="mt-1 block text-xs text-ink/45">Up to {REVIEW_ABOUT_MAX} characters.</span>
             </label>
 
-            {(p.logo || p.cover) && (
+            {images.length > 0 && (
               <fieldset className="space-y-3">
                 <legend className="mb-1.5 text-sm font-medium text-ink">Images</legend>
-                {p.cover && (
-                  <label className="block overflow-hidden rounded-xl border border-black/[0.07]">
-                    {cover ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- verified data URI preview
-                      <img src={cover} alt="Cover candidate" className="aspect-[16/9] w-full object-cover" />
-                    ) : (
-                      <span className="block px-3 py-2 text-xs text-ink/50">Cover found — preview unavailable.</span>
-                    )}
-                    <span className="flex items-center gap-2 px-3 py-2 text-sm text-ink">
-                      <input type="checkbox" name="use_cover" value="1" defaultChecked={p.useCover !== false} />
-                      Keep Cover
-                    </span>
-                  </label>
-                )}
-                {p.logo && (
-                  <label className="flex items-center gap-3 rounded-xl border border-black/[0.07] px-3 py-2">
-                    {logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- verified data URI preview
-                      <img src={logo} alt="Logo candidate" className="h-14 w-14 rounded-lg border border-black/[0.07] object-contain" />
-                    ) : (
-                      <span className="text-xs text-ink/50">Logo found — preview unavailable.</span>
-                    )}
-                    <span className="flex items-center gap-2 text-sm text-ink">
-                      <input type="checkbox" name="use_logo" value="1" defaultChecked={p.useLogo !== false} />
-                      Keep Logo
-                    </span>
-                  </label>
-                )}
+                {images.map((img) => (
+                  <div key={img.role} className="overflow-hidden rounded-xl border border-black/[0.07]" data-image-role={img.role}>
+                    <p className="px-3 pt-2.5 text-xs font-bold uppercase tracking-wide text-ink/55">{img.label}</p>
+                    <div className="px-3 pt-2">
+                      {img.preview ? (
+                        img.role === "cover" ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- verified, re-encoded data URI preview
+                          <img src={img.preview} alt="Cover preview" className="aspect-[16/9] w-full rounded-lg bg-black/[0.03] object-cover" />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element -- verified, re-encoded data URI preview
+                          <img src={img.preview} alt="Logo preview" className="h-24 w-24 rounded-lg border border-black/[0.07] bg-white object-contain" />
+                        )
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-black/15 bg-black/[0.02] px-3 py-4 text-sm">
+                          <p className="font-semibold text-ink/70">Preview unavailable</p>
+                          <p className="mt-0.5 text-xs text-ink/50">This image can&apos;t be shown, so it isn&apos;t kept unless you choose Keep.</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 p-3" role="radiogroup" aria-label={`${img.label} decision`}>
+                      <label className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-black/10 px-3 text-sm font-semibold text-ink has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:text-findmi-700">
+                        <input type="radio" name={img.field} value="1" defaultChecked={img.keep} className="accent-findmi" />
+                        Keep
+                      </label>
+                      <label className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-black/10 px-3 text-sm font-semibold text-ink has-[:checked]:border-ink/40 has-[:checked]:bg-black/[0.04]">
+                        <input type="radio" name={img.field} value="0" defaultChecked={!img.keep} className="accent-ink" />
+                        Remove
+                      </label>
+                    </div>
+                  </div>
+                ))}
                 <p className="text-xs text-ink/45">Kept images are re-checked and stored by Findmi when the Business is created.</p>
               </fieldset>
             )}
 
-            <div className="flex justify-end">
-              <ReviewSubmitButton label="Save Review" pendingLabel="Saving…" />
+            <div className="border-t border-black/[0.06] pt-4 sm:flex sm:justify-end">
+              <ReviewSubmitButton label="Save Review" pendingLabel="Saving…" wide />
             </div>
           </form>
 
-          <div className="mt-5 rounded-2xl border border-black/[0.07] bg-white px-4 py-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/45">Create Business</p>
-            <p className="mt-1 text-sm text-ink/70">
-              Creates a pending-review Business from the <strong>saved</strong> review — no owner, location or market. Save your edits first.
-              {category ? ` Category: ${category}.` : ""}
+          <section className="mt-6 rounded-2xl border border-findmi/30 bg-white px-4 py-4" aria-labelledby="create-business-heading">
+            <p id="create-business-heading" className="text-xs font-bold uppercase tracking-wide text-findmi-700">
+              Create Business
             </p>
+            <p className="mt-1 text-base font-semibold text-ink">Ready to add this brand to Findmi?</p>
+            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <dt className="text-ink/50">Status</dt>
+              <dd className="text-ink">Pending Review</dd>
+              <dt className="text-ink/50">Category</dt>
+              <dd className="break-words text-ink">{category ?? "Not set"}</dd>
+            </dl>
             {creatable && !creatable.ok ? (
               <p className="mt-3 text-sm text-ink/60">{creatable.error}</p>
+            ) : undecidedImages.length > 0 ? (
+              <p className="mt-3 text-sm text-ink/60">
+                The {undecidedImages.join(" and ")} can&apos;t be previewed. Choose Keep or Remove above and save the review before creating.
+              </p>
             ) : (
-              <form action={createBusinessFromCandidateAction} className="mt-3">
+              <form action={createBusinessFromCandidateAction} className="mt-4">
                 {ids}
-                <ReviewSubmitButton label="Create Business" pendingLabel="Creating…" primary />
+                <p className="mb-3 text-xs text-ink/50">Save any edits before creating.</p>
+                <ReviewSubmitButton label="Create Business" pendingLabel="Creating…" primary wide />
               </form>
             )}
-          </div>
+          </section>
 
-          <div className="mt-5 flex justify-end">
+          <div className="mt-8 flex flex-col gap-2 border-t border-black/[0.08] pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-ink/55">Not adding this brand?</p>
             <DeleteButton action={discard} label="Discard Candidate" confirmMessage="Discard this candidate? Nothing is deleted, and no Business is created." />
           </div>
         </>
