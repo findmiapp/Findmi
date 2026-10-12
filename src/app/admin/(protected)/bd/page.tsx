@@ -26,6 +26,13 @@ export default function BdHomePage() {
           </span>
           <span aria-hidden="true" className="shrink-0 text-ink/30">›</span>
         </Link>
+        <Link href="/admin/bd/contacts" className="flex min-h-[60px] items-center justify-between gap-3 px-4 py-3 transition hover:bg-black/[0.02]">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-ink">Contacts</span>
+            <span className="block text-xs text-ink/50">People Findmi knows at those Organizations</span>
+          </span>
+          <span aria-hidden="true" className="shrink-0 text-ink/30">›</span>
+        </Link>
       </div>
     </div>
   );

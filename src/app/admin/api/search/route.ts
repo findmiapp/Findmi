@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { searchOrganizationsForPicker } from "@/lib/admin/bd/organizations";
 
 // Server-side search for admin relationship pickers (see
 // components/admin/RelationPicker.tsx). Lives under /admin/api/... so
@@ -21,6 +22,14 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const entity = searchParams.get("entity");
   const q = (searchParams.get("q") ?? "").trim();
+
+  // BD Checkpoint 3B — private BD Organization picker. Below the
+  // requireAdmin() check above; reads go through the server-only BD client
+  // (its own requireAdmin, then the private schema) with a sanitized term, and the
+  // response carries only id/name/kind/archived — never private notes.
+  if (entity === "bd_organizations") {
+    return NextResponse.json({ results: q ? await searchOrganizationsForPicker(q) : [] });
+  }
 
   const supabase = getAdminSupabase();
   if (!supabase || !q) return NextResponse.json({ results: [] });

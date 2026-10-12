@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listContactsForOrganization } from "@/lib/admin/bd/contacts";
 import { getLinkedBusinesses, getOrganization } from "@/lib/admin/bd/organizations";
 import ConfirmSubmitButton from "../../../opportunities/ConfirmSubmitButton";
 import { ArchivedPill, OrganizationKindPill, PrivateBadge } from "../../BdPills";
+import ContactRow from "../../contacts/ContactRow";
 import { archiveOrganization, restoreOrganization } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,11 @@ export default async function BdOrganizationPage({
   const { saved, archived, restored, error } = await searchParams;
   const organization = await getOrganization(id);
   if (!organization) notFound();
-  const business = organization.business_id ? ((await getLinkedBusinesses([organization.business_id])).get(organization.business_id) ?? null) : null;
+  const [businesses, contacts] = await Promise.all([
+    getLinkedBusinesses([organization.business_id]),
+    listContactsForOrganization(organization.id),
+  ]);
+  const business = organization.business_id ? (businesses.get(organization.business_id) ?? null) : null;
   const isArchived = Boolean(organization.archived_at);
   const notice = error ? null : saved ? "Saved." : archived ? "Archived." : restored ? "Restored." : null;
   const websiteHref = organization.website && /^https?:\/\//i.test(organization.website) ? organization.website : null;
@@ -117,6 +123,33 @@ export default async function BdOrganizationPage({
             {organization.business_id ? "The linked Business could not be loaded." : "Not linked to a public Findmi Business."}
           </p>
         )}
+      </section>
+
+      <section className="mt-6" aria-labelledby="org-contacts">
+        <div className="flex items-center justify-between gap-3 px-1">
+          <h2 id="org-contacts" className="text-xs font-bold uppercase tracking-wide text-ink/45">
+            Contacts{contacts && contacts.length > 0 ? ` · ${contacts.length}` : ""}
+          </h2>
+          {!isArchived && (
+            <Link
+              href={`/admin/bd/contacts/new?organization=${organization.id}`}
+              className="flex min-h-[36px] items-center rounded-full border border-findmi/30 bg-findmi-50 px-3.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100"
+            >
+              + Add Contact
+            </Link>
+          )}
+        </div>
+        <div className="mt-2 flex flex-col gap-2">
+          {contacts === null ? (
+            <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Contacts couldn&apos;t be loaded. Refresh to try again.</p>
+          ) : contacts.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-black/15 px-4 py-4 text-sm text-ink/45">
+              {isArchived ? "No Contacts. Restore this Organization to add one." : "No Contacts yet."}
+            </p>
+          ) : (
+            contacts.map((c) => <ContactRow key={c.id} contact={c} showOrganization={false} />)
+          )}
+        </div>
       </section>
 
       <div className="mt-8 border-t border-black/5 pt-5">

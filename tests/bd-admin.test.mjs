@@ -106,7 +106,9 @@ test("security: no Client Component and no non-Admin file imports private BD dat
   for (const f of SRC) {
     const src = readFileSync(f, "utf8");
     if (!/from ["'][^"']*lib\/admin\/bd\/[^"']*["']|from ["']\.\/client["']/.test(src)) continue;
-    const allowed = f.startsWith(join("src", "lib", "admin", "bd")) || f.startsWith(BD_APP);
+    // The Admin search route is the one non-BD-area importer (3B's
+    // bd_organizations picker branch, behind its requireAdmin()).
+    const allowed = f.startsWith(join("src", "lib", "admin", "bd")) || f.startsWith(BD_APP) || f === join("src", "app", "admin", "api", "search", "route.ts");
     assert.ok(allowed, `${f} imports private BD data access outside the Admin BD area`);
     assert.doesNotMatch(src, /^["']use client["'];/m, `${f} is a Client Component importing private BD data access`);
   }
@@ -149,8 +151,7 @@ test("admin: BD routes live only under /admin; nav exposes only shipped routes",
   }
   assert.match(NAV, /label: "Business Development · Private"/);
   const bdHrefs = [...NAV.matchAll(/href: "(\/admin\/bd[^"]*)"/g)].map((m) => m[1]);
-  assert.deepEqual(bdHrefs, ["/admin/bd", "/admin/bd/organizations"], "no dead Contacts/Projects links");
-  assert.doesNotMatch(SEARCH, /\bbd\b|bd_organizations/, "3A needs no BD search entity; the search route is unchanged");
+  assert.deepEqual(bdHrefs, ["/admin/bd", "/admin/bd/organizations", "/admin/bd/contacts"], "only shipped BD routes — no dead Projects links");
   assert.match(SEARCH, /await requireAdmin\(\);/);
 });
 

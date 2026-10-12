@@ -36,6 +36,10 @@ export const ORGANIZATION_LIMITS = { name: 200, website: 500, notes: 5000 } as c
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}
+
 export interface OrganizationInput {
   name: string;
   kind: OrganizationKind | null;
@@ -102,4 +106,57 @@ export function organizationWriteErrorMessage(error: { code?: string; message?: 
   if (error.code === "23503") return "That Findmi Business no longer exists. Choose another or leave it unlinked.";
   if (error.code === "23514") return "One of the values isn't allowed. Check the name, kind, website and notes.";
   return "Could not save this Organization. Please try again.";
+}
+
+// ── Contacts (Checkpoint 3B) ─────────────────────────────────────────────
+
+/** Column limits from bd.contacts' CHECK constraints. No email format
+ * check exists in the schema, so none is invented here. */
+export const CONTACT_LIMITS = { name: 200, title: 200, email: 320, phone: 50, notes: 5000 } as const;
+
+export interface ContactInput {
+  name: string;
+  /** Optional private Organization (bd.organizations). */
+  organization_id: string | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+}
+
+export type ContactValidation = { ok: true; value: ContactInput } | { ok: false; error: string };
+
+/** Validates raw form values against bd.contacts: name required (1–200
+ * after trimming); organization optional uuid; title ≤200, email ≤320,
+ * phone ≤50, notes ≤5000 — all optional. */
+export function validateContactInput(raw: {
+  name?: unknown;
+  organization_id?: unknown;
+  title?: unknown;
+  email?: unknown;
+  phone?: unknown;
+  notes?: unknown;
+}): ContactValidation {
+  const name = clean(raw.name);
+  if (!name) return { ok: false, error: "Name is required." };
+  if (name.length > CONTACT_LIMITS.name) return { ok: false, error: `Name must be ${CONTACT_LIMITS.name} characters or fewer.` };
+
+  const organizationId = clean(raw.organization_id);
+  if (organizationId && !UUID_RE.test(organizationId)) return { ok: false, error: "Choose a valid Organization." };
+
+  const fields = { title: clean(raw.title), email: clean(raw.email), phone: clean(raw.phone), notes: clean(raw.notes) };
+  const labels = { title: "Title", email: "Email", phone: "Phone", notes: "Notes" } as const;
+  for (const key of ["title", "email", "phone", "notes"] as const) {
+    const value = fields[key];
+    if (value && value.length > CONTACT_LIMITS[key]) return { ok: false, error: `${labels[key]} must be ${CONTACT_LIMITS[key]} characters or fewer.` };
+  }
+
+  return { ok: true, value: { name, organization_id: organizationId, ...fields } };
+}
+
+/** Postgres error → an Admin-readable message for Contact writes. */
+export function contactWriteErrorMessage(error: { code?: string; message?: string } | null | undefined): string {
+  if (error?.code === "23503") return "That Organization no longer exists. Choose another or leave it empty.";
+  if (error?.code === "23514") return "One of the values isn't allowed. Check the name, title, email, phone and notes.";
+  return "Could not save this Contact. Please try again.";
 }

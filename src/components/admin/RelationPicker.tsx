@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useAdminSearch, type SearchResult } from "./useAdminSearch";
+import { useAdminSearch, type AdminSearchEntity, type SearchResult } from "./useAdminSearch";
 import { imageVariantUrl } from "@/lib/image-variants";
 
 const inputClass =
@@ -86,13 +86,14 @@ export function RelationField({
   clearLabel = "None",
   onSelect,
   excludeValue,
+  badgeFor,
 }: {
   label: string;
   name: string;
   hint?: string;
   placeholder?: string;
   initial: SearchResult | null;
-  entity: "businesses" | "events" | "products" | "people" | "locations";
+  entity: AdminSearchEntity;
   createHref?: string;
   createLabel?: string;
   /** Shown as the selectable "no relationship" option, e.g. for Appearance's
@@ -106,6 +107,9 @@ export function RelationField({
   /** Optional id never offered as a result — e.g. a Location's own id in
    * its Parent Place picker. Omitted by every other caller. */
   excludeValue?: string | null;
+  /** Optional — a short label shown on a listed-but-unpickable result
+   * (same as EntitySearchAdd's). Omitted by every existing caller. */
+  badgeFor?: (r: SearchResult) => string | null;
 }) {
   const [selected, setSelectedState] = useState<SearchResult | null>(initial);
   const setSelected = (value: SearchResult | null) => {
@@ -163,6 +167,7 @@ export function RelationField({
             <ResultsDropdown
               loading={loading}
               results={excludeValue ? results.filter((r) => r.value !== excludeValue) : results}
+              badgeFor={badgeFor}
               onPick={(r) => {
                 setSelected(r);
                 setQuery("");

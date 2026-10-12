@@ -1,7 +1,7 @@
 import "server-only";
 import { requireAdminSupabase } from "../requireAdminSupabase";
 import { getBdAdminClient } from "./client";
-import { sanitizeBdSearchTerm, type OrganizationKind } from "@/lib/bd/domain";
+import { ORGANIZATION_KIND_LABELS, sanitizeBdSearchTerm, type OrganizationKind } from "@/lib/bd/domain";
 
 /** Bounded list — Admin convention; volumes are small at this stage. */
 export const ORGANIZATION_LIST_LIMIT = 200;
@@ -77,4 +77,29 @@ export async function getLinkedBusinesses(businessIds: (string | null)[]): Promi
   const { data } = await supabase.from("businesses").select("id, name, slug, logo_url, city, state").in("id", ids);
   for (const b of (data ?? []) as LinkedBusiness[]) map.set(b.id, b);
   return map;
+}
+
+export interface OrganizationPickerResult {
+  value: string;
+  label: string;
+  sublabel?: string;
+  archived: boolean;
+}
+
+/** Private Organization picker search (Admin search route, entity
+ * `bd_organizations`). Name only, sanitized term, at most 20 rows; returns
+ * just what the picker renders — never notes, website or links. */
+export async function searchOrganizationsForPicker(q: string): Promise<OrganizationPickerResult[]> {
+  const term = sanitizeBdSearchTerm(q);
+  if (!term) return [];
+  const bd = await getBdAdminClient();
+  const { data } = await bd.from("organizations").select("id, name, kind, archived_at").ilike("name", `%${term}%`).order("name").limit(20);
+  type Row = Pick<BdOrganization, "id" | "name" | "kind" | "archived_at">;
+  return ((data ?? []) as Row[]).map((o) => ({
+    value: o.id,
+    label: o.name,
+    // Archived state rides on `archived` (the picker's badge), not the sublabel.
+    sublabel: o.kind ? ORGANIZATION_KIND_LABELS[o.kind] : undefined,
+    archived: Boolean(o.archived_at),
+  }));
 }
