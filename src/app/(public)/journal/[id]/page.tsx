@@ -7,13 +7,11 @@ import { getJournalEntryWithRelations } from "@/lib/journal";
 import { isAdminSession } from "@/lib/admin/auth";
 import { journalAuthorHref, journalByline, resolveJournalAuthorNames } from "@/lib/journal-author";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
-import JournalPhotoGallery from "@/components/journal/JournalPhotoGallery";
-import JournalSectionCarousel from "@/components/journal/JournalSectionCarousel";
+import JournalMomentGallery from "@/components/journal/JournalMomentGallery";
 import { JournalMediaViewerRoot, JournalPhotoTrigger } from "@/components/journal/JournalMediaViewer";
 import type { MediaViewerItem } from "@/components/MediaViewer";
 import ReadMoreText from "@/components/ReadMoreText";
 import { formatDateShortInZone, formatTimeRangeInZone } from "@/lib/format";
-import { journalSectionLabel } from "@/lib/journal-sections";
 import { getRelatedPublicMoments } from "@/lib/journal-distribution";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import ChevronIcon from "@/components/ChevronIcon";
@@ -81,51 +79,35 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
 
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
 
-  // Public Moment V2 — the author's photo sections (journal_entry_sections,
-  // already loaded in their stored display_order), each with its own
-  // photos in their stored display_order. A photo whose section_id points
-  // at no loaded section is treated as unsectioned (never dropped). The
-  // cover stays in its section when it has one (the section reads
-  // complete); unsectioned, it's shown by the hero only — exactly as the
-  // flat gallery always treated it.
+  // Public Moment continuous gallery — the photos below the hero are ONE
+  // story in their stored display_order (the editor already flattens it
+  // section by section), each tagged with its section. A section_id that
+  // points at no loaded section reads as uncategorized (never dropped).
+  // The cover is the hero: JournalMomentGallery leaves it out of All and
+  // shows it only inside its own section's filtered view.
   const sectionIds = new Set(sections.map((sec) => sec.id));
-  const photoSections = sections
-    .map((sec) => ({ section: sec, photos: media.filter((m) => m.section_id === sec.id) }))
-    .filter((g) => g.photos.length > 0 || Boolean(g.section.notes?.trim()));
-  const hasSections = photoSections.length > 0;
-  const unsectioned = media.filter((m) => !(m.section_id && sectionIds.has(m.section_id)) && m.id !== cover?.id);
+  const galleryPhotos = media.map((m) => ({
+    id: m.id,
+    sectionId: m.section_id && sectionIds.has(m.section_id) ? m.section_id : null,
+    isCover: m.id === cover?.id,
+    url: m.cardUrl,
+    largeUrl: m.largeUrl,
+    src: m.url,
+    caption: m.caption,
+  }));
+  const gallerySections = sections.map((sec) => ({ id: sec.id, section_type: sec.section_type, title: sec.title, notes: sec.notes }));
+  const hasGallery = galleryPhotos.some((p) => !p.isCover);
 
-  // Global Media Viewer V1 — ONE viewer for the whole Moment, now in the
-  // order the page renders photos (an unsectioned cover first, then each
-  // section's photos, then More Photos), so Next from the last photo of
-  // one section continues into the next section. Without sections this is
-  // exactly the previous display_order order. Only media with a real
-  // signed URL can be opened full-screen.
-  const renderedOrder = hasSections
-    ? [
-        ...(cover && !(cover.section_id && sectionIds.has(cover.section_id)) ? [cover] : []),
-        ...photoSections.flatMap((g) => g.photos),
-        ...unsectioned,
-      ]
-    : media;
-  const viewerItems: MediaViewerItem[] = renderedOrder
+  // Global Media Viewer V1 — the hero opens the page-level viewer over the
+  // whole Moment in display_order. The gallery below scopes its own nested
+  // viewer to exactly the set it shows. Only media with a real signed URL
+  // can be opened full-screen.
+  const viewerItems: MediaViewerItem[] = media
     .filter((m): m is typeof m & { url: string } => Boolean(m.url))
     .map((m) => ({ id: m.id, src: m.url, alt: entry.title, caption: m.caption }));
-  const viewerIndex = (id: string) => viewerItems.findIndex((v) => v.id === id);
-  // The hero's photo-count link jumps here: the first rendered photo
-  // block (first section with photos, else More Photos / the flat gallery).
-  // Null when no photo renders below the hero (e.g. a cover-only Moment).
-  const firstPhotosAnchor = hasSections
-    ? photoSections.some((g) => g.photos.length > 0)
-      ? `section-${photoSections.find((g) => g.photos.length > 0)!.section.id}`
-      : unsectioned.length > 0
-        ? "more-photos"
-        : null
-    : unsectioned.length > 0
-      ? "moment-photos"
-      : null;
-  const toGalleryItems = (list: typeof media) =>
-    list.map((m) => ({ id: m.id, url: m.cardUrl, largeUrl: m.largeUrl, caption: m.caption, category: null, mediaIndex: m.url ? viewerIndex(m.id) : -1 }));
+  // The hero's photo-count link jumps to the gallery; null when no photo
+  // renders below the hero (e.g. a cover-only Moment).
+  const firstPhotosAnchor = hasGallery ? "moment-photos" : null;
   const coverIndex = cover?.url ? viewerItems.findIndex((v) => v.id === cover.id) : -1;
   const dateLabel = new Date(entry.entry_date + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "long",
@@ -319,53 +301,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        {hasSections ? (
-          <>
-            {photoSections.map(({ section, photos }) => (
-              // Named-Section Chapter Heading pass — a user-created section
-              // title ("The Place", "Products") is a deliberate chapter
-              // marker, not an ordinary page subheading — scoped to ONLY
-              // this h2 (journalSectionLabel(section)); "More Photos"
-              // directly below, "Visit Details", and "More Findmi Moments"
-              // elsewhere on this page keep their original text-lg.
-              // text-page-title-lg (26px) is an existing Findmi type-scale
-              // token (see tailwind.config.ts — same one AdminSectionHub's
-              // own page h1 uses), chosen over text-3xl (30px, tried and
-              // found too dominant once several sections repeat down the
-              // page) and over text-2xl (24px, a smaller step) — it already
-              // bundles the correct letter-spacing, so no separate
-              // tracking-tight utility is needed alongside it. Held at this
-              // one size across every breakpoint (no sm: bump). mt-10 (was
-              // mt-8, matching this page's OTHER major structural breaks —
-              // Visit Details/More Findmi Moments) and mt-4 before the
-              // carousel (was mt-3) give the heading proportionate
-              // breathing room without adding a third new spacing scale.
-              <section key={section.id} id={`section-${section.id}`} className="mt-10 scroll-mt-20">
-                <h2 className="font-display text-page-title-lg font-bold text-ink">{journalSectionLabel(section)}</h2>
-                {section.notes?.trim() && <p className="mt-1.5 max-w-xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{section.notes.trim()}</p>}
-                {photos.length > 0 && (
-                  <div className="mt-4">
-                    <JournalSectionCarousel items={toGalleryItems(photos)} />
-                  </div>
-                )}
-              </section>
-            ))}
-            {unsectioned.length > 0 && (
-              <section id="more-photos" className="mt-8 scroll-mt-20">
-                <h2 className="font-display text-lg font-bold tracking-tight text-ink">More Photos</h2>
-                <div className="mt-3">
-                  <JournalPhotoGallery items={toGalleryItems(unsectioned)} />
-                </div>
-              </section>
-            )}
-          </>
-        ) : (
-          unsectioned.length > 0 && (
-            <section id="moment-photos" className="mt-6 scroll-mt-20">
-              <JournalPhotoGallery items={toGalleryItems(unsectioned)} />
-            </section>
-          )
-        )}
+        {hasGallery && <JournalMomentGallery photos={galleryPhotos} sections={gallerySections} title={entry.title} adminToolbar={isAuthorizedAdmin} />}
 
         {/* Visit Details — where/when, plus whatever else is connected
             (never the primary context card again). */}
