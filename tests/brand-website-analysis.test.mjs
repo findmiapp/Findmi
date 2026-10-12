@@ -370,11 +370,11 @@ test("/join/brand: Build My Brand Profile only for a website no-match; signed-in
 });
 
 test("analysis modules never write data, store images, call a model or create a Business", () => {
-  for (const f of ["src/lib/brand-website-analysis.ts", "src/lib/brand-website-extract.ts", "src/lib/safe-fetch.ts", "src/lib/brand-candidate.ts", "src/lib/brand-website-rate-limit.ts", "src/app/(public)/join/brand/actions.ts"]) {
+  for (const f of ["src/lib/brand-website-analysis.ts", "src/lib/brand-candidate-builder.ts", "src/lib/brand-website-extract.ts", "src/lib/safe-fetch.ts", "src/lib/brand-candidate.ts", "src/lib/brand-website-rate-limit.ts", "src/app/(public)/join/brand/actions.ts"]) {
     const s = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""); // code, not comments
     assert.doesNotMatch(s, /\.from\([^)]*\)\s*\.(insert|update|upsert|delete)\(|\.rpc\(|storage\.|storePublicImage|create_owned_business|@anthropic-ai|messages\.create|logo_url|getAdminSupabase\(\)\.from/, f);
   }
-  for (const f of ["src/lib/brand-website-analysis.ts", "src/lib/safe-fetch.ts", "src/lib/brand-website-rate-limit.ts"]) {
+  for (const f of ["src/lib/brand-website-analysis.ts", "src/lib/brand-candidate-builder.ts", "src/lib/safe-fetch.ts", "src/lib/brand-website-rate-limit.ts"]) {
     assert.match(readFileSync(f, "utf8"), /^import "server-only";/, f);
   }
 });

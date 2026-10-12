@@ -1,18 +1,20 @@
 import "server-only";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { getCategories } from "./data";
-import {
-  findBusinessMatches,
-  normalizeWebsiteHost,
-  type BusinessMatch,
-  type BusinessMatchInput,
-} from "./business-matching";
-import { claimHref, classifyBrandInput, searchHref } from "./brand-lookup";
+import { findBusinessMatches, type BusinessMatch, type BusinessMatchInput } from "./business-matching";
+import { claimHref, searchHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
-import { extractBrandProfile, type ExtractedBrandProfile } from "./brand-website-extract";
-import { SAFE_FETCH_MAX_BYTES, safeFetchHtml, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
-import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput, type BrandAiResult } from "./brand-ai-enrichment";
+import type { ExtractedBrandProfile } from "./brand-website-extract";
+import { safeFetchHtml, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
+import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput } from "./brand-ai-enrichment";
 import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
+import {
+  buildCandidateFromExtraction,
+  fetchBrandWebsite,
+  prepareBrandWebsite,
+  withDefaultScheme,
+  type BrandEnrichment,
+} from "./brand-candidate-builder";
 import { getBrandDraftSecret, type BrandDraftCandidate } from "./brand-draft";
 import { recordWebsiteAnalysisAttempt, tryAcquireWebsiteFetchSlot } from "./brand-website-rate-limit";
 
@@ -29,13 +31,22 @@ import { recordWebsiteAnalysisAttempt, tryAcquireWebsiteFetchSlot } from "./bran
  *
  * createMemberBusiness then runs the matcher a third time and creates the
  * Business through create_owned_business (pending_review) exactly as
- * before. Nothing here writes to the database, stores images, grants
- * anything or calls a model. Every failure lands on the same manual form
- * with the visitor's website preserved — never a dead end. */
+ * before. Nothing here writes to the database, stores images or grants
+ * anything. Every failure lands on the same manual form with the
+ * visitor's website preserved — never a dead end.
+ *
+ * Brand Ingestion P1 — the candidate-building work itself (input
+ * normalization, safe fetch + extraction, matching, AI need/enrichment,
+ * image verification, the proposed candidate) lives in the shared core,
+ * lib/brand-candidate-builder.ts. This module is the PUBLIC ADAPTER: it
+ * owns the sign-in requirement, per-user/IP limits, the per-instance
+ * fetch slot, the 10-minute cache (placed between the core's stages),
+ * the visitor's search seed (passed to the core as identity overrides),
+ * hidden-match non-disclosure, claim/already-listed/review/manual URLs,
+ * the signed-draft candidate and the brand_website_analysis log. */
 
 export const WEBSITE_ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000;
 export const WEBSITE_ANALYSIS_CACHE_MAX_ENTRIES = 200;
-const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 export type WebsiteAnalysisOutcome =
   | "auth_required"
@@ -56,14 +67,7 @@ export interface CachedExtraction {
   /** V1.1C — memoized enrichment for this URL (AI result, verified image
    * candidates), so a repeat analysis doesn't re-call the model or
    * re-fetch images. Set once, after the first computation. */
-  enrichment?: Enrichment;
-}
-
-interface Enrichment {
-  ai: BrandAiResult | null;
-  aiStatus: "used" | "skipped" | "failed";
-  logo: string | null;
-  cover: string | null;
+  enrichment?: BrandEnrichment;
 }
 
 export interface ExtractionCache {
@@ -137,12 +141,6 @@ export interface WebsiteAnalysisLog {
   match: "none" | "public" | "hidden" | null;
 }
 
-const SIZE_LIMIT_LOG: Record<SafeFetchSizeLimit, WebsiteAnalysisLog["size"]> = {
-  declared: "declared_limit",
-  streamed: "streamed_limit",
-  headers: "header_limit",
-};
-
 export interface WebsiteAnalysisDeps {
   fetchHtml: (url: URL) => Promise<SafeFetchResult>;
   /** V1.1C — one bounded AI enrichment (null result = keep deterministic). */
@@ -180,11 +178,8 @@ export const BRAND_DRAFT_REVIEW_HREF = "/account/business/new?source=brand&prefi
  * existing generic assistance state — no detail of the record. */
 export const ALREADY_LISTED_HREF = "/join/brand?notice=already_listed";
 
-function hasAnyField(p: ExtractedBrandProfile): boolean {
-  return Boolean(p.name || p.shortDescription || p.instagramHandle || p.city || p.state || p.categorySlug);
-}
-
-/** Pure orchestration core (exported for tests; real deps below). */
+/** The public adapter around the shared core (exported for tests; real
+ * deps below). */
 export async function analyzeBrandWebsite(
   input: { website: string; userId: string | null; ip: string; seed?: BrandSeed | null },
   deps: WebsiteAnalysisDeps
@@ -200,10 +195,10 @@ export async function analyzeBrandWebsite(
     return { href: `/login?next=${encodeURIComponent(searchHref(value, "website", seed))}`, outcome: "auth_required" };
   }
 
-  const classified = classifyBrandInput(value, "website");
-  if (!classified.ok) return { href: "/join/brand", outcome: "invalid_input" };
-  const websiteUrl = HAS_SCHEME.test(classified.value) ? classified.value : `https://${classified.value}`;
-  const host = normalizeWebsiteHost(websiteUrl);
+  const prepared = prepareBrandWebsite(value);
+  if (!prepared.ok && prepared.code === "invalid_input") return { href: "/join/brand", outcome: "invalid_input" };
+  const websiteUrl = prepared.ok ? prepared.website.websiteUrl : prepared.websiteUrl;
+  const host = prepared.ok ? prepared.website.host : prepared.host;
   const manual = (prefill: BrandPrefillStatus) => brandCandidateHref({ ...seedCandidate(seed), website_url: websiteUrl }, prefill);
 
   let log: WebsiteAnalysisLog = { event: "brand_website_analysis", outcome: "invalid_input", host, ms: 0, bytes: null, redirects: null, size: null, truncated: null, declaredSizeExceededOldLimit: null, cached: false, fields: null, ai: null, aiFromCache: null, aiCalled: null, aiModel: null, aiInputTokens: null, aiOutputTokens: null, aiCacheCreationInputTokens: null, aiCacheReadInputTokens: null, aiEstimatedCostUsd: null, match: null };
@@ -218,179 +213,107 @@ export async function analyzeBrandWebsite(
     return { ...result, href, outcome };
   };
 
-  // HTTPS only: the visitor's site is always requested as https://host/path
-  // (query and fragment dropped). Never retried over http.
-  let fetchUrl: URL;
-  try {
-    const parsed = new URL(websiteUrl);
-    fetchUrl = new URL(`https://${parsed.host}${parsed.pathname}`);
-  } catch {
-    return finish(manual("unavailable"), "unsupported_site");
-  }
-  if (!host) return finish(manual("unavailable"), "unsupported_site");
+  if (!prepared.ok) return finish(manual("unavailable"), "unsupported_site");
+  const { website } = prepared;
 
   if (deps.isRateLimited(input.userId, input.ip)) return finish(manual("limited"), "rate_limited");
 
-  const cacheKey = fetchUrl.href;
+  // The public 10-minute cache sits between the core's fetch and
+  // candidate stages; the fetch slot covers the fetch only.
+  const cacheKey = website.fetchUrl.href;
   let cached = deps.cache.get(cacheKey, deps.now());
   if (cached) {
     log.cached = true;
   } else {
     const release = deps.acquireSlot();
     if (!release) return finish(manual("unavailable"), "busy");
-    let fetched: SafeFetchResult;
-    try {
-      fetched = await deps.fetchHtml(fetchUrl);
-    } finally {
-      release();
-    }
-    log.redirects = fetched.redirects;
-    if (fetched.declaredBytes != null) log.declaredSizeExceededOldLimit = fetched.declaredBytes > SAFE_FETCH_MAX_BYTES;
-    if (!fetched.ok) {
-      if (fetched.limit) log.size = SIZE_LIMIT_LOG[fetched.limit];
-      return finish(manual("unavailable"), fetched.code);
-    }
-    log.bytes = fetched.bytes;
-    log.truncated = fetched.truncated;
-    log.size = fetched.truncated ? "successful_truncated_html" : "complete_html";
-    let profile: ExtractedBrandProfile;
-    try {
-      profile = extractBrandProfile(fetched.html, fetched.url);
-    } catch {
-      return finish(manual("unavailable"), "no_metadata");
-    }
-    if (!hasAnyField(profile)) return finish(manual("unavailable"), "no_metadata");
-    cached = { profile, finalUrl: fetched.url.href };
+    // Released when the fetch settles (success, failure or throw) —
+    // before extraction, exactly as before. fetchBrandWebsite calls
+    // fetchHtml first, so the slot can never be left held.
+    const fetched = await fetchBrandWebsite(website.fetchUrl, {
+      fetchHtml: async (url) => {
+        try {
+          return await deps.fetchHtml(url);
+        } finally {
+          release();
+        }
+      },
+    });
+    log.redirects = fetched.fetch.redirects;
+    log.declaredSizeExceededOldLimit = fetched.fetch.declaredSizeExceededOldLimit;
+    log.size = fetched.fetch.size;
+    log.bytes = fetched.fetch.bytes;
+    log.truncated = fetched.fetch.truncated;
+    if (!fetched.ok) return finish(manual("unavailable"), fetched.code);
+    cached = { profile: fetched.extraction.profile, finalUrl: fetched.extraction.finalUrl };
     deps.cache.set(cacheKey, cached, deps.now());
   }
+  const entry = cached;
 
-  const { profile, finalUrl } = cached;
-  log.fields = {
-    name: Boolean(profile.name),
-    description: Boolean(profile.shortDescription),
-    about: Boolean(profile.aboutDescription),
-    instagram: Boolean(profile.instagramHandle),
-    city: Boolean(profile.city),
-    state: Boolean(profile.state),
-    category: Boolean(profile.categorySlug),
-    logo: Boolean(profile.logoCandidateUrl),
-    cover: Boolean(profile.coverCandidateUrl),
-  };
-  const igUrl = (handle: string | null | undefined) => (handle ? `https://www.instagram.com/${handle}` : null);
-  const name = seed.name ?? profile.name;
-  const instagramUrl = igUrl(seed.instagram ?? profile.instagramHandle);
-
-  // Match AGAIN with the strongest identity signals: the visitor's website
-  // + Instagram + name/location (seed first, else extracted), plus any
-  // extracted name / Instagram the seed overrode and the post-redirect
-  // website when it is a different host — none of them may be a duplicate.
-  let matches: BusinessMatch[];
-  try {
-    const finalHost = normalizeWebsiteHost(finalUrl);
-    const lookups: Promise<BusinessMatch[]>[] = [
-      deps.findMatches({ websiteUrl, instagramUrl, name, city: profile.city, state: profile.state }),
-    ];
-    if (finalHost && finalHost !== host) lookups.push(deps.findMatches({ websiteUrl: finalUrl }));
-    if (seed.instagram && profile.instagramHandle && profile.instagramHandle !== seed.instagram) {
-      lookups.push(deps.findMatches({ instagramUrl: igUrl(profile.instagramHandle) }));
+  const built = await buildCandidateFromExtraction(
+    website,
+    { profile: entry.profile, finalUrl: entry.finalUrl },
+    deps,
+    {
+      verifyImages: deps.draftsEnabled,
+      // The visitor's original name / Instagram search is preferred over
+      // the weaker extracted equivalents (and its replaced extracted
+      // values are matched too).
+      identity: { name: seed.name ?? null, instagram: seed.instagram ?? null },
+      reuseEnrichment: entry.enrichment ?? null,
     }
-    if (seed.name && profile.name && profile.name !== seed.name) {
-      lookups.push(deps.findMatches({ name: profile.name, city: profile.city, state: profile.state }));
-    }
-    matches = (await Promise.all(lookups)).flat();
-  } catch {
-    return finish(manual("unavailable"), "match_failed");
+  );
+  log.fields = built.fields;
+  if (built.status === "failed") return finish(manual("unavailable"), built.code);
+  if (built.status === "matched") {
+    if (built.publicMatch) return finish(claimHref(built.publicMatch.slug, true), "public_match", { match: "public" });
+    // Hidden (non-public) match: the generic assistance state only —
+    // never any detail of the record.
+    return finish(ALREADY_LISTED_HREF, "hidden_match", { match: "hidden" });
   }
-  const publicMatch = matches.find((m) => m.isPublic);
-  if (publicMatch) return finish(claimHref(publicMatch.slug, true), "public_match", { match: "public" });
-  if (matches.length > 0) return finish(ALREADY_LISTED_HREF, "hidden_match", { match: "hidden" });
 
-  let categories: { id: string; slug: string; name: string }[] = [];
-  try {
-    categories = await deps.listCategories();
-  } catch {
-    categories = [];
+  // Memoize the enrichment on the cache entry (never usage), so a repeat
+  // analysis neither re-calls the model nor re-fetches images — and can
+  // never look like a new paid invocation.
+  if (!built.ai.reused) entry.enrichment = built.enrichment;
+  log.aiFromCache = built.ai.reused;
+  log.aiCalled = built.ai.called;
+  if (built.ai.usage) {
+    log.aiModel = built.ai.usage.model;
+    log.aiInputTokens = built.ai.usage.inputTokens;
+    log.aiOutputTokens = built.ai.usage.outputTokens;
+    log.aiCacheCreationInputTokens = built.ai.usage.cacheCreationInputTokens;
+    log.aiCacheReadInputTokens = built.ai.usage.cacheReadInputTokens;
+    log.aiEstimatedCostUsd = built.ai.usage.estimatedCostUsd;
   }
-  // Deterministic structured type wins; AI is only a fallback below.
-  const deterministicCategoryId = profile.categorySlug
-    ? (categories.find((c) => c.slug === profile.categorySlug)?.id ?? null)
-    : null;
+  log.ai = built.ai.status;
 
-  // V1.1C enrichment — computed once per URL (cached with the
-  // extraction): the bounded AI call only when deterministic extraction
-  // left the category or a description empty, and (drafts only) the
-  // logo/cover candidates fetched and fully verified, in parallel.
-  let enrichment = cached.enrichment;
-  log.aiFromCache = Boolean(enrichment);
-  log.aiCalled = false;
-  if (!enrichment) {
-    const needsAi = !deterministicCategoryId || !profile.shortDescription || !profile.aboutDescription;
-    const verify = async (url: string | null, role: BrandImageRole) => {
-      if (!deps.draftsEnabled || !url) return null;
-      try {
-        return (await deps.verifyImage(url, role)) ? url : null;
-      } catch {
-        return null;
-      }
-    };
-    const [ai, logo, cover] = await Promise.all([
-      needsAi
-        ? deps
-            .enrich({ brandName: name, website: websiteUrl, excerpt: profile.excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
-            // enrichBrandWithAi never throws; an unexpected throw is
-            // counted as a call with unknown usage, never as zero tokens.
-            .catch((): BrandAiEnrichment => ({ result: null, called: true, usage: null }))
-        : Promise.resolve<BrandAiEnrichment | null>(null),
-      verify(profile.logoCandidateUrl, "logo"),
-      verify(profile.coverCandidateUrl, "cover"),
-    ]);
-    const result = ai?.result ?? null;
-    enrichment = { ai: result, aiStatus: !needsAi ? "skipped" : result ? "used" : "failed", logo, cover };
-    cached.enrichment = enrichment;
-    // Usage is logged only on the request that made the call — it is not
-    // cached, so a reuse can never look like a new paid invocation.
-    log.aiCalled = ai?.called ?? false;
-    if (ai?.usage) {
-      log.aiModel = ai.usage.model;
-      log.aiInputTokens = ai.usage.inputTokens;
-      log.aiOutputTokens = ai.usage.outputTokens;
-      log.aiCacheCreationInputTokens = ai.usage.cacheCreationInputTokens;
-      log.aiCacheReadInputTokens = ai.usage.cacheReadInputTokens;
-      log.aiEstimatedCostUsd = ai.usage.estimatedCostUsd;
-    }
-  }
-  log.ai = enrichment.aiStatus;
-
-  const ai = enrichment.ai;
-  const categoryId = deterministicCategoryId ?? ai?.categoryId ?? null;
-  const shortDescription = profile.shortDescription ?? ai?.shortDescription ?? null;
-  const about = profile.aboutDescription ?? ai?.about ?? null;
-
+  const { proposal } = built;
   const fallbackHref = brandCandidateHref(
     {
-      name,
-      website_url: websiteUrl,
-      instagram_url: instagramUrl,
-      short_description: shortDescription,
-      city: profile.city,
-      state: profile.state,
-      category_id: categoryId,
+      name: proposal.name,
+      website_url: proposal.websiteUrl,
+      instagram_url: proposal.instagramUrl,
+      short_description: proposal.shortDescription,
+      city: proposal.city,
+      state: proposal.state,
+      category_id: proposal.categoryId,
     },
     "website"
   );
   if (!deps.draftsEnabled) return finish(fallbackHref, "prefilled", { match: "none" });
 
   const draft: BrandDraftCandidate = {
-    site: websiteUrl,
-    name,
-    cat: categoryId,
-    sd: shortDescription,
-    about,
-    ig: seed.instagram ?? profile.instagramHandle,
-    city: profile.city,
-    state: profile.state,
-    logo: enrichment.logo,
-    cover: enrichment.cover,
+    site: proposal.websiteUrl,
+    name: proposal.name,
+    cat: proposal.categoryId,
+    sd: proposal.shortDescription,
+    about: proposal.about,
+    ig: proposal.instagramHandle,
+    city: proposal.city,
+    state: proposal.state,
+    logo: proposal.logoUrl,
+    cover: proposal.coverUrl,
   };
   return finish(BRAND_DRAFT_REVIEW_HREF, "prefilled", { match: "none" }, { draft, fallbackHref });
 }
@@ -422,5 +345,5 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
 /** Manual-form fallback for a website when analysis can't run at all. */
 export function manualBrandFormHref(website: string, seed?: BrandSeed | null): string {
   const value = website.trim();
-  return brandCandidateHref({ ...seedCandidate(seed), website_url: HAS_SCHEME.test(value) ? value : `https://${value}` }, "unavailable");
+  return brandCandidateHref({ ...seedCandidate(seed), website_url: withDefaultScheme(value) }, "unavailable");
 }
