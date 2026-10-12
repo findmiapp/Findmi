@@ -23,9 +23,11 @@ function column(name) {
   return m[1];
 }
 
-test("one new, independently applicable migration, later than every existing one", () => {
+test("one new, independently applicable migration, later than every migration that preceded it", () => {
   const files = readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), FILE, "latest migration version");
+  // Directly follows the migration that was latest when P2 was written;
+  // later, unrelated migrations (e.g. Phase 0B) may follow it.
+  assert.equal(files[files.indexOf(FILE) - 1], "20261012000000_commercial_terms_brand_contribution_classification.sql");
   assert.equal(files.filter((f) => f.includes("brand_import")).length, 1);
   assert.ok(statSync(join(DIR, FILE)).size < 20_000);
 });
