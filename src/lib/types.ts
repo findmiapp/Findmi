@@ -872,6 +872,11 @@ export type LocationWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "s
 
 export interface LocationDayHours {
   closed: boolean;
+  /** Open continuously the whole day ("Open 24 Hours"). When true, open/
+   * close are ignored (they may still hold the last set hours so switching
+   * back restores them). Absent on every pre-existing row — a 00:00–23:59
+   * window stays an ordinary window. */
+  allDay?: boolean;
   /** "HH:MM", 24-hour — only meaningful when closed is false. */
   open?: string | null;
   close?: string | null;

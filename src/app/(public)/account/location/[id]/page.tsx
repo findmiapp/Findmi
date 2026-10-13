@@ -52,12 +52,15 @@ const primaryButtonClass =
 // actual jobs: is this Location live and what's next (Overview), what's
 // happening here operationally (What's Happening), and what customers see
 // (Profile — Venue Details + Gallery + Contact/Links + the newly-editable
-// Category/Hours + the secondary Findmi Area control all consolidated
-// into one surface). Every legacy tab key still resolves (see
+// Category + the secondary Findmi Area control all consolidated into one
+// surface), plus Hours as its own tab (Location Hours UX). Every legacy tab key still resolves (see
 // LEGACY_TAB_REDIRECTS below) rather than silently stranding an old link.
 const OWNER_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "happening", label: "What's Happening" },
+  // Location Hours UX — Hours is its own destination (was a section
+  // buried inside Profile).
+  { key: "hours", label: "Hours" },
   { key: "profile", label: "Profile" },
 ];
 const LEGACY_TAB_REDIRECTS: Record<string, string> = {
@@ -442,8 +445,8 @@ export default async function ManageLocationPage({
             {profileAttentionMessage && (
               <p className="text-sm text-ink/50">
                 {profileAttentionMessage}{" "}
-                <Link href={`/account/location/${id}?tab=profile`} className="font-semibold text-findmi-700 hover:underline">
-                  Complete your profile
+                <Link href={`/account/location/${id}?tab=${missingCover ? "profile" : "hours"}`} className="font-semibold text-findmi-700 hover:underline">
+                  {missingCover ? "Complete your profile" : "Add your hours"}
                 </Link>
               </p>
             )}
@@ -627,6 +630,19 @@ export default async function ManageLocationPage({
             disclosure at the bottom. Each section keeps its own existing
             (or, for Category/Hours, newly added) Server Action rather than
             one rewritten giant "Save Profile" form. ── */}
+        {/* Hours — own tab (Location Hours UX). Same save action and the
+            same shared editor as before, moved out of Profile. */}
+        {tab === "hours" && (
+          <div className="flex flex-col gap-6">
+            <form action={updateMemberLocationHours.bind(null, id)} className="flex flex-col items-start gap-3">
+              <LocationHoursField name="hours" defaultValue={location.hours} />
+              <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                Save Hours
+              </button>
+            </form>
+          </div>
+        )}
+
         {tab === "profile" && (
           <div className="flex flex-col gap-6">
             {/* Identity — name is a plain fact (Findmi-managed), Category
@@ -683,19 +699,6 @@ export default async function ManageLocationPage({
                 <MemberLocationGalleryField locationId={id} name="gallery_image_url" initialUrls={galleryImages} />
                 <button type="submit" className={`w-fit ${primaryButtonClass}`}>
                   Save Gallery
-                </button>
-              </form>
-            </div>
-
-            {/* Hours — new owner capability; the audit's confirmed gap
-                between what the public page already renders (Open Now
-                badge + Hours accordion) and what an owner could control. */}
-            <div className="border-t border-black/5 pt-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Hours</p>
-              <form action={updateMemberLocationHours.bind(null, id)} className="mt-2 flex flex-col items-start gap-3">
-                <LocationHoursField name="hours" defaultValue={location.hours} />
-                <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-                  Save Hours
                 </button>
               </form>
             </div>

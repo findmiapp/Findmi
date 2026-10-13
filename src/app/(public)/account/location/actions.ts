@@ -18,6 +18,8 @@ import { claimEntityHandle } from "@/lib/handles";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
 import { storePublicImage } from "@/lib/image-variants-server";
+import { normalizeLocationHours } from "@/lib/locationHours";
+import type { LocationHours } from "@/lib/types";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -598,18 +600,25 @@ export async function updateMemberLocationCategory(locationId: string, formData:
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }
 
-// ── PROFILE — HOURS ────────────────────────────────────────────────────
+// ── HOURS ──────────────────────────────────────────────────────────────
 /** Location Manager V3 — the audit's other confirmed gap: locations.hours
  * already drives the public Open Now badge and Hours accordion, but had no
  * owner action at all, only Admin's own LocationHoursField. Same
  * whole-week-JSON-blob parsing admin's own saveLocation already uses for
  * this exact column — no new validation invented, no schema change. */
 export async function updateMemberLocationHours(locationId: string, formData: FormData) {
-  const redirectPath = `/account/location/${locationId}?tab=profile`;
+  const redirectPath = `/account/location/${locationId}?tab=hours`;
   const admin = await requireLocationManager(locationId, redirectPath);
 
+  // Location Hours UX — cleaned to the known shape (weekday keys, closed /
+  // allDay booleans, "HH:MM" times); malformed input can't be stored.
   const hoursRaw = str(formData, "hours");
-  const hours = hoursRaw ? JSON.parse(hoursRaw) : null;
+  let hours: LocationHours | null = null;
+  try {
+    hours = hoursRaw ? normalizeLocationHours(JSON.parse(hoursRaw)) : null;
+  } catch {
+    redirect(appendQuery(redirectPath, { error: "Couldn't read those hours. Please try again." }));
+  }
 
   const { data: location, error } = await admin
     .from("locations")
