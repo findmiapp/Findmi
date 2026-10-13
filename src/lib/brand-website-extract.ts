@@ -142,6 +142,13 @@ export interface ExtractedBrandProfile {
   /** VCL A3 — the page's declared web app manifest (https), consulted for
    * its icons only when no logo candidate verifies. Untrusted. */
   manifestUrl?: string | null;
+  /** VCL A3c — external SVG logo URLs from STRONG logo evidence only
+   * (JSON-LD logo, logo metadata, itemprop=logo, the header/home-link brand
+   * mark). Never fetched here; inspected + rasterized by lib/brand-images. */
+  svgLogoCandidates?: string[];
+  /** VCL A3c — how many leading logoCandidates come from strong logo
+   * evidence (the rest are touch/site icons). */
+  logoStrongCount?: number;
   excerpt: BrandPageExcerpt;
 }
 
@@ -754,6 +761,54 @@ export function manifestIconCandidates(text: string, manifestUrl: URL): string[]
   return rankedUnique(out, LOGO_CANDIDATE_MAX);
 }
 
+/** VCL A3c — an https URL whose path is an .svg file (the SVG logo path
+ * is only ever chosen for these; the content is still verified). */
+export function isSvgCandidateUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && /\.svg$/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+export const SVG_LOGO_CANDIDATE_MAX = 2;
+
+function svgUrl(value: unknown, base: URL): string | null {
+  const url = absoluteHttps(value, base);
+  return url && isSvgCandidateUrl(url) ? url : null;
+}
+
+/** VCL A3c — SVG logo candidates from the same STRONG sources (and the
+ * same rules) as the raster logo ranking — never icons, favicons,
+ * mask-icons, decorative/social/menu SVGs or inline <svg>. Exported for
+ * tests. */
+export function svgLogoCandidatesFrom(
+  entity: { node: Record<string, unknown> } | null,
+  meta: (key: string) => string | null,
+  images: ImageEvidence[],
+  base: URL,
+  brandKeys: string[]
+): string[] {
+  const out: Ranked[] = [];
+  const ldLogos = Array.isArray(entity?.node.logo) ? entity!.node.logo : [entity?.node.logo];
+  for (const v of (ldLogos as unknown[]).slice(0, 5)) {
+    const raw = v && typeof v === "object" ? ((v as JsonObject).url ?? (v as JsonObject).contentUrl) : v;
+    const url = svgUrl(raw, base);
+    if (url) out.push({ url, rank: LOGO_SOURCE_RANK.jsonld_logo });
+  }
+  for (const key of ["og:logo", "logo"]) {
+    const url = svgUrl(meta(key), base);
+    if (url) out.push({ url, rank: LOGO_SOURCE_RANK.meta_logo });
+  }
+  for (const img of images) {
+    const src = svgUrl(img.src, base);
+    if (!src) continue;
+    if (img.itempropLogo && !NOT_BRAND_IMAGE.test(img.hints)) out.push({ url: src, rank: LOGO_SOURCE_RANK.img_itemprop_logo });
+    else if (isPageLogo(img, brandKeys, base)) out.push({ url: src, rank: LOGO_SOURCE_RANK.header_logo_img });
+  }
+  return rankedUnique(out, SVG_LOGO_CANDIDATE_MAX);
+}
+
 /** Same image regardless of query/fragment (CDN size/version params). */
 export function sameImageSource(a: string | null, b: string | null): boolean {
   if (!a || !b) return false;
@@ -873,6 +928,10 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
 
   const brandKeys = [name ? compact(name) : "", host ? domainLabel(host) : ""].filter(Boolean);
   const logoCandidates = logoCandidatesFrom(entity, meta, c.links, c.images, pageUrl, brandKeys);
+  // Strong candidates are the ones that don't depend on icon <link>s.
+  const strongLogos = logoCandidatesFrom(entity, meta, [], c.images, pageUrl, brandKeys);
+  const logoStrongCount = logoCandidates.filter((u) => strongLogos.includes(u)).length;
+  const svgLogoCandidates = svgLogoCandidatesFrom(entity, meta, c.images, pageUrl, brandKeys);
   // Never the same image as any logo candidate (a share image that IS the logo).
   const coverCandidates = coverCandidatesFrom(entity, meta, c.images, pageUrl, logoCandidates);
 
@@ -902,6 +961,8 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     logoCandidates,
     coverCandidates,
     manifestUrl: absoluteHttps(c.links.find((l) => l.rel.includes("manifest"))?.href, pageUrl),
+    svgLogoCandidates,
+    logoStrongCount,
     excerpt,
   };
 }

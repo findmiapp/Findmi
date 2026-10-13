@@ -636,3 +636,23 @@ export async function safeFetchManifest(input: string | URL, options: SafeFetchO
   if (!r.ok) return r;
   return { ok: true, url: r.url, text: r.body.toString("utf8") };
 }
+
+/** VCL A3c — an external SVG LOGO candidate, fetched only so it can be
+ * inspected and rasterized server-side (lib/brand-images); the SVG itself
+ * is never stored or served. Same destination/DNS/redirect/TLS/timeout
+ * rules as every other fetch here; small hard cap. */
+export const SAFE_FETCH_SVG_MAX_BYTES = 256 * 1024;
+export const SAFE_FETCH_SVG_TYPES: ReadonlySet<string> = new Set(["image/svg+xml"]);
+const SVG_PROFILE: FetchProfile = {
+  accept: "image/svg+xml",
+  mediaTypes: SAFE_FETCH_SVG_TYPES,
+  maxBytes: SAFE_FETCH_SVG_MAX_BYTES,
+  rejectDeclaredOverMax: true,
+};
+
+/** Retrieves ONE SVG document (≤ 256 KB, declared image/svg+xml). */
+export async function safeFetchSvg(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchImageResult> {
+  const r = await safeFetchResource(input, SVG_PROFILE, options);
+  if (!r.ok) return r;
+  return { ok: true, url: r.url, body: r.body, contentType: r.contentType, bytes: r.bytes, redirects: r.redirects };
+}

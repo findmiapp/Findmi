@@ -297,9 +297,24 @@ export async function selectVerifiedImage(
 export async function selectVerifiedLogo(
   logoPool: readonly string[],
   manifestUrl: string | null | undefined,
-  deps: Pick<BrandCandidateDeps, "verifyImage" | "fetchManifestIcons">
+  deps: Pick<BrandCandidateDeps, "verifyImage" | "fetchManifestIcons">,
+  svg: { candidates?: readonly string[]; strongCount?: number } = {}
 ): Promise<string | null> {
-  const fromPage = await selectVerifiedImage(logoPool, "logo", deps.verifyImage);
+  // VCL A3c — with an SVG logo candidate, the order is: strong raster logos
+  // → strong SVG logos (rasterized + verified in lib/brand-images) → the
+  // touch/site icon candidates → manifest icons. Without one, exactly the
+  // A3a behaviour. An SVG is only processed when no strong raster verified.
+  const svgPool = (svg.candidates ?? []).slice(0, 2);
+  let fromPage: string | null;
+  if (svgPool.length === 0) {
+    fromPage = await selectVerifiedImage(logoPool, "logo", deps.verifyImage);
+  } else {
+    const strongCount = Math.min(svg.strongCount ?? logoPool.length, logoPool.length);
+    fromPage =
+      (await selectVerifiedImage(logoPool.slice(0, strongCount), "logo", deps.verifyImage)) ??
+      (await selectVerifiedImage(svgPool, "logo", deps.verifyImage)) ??
+      (await selectVerifiedImage(logoPool.slice(strongCount), "logo", deps.verifyImage));
+  }
   if (fromPage || !manifestUrl || !deps.fetchManifestIcons) return fromPage;
   let icons: string[];
   try {
@@ -377,7 +392,7 @@ export async function buildCandidateFromExtraction(
     const logoPool = pool(profile.logoCandidates, profile.logoCandidateUrl);
     const coverPool = pool(profile.coverCandidates, profile.coverCandidateUrl);
     const images = options.verifyImages
-      ? Promise.all([selectVerifiedLogo(logoPool, profile.manifestUrl, deps), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
+      ? Promise.all([selectVerifiedLogo(logoPool, profile.manifestUrl, deps, { candidates: profile.svgLogoCandidates, strongCount: profile.logoStrongCount }), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
       : Promise.resolve<[string | null, string | null]>([null, null]);
     // VCL A3b — search ONLY when no Instagram exists from the visitor's own
     // seed or the page itself, and only on the enriched (signed-in, drafts)
