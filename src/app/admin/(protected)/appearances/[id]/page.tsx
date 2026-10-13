@@ -11,6 +11,14 @@ import AppearanceForm from "../AppearanceForm";
 import { convertAppearanceFromAdminPage } from "../convert-actions";
 
 export const dynamic = "force-dynamic";
+// "Convert To Event" (a Server Action on this route) re-reads the source
+// page, may ask the Event AI, re-hosts the Event image and writes the
+// Event — more than a serverless function's default budget. Without this,
+// Vercel killed the action after its writes had landed and the browser got
+// a 504 instead of the redirect (production QSBS canary). Same 60s ceiling
+// the Appearance Import route uses; the conversion's own bounded steps
+// (10s source fetch budget, 15s AI timeout, 8s image fetch) fit under it.
+export const maxDuration = 60;
 
 export default async function EditAppearancePage({
   params,
