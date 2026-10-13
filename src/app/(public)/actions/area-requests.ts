@@ -23,8 +23,9 @@ export interface RequestMissingAreaResult {
    * internally (see findExistingGeographyMatch) — the request was still
    * recorded (for interest tracking / a future notification pass), but
    * no NEW pending review was created and no duplicate geography risk
-   * exists. The client uses this to show an honest message instead of
-   * the generic "you're on the list". */
+   * exists. Never shown to the consumer (Area Visibility pass): a hidden
+   * Area must read as simply "not available yet", so AreaPicker shows the
+   * same confirmation either way. */
   matchedLabel?: string;
 }
 

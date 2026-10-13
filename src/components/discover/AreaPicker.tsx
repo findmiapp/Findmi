@@ -275,7 +275,6 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
-  const [matchedLabel, setMatchedLabel] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -295,7 +294,6 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
     setError(null);
     const result = await requestMissingArea({ text: query, email });
     if (result.ok) {
-      setMatchedLabel(result.matchedLabel ?? null);
       setState("done");
     } else {
       setState("error");
@@ -306,14 +304,12 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
   if (state === "done") {
     return (
       <div className="rounded-2xl border border-findmi/20 bg-findmi-50 p-4 text-center">
-        <p className="text-sm font-semibold text-findmi-700">
-          {matchedLabel ? <>{matchedLabel} is already known to Findmi!</> : "You're on the list!"}
-        </p>
-        <p className="mt-1 text-xs text-findmi-700/80">
-          {matchedLabel
-            ? "We'll notify you when it opens for discovery."
-            : "We'll notify you when Findmi launches there."}
-        </p>
+        {/* Area Visibility — one answer whether or not the typed place
+            already exists internally (e.g. a hidden Area): to a consumer
+            it simply isn't an available Findmi Area yet. Never reveals
+            internal rollout state. */}
+        <p className="text-sm font-semibold text-findmi-700">You&rsquo;re on the list!</p>
+        <p className="mt-1 text-xs text-findmi-700/80">We&rsquo;ll notify you when Findmi launches there.</p>
         <button
           type="button"
           onClick={onSubmitted}

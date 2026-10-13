@@ -35,6 +35,19 @@ export async function getMarketAreaCounts(): Promise<Map<string, number>> {
   return counts;
 }
 
+/** Admin Markets list — every Area's visibility at a glance (name, parent,
+ * own flags), grouped by Market. Read-only. */
+export async function getAdminAreaVisibilityByMarket(): Promise<Map<string, Pick<MarketArea, "id" | "market_id" | "name" | "active" | "consumer_visible">[]>> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return new Map();
+  const { data } = await supabase.from("market_areas").select("id, market_id, name, active, consumer_visible").order("sort_order");
+  const byMarket = new Map<string, Pick<MarketArea, "id" | "market_id" | "name" | "active" | "consumer_visible">[]>();
+  for (const row of (data ?? []) as Pick<MarketArea, "id" | "market_id" | "name" | "active" | "consumer_visible">[]) {
+    byMarket.set(row.market_id, [...(byMarket.get(row.market_id) ?? []), row]);
+  }
+  return byMarket;
+}
+
 /** market_areas has a (market_id, slug) UNIQUE constraint, not a
  * table-wide one like markets/businesses/events/locations/people — same
  * scoped-uniqueness shape as isCategorySlugTaken (lib/admin/queries.ts),

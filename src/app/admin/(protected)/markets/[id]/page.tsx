@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getAdminMarketById } from "@/lib/admin/markets";
 import { getAdminAreasByMarket } from "@/lib/admin/market-areas";
+import { adminVisibilityLabel } from "@/lib/area-visibility";
 import MarketForm from "../MarketForm";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,7 @@ export default async function EditMarketPage({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">{a.name}</p>
                   <p className="mt-0.5 truncate text-xs text-ink/45">
-                    {a.active ? "Active" : "Inactive"} · {a.consumer_visible ? "Visible to consumers" : "Hidden from consumers"}
+                    {a.active ? adminVisibilityLabel(a, market) : "Inactive"}
                     {" · "}Order {a.sort_order}
                   </p>
                 </div>

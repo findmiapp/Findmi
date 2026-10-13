@@ -32,10 +32,10 @@ export default function MarketForm({ market, error }: { market: Market | null; e
           in the consumer Area picker. Lets supply exist before a public
           Area "launch". */}
       <CheckboxField
-        label="Show in consumer Area picker"
+        label="Visible on Findmi"
         name="consumer_visible"
         defaultChecked={market ? market.consumer_visible !== false : true}
-        hint="When off, this Market can still be used internally (business/event/location assignment) but will not appear in consumer Area discovery (homepage, /businesses, /events)."
+        hint="Shows this Market as a Findmi Area in the public Area selectors (homepage, Discover, /businesses, /events, /locations, /find). Off never blocks content: Businesses, Locations, Events and Appearances can still be created and assigned here. While off, none of its Areas are shown either; their own settings are kept."
       />
 
       <NameSlugFields

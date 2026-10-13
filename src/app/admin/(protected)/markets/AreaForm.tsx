@@ -43,10 +43,10 @@ export default function AreaForm({
       />
 
       <CheckboxField
-        label="Show in consumer Area picker"
+        label="Visible on Findmi"
         name="consumer_visible"
         defaultChecked={area ? area.consumer_visible : true}
-        hint="When off, this Area can still be assigned internally but will not appear in consumer Area discovery (homepage, /businesses, /events, /find)."
+        hint="Shows this Area in the public Area selectors — only while its Market is also Visible on Findmi (turning the Market off keeps this setting). Off never blocks content: it can still be assigned to Businesses, Locations, Events and Appearances."
       />
 
       <NameSlugFields

@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { buildVisibleAreaTree } from "./area-visibility";
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
@@ -4627,12 +4628,10 @@ export async function getConsumerVisibleMarketsWithAreas(): Promise<ConsumerMark
     .eq("active", true)
     .eq("consumer_visible", true)
     .order("sort_order");
-  const areasByMarket = new Map<string, MarketArea[]>();
-  for (const area of (areaRows ?? []) as MarketArea[]) {
-    areasByMarket.set(area.market_id, [...(areasByMarket.get(area.market_id) ?? []), area]);
-  }
-
-  return markets.map((m) => ({ ...m, areas: areasByMarket.get(m.id) ?? [] }));
+  // Area Visibility — the one effective-visibility rule (lib/area-visibility):
+  // a Market's Areas only ever appear while the Market itself is Visible on
+  // Findmi; each Area's own saved setting is never rewritten by its Market's.
+  return buildVisibleAreaTree(markets, (areaRows ?? []) as MarketArea[]);
 }
 
 /** Market Management + Plan Market Allowances V1 — the one shared

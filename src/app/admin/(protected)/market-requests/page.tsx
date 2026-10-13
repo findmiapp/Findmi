@@ -325,7 +325,7 @@ export default async function AdminMarketRequestsPage({
                       </label>
                       <label className="flex items-center gap-2 text-sm text-ink">
                         <input type="checkbox" name="consumer_visible" className="h-4 w-4 accent-findmi" />
-                        Show in consumer Area picker now
+                        Visible on Findmi now
                       </label>
                       <button
                         type="submit"
@@ -396,7 +396,7 @@ export default async function AdminMarketRequestsPage({
                         </label>
                         <label className="mt-5 flex items-center gap-2 text-sm text-ink">
                           <input type="checkbox" name="consumer_visible" className="h-4 w-4 accent-findmi" />
-                          Show in consumer Area picker now
+                          Visible on Findmi now
                         </label>
                       </div>
                       <p className="text-xs text-ink/40">

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { getAdminMarkets } from "@/lib/admin/markets";
-import { getMarketAreaCounts } from "@/lib/admin/market-areas";
+import { getAdminAreaVisibilityByMarket } from "@/lib/admin/market-areas";
+import { adminVisibilityLabel, isMarketVisibleOnFindmi } from "@/lib/area-visibility";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminMarketsPage() {
-  const [markets, areaCounts] = await Promise.all([getAdminMarkets(), getMarketAreaCounts()]);
+  const [markets, areasByMarket] = await Promise.all([getAdminMarkets(), getAdminAreaVisibilityByMarket()]);
 
   return (
     <div>
@@ -14,7 +15,8 @@ export default async function AdminMarketsPage() {
           <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Markets</h1>
           <p className="mt-1 text-sm text-ink/60">
             The canonical Findmi Markets used for business distribution/entitlement and event geography — shown
-            to consumers as &ldquo;Area&rdquo;.
+            to consumers as &ldquo;Area&rdquo;. Only Markets and Areas marked Visible on Findmi appear in public
+            Area selectors; hidden ones still accept Businesses, Locations, Events and Appearances.
           </p>
         </div>
         <Link
@@ -38,18 +40,39 @@ export default async function AdminMarketsPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-display text-base font-semibold tracking-tight text-ink">{m.name}</p>
-                  {!m.active && (
-                    <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                      Inactive
-                    </span>
-                  )}
+                  {/* Visible on Findmi at a glance (Area Visibility pass). */}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      isMarketVisibleOnFindmi(m) ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.06] text-ink/50"
+                    }`}
+                  >
+                    {adminVisibilityLabel(m)}
+                  </span>
                 </div>
                 <p className="mt-0.5 text-xs text-ink/45">
                   /{m.slug}
                   {m.display_name && m.display_name !== m.name ? ` · Consumer: “${m.display_name}”` : ""}
                   {" · "}
-                  {areaCounts.get(m.id) ?? 0} Area{(areaCounts.get(m.id) ?? 0) === 1 ? "" : "s"}
+                  {(areasByMarket.get(m.id) ?? []).length} Area{(areasByMarket.get(m.id) ?? []).length === 1 ? "" : "s"}
                 </p>
+                {(areasByMarket.get(m.id) ?? []).length > 0 && (
+                  <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                    {(areasByMarket.get(m.id) ?? []).map((a) => {
+                      const label = adminVisibilityLabel(a, m);
+                      const shown = label === "Visible on Findmi";
+                      return (
+                        <li
+                          key={a.id}
+                          title={label}
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${shown ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.04] text-ink/45 line-through decoration-ink/25"}`}
+                        >
+                          {a.name}
+                          <span className="sr-only"> — {label}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
               <span className="shrink-0 text-xs text-ink/40">Order {m.sort_order}</span>
             </Link>
