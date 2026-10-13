@@ -15,6 +15,15 @@
  *   Add a Moment     → the canonical Moment composer, prefilled with this Business
  *   Create a QR Code → the Business QR creator (/qr/new)
  *
+ * Locked Business-facing distinction (UX vocabulary only — the internal
+ * Event / Appearance domain is unchanged):
+ *   Where I'll Be = something SOMEONE ELSE organizes that this Business is
+ *                   PARTICIPATING in (festival, market, sampling, trade
+ *                   show, demo, pop-up…).
+ *   Host an Event = an Event this Business is ORGANIZING / hosting.
+ * The upcoming Event Import keeps this contract: entering from Where I'll
+ * Be starts as participation; from Host an Event, as hosting.
+ *
  * `description` is the one short line on Home; `detail` is the richer
  * line the "+" sheet shows. Both describe the owner's outcome, never
  * Findmi's internal records. Plain data, no imports: safe for server and
@@ -39,8 +48,8 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
     where: {
       key: "where",
       label: "Where I’ll Be",
-      description: "Tell people where they can find you in person.",
-      detail: "Markets, pop-ups, sampling, festivals, trade shows, retailers — wherever people can find you in person.",
+      description: "Add something your Business is participating in.",
+      detail: "Add a festival, market, retailer sampling, trade show, pop-up or other event your Business is participating in.",
       href: `${basePath}?tab=findmi-here&compose=1`,
       icon: "compass",
     },
@@ -48,7 +57,7 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
       key: "event",
       label: "Host an Event",
       description: "Create something your Business is organizing.",
-      detail: "An activation, pop-up, tasting, class, launch or Event your Business is organizing.",
+      detail: "Create an activation, pop-up, tasting, class, launch or other Event your Business is organizing.",
       href: `/account/event/new?business_id=${id}`,
       icon: "calendar",
     },

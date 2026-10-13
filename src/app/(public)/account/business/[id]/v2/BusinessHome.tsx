@@ -261,22 +261,26 @@ export default function BusinessHome({
             mid-card. Grid from lg, where none of this applies. */}
         <ul className={`mt-3 ${RAIL_CLASS} snap-mandatory gap-4 lg:grid lg:grid-cols-3 lg:gap-3 lg:overflow-visible`}>
           {orderedCreateActions(basePath, businessId).map((action) => (
-            <li key={action.key} className="w-[min(15.5rem,72vw)] shrink-0 snap-start lg:w-auto">
+            <li key={action.key} className="w-[min(20rem,84vw)] shrink-0 snap-start lg:w-auto">
+              {/* Row card: a meaningful icon block on the left, title +
+                  description reading left-to-right in the remaining width,
+                  a quiet chevron at the far right. */}
               <Link
                 href={action.href}
-                className="flex h-full min-h-[104px] flex-col gap-2 rounded-2xl border border-black/[0.07] bg-white p-3.5 shadow-sm transition hover:border-findmi/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+                className="flex h-full min-h-[88px] items-center gap-3 rounded-2xl border border-black/[0.07] bg-white py-3 pl-3 pr-2.5 shadow-sm transition hover:border-findmi/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
               >
-                <span className="flex items-center gap-2.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700">
-                    <CreateActionIcon icon={action.icon} className="h-[18px] w-[18px]" />
-                  </span>
-                  <span className="min-w-0 truncate text-card-title font-semibold text-primary">{action.label}</span>
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+                  <CreateActionIcon icon={action.icon} className="h-8 w-8" />
                 </span>
-                <span className="line-clamp-2 text-metadata text-muted">{action.description}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-card-title font-semibold text-primary">{action.label}</span>
+                  <span className="mt-0.5 line-clamp-2 block text-metadata text-muted">{action.description}</span>
+                </span>
+                <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/25" />
               </Link>
             </li>
           ))}
-          <li aria-hidden="true" className="w-[calc(100vw-min(15.5rem,72vw)-3rem)] shrink-0 sm:w-[calc(100vw-min(15.5rem,72vw)-4rem)] lg:hidden" />
+          <li aria-hidden="true" className="w-[calc(100vw-min(20rem,84vw)-3rem)] shrink-0 sm:w-[calc(100vw-min(20rem,84vw)-4rem)] lg:hidden" />
         </ul>
       </section>
 

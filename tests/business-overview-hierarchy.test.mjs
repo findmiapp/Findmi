@@ -114,7 +114,7 @@ test("Create on Findmi: six actions in the intentional order, each with icon + t
   assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "Add a Location", "Add a Product", "Add a Moment", "Create a QR Code"]);
   assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "pin", "tag", "moment", "qr"]);
   assert.deepEqual(actions.map((x) => x.description), [
-    "Tell people where they can find you in person.",
+    "Add something your Business is participating in.",
     "Create something your Business is organizing.",
     "Add a place customers can regularly find your Business.",
     "Add something people can discover from your Business.",
@@ -129,16 +129,28 @@ test("Create on Findmi: six actions in the intentional order, each with icon + t
   assert.doesNotMatch(all, /Go Somewhere|Host Something|At a Location|Add To Product Catalog|Create A QR Code/);
 });
 
+test("participating vs organizing: Where I'll Be = taking part in someone else's; Host an Event = organizing", () => {
+  const a = CA.businessCreateActions("/b", "x");
+  assert.match(a.where.description + a.where.detail, /participating in/);
+  assert.doesNotMatch(a.where.description + a.where.detail, /organiz/);
+  assert.match(a.event.description + a.event.detail, /organizing/);
+  assert.doesNotMatch(a.event.description + a.event.detail, /participat/);
+  assert.equal(a.where.detail, "Add a festival, market, retailer sampling, trade show, pop-up or other event your Business is participating in.");
+  assert.equal(a.event.detail, "Create an activation, pop-up, tasting, class, launch or other Event your Business is organizing.");
+});
+
 test("Create rail: horizontal, compact cards (no title wrap), next card peeks; View All opens the existing + sheet", () => {
   const create = HOME.slice(at('aria-labelledby="create-on-findmi"'), at("<HomeOpportunities"));
   assert.match(create, /\{orderedCreateActions\(basePath, businessId\)\.map\(\(action\) => \(/);
   assert.match(create, /<ul className=\{`mt-3 \$\{RAIL_CLASS\} snap-mandatory gap-4 lg:grid lg:grid-cols-3 lg:gap-3 lg:overflow-visible`\}>/, "a whole card always settles on the gutter; gap = gutter, so no sliver");
-  assert.match(create, /<li aria-hidden="true" className="w-\[calc\(100vw-min\(15\.5rem,72vw\)-3rem\)\] shrink-0 sm:w-\[calc\(100vw-min\(15\.5rem,72vw\)-4rem\)\] lg:hidden" \/>/, "the last card can rest on the gutter too");
+  assert.match(create, /<li aria-hidden="true" className="w-\[calc\(100vw-min\(20rem,84vw\)-3rem\)\] shrink-0 sm:w-\[calc\(100vw-min\(20rem,84vw\)-4rem\)\] lg:hidden" \/>/, "the last card can rest on the gutter too");
   assert.match(HOME, /const RAIL_CLASS =\s*"-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4/);
-  assert.match(create, /className="w-\[min\(15\.5rem,72vw\)\] shrink-0 snap-start lg:w-auto"/, "< full width → the next card peeks");
-  assert.match(create, /<span className="min-w-0 truncate text-card-title font-semibold text-primary">\{action\.label\}<\/span>/, "one-line title");
-  assert.match(create, /<span className="line-clamp-2 text-metadata text-muted">\{action\.description\}<\/span>/);
-  assert.match(create, /<CreateActionIcon icon=\{action\.icon\}/);
+  assert.match(create, /className="w-\[min\(20rem,84vw\)\] shrink-0 snap-start lg:w-auto"/, "< full width → the next card peeks");
+  // row anatomy: 56px icon block left (32px icon), title over description to its right, quiet chevron
+  assert.match(create, /className="flex h-full min-h-\[88px\] items-center gap-3 rounded-2xl border/);
+  assert.match(create, /<span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">\s*<CreateActionIcon icon=\{action\.icon\} className="h-8 w-8" \/>/);
+  assert.match(create, /<span className="min-w-0 flex-1">\s*<span className="block truncate text-card-title font-semibold text-primary">\{action\.label\}<\/span>\s*<span className="mt-0\.5 line-clamp-2 block text-metadata text-muted">\{action\.description\}<\/span>/, "one-line title, two-line description");
+  assert.match(create, /<ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink\/25" \/>/);
   assert.match(create, /<AddToPresence basePath=\{basePath\} businessId=\{businessId\} variant="link" \/>/);
   assert.match(ADD, /variant === "link" \? \(/);
   assert.match(ADD, /View All/);
