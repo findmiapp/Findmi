@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarkets, getCategories } from "@/lib/data";
 import BusinessGeographyFields from "@/components/BusinessGeographyFields";
 import { createMemberBusiness } from "../actions";
+import BrandImageInput from "./BrandImageInput";
 import {
   BRAND_SOURCE,
   SHORT_DESCRIPTION_MAX_LENGTH,
@@ -166,7 +166,9 @@ export default async function AddBusinessPage({
     websiteUrl: fromDraft ? fromDraft.site : (submittedWebsiteUrl ?? ""),
     instagramUrl: fromDraft ? (fromDraft.ig ? `https://www.instagram.com/${fromDraft.ig}` : "") : (submittedInstagramUrl ?? ""),
     shortDescription: fromDraft ? (fromDraft.sd ?? "") : (submittedShortDescription ?? ""),
-    about: fromDraft ? (fromDraft.about ?? "") : (submittedAbout ?? ""),
+    // Brand Review has one description: About falls back to the short
+    // description the Build found when it found no longer About text.
+    about: fromDraft ? (fromDraft.about ?? fromDraft.sd ?? "") : (submittedAbout ?? ""),
   };
   // Previews: each candidate is re-fetched and re-validated server-side and
   // shown as a small re-encoded data URI — never hotlinked, never stored.
@@ -293,47 +295,6 @@ export default async function AddBusinessPage({
           {brandOnboarding && <input type="hidden" name="source" value={BRAND_SOURCE} />}
           {draft && <input type="hidden" name="draft" value="1" />}
 
-          {/* V1.1C — Brand Identity: verified logo/cover candidates, selected
-              by default, deselectable. Only a checkbox is submitted; which
-              image it means comes from the signed draft, never the form. */}
-          {(logoPreview || coverPreview) && (
-            <div className="flex flex-col gap-3">
-              <p className="text-label font-bold uppercase text-subtle">Brand Identity</p>
-              {logoPreview && (
-                <label className="flex items-center gap-3 rounded-2xl border border-black/10 p-3">
-                  <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/5 bg-white">
-                    <Image src={logoPreview} alt="Logo found on your website" width={64} height={64} unoptimized className="h-full w-full object-contain" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-body font-medium text-primary">Logo</span>
-                    <span className="block text-metadata text-subtle">From your website</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2 text-metadata font-semibold text-primary">
-                    <input type="checkbox" name="use_logo" value="1" defaultChecked={useLogoDefault} className="h-5 w-5 accent-findmi" />
-                    Use This Logo
-                  </span>
-                </label>
-              )}
-              {coverPreview && (
-                <label className="flex flex-col gap-2 rounded-2xl border border-black/10 p-3">
-                  <span className="relative block aspect-[16/9] w-full overflow-hidden rounded-xl bg-black/5">
-                    <Image src={coverPreview} alt="Cover image found on your website" fill unoptimized className="object-cover" />
-                  </span>
-                  <span className="flex items-center justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="block text-body font-medium text-primary">Cover image</span>
-                      <span className="block text-metadata text-subtle">From your website</span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2 text-metadata font-semibold text-primary">
-                      <input type="checkbox" name="use_cover" value="1" defaultChecked={useCoverDefault} className="h-5 w-5 accent-findmi" />
-                      Use This Cover
-                    </span>
-                  </span>
-                </label>
-              )}
-            </div>
-          )}
-
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
             <input autoCapitalize="words"
@@ -394,20 +355,36 @@ export default async function AddBusinessPage({
               className={inputClass}
             />
           </label>
-          <label className="block">
-            <span className="mb-1.5 block text-body font-medium text-primary">
-              Short description <span className="font-normal text-subtle">(optional)</span>
-            </span>
-            <textarea autoCapitalize="sentences"
-              name="short_description"
-              rows={2}
-              maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
-              defaultValue={values.shortDescription}
-              placeholder="A sentence about what you do"
-              className={inputClass}
-            />
-            <span className="mt-1 block text-label text-subtle">Up to {SHORT_DESCRIPTION_MAX_LENGTH} characters.</span>
-          </label>
+          {/* Final Brand Build V1 UX cleanup — Logo and Cover Image are
+              ALWAYS shown on Brand Review: the verified image found by the
+              Build (preview + "Use This …" + Replace), or a clear empty
+              state with Add Logo / Add Cover Image. A missing extracted
+              image never removes the field. */}
+          {brandOnboarding && (
+            <div className="flex flex-col gap-3">
+              <BrandImageInput role="logo" label="Logo" foundPreview={logoPreview} useName="use_logo" useDefault={useLogoDefault} fileName="logo_file" />
+              <BrandImageInput role="cover" label="Cover Image" foundPreview={coverPreview} useName="use_cover" useDefault={useCoverDefault} fileName="cover_file" />
+            </div>
+          )}
+          {/* Final Brand Build V1 UX cleanup — Brand onboarding reviews ONE
+              description (About, below); Short Description stays on normal
+              creation and in Business Manager, unchanged. */}
+          {!brandOnboarding && (
+            <label className="block">
+              <span className="mb-1.5 block text-body font-medium text-primary">
+                Short description <span className="font-normal text-subtle">(optional)</span>
+              </span>
+              <textarea autoCapitalize="sentences"
+                name="short_description"
+                rows={2}
+                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                defaultValue={values.shortDescription}
+                placeholder="A sentence about what you do"
+                className={inputClass}
+              />
+              <span className="mt-1 block text-label text-subtle">Up to {SHORT_DESCRIPTION_MAX_LENGTH} characters.</span>
+            </label>
+          )}
           {brandOnboarding && (
             <label className="block">
               <span className="mb-1.5 block text-body font-medium text-primary">

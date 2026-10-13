@@ -473,12 +473,11 @@ test("action: signs the draft for the session user, replaces any previous draft,
 
 test("review: draft verified against the CURRENT user; previews only after full verification; selected by default; no URL inputs", () => {
   assert.match(NEW_PAGE, /brandOnboarding && draftParam === "1" \? await readBrandDraft\(user\.id\) : null/);
-  assert.match(NEW_PAGE, /\{logoPreview && \(/);
-  assert.match(NEW_PAGE, /\{coverPreview && \(/);
-  assert.match(NEW_PAGE, /name="use_logo" value="1" defaultChecked=\{useLogoDefault\}/);
+  assert.match(NEW_PAGE, /foundPreview=\{logoPreview\} useName="use_logo" useDefault=\{useLogoDefault\}/);
+  assert.match(NEW_PAGE, /foundPreview=\{coverPreview\} useName="use_cover" useDefault=\{useCoverDefault\}/);
   assert.match(NEW_PAGE, /const useLogoDefault = roundTrip \? submittedUseLogo === "1" : true;/);
   assert.doesNotMatch(NEW_PAGE, /name="(logo|cover|logo_url|cover_image_url|logo_candidate|cover_candidate)"/, "the browser never submits an image URL");
-  assert.match(NEW_PAGE, /Brand Identity/);
+  assert.match(NEW_PAGE, /Logo and Cover Image are\s+ALWAYS shown on Brand Review/);
   assert.match(NEW_PAGE, /name="description"\s+rows=\{5\}\s+maxLength=\{ABOUT_MAX_LENGTH\}/);
   assert.match(NEW_PAGE, /\{!brandOnboarding && geography\}/, "normal form keeps its geography position");
   assert.match(NEW_PAGE, /\) : brandOnboarding \? null : \(\s*<div>/, "no Free/Pro for brand onboarding");
@@ -494,7 +493,7 @@ test("creation: images imported only after the RPC, only if selected, from the s
   const clear = CREATE.indexOf("await clearBrandDraftCookie();");
   const brandRedirect = CREATE.indexOf("if (brandOnboarding) redirect(`/account?created=${businessId}`);");
   assert.ok(rpc > 0 && rpc < text && text < read_ && read_ < verify && verify < store && store < save && save < clear && clear < brandRedirect);
-  assert.match(CREATE, /\["logo", useLogo, draft\?\.logoStaged, draft\?\.logo\]/);
+  assert.match(CREATE, /\["logo", useLogo && !logoFile, draft\?\.logoStaged, draft\?\.logo\]/, "an owner-chosen file replaces the found image");
   assert.match(CREATE, /if \(!use\) return null;/, "deselected → nothing fetched or stored");
   assert.ok(CREATE.indexOf("await fetchVerifiedBrandImage(url, role)") > CREATE.indexOf("await loadStagedBrandImage("), "remote re-fetch is only the fallback");
   assert.match(CREATE, /const useLogo = brandDraftFlag && str\(formData, "use_logo"\) === "1";/);

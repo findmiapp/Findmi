@@ -10,7 +10,7 @@ import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { createOpportunity, resolveOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
 import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
 import { isBusinessPro } from "@/lib/entitlements";
-import { validateImageFile } from "@/lib/imageUploadValidation";
+import { validateImageFile, type ImageValidationResult } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -116,18 +116,34 @@ export async function uploadMemberBusinessImage(
     const admin = getAdminSupabase();
     if (!admin) return { error: "Storage isn't configured on the server." };
 
-    // Original + 160/800/1600 WebP variants via the shared Findmi
-    // pipeline (lib/image-variants-server.ts). Server-generated UUID path,
-    // byte-detected content type, 1-year cache; a variant failure never
-    // fails the upload — the original alone is stored, as before.
-    const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
-    if ("error" in stored) return { error: stored.error };
-
-    const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
-    return { url: data.publicUrl };
+    return await storeValidatedBusinessImage(admin, validated, file);
   } catch {
     return { error: "Upload failed. Please try again." };
   }
+}
+
+/** Original + 160/800/1600 WebP variants via the shared Findmi pipeline
+ * (lib/image-variants-server.ts). Server-generated UUID path, byte-
+ * detected content type, 1-year cache; a variant failure never fails the
+ * upload — the original alone is stored, as before. Shared by
+ * uploadMemberBusinessImage and the Brand Review Logo/Cover upload in
+ * createMemberBusiness (one upload pipeline, never a parallel one). */
+async function storeValidatedBusinessImage(
+  admin: NonNullable<ReturnType<typeof getAdminSupabase>>,
+  validated: ImageValidationResult,
+  file: File
+): Promise<{ url?: string; error?: string }> {
+  const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
+  if ("error" in stored) return { error: stored.error };
+  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
+  return { url: data.publicUrl };
+}
+
+/** A non-empty file input value, or null (an untouched file input submits
+ * an empty, nameless File). */
+function submittedFile(formData: FormData, key: string): File | null {
+  const value = formData.get(key);
+  return value instanceof File && value.size > 0 ? value : null;
 }
 
 // OWNER BUSINESS MUTATION — MINIMAL FOUNDATION
@@ -1233,7 +1249,10 @@ export async function createMemberBusiness(formData: FormData) {
   const instagramUrl = str(formData, "instagram_url");
   // Brand Onboarding V1.1B — optional, owner-editable (website analysis
   // may have suggested it; never authoritative). Whitespace collapsed.
-  const shortDescription = str(formData, "short_description")?.replace(/\s+/g, " ") ?? null;
+  // Final Brand Build V1 UX cleanup — Brand Review has one description
+  // (About), so the Brand path ignores any submitted short_description;
+  // the column itself is unchanged and still edited in Business Manager.
+  const shortDescription = brandOnboarding ? null : (str(formData, "short_description")?.replace(/\s+/g, " ") ?? null);
   const marketId = brandOnboarding ? null : str(formData, "market_id");
   // Consumer Area Picker + Market Requests V1 — the alternative to
   // marketId: the business is still created, but with a linked
@@ -1251,6 +1270,10 @@ export async function createMemberBusiness(formData: FormData) {
   const brandDraftFlag = brandOnboarding && str(formData, "draft") === "1";
   const useLogo = brandDraftFlag && str(formData, "use_logo") === "1";
   const useCover = brandDraftFlag && str(formData, "use_cover") === "1";
+  // Final Brand Build V1 UX cleanup — an owner-chosen Logo / Cover Image
+  // from Brand Review (Add / Replace). Always wins over the found image.
+  const logoFile = brandOnboarding ? submittedFile(formData, "logo_file") : null;
+  const coverFile = brandOnboarding ? submittedFile(formData, "cover_file") : null;
   const inviteRaw = str(formData, "invite");
   const referralCodeRaw = str(formData, "ref");
 
@@ -1298,6 +1321,23 @@ export async function createMemberBusiness(formData: FormData) {
   // business is affected.
   // VCL A2b — except Brand onboarding, which collects no geography at all.
   if (!brandOnboarding && (!city || !state)) fail("City and state are required.");
+
+  // Owner-chosen images are validated (same validateImageFile as every
+  // member upload) BEFORE anything is created, so a bad file is reported
+  // without leaving a half-finished Business behind. Stored only after the
+  // Business exists (below).
+  const ownerImages: { logo?: ImageValidationResult; cover?: ImageValidationResult } = {};
+  for (const [role, file] of [["logo", logoFile], ["cover", coverFile]] as const) {
+    if (!file) continue;
+    let checked: Awaited<ReturnType<typeof validateImageFile>>;
+    try {
+      checked = await validateImageFile(file);
+    } catch {
+      checked = { error: "Upload failed. Please try again." };
+    }
+    if ("error" in checked) fail(`${role === "logo" ? "Logo" : "Cover image"}: ${checked.error} Please choose it again.`);
+    else ownerImages[role] = checked;
+  }
   if (shortDescription && shortDescription.length > SHORT_DESCRIPTION_MAX_LENGTH) {
     fail(`Keep your short description to ${SHORT_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
   }
@@ -1421,13 +1461,41 @@ export async function createMemberBusiness(formData: FormData) {
   // and re-validated, stored through the Findmi image pipeline, and only
   // Findmi's resulting URL is saved. Best-effort: any failure leaves the
   // field empty and never undoes the create. The draft is then cleared.
+  // Final Brand Build V1 UX cleanup — owner-chosen Logo / Cover Image,
+  // through the same storage pipeline as MemberImageField. Best-effort:
+  // a Storage failure leaves the field empty (addable in Business
+  // Manager) and never undoes the create.
+  const uploaded: { logo: string | null; cover: string | null } = { logo: null, cover: null };
+  if (logoFile || coverFile) {
+    try {
+      await Promise.all(
+        (["logo", "cover"] as const).map(async (role) => {
+          const validated = ownerImages[role];
+          const file = role === "logo" ? logoFile : coverFile;
+          if (!validated || !file) return;
+          const stored = await storeValidatedBusinessImage(admin, validated, file);
+          if (stored.url) uploaded[role] = stored.url;
+        })
+      );
+      if (uploaded.logo || uploaded.cover) {
+        await admin
+          .from("businesses")
+          .update({ ...(uploaded.logo ? { logo_url: uploaded.logo } : {}), ...(uploaded.cover ? { cover_image_url: uploaded.cover } : {}) })
+          .eq("id", businessId);
+      }
+    } catch {
+      // best-effort — the Business already exists
+    }
+  }
+
   if (brandDraftFlag) {
-    if (useLogo || useCover) {
+    if ((useLogo && !logoFile) || (useCover && !coverFile)) {
       try {
         const draft = await readBrandDraft(user.id);
         const wanted: [BrandImageRole, boolean, string | undefined, string | undefined][] = [
-          ["logo", useLogo, draft?.logoStaged, draft?.logo],
-          ["cover", useCover, draft?.coverStaged, draft?.cover],
+          // A chosen file replaces the found image for that role.
+          ["logo", useLogo && !logoFile, draft?.logoStaged, draft?.logo],
+          ["cover", useCover && !coverFile, draft?.coverStaged, draft?.cover],
         ];
         const imported = await Promise.all(
           wanted.map(async ([role, use, stagedPath, url]) => {

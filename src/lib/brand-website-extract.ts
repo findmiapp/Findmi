@@ -620,6 +620,9 @@ export const COVER_CANDIDATE_MAX = 4;
  * neither a brand logo nor a cover (payment marks, badges, press/partner
  * strips, sprites, pixels). */
 const LOGO_HINT = /logo|wordmark|brandmark|brand-mark|logotype/;
+/** A page capture / browser or device mockup is never a cover (Final Brand
+ * Build V1 UX cleanup — empty beats a screenshot of the website). */
+const SCREENSHOT_HINT = /screen[-_ ]?shot|screen[-_ ]?cap(ture)?|browser|mock-?up|site[-_]?preview|page[-_]?preview|web[-_]?preview|website[-_]?preview/;
 const NOT_BRAND_IMAGE = new RegExp(
   "(?<![a-z])(badges?|payments?|visa|mastercard|amex|paypal|klarna|afterpay|affirm|apple-?pay|google-?pay|shop-?pay|trustpilot|awards?|flags?|press|featured|as-seen|seen-in|partners?|sponsors?|sprites?|pixel|spacer|tracking|avatars?|stars?|ratings?|reviews?)(?![a-z])|icon-"
 );
@@ -863,7 +866,7 @@ export function coverCandidatesFrom(
   const out: Ranked[] = [];
   const fileHint = (url: string) => (url.split(/[?#]/)[0].split("/").pop() ?? "").toLowerCase();
   const push = (url: string | null, rank: number) => {
-    if (url && !LOGO_HINT.test(fileHint(url)) && !NOT_BRAND_IMAGE.test(fileHint(url))) out.push({ url, rank });
+    if (url && !LOGO_HINT.test(fileHint(url)) && !NOT_BRAND_IMAGE.test(fileHint(url)) && !SCREENSHOT_HINT.test(fileHint(url))) out.push({ url, rank });
   };
   for (const key of OG_IMAGE_KEYS) push(rasterUrl(meta(key), base), COVER_SOURCE_RANK.og_image);
   for (const key of TWITTER_IMAGE_KEYS) push(rasterUrl(meta(key), base), COVER_SOURCE_RANK.twitter_image);
@@ -871,7 +874,7 @@ export function coverCandidatesFrom(
   let heroes = 0;
   for (const img of images) {
     if (heroes >= 2) break;
-    if (!img.inHero || img.inHeader || img.itempropLogo || LOGO_HINT.test(img.hints) || NOT_BRAND_IMAGE.test(img.hints)) continue;
+    if (!img.inHero || img.inHeader || img.itempropLogo || LOGO_HINT.test(img.hints) || NOT_BRAND_IMAGE.test(img.hints) || SCREENSHOT_HINT.test(img.hints)) continue;
     if (img.width > 0 && img.width < 600) continue;
     const url = imageUrl(img, 2000, base);
     if (url) {

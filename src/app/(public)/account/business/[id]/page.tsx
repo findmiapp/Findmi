@@ -1265,7 +1265,9 @@ export default async function ManageBusinessPage({
   // on the Profile tab (e.g. website/social links are never required here).
   // VCL A2b — City/State are optional for a Business (no geography beats
   // false geography), so their absence alone never flags Complete Profile.
-  const profileIncomplete = !business.logo_url || !business.short_description || !currentCategoryId;
+  // Final Brand Build V1 UX cleanup — a Brand reviews only About at
+  // onboarding (no Short Description), so either description counts here.
+  const profileIncomplete = !business.logo_url || !(business.short_description || business.description) || !currentCategoryId;
   const needsAttention = buildNeedsAttentionItems({
     businessId: id,
     hasPrimaryMarket: Boolean(primaryMarket),

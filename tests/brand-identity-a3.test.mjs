@@ -252,7 +252,7 @@ test("8/9. Account Home identity tiles: logo only (contained), else the existing
   assert.match(card, /<NavIcon name="storefront" className="h-6 w-6 text-findmi-700" \/>/);
   // Workspace / switcher / Review were already logo-only + contained.
   assert.match(read("src/app/(public)/account/PersonalAppShell.tsx"), /logoUrl: b\.logoUrl \?\? null/);
-  assert.match(read("src/app/(public)/account/business/new/page.tsx"), /alt="Logo found on your website" width=\{64\} height=\{64\} unoptimized className="h-full w-full object-contain"/);
+  assert.match(read("src/app/(public)/account/business/new/BrandImageInput.tsx"), /className=\{role === "logo" \? "h-full w-full object-contain" : "h-full w-full object-cover"\}/);
 });
 
 // ── SOCIAL: deterministic, first-party only ──────────────────────────────
@@ -284,8 +284,9 @@ test("13/14/19/28. no Instagram URL is ever generated or AI-supplied; search (A3
 // ── REGRESSION / SCOPE ───────────────────────────────────────────────────
 test("29/30. Review stays editable and creation still re-validates logo/cover/Instagram server-side", () => {
   const review = read("src/app/(public)/account/business/new/page.tsx");
-  assert.match(review, /<input type="checkbox" name="use_logo" value="1" defaultChecked=\{useLogoDefault\}/);
-  assert.match(review, /<input type="checkbox" name="use_cover" value="1" defaultChecked=\{useCoverDefault\}/);
+  assert.match(review, /<BrandImageInput role="logo" label="Logo" foundPreview=\{logoPreview\} useName="use_logo" useDefault=\{useLogoDefault\} fileName="logo_file" \/>/);
+  assert.match(review, /<BrandImageInput role="cover" label="Cover Image" foundPreview=\{coverPreview\} useName="use_cover" useDefault=\{useCoverDefault\} fileName="cover_file" \/>/);
+  assert.match(read("src/app/(public)/account/business/new/BrandImageInput.tsx"), /<input type="checkbox" name=\{useName\} value="1" defaultChecked=\{useDefault\}/);
   assert.match(review, /name="instagram_url"\s+defaultValue=\{values\.instagramUrl\}/);
   const create = read("src/app/(public)/account/business/actions.ts");
   assert.match(create, /const verified = await fetchVerifiedBrandImage\(url, role\);/);

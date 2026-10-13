@@ -117,7 +117,7 @@ test("function: market_required removed; request row only for non-blank requeste
 
 // ── Downstream ───────────────────────────────────────────────────────────
 test("Complete Profile no longer requires City/State; other signals unchanged", () => {
-  assert.match(MANAGER, /const profileIncomplete = !business\.logo_url \|\| !business\.short_description \|\| !currentCategoryId;/);
+  assert.match(MANAGER, /const profileIncomplete = !business\.logo_url \|\| !\(business\.short_description \|\| business\.description\) \|\| !currentCategoryId;/);
 });
 
 test("null geography renders as nothing / 'Not set' — never 'undefined' or dangling punctuation", () => {

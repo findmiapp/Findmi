@@ -43,14 +43,15 @@ const UPLOAD_BUCKET = "findmi-media";
 const PREVIEW_MAX_BYTES = 120 * 1024;
 
 /** Logo: at least 120px on the long side and 40px on the short side, not
- * a sliver (≤ 6:1), ≤ 6000px. Cover: landscape ≥ 600×300, ≥ 1.2:1,
- * ≤ 10000px. Exported for tests. */
+ * a sliver (≤ 6:1), ≤ 6000px. Cover: landscape ≥ 600×300, between 1.2:1
+ * and 3.5:1 (anything wider is a wordmark/banner strip — never a cover;
+ * empty beats a bad cover), ≤ 10000px. Exported for tests. */
 export function isSuitableBrandImage(role: BrandImageRole, width: number, height: number): boolean {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
   const long = Math.max(width, height);
   const short = Math.min(width, height);
   if (role === "logo") return long >= 120 && short >= 40 && long / short <= 6 && long <= 6000;
-  return width >= 600 && height >= 300 && width / height >= 1.2 && long <= 10000;
+  return width >= 600 && height >= 300 && width / height >= 1.2 && width / height <= 3.5 && long <= 10000;
 }
 
 export interface VerifiedBrandImage {

@@ -382,7 +382,7 @@ test("analysis modules never write data, store images, call a model or create a 
 test("creation: optional short_description (≤160), preserved on failure, written after the UNCHANGED create RPC; matcher still runs first", () => {
   const src = readFileSync("src/app/(public)/account/business/actions.ts", "utf8");
   const fn = src.slice(src.indexOf("export async function createMemberBusiness"), src.indexOf("\n}\n", src.indexOf("export async function createMemberBusiness")));
-  assert.match(fn, /const shortDescription = str\(formData, "short_description"\)/);
+  assert.match(fn, /const shortDescription = brandOnboarding \? null : \(str\(formData, "short_description"\)/, "Brand Review has one description (About)");
   assert.match(fn, /short_description: shortDescription,\n\s+market_id: marketId/, "round-trips through preservedFields");
   assert.match(fn, /shortDescription\.length > SHORT_DESCRIPTION_MAX_LENGTH/);
   const matcher = fn.indexOf("await findBusinessMatches(admin");
