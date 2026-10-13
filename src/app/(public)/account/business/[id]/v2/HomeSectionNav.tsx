@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /** Business Home's thin sticky section rail — moves WITHIN the Home page
  * only (anchored smooth scroll), never between routes. That job belongs
@@ -78,15 +78,58 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
     };
   }, [ids]);
 
-  // Keep the active chip in view within the rail itself.
+  // The rail's end stop must also be a chip boundary: a trailing spacer
+  // sized so the furthest scroll position is the first snap point at which
+  // the last chip is fully visible — never a position that leaves part of
+  // a label clipped at the left edge. Re-measured on resize.
+  const spacerRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const rail = railRef.current;
+    const spacer = spacerRef.current;
+    if (!rail || !spacer) return;
+    const measure = () => {
+      const style = getComputedStyle(rail);
+      const padLeft = parseFloat(style.paddingLeft) || 0;
+      const padRight = parseFloat(style.paddingRight) || 0;
+      const gap = parseFloat(style.columnGap) || 0;
+      const railLeft = rail.getBoundingClientRect().left;
+      const chips = Array.from(rail.querySelectorAll<HTMLElement>("[data-section]"));
+      const last = chips[chips.length - 1];
+      if (!last) return;
+      const startOf = (el: HTMLElement) => el.getBoundingClientRect().left - railLeft + rail.scrollLeft;
+      const lastEnd = startOf(last) + last.offsetWidth;
+      const stop = chips.map((c) => Math.max(0, startOf(c) - padLeft)).find((p) => lastEnd + padRight <= p + rail.clientWidth) ?? 0;
+      spacer.style.width = `${Math.max(0, stop + rail.clientWidth - lastEnd - padRight - gap)}px`;
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [ids]);
+
+  // Keep the active chip fully in view within the rail itself, always
+  // resting on a chip boundary (the rail is snap-mandatory, every chip
+  // snap-start against the rail's own gutter) so no clipped fragment of a
+  // label is left at the edge.
   useEffect(() => {
     const rail = railRef.current;
     const chip = rail?.querySelector<HTMLElement>(`[data-section="${active}"]`);
     if (!rail || !chip) return;
-    const left = chip.offsetLeft - 16;
-    const right = chip.offsetLeft + chip.offsetWidth + 16 - rail.clientWidth;
-    if (rail.scrollLeft > left) rail.scrollTo({ left, behavior: "smooth" });
-    else if (rail.scrollLeft < right) rail.scrollTo({ left: right, behavior: "smooth" });
+    const style = getComputedStyle(rail);
+    const padLeft = parseFloat(style.paddingLeft) || 0;
+    const padRight = parseFloat(style.paddingRight) || 0;
+    const max = rail.scrollWidth - rail.clientWidth;
+    const railLeft = rail.getBoundingClientRect().left;
+    const chips = Array.from(rail.querySelectorAll<HTMLElement>("[data-section]"));
+    const startOf = (el: HTMLElement) => el.getBoundingClientRect().left - railLeft + rail.scrollLeft;
+    const snapPoints = chips.map((c) => Math.min(max, Math.max(0, startOf(c) - padLeft)));
+    const chipStart = startOf(chip);
+    const chipEnd = chipStart + chip.offsetWidth;
+    let target: number | null = null;
+    if (chipStart - padLeft < rail.scrollLeft) target = snapPoints[chips.indexOf(chip)];
+    else if (chipEnd + padRight > rail.scrollLeft + rail.clientWidth) {
+      target = snapPoints.find((p) => chipEnd + padRight <= p + rail.clientWidth) ?? max;
+    }
+    if (target !== null && Math.abs(target - rail.scrollLeft) > 1) rail.scrollTo({ left: target, behavior: "smooth" });
   }, [active]);
 
   function go(e: React.MouseEvent<HTMLAnchorElement>, id: string) {
@@ -109,7 +152,7 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
     >
       <div
         ref={railRef}
-        className="flex h-11 items-center gap-1 overflow-x-auto px-3 [-ms-overflow-style:none] [scrollbar-width:none] sm:px-5 lg:px-0 [&::-webkit-scrollbar]:hidden"
+        className="flex h-11 snap-x snap-mandatory scroll-px-3 items-center gap-1 overflow-x-auto px-3 [-ms-overflow-style:none] [scrollbar-width:none] sm:scroll-px-5 sm:px-5 lg:scroll-px-0 lg:px-0 [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item) => {
           const isActive = item.id === active;
@@ -120,7 +163,7 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
               data-section={item.id}
               aria-current={isActive ? "location" : undefined}
               onClick={(e) => go(e, item.id)}
-              className={`flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
+              className={`flex h-8 shrink-0 snap-start items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
                 isActive ? "bg-findmi-50 text-findmi-700" : "text-muted hover:text-primary"
               }`}
             >
@@ -137,6 +180,7 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
             </a>
           );
         })}
+        <span ref={spacerRef} aria-hidden="true" className="h-px shrink-0" />
       </div>
     </nav>
   );

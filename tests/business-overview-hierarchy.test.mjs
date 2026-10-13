@@ -87,7 +87,11 @@ test("sticky section rail: in-page anchors only, Attention only with items (with
   // sticky directly under the 48px owner header, ~44px tall, rail-internal horizontal scroll
   assert.match(NAV, /className="sticky top-12 z-30 /);
   assert.match(NAV, /export const HOME_SECTION_STICKY_TOP = 48;/);
-  assert.match(NAV, /flex h-11 items-center gap-1 overflow-x-auto/);
+  assert.match(NAV, /flex h-11 snap-x snap-mandatory scroll-px-3 items-center gap-1 overflow-x-auto px-3/);
+  assert.match(NAV, /flex h-8 shrink-0 snap-start items-center/);
+  assert.match(NAV, /<span ref=\{spacerRef\} aria-hidden="true" className="h-px shrink-0" \/>/, "end stop is a chip boundary");
+  assert.match(NAV, /spacer\.style\.width = `\$\{Math\.max\(0, stop \+ rail\.clientWidth - lastEnd - padRight - gap\)\}px`;/);
+  assert.match(NAV, /target = snapPoints\.find\(\(p\) => chipEnd \+ padRight <= p \+ rail\.clientWidth\) \?\? max;/, "auto-scroll rests on a chip boundary");
   assert.match(read("src/components/OwnerHeader.tsx"), /<div className="h-\[3px\] bg-findmi" \/>\s*<div className="flex h-11 /, "header = 3px strip + 44px bar + 1px border");
   // anchors: preventDefault + smooth scroll; Overview → top; reduced motion respected
   assert.match(NAV, /href=\{`#\$\{item\.id\}`\}/);
@@ -128,7 +132,8 @@ test("Create on Findmi: six actions in the intentional order, each with icon + t
 test("Create rail: horizontal, compact cards (no title wrap), next card peeks; View All opens the existing + sheet", () => {
   const create = HOME.slice(at('aria-labelledby="create-on-findmi"'), at("<HomeOpportunities"));
   assert.match(create, /\{orderedCreateActions\(basePath, businessId\)\.map\(\(action\) => \(/);
-  assert.match(create, /<ul className=\{`mt-3 \$\{RAIL_CLASS\} lg:grid lg:grid-cols-3 lg:overflow-visible`\}>/);
+  assert.match(create, /<ul className=\{`mt-3 \$\{RAIL_CLASS\} snap-mandatory gap-4 lg:grid lg:grid-cols-3 lg:gap-3 lg:overflow-visible`\}>/, "a whole card always settles on the gutter; gap = gutter, so no sliver");
+  assert.match(create, /<li aria-hidden="true" className="w-\[calc\(100vw-min\(15\.5rem,72vw\)-3rem\)\] shrink-0 sm:w-\[calc\(100vw-min\(15\.5rem,72vw\)-4rem\)\] lg:hidden" \/>/, "the last card can rest on the gutter too");
   assert.match(HOME, /const RAIL_CLASS =\s*"-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4/);
   assert.match(create, /className="w-\[min\(15\.5rem,72vw\)\] shrink-0 snap-start lg:w-auto"/, "< full width → the next card peeks");
   assert.match(create, /<span className="min-w-0 truncate text-card-title font-semibold text-primary">\{action\.label\}<\/span>/, "one-line title");
@@ -259,7 +264,8 @@ test("Opportunities For You: existing data only, compact, never Pro-gated", () =
 
 test("Performance: existing metrics + Free/Pro gating; all-zero explains itself instead of four zeros", () => {
   const perf = HOME.slice(at('aria-labelledby="performance-snapshot"'), at('aria-labelledby="findmi-link"'));
-  for (const l of ["Profile Views", "Actions", "QR Scans"]) assert.match(perf, new RegExp(`<MetricTile label="${l}"`));
+  for (const l of ["Profile Views", "QR Scans"]) assert.match(perf, new RegExp(`<MetricTile label="${l}"`));
+  assert.match(perf, /<MetricTile label=\{metrics\.actionsTaken\.value === 1 \? "Action" : "Actions"\} metric=\{metrics\.actionsTaken\}/, "1 Action, 0/N Actions");
   assert.match(perf, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
   assert.match(perf, /metrics\.profileViews\.value \+ metrics\.actionsTaken\.value \+ metrics\.qrScans\.value \+ metrics\.followers === 0 \? \(/);
   assert.match(perf, /No activity yet\./);

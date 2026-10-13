@@ -253,7 +253,13 @@ export default function BusinessHome({
           </h2>
           <AddToPresence basePath={basePath} businessId={businessId} variant="link" />
         </div>
-        <ul className={`mt-3 ${RAIL_CLASS} lg:grid lg:grid-cols-3 lg:overflow-visible`}>
+        {/* snap-mandatory: after any swipe a whole card rests on the
+            normal left gutter (scroll-px), never a clipped half-card. The
+            16px gap equals the gutter, so no sliver of the previous card
+            shows; the trailing spacer lets the LAST card rest on the gutter
+            too (card width + gutters + gap), instead of the rail stopping
+            mid-card. Grid from lg, where none of this applies. */}
+        <ul className={`mt-3 ${RAIL_CLASS} snap-mandatory gap-4 lg:grid lg:grid-cols-3 lg:gap-3 lg:overflow-visible`}>
           {orderedCreateActions(basePath, businessId).map((action) => (
             <li key={action.key} className="w-[min(15.5rem,72vw)] shrink-0 snap-start lg:w-auto">
               <Link
@@ -270,6 +276,7 @@ export default function BusinessHome({
               </Link>
             </li>
           ))}
+          <li aria-hidden="true" className="w-[calc(100vw-min(15.5rem,72vw)-3rem)] shrink-0 sm:w-[calc(100vw-min(15.5rem,72vw)-4rem)] lg:hidden" />
         </ul>
       </section>
 
@@ -293,7 +300,7 @@ export default function BusinessHome({
           ) : (
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <MetricTile label="Profile Views" metric={metrics.profileViews} pro={pro} />
-              <MetricTile label="Actions" metric={metrics.actionsTaken} pro={pro} />
+              <MetricTile label={metrics.actionsTaken.value === 1 ? "Action" : "Actions"} metric={metrics.actionsTaken} pro={pro} />
               <MetricTile label="QR Scans" metric={metrics.qrScans} pro={pro} />
               <MetricTile label="Followers" metric={{ value: metrics.followers, changeLabel: null }} pro={pro} />
             </div>
