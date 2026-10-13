@@ -448,7 +448,7 @@ export default async function AdminUserDetailPage({
                 <form action={deleteAccount} className="mt-3 flex flex-col gap-2">
                   <label className="text-xs text-ink/60">
                     Type <span className="font-semibold text-ink">{confirmPhrase}</span> to confirm
-                    <input
+                    <input autoCapitalize="none"
                       name="confirm"
                       autoComplete="off"
                       required

@@ -268,7 +268,7 @@ export default async function AdminReferralPartnerDetailPage({
                     </summary>
                     <form action={correctReferralAttribution.bind(null, a.id)} className="mt-2 flex flex-wrap items-center gap-1.5">
                       <input type="hidden" name="return_to" value={`/admin/referrals/${id}`} />
-                      <input
+                      <input autoCapitalize="none"
                         type="text"
                         name="code"
                         placeholder="Correct code"
@@ -365,13 +365,13 @@ export default async function AdminReferralPartnerDetailPage({
                   </form>
                 )}
                 <form action={markReferralPayoutPaid.bind(null, id, r.id)} className="flex flex-wrap items-center gap-2">
-                  <input
+                  <input autoCapitalize="none"
                     type="text"
                     name="payment_reference"
                     placeholder="Payment reference (e.g. Venmo #, check #)"
                     className="rounded-lg border border-black/10 px-2.5 py-1.5 text-xs text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
                   />
-                  <input
+                  <input autoCapitalize="sentences"
                     type="text"
                     name="admin_note"
                     placeholder="Note (optional)"
@@ -382,7 +382,7 @@ export default async function AdminReferralPartnerDetailPage({
                   </button>
                 </form>
                 <form action={rejectReferralPayout.bind(null, id, r.id)} className="flex items-center gap-2">
-                  <input
+                  <input autoCapitalize="sentences"
                     type="text"
                     name="admin_note"
                     placeholder="Reason (optional)"

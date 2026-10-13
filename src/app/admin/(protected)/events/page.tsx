@@ -116,7 +116,7 @@ export default async function AdminEventsPage({
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         {lifecycleTab && lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

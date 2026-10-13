@@ -89,7 +89,7 @@ export default function MomentSearch({
 
   return (
     <div ref={containerRef} className="relative">
-      <input
+      <input autoCapitalize="none"
         ref={inputRef}
         type="search"
         value={query}

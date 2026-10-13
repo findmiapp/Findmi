@@ -137,7 +137,7 @@ export default function SignupForm({
       <input type="hidden" name="next" value={next} />
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Full Name</span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name="display_name"
           required
@@ -151,7 +151,7 @@ export default function SignupForm({
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-        <input
+        <input autoCapitalize="none"
           type="email"
           name="email"
           required
@@ -165,7 +165,7 @@ export default function SignupForm({
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Confirm email</span>
-        <input
+        <input autoCapitalize="none"
           type="email"
           name="confirm_email"
           required
@@ -180,7 +180,7 @@ export default function SignupForm({
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Cell Number</span>
-        <input
+        <input autoCapitalize="none"
           type="tel"
           name="phone"
           required

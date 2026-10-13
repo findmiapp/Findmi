@@ -57,7 +57,7 @@ export default async function ProfilePage({
           <form action={updateProfile} className="flex flex-col gap-4">
             <label className="block">
               <span className="mb-1.5 block text-body font-medium text-primary">Display name</span>
-              <input
+              <input autoCapitalize="words"
                 type="text"
                 name="display_name"
                 defaultValue={profile?.display_name ?? ""}
@@ -66,7 +66,7 @@ export default async function ProfilePage({
             </label>
             <label className="block">
               <span className="mb-1.5 block text-body font-medium text-primary">Cell Number</span>
-              <input
+              <input autoCapitalize="none"
                 type="tel"
                 name="phone"
                 inputMode="tel"
@@ -83,7 +83,7 @@ export default async function ProfilePage({
             </label>
             <label className="block">
               <span className="mb-1.5 block text-body font-medium text-primary">Short bio (optional)</span>
-              <textarea
+              <textarea autoCapitalize="sentences"
                 name="bio"
                 defaultValue={profile?.bio ?? ""}
                 rows={3}
@@ -93,7 +93,7 @@ export default async function ProfilePage({
             </label>
             <label className="block">
               <span className="mb-1.5 block text-body font-medium text-primary">Location (optional)</span>
-              <input
+              <input autoCapitalize="words"
                 type="text"
                 name="location_label"
                 defaultValue={profile?.location_label ?? ""}

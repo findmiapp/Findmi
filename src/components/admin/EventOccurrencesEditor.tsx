@@ -360,7 +360,7 @@ export default function EventOccurrencesEditor({
                   <span className="mb-1 block text-xs font-medium text-ink/60">
                     Ticket Link Override (optional)
                   </span>
-                  <input
+                  <input autoCapitalize="none"
                     type="url"
                     name={`ticket_url_override_${row.id}`}
                     value={row.ticket_url_override}
@@ -373,7 +373,7 @@ export default function EventOccurrencesEditor({
                   <span className="mb-1 block text-xs font-medium text-ink/60">
                     Vendor Application Link Override (optional)
                   </span>
-                  <input
+                  <input autoCapitalize="none"
                     type="url"
                     name={`vendor_apply_url_override_${row.id}`}
                     value={row.vendor_apply_url_override}

@@ -135,7 +135,7 @@ export default function CartPage() {
           </div>
 
           <div className="mt-6 flex flex-col gap-3">
-            <input
+            <input autoCapitalize="none"
               type="email"
               required
               placeholder="Email address"
@@ -144,14 +144,14 @@ export default function CartPage() {
               className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
             />
             <div className="grid gap-3 sm:grid-cols-2">
-              <input
+              <input autoCapitalize="words"
                 type="text"
                 placeholder="Name (optional)"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
               />
-              <input
+              <input autoCapitalize="none"
                 type="tel"
                 placeholder="Phone (optional)"
                 value={phone}

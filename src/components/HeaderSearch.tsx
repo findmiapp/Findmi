@@ -152,7 +152,7 @@ export default function HeaderSearch({ variant }: { variant: "icon" | "text" }) 
             className="flex items-center gap-2 rounded-full border border-black/10 bg-black/[0.02] px-3.5 py-2"
           >
             <SearchGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            <input
+            <input autoCapitalize="none"
               ref={inputRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}

@@ -54,7 +54,7 @@ export default async function AdminLoginPage({
             <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-ink">
               Password
             </label>
-            <input
+            <input autoCapitalize="none"
               id="password"
               name="password"
               type="password"

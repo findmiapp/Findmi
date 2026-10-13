@@ -637,7 +637,7 @@ export default async function AccountHomePage({
           </summary>
           <form action={goToRedeemCode} className="mb-3 flex max-w-sm flex-col gap-2 sm:flex-row">
             <input type="hidden" name="return_to" value="/account" />
-            <input
+            <input autoCapitalize="none"
               type="text"
               name="code"
               required

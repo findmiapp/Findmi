@@ -80,7 +80,7 @@ export default async function JoinPassbookPage({
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Display name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="display_name"
               defaultValue={profile?.display_name ?? ""}
@@ -89,7 +89,7 @@ export default async function JoinPassbookPage({
           </label>
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Location (optional)</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="location_label"
               defaultValue={profile?.location_label ?? ""}

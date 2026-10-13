@@ -113,7 +113,7 @@ export default function SearchBar({
         onSubmit={handleSubmit}
         className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-4 pr-1 shadow-sm transition focus-within:border-ink/25"
       >
-        <input
+        <input autoCapitalize="none"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);

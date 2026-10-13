@@ -165,7 +165,7 @@ export default function MomentContextStage({
     return (
       <label className="flex min-w-0 flex-col gap-1">
         <span className="text-xs font-semibold text-ink/50">{label}</span>
-        <input
+        <input autoCapitalize={key === "zip" ? "none" : "words"}
           type="text"
           value={manual[key]}
           onChange={(e) => onManualChange({ ...manual, [key]: e.target.value })}

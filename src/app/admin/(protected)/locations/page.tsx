@@ -68,7 +68,7 @@ export default async function AdminLocationsPage({
 
       <form method="get" className="mt-4">
         {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

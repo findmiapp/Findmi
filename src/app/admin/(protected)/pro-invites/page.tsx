@@ -53,7 +53,7 @@ export default async function AdminProInvitesPage({
         <form action={createProInvite} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink/60">
             Campaign / Name
-            <input
+            <input autoCapitalize="words"
               name="name"
               type="text"
               placeholder="e.g. Launch Partners"
@@ -62,7 +62,7 @@ export default async function AdminProInvitesPage({
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink/60">
             Code
-            <input
+            <input autoCapitalize="none"
               name="code"
               type="text"
               required
@@ -116,7 +116,7 @@ export default async function AdminProInvitesPage({
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink/60">
             Internal Note (optional)
-            <input
+            <input autoCapitalize="sentences"
               name="created_by_note"
               type="text"
               placeholder="e.g. Sarah — launch partners"
@@ -144,7 +144,7 @@ export default async function AdminProInvitesPage({
           Sort are one form, so they always compose (submitting one
           preserves the other's current value via defaultValue). */}
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

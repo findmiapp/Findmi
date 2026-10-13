@@ -214,7 +214,7 @@ export default function QrCampaignDetailView({
           <div className="flex flex-col gap-3 px-5 py-4">
             <label className="block">
               <span className="mb-1 block text-microcopy font-semibold text-muted">Campaign name</span>
-              <input
+              <input autoCapitalize="words"
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
@@ -223,7 +223,7 @@ export default function QrCampaignDetailView({
             </label>
             <label className="block">
               <span className="mb-1 block text-microcopy font-semibold text-muted">Placement</span>
-              <input
+              <input autoCapitalize="words"
                 type="text"
                 value={editPlacement}
                 onChange={(e) => setEditPlacement(e.target.value)}
@@ -273,7 +273,7 @@ export default function QrCampaignDetailView({
                   </div>
                 )}
                 {editDestinationType === "custom" && (
-                  <input
+                  <input autoCapitalize="none"
                     type="text"
                     value={editDestinationUrl}
                     onChange={(e) => setEditDestinationUrl(e.target.value)}

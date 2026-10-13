@@ -115,7 +115,7 @@ export default function CategoryList({
     <form action={saveAction} className="mt-5 flex flex-col gap-4">
       {categories.length > 0 && (
         <div>
-          <input
+          <input autoCapitalize="none"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -184,14 +184,14 @@ export default function CategoryList({
                 )}
 
                 <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                  <input
+                  <input autoCapitalize="words"
                     type="text"
                     name={`name_${c.id}`}
                     defaultValue={c.name}
                     aria-label={`Name for ${c.name}`}
                     className={inputClass}
                   />
-                  <input
+                  <input autoCapitalize="none"
                     type="text"
                     name={`slug_${c.id}`}
                     defaultValue={c.slug}

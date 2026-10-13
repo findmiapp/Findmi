@@ -53,7 +53,7 @@ export default function NameSlugFields({
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">{nameLabel}</span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name={nameName}
           defaultValue={defaultName ?? ""}
@@ -66,7 +66,7 @@ export default function NameSlugFields({
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">{slugLabel}</span>
-        <input
+        <input autoCapitalize="none"
           type="text"
           name={slugName}
           value={slug}

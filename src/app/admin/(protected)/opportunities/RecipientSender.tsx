@@ -62,7 +62,7 @@ export default function RecipientSender({
                   Remove
                 </button>
               </div>
-              <textarea
+              <textarea autoCapitalize="sentences"
                 name={`fit_note_${b.value}`}
                 rows={2}
                 maxLength={1000}

@@ -179,7 +179,7 @@ export default async function AddEventPage({
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Event name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="name"
               required

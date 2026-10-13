@@ -119,7 +119,7 @@ export default function BusinessPeopleRoster({
               <div className="mt-2.5 grid gap-2 sm:grid-cols-[1fr_auto]">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-ink/60">Role / Title at this business</span>
-                  <input
+                  <input autoCapitalize="words"
                     type="text"
                     name={`role_${row.person_id}`}
                     value={row.role}

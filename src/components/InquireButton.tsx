@@ -226,11 +226,11 @@ export default function InquireButton({
 
                   <label className="block">
                     <span className={labelClass}>Name</span>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+                    <input autoCapitalize="words" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
                   </label>
                   <label className="block">
                     <span className={labelClass}>Email</span>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
+                    <input autoCapitalize="none" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
                   </label>
                   {topics && topics.length === 1 && (
                     // Single enabled topic — auto-selected (see `topic`'s
@@ -274,7 +274,7 @@ export default function InquireButton({
                   )}
                   <label className="block">
                     <span className={labelClass}>Message</span>
-                    <textarea
+                    <textarea autoCapitalize="sentences"
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       rows={4}
@@ -284,7 +284,7 @@ export default function InquireButton({
                   </label>
                   <label className="block">
                     <span className={labelClass}>Phone (optional)</span>
-                    <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+                    <input autoCapitalize="none" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
                   </label>
 
                   {error && <p className="text-xs text-red-600">{error}</p>}

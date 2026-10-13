@@ -41,7 +41,7 @@ export default function ProInviteCodeEntry({
       <form action={goToRedeemCode} className="mt-2 flex flex-col gap-2 sm:flex-row">
         <input type="hidden" name="return_to" value={returnTo} />
         {businessId && <input type="hidden" name="business" value={businessId} />}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="code"
           required

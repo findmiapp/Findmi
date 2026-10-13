@@ -98,12 +98,12 @@ export default async function AdminSettlementDetailPage({
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-ink">Reference</span>
-                <input type="text" name="reference" placeholder="Check #, transaction ID…" className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink" />
+                <input autoCapitalize="none" type="text" name="reference" placeholder="Check #, transaction ID…" className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink" />
               </label>
             </div>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Note</span>
-              <input type="text" name="note" className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink" />
+              <input autoCapitalize="sentences" type="text" name="note" className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink" />
             </label>
 
             <button type="submit" className="self-start rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600">

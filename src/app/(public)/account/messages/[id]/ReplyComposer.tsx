@@ -64,7 +64,7 @@ export default function ReplyComposer({
           ))}
         </select>
       )}
-      <textarea
+      <textarea autoCapitalize="sentences"
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={2}

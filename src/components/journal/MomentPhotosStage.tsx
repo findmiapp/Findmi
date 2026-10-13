@@ -381,7 +381,7 @@ function SectionBlock({
         </button>
       </div>
 
-      <input
+      <input autoCapitalize="words"
         type="text"
         value={title}
         maxLength={JOURNAL_SECTION_TITLE_MAX}
@@ -396,7 +396,7 @@ function SectionBlock({
       />
 
       {notesOpen ? (
-        <textarea
+        <textarea autoCapitalize="sentences"
           value={notes}
           maxLength={JOURNAL_SECTION_NOTES_MAX}
           onChange={(e) => setNotes(e.target.value)}
@@ -502,7 +502,7 @@ function NoteSheet({
         <div className="relative mx-auto aspect-square w-40 overflow-hidden rounded-2xl bg-mist">
           <Image src={item.previewUrl} alt="" fill unoptimized sizes="160px" className="object-cover" />
         </div>
-        <textarea
+        <textarea autoCapitalize="sentences"
           value={text}
           maxLength={JOURNAL_PHOTO_CAPTION_MAX}
           onChange={(e) => setText(e.target.value)}

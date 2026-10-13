@@ -77,7 +77,7 @@ export default async function AdminPlansPage({
 
               <label className="mt-3 block">
                 <span className="mb-1 block text-xs font-medium text-ink/60">Description (public copy)</span>
-                <textarea
+                <textarea autoCapitalize="sentences"
                   name={`description_${p.id}`}
                   defaultValue={p.description ?? ""}
                   rows={2}

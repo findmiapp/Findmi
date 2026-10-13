@@ -56,7 +56,7 @@ export default async function BdOrganizationsPage({ searchParams }: { searchPara
       <form method="get" className="mt-4 flex gap-2">
         {kind && <input type="hidden" name="kind" value={kind} />}
         {archived && <input type="hidden" name="archived" value="1" />}
-        <input
+        <input autoCapitalize="none"
           type="search"
           name="q"
           defaultValue={q}

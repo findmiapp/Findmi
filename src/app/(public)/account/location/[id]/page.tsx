@@ -654,7 +654,7 @@ export default async function ManageLocationPage({
                   <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
                   <label className="mt-2 block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Description</span>
-                    <textarea name="description" rows={4} defaultValue={location.description ?? ""} className={inputClass} />
+                    <textarea autoCapitalize="sentences" name="description" rows={4} defaultValue={location.description ?? ""} className={inputClass} />
                   </label>
                 </div>
                 <div className="border-t border-black/5 pt-4">
@@ -708,16 +708,16 @@ export default async function ManageLocationPage({
                   <span className="mb-1.5 block text-sm font-medium text-ink">
                     Website <span className="font-normal text-ink/40">(optional)</span>
                   </span>
-                  <input type="url" name="website_url" defaultValue={location.website_url ?? ""} placeholder="https://" className={inputClass} />
+                  <input autoCapitalize="none" type="url" name="website_url" defaultValue={location.website_url ?? ""} placeholder="https://" className={inputClass} />
                 </label>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-                    <input type="email" name="email" defaultValue={location.email ?? ""} className={inputClass} />
+                    <input autoCapitalize="none" type="email" name="email" defaultValue={location.email ?? ""} className={inputClass} />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
-                    <input type="tel" name="phone" defaultValue={location.phone ?? ""} className={inputClass} />
+                    <input autoCapitalize="none" type="tel" name="phone" defaultValue={location.phone ?? ""} className={inputClass} />
                   </label>
                 </div>
                 <button type="submit" className={`mt-1 w-fit ${primaryButtonClass}`}>
@@ -773,7 +773,7 @@ export default async function ManageLocationPage({
                     <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
                       <label className="block">
                         <span className="mb-1.5 block text-xs font-medium text-ink/70">Tell us where</span>
-                        <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
+                        <input autoCapitalize="words" type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                       </label>
                       <p className="mt-1.5 text-xs text-ink/45">
                         Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo;

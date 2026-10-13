@@ -96,7 +96,7 @@ function PermanentDeleteForm({
       <span className="text-xs font-semibold text-red-800">
         Type <span className="font-mono">{expected}</span> to permanently delete. This cannot be undone.
       </span>
-      <input
+      <input autoCapitalize="none"
         type="text"
         name="confirmText"
         value={confirmText}

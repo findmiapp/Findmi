@@ -100,7 +100,7 @@ export default async function BusinessProRequestPage({
             </p>
             <label className="flex flex-col gap-1">
               <span className="text-metadata font-semibold text-muted">What would you use Pro for? (optional)</span>
-              <textarea
+              <textarea autoCapitalize="sentences"
                 name="message"
                 rows={3}
                 maxLength={2000}

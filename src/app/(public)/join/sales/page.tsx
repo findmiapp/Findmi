@@ -83,7 +83,7 @@ export default async function JoinSalesPage({
 
           <label className="block">
             <span className={labelClass}>Contact name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="contact_name"
               required
@@ -93,7 +93,7 @@ export default async function JoinSalesPage({
           </label>
           <label className="block">
             <span className={labelClass}>Business / brand name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="business_name"
               required
@@ -103,7 +103,7 @@ export default async function JoinSalesPage({
           </label>
           <label className="block">
             <span className={labelClass}>Email</span>
-            <input
+            <input autoCapitalize="none"
               type="email"
               name="email"
               required
@@ -126,7 +126,7 @@ export default async function JoinSalesPage({
           </label>
           <label className="block">
             <span className={labelClass}>Regions / areas served or interested in</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="regions"
               required
@@ -140,7 +140,7 @@ export default async function JoinSalesPage({
           </label>
           <label className="block">
             <span className={labelClass}>Goals / what you want Findmi to help you accomplish</span>
-            <textarea
+            <textarea autoCapitalize="sentences"
               name="goals"
               required
               rows={4}
@@ -151,7 +151,7 @@ export default async function JoinSalesPage({
 
           <label className="block">
             <span className={labelClass}>Phone (optional)</span>
-            <input
+            <input autoCapitalize="none"
               type="tel"
               name="phone"
               inputMode="tel"
@@ -161,7 +161,7 @@ export default async function JoinSalesPage({
           </label>
           <label className="block">
             <span className={labelClass}>Website or Instagram (optional)</span>
-            <input
+            <input autoCapitalize="none"
               type="text"
               name="website_or_instagram"
               placeholder="yourbrand.com or @yourbrand"

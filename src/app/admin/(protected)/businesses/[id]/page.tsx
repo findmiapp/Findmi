@@ -757,7 +757,7 @@ export default async function EditBusinessPage({
             )}
 
             <form action={assignMember} className="mt-3 flex flex-wrap items-center gap-2">
-              <input
+              <input autoCapitalize="none"
                 type="email"
                 name="email"
                 required

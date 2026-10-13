@@ -124,7 +124,7 @@ export default async function AdminProAccessRequestsPage({
                     </label>
                     <label className="flex flex-1 flex-col gap-1">
                       <span className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Admin note (internal only)</span>
-                      <input
+                      <input autoCapitalize="sentences"
                         type="text"
                         name="admin_note"
                         placeholder="Optional"
@@ -139,7 +139,7 @@ export default async function AdminProAccessRequestsPage({
                     </button>
                   </form>
                   <form action={declineProAccessRequest.bind(null, r.id)} className="flex shrink-0 items-end gap-2">
-                    <input type="text" name="admin_note" placeholder="Optional note" className="rounded-lg border border-black/10 px-2.5 py-1.5 text-sm" />
+                    <input autoCapitalize="sentences" type="text" name="admin_note" placeholder="Optional note" className="rounded-lg border border-black/10 px-2.5 py-1.5 text-sm" />
                     <button
                       type="submit"
                       className="h-9 shrink-0 rounded-lg border border-black/10 px-3.5 text-xs font-bold uppercase tracking-wide text-ink/60 transition hover:bg-black/[0.03]"

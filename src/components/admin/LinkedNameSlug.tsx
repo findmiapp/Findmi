@@ -69,7 +69,7 @@ export function LinkedNameInput({
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-semibold text-ink">{label}</span>
-      <input
+      <input autoCapitalize="words"
         type="text"
         name={name}
         defaultValue={defaultValue ?? ""}
@@ -87,7 +87,7 @@ export function LinkedSlugInput({ label = "URL Slug", name = "slug", hint }: { l
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium text-ink">{label}</span>
-      <input type="text" name={name} value={slug} onChange={(e) => editSlug(e.target.value)} className={inputClass} />
+      <input autoCapitalize="none" type="text" name={name} value={slug} onChange={(e) => editSlug(e.target.value)} className={inputClass} />
       <span className="mt-1 block text-xs text-ink/45">
         {hint ?? "Auto-generated from the name. Edit only if you need a specific URL."}
       </span>

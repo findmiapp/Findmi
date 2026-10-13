@@ -76,7 +76,7 @@ export default function PlanCheckoutForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Business Name</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             name="business_name"
             required
@@ -85,7 +85,7 @@ export default function PlanCheckoutForm({
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Your Name</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             name="contact_name"
             required
@@ -95,7 +95,7 @@ export default function PlanCheckoutForm({
       </div>
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-        <input
+        <input autoCapitalize="none"
           type="email"
           name="contact_email"
           required

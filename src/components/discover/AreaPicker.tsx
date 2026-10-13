@@ -182,7 +182,7 @@ export default function AreaPicker({
             </div>
 
             <div className="p-4 pb-2">
-              <input
+              <input autoCapitalize="none"
                 ref={inputRef}
                 type="text"
                 value={query}
@@ -333,7 +333,7 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
       <p className="mt-1 text-xs text-ink/55">Notify me when Findmi launches here.</p>
 
       {!checkingSession && !signedIn && (
-        <input
+        <input autoCapitalize="none"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}

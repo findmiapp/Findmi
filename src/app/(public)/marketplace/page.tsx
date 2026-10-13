@@ -66,7 +66,7 @@ export default async function MarketplacePage({
 
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
         {category && <input type="hidden" name="category" value={category} />}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

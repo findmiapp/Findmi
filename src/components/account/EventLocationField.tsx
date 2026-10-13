@@ -210,7 +210,7 @@ export default function EventLocationField({
             <div className="flex flex-col gap-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Venue / location name</span>
-                <input
+                <input autoCapitalize="words"
                   type="text"
                   value={manual.venue_name}
                   onChange={(e) => setManual((m) => ({ ...m, venue_name: e.target.value }))}
@@ -219,7 +219,7 @@ export default function EventLocationField({
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Address</span>
-                <input
+                <input autoCapitalize="words"
                   type="text"
                   value={manual.address}
                   onChange={(e) => setManual((m) => ({ ...m, address: e.target.value }))}
@@ -229,7 +229,7 @@ export default function EventLocationField({
               <div className="grid grid-cols-3 gap-2">
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink/70">City</span>
-                  <input
+                  <input autoCapitalize="words"
                     type="text"
                     value={manual.city}
                     onChange={(e) => setManual((m) => ({ ...m, city: e.target.value }))}
@@ -238,7 +238,7 @@ export default function EventLocationField({
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink/70">State</span>
-                  <input
+                  <input autoCapitalize="words"
                     type="text"
                     value={manual.state}
                     onChange={(e) => setManual((m) => ({ ...m, state: e.target.value }))}
@@ -247,7 +247,7 @@ export default function EventLocationField({
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink/70">ZIP</span>
-                  <input
+                  <input autoCapitalize="none"
                     type="text"
                     value={manual.postal_code}
                     onChange={(e) => setManual((m) => ({ ...m, postal_code: e.target.value }))}

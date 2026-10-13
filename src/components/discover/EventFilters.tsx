@@ -47,7 +47,7 @@ export default function EventFilters({
 
       <label className="block">
         <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Location</span>
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="location"
           defaultValue={defaultLocation}

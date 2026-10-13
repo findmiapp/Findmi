@@ -91,7 +91,7 @@ export default function AdminGlobalSearch() {
         <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
         <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
-      <input
+      <input autoCapitalize="none"
         type="search"
         value={query}
         onChange={(e) => {

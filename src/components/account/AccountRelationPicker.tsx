@@ -134,7 +134,7 @@ export function AccountRelationField({
         </div>
       ) : (
         <div className="relative">
-          <input
+          <input autoCapitalize="none"
             type="text"
             value={query}
             onChange={(e) => {
@@ -190,7 +190,7 @@ export function AccountEntitySearchAdd({
 
   return (
     <div className="relative">
-      <input
+      <input autoCapitalize="none"
         ref={inputRef}
         type="text"
         value={query}

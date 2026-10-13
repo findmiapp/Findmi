@@ -50,7 +50,7 @@ export default async function AdminConversationsPage({
 
       <form action="/admin/conversations" method="GET" className="mt-4 flex gap-2">
         {type !== "all" && <input type="hidden" name="type" value={type} />}
-        <input
+        <input autoCapitalize="none"
           type="search"
           name="q"
           defaultValue={search ?? ""}

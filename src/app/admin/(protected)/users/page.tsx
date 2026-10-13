@@ -34,7 +34,7 @@ export default async function AdminUsersPage({
       )}
 
       <form className="mt-4" action="/admin/users">
-        <input
+        <input autoCapitalize="none"
           type="search"
           name="q"
           defaultValue={q ?? ""}

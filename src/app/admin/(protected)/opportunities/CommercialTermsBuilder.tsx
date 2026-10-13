@@ -182,7 +182,7 @@ function MoneyInput({
   return (
     <div className="relative">
       {showDollar && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/45">$</span>}
-      <input
+      <input autoCapitalize="none"
         id={id}
         type="text"
         inputMode="decimal"
@@ -215,7 +215,7 @@ function QuantityUnitPair({
   return (
     <div>
       <div className="grid grid-cols-[minmax(0,6rem)_minmax(0,1fr)] gap-2">
-        <input
+        <input autoCapitalize="none"
           id={fieldId(prefix, "quantity")}
           type="text"
           inputMode="decimal"
@@ -245,7 +245,7 @@ function QuantityUnitPair({
       <FieldError message={errors.quantity ?? errors.unit} />
       {component.unit === "custom" && (
         <div className="mt-2">
-          <input
+          <input autoCapitalize="words"
             id={fieldId(prefix, "custom_unit_label")}
             type="text"
             aria-label="Custom unit"
@@ -336,7 +336,7 @@ function MonetaryFields({
       {component.currency_open ? (
         <label className="block">
           <span className={labelClass}>Currency</span>
-          <input
+          <input autoCapitalize="none"
             id={fieldId(prefix, "currency")}
             type="text"
             value={component.currency}
@@ -409,7 +409,7 @@ function InKindFields({
         <span className={labelClass}>
           What Is Being Provided?{component.in_kind_category === "other" ? " (required for Other)" : ""}
         </span>
-        <input
+        <input autoCapitalize="sentences"
           id={fieldId(prefix, "in_kind_description")}
           type="text"
           value={component.in_kind_description}
@@ -647,7 +647,7 @@ function OptionCard({
       {chrome.showHeader && (
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className="self-start rounded-full bg-black/5 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink/50">Option {index + 1}</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             aria-label={`Option ${index + 1} name`}
             value={option.name}
@@ -668,7 +668,7 @@ function OptionCard({
 
       {option.commercial_mode === "custom" && (
         <div className="mt-3">
-          <textarea
+          <textarea autoCapitalize="sentences"
             aria-label="Custom terms"
             value={option.custom_terms_note}
             onChange={(e) => onPatch({ custom_terms_note: e.target.value })}

@@ -116,7 +116,7 @@ export default async function AdminProductsPage({
         {!needsReview && !marketplaceReview && lifecycleStatus && lifecycleStatus !== "active" && (
           <input type="hidden" name="status" value={lifecycleStatus} />
         )}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

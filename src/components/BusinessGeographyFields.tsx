@@ -93,7 +93,7 @@ export default function BusinessGeographyFields({
         <div className="grid grid-cols-2 gap-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-ink/60">City</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="city"
               required
@@ -104,7 +104,7 @@ export default function BusinessGeographyFields({
           </label>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-ink/60">State</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="state"
               required

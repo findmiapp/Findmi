@@ -90,7 +90,7 @@ export default async function AdminActivationsPage({
 
       <form method="get" className="mt-4">
         {phaseTab !== "all" && <input type="hidden" name="phase" value={phaseTab} />}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

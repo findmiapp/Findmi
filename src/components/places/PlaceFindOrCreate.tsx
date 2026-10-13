@@ -196,26 +196,26 @@ function PlaceCreatePanel({
         <>
           <label className="block">
             <span className="mb-1 block text-metadata font-medium text-secondary">Place name</span>
-            <input type="text" value={form.name} onChange={set("name")} onKeyDown={onEnter} className={fieldClass} />
+            <input autoCapitalize="words" type="text" value={form.name} onChange={set("name")} onKeyDown={onEnter} className={fieldClass} />
           </label>
           <label className="block">
             <span className="mb-1 block text-metadata font-medium text-secondary">Street address</span>
-            <input type="text" value={form.address} onChange={set("address")} onKeyDown={onEnter} autoComplete="street-address" autoFocus className={fieldClass} />
+            <input autoCapitalize="words" type="text" value={form.address} onChange={set("address")} onKeyDown={onEnter} autoComplete="street-address" autoFocus className={fieldClass} />
           </label>
           <div className="grid grid-cols-[minmax(0,1fr)_4.5rem] gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_6.5rem]">
             <label className="block">
               <span className="mb-1 block text-metadata font-medium text-secondary">City</span>
-              <input type="text" value={form.city} onChange={set("city")} onKeyDown={onEnter} autoComplete="address-level2" className={fieldClass} />
+              <input autoCapitalize="words" type="text" value={form.city} onChange={set("city")} onKeyDown={onEnter} autoComplete="address-level2" className={fieldClass} />
             </label>
             <label className="block">
               <span className="mb-1 block text-metadata font-medium text-secondary">State</span>
-              <input type="text" value={form.state} onChange={set("state")} onKeyDown={onEnter} autoComplete="address-level1" className={fieldClass} />
+              <input autoCapitalize="words" type="text" value={form.state} onChange={set("state")} onKeyDown={onEnter} autoComplete="address-level1" className={fieldClass} />
             </label>
             <label className="col-span-2 block sm:col-span-1">
               <span className="mb-1 block text-metadata font-medium text-secondary">
                 ZIP <span className="font-normal text-subtle">optional</span>
               </span>
-              <input type="text" inputMode="numeric" value={form.postal_code} onChange={set("postal_code")} onKeyDown={onEnter} autoComplete="postal-code" className={fieldClass} />
+              <input autoCapitalize="none" type="text" inputMode="numeric" value={form.postal_code} onChange={set("postal_code")} onKeyDown={onEnter} autoComplete="postal-code" className={fieldClass} />
             </label>
           </div>
           {error && <p className="text-metadata text-red-600">{error}</p>}

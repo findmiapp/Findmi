@@ -51,7 +51,7 @@ export default async function AdminOnboardingPage({
       </div>
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

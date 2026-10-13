@@ -36,7 +36,7 @@ export default function ArchiveSearchField({
 
   return (
     <div className="relative">
-      <input
+      <input autoCapitalize="none"
         ref={inputRef}
         type="text"
         name={name}

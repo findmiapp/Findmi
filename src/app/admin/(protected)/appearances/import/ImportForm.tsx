@@ -230,7 +230,7 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Paste Schedule</span>
-          <textarea
+          <textarea autoCapitalize="sentences"
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={10}
@@ -318,7 +318,7 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         value={row.title}
                         onChange={(e) => updateRow(row.key, { title: e.target.value })}
@@ -385,28 +385,28 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
                     </div>
 
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         value={row.venue_name}
                         onChange={(e) => updateRow(row.key, { venue_name: e.target.value })}
                         placeholder="Venue"
                         className={`${smallInputClass} col-span-2 sm:col-span-1`}
                       />
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         value={row.address}
                         onChange={(e) => updateRow(row.key, { address: e.target.value })}
                         placeholder="Address"
                         className={smallInputClass}
                       />
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         value={row.city}
                         onChange={(e) => updateRow(row.key, { city: e.target.value })}
                         placeholder="City"
                         className={smallInputClass}
                       />
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         value={row.state}
                         onChange={(e) => updateRow(row.key, { state: e.target.value })}

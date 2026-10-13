@@ -43,7 +43,7 @@ export default function PasswordField({
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium text-ink">{label}</span>
       <div className="relative">
-        <input
+        <input autoCapitalize="none"
           type={visible ? "text" : "password"}
           name={name}
           required={required}

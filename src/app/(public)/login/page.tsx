@@ -37,11 +37,11 @@ export default async function LoginPage({
           <input type="hidden" name="next" value={safeNext} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-            <input type="email" name="email" required autoComplete="email" className={inputClass} />
+            <input autoCapitalize="none" type="email" name="email" required autoComplete="email" className={inputClass} />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Password</span>
-            <input type="password" name="password" required autoComplete="current-password" className={inputClass} />
+            <input autoCapitalize="none" type="password" name="password" required autoComplete="current-password" className={inputClass} />
           </label>
           <div className="-mt-1 text-right">
             <Link

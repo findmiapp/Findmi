@@ -88,7 +88,7 @@ export default function FindOrCreatePicker<T>({
 
   return (
     <div>
-      <input
+      <input autoCapitalize="none"
         type="text"
         value={query}
         autoFocus={autoFocus}

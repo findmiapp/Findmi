@@ -50,7 +50,7 @@ export default function JournalQuickNote({
   return (
     <div>
       <p className="mb-2 text-xs font-bold uppercase tracking-wide text-findmi-700">Quick Note</p>
-      <textarea
+      <textarea autoCapitalize="sentences"
         value={notes}
         onChange={(e) => {
           setNotes(e.target.value);

@@ -143,7 +143,7 @@ export default function AppearanceFieldsForm({
     <form action={action} onSubmit={handleSubmit} className="flex flex-col gap-2">
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-ink/60">Name</span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name="title"
           required
@@ -194,7 +194,7 @@ export default function AppearanceFieldsForm({
       )}
       <div className={`mt-1 flex-col gap-2 ${!linked && manualOpen ? "flex" : "hidden"}`}>
         <span className="text-xs font-semibold uppercase tracking-wide text-ink/35">Venue details</span>
-        <input
+        <input autoCapitalize="words"
           ref={venueNameRef}
           type="text"
           name="venue_name"
@@ -202,7 +202,7 @@ export default function AppearanceFieldsForm({
           placeholder="Venue Name"
           className={inputClass}
         />
-        <input
+        <input autoCapitalize="words"
           ref={addressRef}
           type="text"
           name="address"
@@ -211,11 +211,11 @@ export default function AppearanceFieldsForm({
           className={inputClass}
         />
         <div className="grid grid-cols-2 gap-2">
-          <input ref={cityRef} type="text" name="city" defaultValue={defaultValues.city} placeholder="City" className={inputClass} />
-          <input ref={stateRef} type="text" name="state" defaultValue={defaultValues.state} placeholder="State" className={inputClass} />
+          <input autoCapitalize="words" ref={cityRef} type="text" name="city" defaultValue={defaultValues.city} placeholder="City" className={inputClass} />
+          <input autoCapitalize="words" ref={stateRef} type="text" name="state" defaultValue={defaultValues.state} placeholder="State" className={inputClass} />
         </div>
       </div>
-      <input
+      <input autoCapitalize="none"
         type="url"
         name="external_url"
         defaultValue={defaultValues.external_url}

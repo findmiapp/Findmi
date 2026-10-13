@@ -36,7 +36,7 @@ export default function RefundForm({
         required
         className="w-32 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs text-ink"
       />
-      <input
+      <input autoCapitalize="sentences"
         type="text"
         name="reason"
         placeholder="Reason (optional)"

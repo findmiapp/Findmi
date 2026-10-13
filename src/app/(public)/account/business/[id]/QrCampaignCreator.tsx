@@ -158,7 +158,7 @@ export default function QrCampaignCreator(
       <div className="flex flex-col gap-3">
         <label className="block">
           <span className="mb-1.5 block text-microcopy font-semibold text-muted">Campaign Name</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}

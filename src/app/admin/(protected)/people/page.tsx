@@ -30,7 +30,7 @@ export default async function AdminPeoplePage({
       )}
 
       <form method="get" className="mt-4 flex gap-2">
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

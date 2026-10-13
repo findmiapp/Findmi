@@ -29,7 +29,7 @@ export default async function AdminOrdersPage({
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Orders</h1>
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

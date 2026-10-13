@@ -55,7 +55,7 @@ export default async function ResetPasswordPage({
           <input type="hidden" name="next" value={safeNext} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">New password</span>
-            <input
+            <input autoCapitalize="none"
               type="password"
               name="password"
               required
@@ -66,7 +66,7 @@ export default async function ResetPasswordPage({
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Confirm password</span>
-            <input
+            <input autoCapitalize="none"
               type="password"
               name="confirm"
               required

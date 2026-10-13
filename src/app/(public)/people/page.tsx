@@ -23,7 +23,7 @@ export default async function PeoplePage({
       <p className="mt-2 text-ink/60">The founders, owners, makers, and creators behind Findmi brands.</p>
 
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

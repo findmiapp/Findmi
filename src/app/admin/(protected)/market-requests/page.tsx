@@ -173,7 +173,7 @@ export default async function AdminMarketRequestsPage({
                         </summary>
                         <form action={correctMarketRequestText} className="mt-1.5 flex items-center gap-1.5">
                           <input type="hidden" name="request_id" value={r.id} />
-                          <input
+                          <input autoCapitalize="words"
                             type="text"
                             name="canonical_text"
                             defaultValue={r.canonical_text ?? r.requested_text}
@@ -250,7 +250,7 @@ export default async function AdminMarketRequestsPage({
                   <form action={rejectMarketRequestGroup} className="flex flex-col gap-2 rounded-xl border border-black/10 p-3 sm:col-span-2">
                     <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Reject</p>
                     {requestIdInputs}
-                    <textarea
+                    <textarea autoCapitalize="sentences"
                       name="admin_note"
                       rows={2}
                       placeholder="Optional note"
@@ -296,7 +296,7 @@ export default async function AdminMarketRequestsPage({
                       <div className="grid gap-2 sm:grid-cols-2">
                         <label className="block">
                           <span className="mb-1 block text-xs font-medium text-ink/60">Area Name</span>
-                          <input
+                          <input autoCapitalize="words"
                             type="text"
                             name="name"
                             required
@@ -306,7 +306,7 @@ export default async function AdminMarketRequestsPage({
                         </label>
                         <label className="block">
                           <span className="mb-1 block text-xs font-medium text-ink/60">Consumer Display Name</span>
-                          <input
+                          <input autoCapitalize="words"
                             type="text"
                             name="display_name"
                             placeholder={group.displayText}
@@ -316,7 +316,7 @@ export default async function AdminMarketRequestsPage({
                       </div>
                       <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink/60">Aliases (comma-separated, optional)</span>
-                        <input
+                        <input autoCapitalize="words"
                           type="text"
                           name="aliases"
                           placeholder="e.g. SI, Staten Isl."
@@ -348,7 +348,7 @@ export default async function AdminMarketRequestsPage({
                       <div className="grid gap-2 sm:grid-cols-2">
                         <label className="block">
                           <span className="mb-1 block text-xs font-medium text-ink/60">Internal / Admin Name</span>
-                          <input
+                          <input autoCapitalize="words"
                             type="text"
                             name="name"
                             required
@@ -358,7 +358,7 @@ export default async function AdminMarketRequestsPage({
                         </label>
                         <label className="block">
                           <span className="mb-1 block text-xs font-medium text-ink/60">Consumer Display Name</span>
-                          <input
+                          <input autoCapitalize="words"
                             type="text"
                             name="display_name"
                             placeholder={group.displayText}
@@ -368,7 +368,7 @@ export default async function AdminMarketRequestsPage({
                       </div>
                       <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink/60">URL Slug (optional)</span>
-                        <input
+                        <input autoCapitalize="none"
                           type="text"
                           name="slug"
                           placeholder="Auto-generated from name"
@@ -377,7 +377,7 @@ export default async function AdminMarketRequestsPage({
                       </label>
                       <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink/60">Description (optional)</span>
-                        <textarea
+                        <textarea autoCapitalize="sentences"
                           name="description"
                           rows={2}
                           className="w-full resize-y rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none"

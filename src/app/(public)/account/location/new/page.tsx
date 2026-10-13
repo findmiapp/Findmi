@@ -115,7 +115,7 @@ export default async function AddLocationPage({
           {business && <input type="hidden" name="business_id" value={business.id} />}
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Venue name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="name"
               required
@@ -127,7 +127,7 @@ export default async function AddLocationPage({
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Address</span>
-            <input type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
+            <input autoCapitalize="words" type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
           </label>
 
           {/* Geography Foundation Pass 2 — city/state now drive a live

@@ -60,7 +60,7 @@ export default async function BdContactsPage({ searchParams }: { searchParams: P
       <form method="get" className="mt-4 flex gap-2">
         {organizationId && <input type="hidden" name="organization" value={organizationId} />}
         {archived && <input type="hidden" name="archived" value="1" />}
-        <input
+        <input autoCapitalize="none"
           type="search"
           name="q"
           defaultValue={q}

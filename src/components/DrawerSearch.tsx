@@ -73,7 +73,7 @@ export default function DrawerSearch({ onNavigate }: { onNavigate: () => void })
     <div className="shrink-0 border-b border-black/5 px-3 py-2.5">
       <div className="flex items-center gap-2 rounded-full border border-black/10 bg-black/[0.02] px-3.5 py-2">
         <SearchGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-        <input
+        <input autoCapitalize="none"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           type="text"

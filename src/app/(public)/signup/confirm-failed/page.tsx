@@ -46,7 +46,7 @@ export default async function ConfirmFailedPage({
           <input type="hidden" name="next" value={safeNext} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-            <input type="email" name="email" required placeholder="you@example.com" className={inputClass} />
+            <input autoCapitalize="none" type="email" name="email" required placeholder="you@example.com" className={inputClass} />
           </label>
           <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
             Send a new link

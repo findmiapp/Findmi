@@ -55,7 +55,7 @@ export default async function CheckEmailPage({
         <p className="text-sm font-semibold text-ink">Didn&rsquo;t get it, or the link expired?</p>
         <form action={resendConfirmation} className="mt-3 flex flex-col gap-3 sm:flex-row">
           <input type="hidden" name="next" value={safeNext} />
-          <input
+          <input autoCapitalize="none"
             type="email"
             name="email"
             required

@@ -357,7 +357,7 @@ export default function ParticipationRoster({
               <span className="mb-1 block text-xs font-medium text-ink/60">
                 What they&rsquo;ll have at this event
               </span>
-              <input
+              <input autoCapitalize="sentences"
                 type="text"
                 name={`offering_text_${row.business_id}`}
                 value={row.offering_text}

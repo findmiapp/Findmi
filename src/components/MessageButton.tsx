@@ -403,7 +403,7 @@ export default function MessageButton({
 
                   {MESSAGING && mode === "message" && (
                     <div className="flex flex-col gap-3">
-                      <textarea
+                      <textarea autoCapitalize="sentences"
                         value={body}
                         onChange={(e) => setBody(e.target.value)}
                         rows={4}
@@ -531,7 +531,7 @@ export default function MessageButton({
                           </span>
                         </p>
                       )}
-                      <textarea
+                      <textarea autoCapitalize="sentences"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         rows={3}
@@ -558,7 +558,7 @@ export default function MessageButton({
 
                   {mode === "invite" && (
                     <div className="flex flex-col gap-3">
-                      <textarea
+                      <textarea autoCapitalize="sentences"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         rows={3}

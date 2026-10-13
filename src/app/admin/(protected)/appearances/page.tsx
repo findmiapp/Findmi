@@ -114,7 +114,7 @@ export default async function AdminAppearancesPage({
 
       <form method="get" className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
         {reviewed && <input type="hidden" name="reviewed" value={reviewedFilter} />}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name="q"
           defaultValue={q}

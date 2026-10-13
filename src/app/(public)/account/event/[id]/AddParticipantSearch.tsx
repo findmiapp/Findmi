@@ -70,7 +70,7 @@ export default function AddParticipantSearch({
         <span className="mb-1 block text-xs font-medium text-ink/60">
           Note to include <span className="font-normal text-ink/40">(optional)</span>
         </span>
-        <textarea
+        <textarea autoCapitalize="sentences"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}

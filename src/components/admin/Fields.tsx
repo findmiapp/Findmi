@@ -3,6 +3,7 @@
 // library needed. Consistent full-width, mobile-friendly sizing (text-base
 // avoids iOS Safari auto-zoom on focus) and human-language labels.
 
+import { capitalizationFor, type Capitalization } from "@/lib/input-capitalization";
 import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 
 const inputClass =
@@ -35,6 +36,7 @@ export function TextField({
   hint,
   type = "text",
   onChange,
+  autoCapitalize,
 }: {
   label: string;
   name: string;
@@ -43,6 +45,9 @@ export function TextField({
   required?: boolean;
   hint?: string;
   type?: "text" | "email" | "tel" | "url" | "password" | "date";
+  /** VCL C1 — keyboard hint only (never changes the value). Defaults from
+   * the field's name/type (lib/input-capitalization); none when unknown. */
+  autoCapitalize?: Capitalization;
   /** Optional — lets a parent that renders a live preview (e.g.
    * BulletinForm) track this field's current value too. The input stays
    * uncontrolled (defaultValue) for plain form posting; every existing
@@ -52,6 +57,7 @@ export function TextField({
   return (
     <Wrap label={label} hint={hint}>
       <input
+        autoCapitalize={autoCapitalize ?? capitalizationFor(name, type)}
         type={type}
         name={name}
         defaultValue={defaultValue ?? ""}
@@ -166,18 +172,22 @@ export function TextareaField({
   rows = 4,
   hint,
   onChange,
+  autoCapitalize,
 }: {
   label: string;
   name: string;
   defaultValue?: string | null;
   rows?: number;
   hint?: string;
+  /** VCL C1 — keyboard hint only; prose by default (sentences). */
+  autoCapitalize?: Capitalization;
   /** Optional — same live-preview mirroring as TextField's onChange. */
   onChange?: (value: string) => void;
 }) {
   return (
     <Wrap label={label} hint={hint}>
       <textarea
+        autoCapitalize={autoCapitalize ?? capitalizationFor(name, "textarea") ?? "sentences"}
         name={name}
         defaultValue={defaultValue ?? ""}
         rows={rows}

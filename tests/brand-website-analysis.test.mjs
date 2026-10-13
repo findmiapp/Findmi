@@ -397,7 +397,7 @@ test("creation: optional short_description (≤160), preserved on failure, writt
 
 test("create form: editable/clearable short description, prefill banner, authorization never prefilled by analysis", () => {
   const page = readFileSync("src/app/(public)/account/business/new/page.tsx", "utf8");
-  assert.match(page, /<textarea\s+name="short_description"\s+rows=\{2\}\s+maxLength=\{SHORT_DESCRIPTION_MAX_LENGTH\}\s+defaultValue=\{values\.shortDescription\}/);
+  assert.match(page, /<textarea\s+autoCapitalize="sentences"\s+name="short_description"\s+rows=\{2\}\s+maxLength=\{SHORT_DESCRIPTION_MAX_LENGTH\}\s+defaultValue=\{values\.shortDescription\}/);
   assert.match(page, /shortDescription: fromDraft \? \(fromDraft\.sd \?\? ""\) : \(submittedShortDescription \?\? ""\)/);
   assert.doesNotMatch(page, /name="short_description"[^>]*required/);
   assert.match(page, /We filled in some details from \$\{prefillHost \?\? "your website"\}\. Check everything before adding your brand\./);

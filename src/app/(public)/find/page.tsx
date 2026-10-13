@@ -233,7 +233,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           whichever of those the visitor already had selected. */}
       <form method="get" className="mt-3 flex flex-col gap-2">
         <div className="flex gap-2">
-          <input
+          <input autoCapitalize="none"
             type="text"
             name="q"
             defaultValue={q ?? ""}

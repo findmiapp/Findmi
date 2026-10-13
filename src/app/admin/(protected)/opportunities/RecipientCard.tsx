@@ -76,7 +76,7 @@ export default function RecipientCard({ r, listingId, manageable }: { r: AdminOp
           {r.internal_notes && <span className="ml-1 font-normal text-ink/45 group-open:hidden">— {r.internal_notes.slice(0, 80)}{r.internal_notes.length > 80 ? "…" : ""}</span>}
         </summary>
         <form action={saveRecipientNotes.bind(null, listingId, r.id)} className="mt-2 flex flex-col gap-2">
-          <textarea
+          <textarea autoCapitalize="sentences"
             name="internal_notes"
             defaultValue={r.internal_notes ?? ""}
             rows={2}

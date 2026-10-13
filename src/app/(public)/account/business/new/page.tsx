@@ -308,7 +308,7 @@ export default async function AddBusinessPage({
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               name="name"
               required
@@ -346,7 +346,7 @@ export default async function AddBusinessPage({
             <span className="mb-1.5 block text-body font-medium text-primary">
               Website <span className="font-normal text-subtle">(optional)</span>
             </span>
-            <input
+            <input autoCapitalize="none"
               type="url"
               name="website_url"
               defaultValue={values.websiteUrl}
@@ -358,7 +358,7 @@ export default async function AddBusinessPage({
             <span className="mb-1.5 block text-body font-medium text-primary">
               Instagram <span className="font-normal text-subtle">(optional)</span>
             </span>
-            <input
+            <input autoCapitalize="none"
               type="url"
               name="instagram_url"
               defaultValue={values.instagramUrl}
@@ -370,7 +370,7 @@ export default async function AddBusinessPage({
             <span className="mb-1.5 block text-body font-medium text-primary">
               Short description <span className="font-normal text-subtle">(optional)</span>
             </span>
-            <textarea
+            <textarea autoCapitalize="sentences"
               name="short_description"
               rows={2}
               maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
@@ -385,7 +385,7 @@ export default async function AddBusinessPage({
               <span className="mb-1.5 block text-body font-medium text-primary">
                 About <span className="font-normal text-subtle">(optional)</span>
               </span>
-              <textarea
+              <textarea autoCapitalize="sentences"
                 name="description"
                 rows={5}
                 maxLength={ABOUT_MAX_LENGTH}
@@ -504,7 +504,7 @@ export default async function AddBusinessPage({
                 <summary className="cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 [&::-webkit-details-marker]:hidden">
                   Have a Pro Invite Code?
                 </summary>
-                <input
+                <input autoCapitalize="none"
                   type="text"
                   name="invite"
                   placeholder="Enter Invite Code"
@@ -532,7 +532,7 @@ export default async function AddBusinessPage({
             <summary className="cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 [&::-webkit-details-marker]:hidden">
               Have a Referral Code?
             </summary>
-            <input
+            <input autoCapitalize="none"
               type="text"
               name="ref"
               defaultValue={ref ?? ""}

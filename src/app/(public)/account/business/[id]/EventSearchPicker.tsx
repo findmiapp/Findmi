@@ -112,7 +112,7 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
           <span className="mb-1 block text-xs font-medium text-ink/60">
             Note to organizer <span className="font-normal text-ink/40">Optional</span>
           </span>
-          <textarea
+          <textarea autoCapitalize="sentences"
             name="note"
             rows={2}
             placeholder="e.g. We'd love to bring our food truck…"
@@ -133,7 +133,7 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
   return (
     <div>
       <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/40">Search Findmi</span>
-      <input
+      <input autoCapitalize="none"
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}

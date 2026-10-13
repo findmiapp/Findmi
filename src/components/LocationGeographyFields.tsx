@@ -74,13 +74,13 @@ export default function LocationGeographyFields({
           <span className="mb-1.5 block text-sm font-medium text-ink">
             City {cityStateOptionalLabel && <span className="font-normal text-ink/40">(optional)</span>}
           </span>
-          <input type="text" name="city" value={city} onChange={(e) => setCity(e.target.value)} className={inputClass} />
+          <input autoCapitalize="words" type="text" name="city" value={city} onChange={(e) => setCity(e.target.value)} className={inputClass} />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
             State {cityStateOptionalLabel && <span className="font-normal text-ink/40">(optional)</span>}
           </span>
-          <input type="text" name="state" value={state} onChange={(e) => setState(e.target.value)} className={inputClass} />
+          <input autoCapitalize="words" type="text" name="state" value={state} onChange={(e) => setState(e.target.value)} className={inputClass} />
         </label>
       </div>
 

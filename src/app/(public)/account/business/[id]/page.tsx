@@ -1799,7 +1799,7 @@ export default async function ManageBusinessPage({
             <form action={profileAction} className="flex flex-col gap-4">
               <label className="block">
                 <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
-                <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
+                <input autoCapitalize="words" type="text" name="name" required defaultValue={business.name} className={inputClass} />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-body font-medium text-primary">Category</span>
@@ -1816,7 +1816,7 @@ export default async function ManageBusinessPage({
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-body font-medium text-primary">Short description</span>
-                <textarea
+                <textarea autoCapitalize="sentences"
                   name="short_description"
                   rows={3}
                   defaultValue={business.short_description ?? ""}
@@ -1842,15 +1842,15 @@ export default async function ManageBusinessPage({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <label className="block">
                   <span className="mb-1.5 block text-body font-medium text-primary">City</span>
-                  <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
+                  <input autoCapitalize="words" type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-body font-medium text-primary">State</span>
-                  <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
+                  <input autoCapitalize="words" type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-body font-medium text-primary">ZIP Code</span>
-                  <input type="text" name="postal_code" defaultValue={business.postal_code ?? ""} className={inputClass} />
+                  <input autoCapitalize="none" type="text" name="postal_code" defaultValue={business.postal_code ?? ""} className={inputClass} />
                 </label>
               </div>
               {/* Free/Pro Entitlement Realignment pass — the previous
@@ -1874,7 +1874,7 @@ export default async function ManageBusinessPage({
               <p className="mt-2 text-label font-bold uppercase text-subtle">About</p>
               <label className="block">
                 <span className="mb-1.5 block text-body font-medium text-primary">About / full description</span>
-                <textarea
+                <textarea autoCapitalize="sentences"
                   name="description"
                   rows={5}
                   defaultValue={business.description ?? ""}
@@ -1884,7 +1884,7 @@ export default async function ManageBusinessPage({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1.5 block text-body font-medium text-primary">Website</span>
-                  <input
+                  <input autoCapitalize="none"
                     type="url"
                     name="website_url"
                     defaultValue={business.website_url ?? ""}
@@ -1894,7 +1894,7 @@ export default async function ManageBusinessPage({
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-body font-medium text-primary">Instagram</span>
-                  <input
+                  <input autoCapitalize="none"
                     type="url"
                     name="instagram_url"
                     defaultValue={business.instagram_url ?? ""}
@@ -1912,7 +1912,7 @@ export default async function ManageBusinessPage({
                   city/state/ZIP/About above. */}
               <label className="block">
                 <span className="mb-1.5 block text-body font-medium text-primary">Country</span>
-                <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
+                <input autoCapitalize="words" type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
               </label>
 
               <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
@@ -1961,17 +1961,17 @@ export default async function ManageBusinessPage({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1.5 block text-body font-medium text-primary">Email</span>
-                    <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
+                    <input autoCapitalize="none" type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-body font-medium text-primary">Phone</span>
-                    <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
+                    <input autoCapitalize="none" type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
                   </label>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1.5 block text-body font-medium text-primary">Facebook</span>
-                    <input
+                    <input autoCapitalize="none"
                       type="url"
                       name="facebook_url"
                       defaultValue={business.facebook_url ?? ""}
@@ -1981,7 +1981,7 @@ export default async function ManageBusinessPage({
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-body font-medium text-primary">TikTok</span>
-                    <input
+                    <input autoCapitalize="none"
                       type="url"
                       name="tiktok_url"
                       defaultValue={business.tiktok_url ?? ""}
@@ -2010,7 +2010,7 @@ export default async function ManageBusinessPage({
                   <div className="announcement-fields mt-3 flex flex-col gap-3 transition-opacity">
                     <label className="block">
                       <span className="mb-1.5 block text-body font-medium text-primary">Announcement label</span>
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         name="bulletin_label"
                         defaultValue={business.bulletin_label ?? ""}
@@ -2020,7 +2020,7 @@ export default async function ManageBusinessPage({
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-body font-medium text-primary">Announcement heading</span>
-                      <input
+                      <input autoCapitalize="words"
                         type="text"
                         name="bulletin_heading"
                         defaultValue={business.bulletin_heading ?? ""}
@@ -2029,7 +2029,7 @@ export default async function ManageBusinessPage({
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-body font-medium text-primary">Announcement message</span>
-                      <textarea
+                      <textarea autoCapitalize="sentences"
                         name="bulletin_body"
                         rows={3}
                         defaultValue={business.bulletin_body ?? ""}
@@ -2038,7 +2038,7 @@ export default async function ManageBusinessPage({
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-body font-medium text-primary">Announcement link (optional)</span>
-                      <input
+                      <input autoCapitalize="none"
                         type="text"
                         name="bulletin_url"
                         defaultValue={business.bulletin_url ?? ""}
@@ -3171,7 +3171,7 @@ export default async function ManageBusinessPage({
                             </option>
                           ))}
                         </select>
-                        <input
+                        <input autoCapitalize="sentences"
                           type="text"
                           name="internal_note"
                           defaultValue={item.internalNote ?? ""}

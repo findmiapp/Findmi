@@ -109,7 +109,7 @@ export default function BusinessesFilterBar({
   return (
     <div>
       <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <input
+        <input autoCapitalize="none"
           type="search"
           name="q"
           value={q}

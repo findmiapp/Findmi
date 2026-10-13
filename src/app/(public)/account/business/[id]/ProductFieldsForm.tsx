@@ -58,7 +58,7 @@ export default function ProductFieldsForm({
     <form action={action} className="flex flex-col gap-2">
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-ink/60">Product name</span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name="name"
           required
@@ -71,7 +71,7 @@ export default function ProductFieldsForm({
         <span className="mb-1 block text-xs font-medium text-ink/60">
           Description <span className="font-normal text-ink/40">Optional</span>
         </span>
-        <textarea name="description" defaultValue={defaultValues.description} rows={3} className={inputClass} />
+        <textarea autoCapitalize="sentences" name="description" defaultValue={defaultValues.description} rows={3} className={inputClass} />
       </label>
       <MemberImageField
         businessId={businessId}
@@ -115,7 +115,7 @@ export default function ProductFieldsForm({
         <span className="mb-1 block text-xs font-medium text-ink/60">
           Price label <span className="font-normal text-ink/40">Optional</span>
         </span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name="price_label"
           defaultValue={defaultValues.price_label}
@@ -127,7 +127,7 @@ export default function ProductFieldsForm({
         <span className="mb-1 block text-xs font-medium text-ink/60">
           Purchase link <span className="font-normal text-ink/40">Optional</span>
         </span>
-        <input
+        <input autoCapitalize="none"
           type="url"
           name="external_purchase_url"
           defaultValue={defaultValues.external_purchase_url}

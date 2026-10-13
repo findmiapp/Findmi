@@ -301,7 +301,7 @@ export default function ClaimButton({
               <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink">Full name</span>
-                  <input
+                  <input autoCapitalize="words"
                     type="text"
                     required
                     value={fullNameInput}
@@ -311,7 +311,7 @@ export default function ClaimButton({
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink">Email</span>
-                  <input
+                  <input autoCapitalize="none"
                     type="email"
                     required
                     value={emailInput}
@@ -321,7 +321,7 @@ export default function ClaimButton({
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink">Phone</span>
-                  <input
+                  <input autoCapitalize="none"
                     type="tel"
                     required
                     value={phoneInput}
@@ -333,7 +333,7 @@ export default function ClaimButton({
                   <span className="mb-1.5 block text-xs font-medium text-ink">
                     How are you connected to this {noun}? <span className="font-normal text-ink/40">(optional)</span>
                   </span>
-                  <textarea
+                  <textarea autoCapitalize="sentences"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     rows={3}

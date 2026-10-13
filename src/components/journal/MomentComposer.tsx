@@ -334,7 +334,7 @@ export default function MomentComposer({
           <div className="flex flex-col gap-5">
             <label className="flex flex-col gap-1.5">
               <span className="font-display text-base font-bold tracking-tight text-ink">Name This Moment</span>
-              <input
+              <input autoCapitalize="words"
                 type="text"
                 value={title}
                 maxLength={120}
@@ -357,7 +357,7 @@ export default function MomentComposer({
             <label className="flex flex-col gap-1.5">
               <span className="font-display text-base font-bold tracking-tight text-ink">Tell The Story</span>
               <span className="-mt-1 text-sm text-ink/55">Optional. What happened, and how it felt.</span>
-              <textarea
+              <textarea autoCapitalize="sentences"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={5}

@@ -255,7 +255,7 @@ export default function QrIntelligentCreator({
             </button>
           </div>
           {placement === "Other" && (
-            <input
+            <input autoCapitalize="sentences"
               type="text"
               value={placementOther}
               onChange={(e) => setPlacementOther(e.target.value)}
@@ -317,7 +317,7 @@ export default function QrIntelligentCreator({
           {destinationType === "custom" && (
             <label className="block">
               <span className="mb-1.5 block text-microcopy font-semibold text-muted">Destination link</span>
-              <input
+              <input autoCapitalize="none"
                 type="text"
                 value={destinationUrl}
                 onChange={(e) => setDestinationUrl(e.target.value)}
@@ -348,7 +348,7 @@ export default function QrIntelligentCreator({
         <div className="flex flex-col gap-3">
           <label className="block">
             <span className="mb-1.5 block text-microcopy font-semibold text-muted">Campaign name</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               value={name}
               onChange={(e) => {

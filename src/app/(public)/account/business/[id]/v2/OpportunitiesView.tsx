@@ -133,7 +133,7 @@ export default function OpportunitiesView({
           <form method="get" action={basePath} className="flex flex-col gap-2 rounded-2xl border border-black/[0.07] bg-white p-3">
             <input type="hidden" name="tab" value="opportunities" />
             <input type="hidden" name="view" value="explore" />
-            <input type="search" name="q" defaultValue={filters.q ?? ""} placeholder="Search Opportunities" aria-label="Search Opportunities" className={inputClass} />
+            <input autoCapitalize="none" type="search" name="q" defaultValue={filters.q ?? ""} placeholder="Search Opportunities" aria-label="Search Opportunities" className={inputClass} />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <select name="type" defaultValue={filters.type ?? ""} aria-label="Type" className={inputClass}>
                 <option value="">All Types</option>
@@ -143,7 +143,7 @@ export default function OpportunitiesView({
                   </option>
                 ))}
               </select>
-              <input type="text" name="where" defaultValue={filters.where ?? ""} placeholder="Market or Location" aria-label="Market or Location" className={inputClass} />
+              <input autoCapitalize="none" type="text" name="where" defaultValue={filters.where ?? ""} placeholder="Market or Location" aria-label="Market or Location" className={inputClass} />
               <select name="timing" defaultValue={filters.timing ?? ""} aria-label="Timing" className={inputClass}>
                 <option value="">Any Timing</option>
                 {EXPLORE_TIMINGS.map((t) => (

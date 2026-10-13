@@ -69,7 +69,7 @@ export default function ImageField({
             <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
           </div>
         )}
-        <input
+        <input autoCapitalize="none"
           type="text"
           name={name}
           value={url}

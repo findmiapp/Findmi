@@ -159,7 +159,7 @@ export default async function BrandImportCandidatePage({
             <input type="hidden" name="expected_updated_at" value={candidate.updatedAt} />
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Business Name</span>
-              <input name="name" defaultValue={p.name ?? ""} required maxLength={REVIEW_NAME_MAX} className={inputClass} />
+              <input autoCapitalize="words" name="name" defaultValue={p.name ?? ""} required maxLength={REVIEW_NAME_MAX} className={inputClass} />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Primary Category</span>
@@ -174,20 +174,20 @@ export default async function BrandImportCandidatePage({
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
-              <input name="website" inputMode="url" defaultValue={p.site} required maxLength={300} className={inputClass} />
+              <input autoCapitalize="none" name="website" inputMode="url" defaultValue={p.site} required maxLength={300} className={inputClass} />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Instagram</span>
-              <input name="instagram" defaultValue={p.ig ? `@${p.ig}` : ""} placeholder="@handle" maxLength={200} className={inputClass} />
+              <input autoCapitalize="none" name="instagram" defaultValue={p.ig ? `@${p.ig}` : ""} placeholder="@handle" maxLength={200} className={inputClass} />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Short Description</span>
-              <textarea name="short_description" defaultValue={p.sd ?? ""} rows={3} maxLength={REVIEW_SHORT_MAX} className={`${inputClass} resize-y`} />
+              <textarea autoCapitalize="sentences" name="short_description" defaultValue={p.sd ?? ""} rows={3} maxLength={REVIEW_SHORT_MAX} className={`${inputClass} resize-y`} />
               <span className="mt-1 block text-xs text-ink/45">Up to {REVIEW_SHORT_MAX} characters.</span>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">About</span>
-              <textarea name="about" defaultValue={p.about ?? ""} rows={6} maxLength={REVIEW_ABOUT_MAX} className={`${inputClass} resize-y`} />
+              <textarea autoCapitalize="sentences" name="about" defaultValue={p.about ?? ""} rows={6} maxLength={REVIEW_ABOUT_MAX} className={`${inputClass} resize-y`} />
               <span className="mt-1 block text-xs text-ink/45">Up to {REVIEW_ABOUT_MAX} characters.</span>
             </label>
 

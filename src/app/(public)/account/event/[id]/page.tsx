@@ -614,7 +614,7 @@ export default async function ManageEventPage({
                 <p className="text-label font-bold uppercase text-subtle">Identity</p>
                 <label className="mt-2 block">
                   <span className="mb-1.5 block text-body font-medium text-primary">Event name</span>
-                  <input type="text" name="name" required defaultValue={event.name} className={inputClass} />
+                  <input autoCapitalize="words" type="text" name="name" required defaultValue={event.name} className={inputClass} />
                 </label>
                 <div className="mt-3">
                   <span className="mb-1.5 block text-body font-medium text-primary">Categories</span>
@@ -639,7 +639,7 @@ export default async function ManageEventPage({
                 <p className="text-label font-bold uppercase text-subtle">About</p>
                 <label className="mt-2 block">
                   <span className="mb-1.5 block text-body font-medium text-primary">Description</span>
-                  <textarea name="description" rows={4} defaultValue={event.description ?? ""} className={inputClass} />
+                  <textarea autoCapitalize="sentences" name="description" rows={4} defaultValue={event.description ?? ""} className={inputClass} />
                 </label>
               </div>
 
@@ -655,11 +655,11 @@ export default async function ManageEventPage({
                 <div className="mt-2 grid grid-cols-2 gap-4">
                   <label className="block">
                     <span className="mb-1.5 block text-body font-medium text-primary">Organizer name</span>
-                    <input type="text" name="organizer_name" defaultValue={event.organizer_name ?? ""} className={inputClass} />
+                    <input autoCapitalize="words" type="text" name="organizer_name" defaultValue={event.organizer_name ?? ""} className={inputClass} />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-body font-medium text-primary">Organizer email</span>
-                    <input type="email" name="organizer_email" defaultValue={event.organizer_email ?? ""} className={inputClass} />
+                    <input autoCapitalize="none" type="email" name="organizer_email" defaultValue={event.organizer_email ?? ""} className={inputClass} />
                   </label>
                 </div>
               </div>
@@ -669,7 +669,7 @@ export default async function ManageEventPage({
                   <span className="mb-1.5 block text-body font-medium text-primary">
                     Website / Link <span className="font-normal text-subtle">(optional)</span>
                   </span>
-                  <input type="url" name="external_url" defaultValue={event.external_url ?? ""} placeholder="https://" className={inputClass} />
+                  <input autoCapitalize="none" type="url" name="external_url" defaultValue={event.external_url ?? ""} placeholder="https://" className={inputClass} />
                 </label>
               </div>
 
@@ -740,7 +740,7 @@ export default async function ManageEventPage({
                     <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
                       <label className="block">
                         <span className="mb-1.5 block text-metadata font-medium text-secondary">Tell us where</span>
-                        <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
+                        <input autoCapitalize="words" type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                       </label>
                       <p className="mt-1.5 text-metadata text-subtle">
                         Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo; when

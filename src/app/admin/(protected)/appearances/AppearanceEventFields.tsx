@@ -147,7 +147,7 @@ export default function AppearanceEventFields({
 
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Appearance Title</span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name="title"
           required={!linked}
@@ -195,7 +195,7 @@ export default function AppearanceEventFields({
 
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Venue Name</span>
-        <input
+        <input autoCapitalize="words"
           type="text"
           name="venue_name"
           readOnly={linked}
@@ -207,7 +207,7 @@ export default function AppearanceEventFields({
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Address</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             name="address"
             readOnly={linked}
@@ -218,7 +218,7 @@ export default function AppearanceEventFields({
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             name="city"
             readOnly={linked}
@@ -229,7 +229,7 @@ export default function AppearanceEventFields({
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
-          <input
+          <input autoCapitalize="words"
             type="text"
             name="state"
             readOnly={linked}

@@ -207,7 +207,7 @@ export default function GoalWizard({
       )}
 
       {current === "audience" && (
-        <textarea
+        <textarea autoCapitalize="sentences"
           value={v.audience_text}
           onChange={(e) => set("audience_text", e.target.value)}
           rows={4}
@@ -229,7 +229,7 @@ export default function GoalWizard({
           )}
           <label className="block">
             <span className="mb-1.5 block text-metadata font-semibold text-secondary">Other Areas</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               value={v.markets_text}
               onChange={(e) => set("markets_text", e.target.value)}
@@ -272,7 +272,7 @@ export default function GoalWizard({
       )}
 
       {current === "notes" && (
-        <textarea
+        <textarea autoCapitalize="sentences"
           value={v.notes}
           onChange={(e) => set("notes", e.target.value)}
           rows={5}
@@ -287,7 +287,7 @@ export default function GoalWizard({
         <div className="flex flex-col gap-4">
           <label className="block">
             <span className="mb-1.5 block text-metadata font-semibold text-secondary">Goal Title</span>
-            <input
+            <input autoCapitalize="words"
               type="text"
               value={title}
               onChange={(e) => {
