@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import NavIcon from "@/components/NavIcon";
+import { QrGlyph } from "./CreateActionIcon";
 import ChevronIcon from "@/components/ChevronIcon";
 
 /** /account V2, Pass 1 — "More": every secondary destination that no longer
@@ -93,17 +94,6 @@ function MoreGroup({ title, links }: { title: string; links: MoreLink[] }) {
         ))}
       </ul>
     </section>
-  );
-}
-
-function QrGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="14" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="4" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5z" fill="currentColor" />
-    </svg>
   );
 }
 

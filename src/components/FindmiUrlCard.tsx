@@ -27,6 +27,7 @@ export default function FindmiUrlCard({
   currentHandle,
   action,
   quiet = false,
+  compact = false,
 }: {
   entityType: HandleEntityType;
   entityId: string;
@@ -42,25 +43,39 @@ export default function FindmiUrlCard({
    * Business's own claim/edit FORM below keep their existing, unchanged
    * presentation — this never becomes a second global button style. */
   quiet?: boolean;
+  /** Final Command Center UX pass — Business Home's Public Profile
+   * utility: a one-line link row (no "Findmi URL" eyebrow, regular-weight
+   * URL) and, when no link is claimed yet, a one-line prompt that opens
+   * the same claim form on demand instead of showing it expanded.
+   * Opt-in; every other caller is unchanged. Implies `quiet`. */
+  compact?: boolean;
 }) {
-  const [editing, setEditing] = useState(!currentHandle);
+  const [editing, setEditing] = useState(!currentHandle && !compact);
+  const isQuiet = quiet || compact;
   const url = currentHandle ? `findmi.app/${currentHandle}` : null;
   const quietActionClass = "shrink-0 text-xs font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink";
 
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
+      {!compact && <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>}
 
-      {!editing && currentHandle ? (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2.5">
-          <p className="min-w-0 break-all text-base font-bold text-findmi-700">{url}</p>
-          <div className={`flex shrink-0 flex-wrap items-center ${quiet ? "gap-3" : "gap-2"}`}>
+      {compact && !editing && !currentHandle ? (
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <p className="min-w-0 text-sm text-ink/60">Create an easy-to-share Findmi link for {entityLabel}.</p>
+          <button type="button" onClick={() => setEditing(true)} className={quietActionClass}>
+            Create Link
+          </button>
+        </div>
+      ) : !editing && currentHandle ? (
+        <div className={`${compact ? "" : "mt-2 "}flex flex-wrap items-center justify-between gap-2.5`}>
+          <p className={`min-w-0 break-all ${compact ? "text-sm font-semibold" : "text-base font-bold"} text-findmi-700`}>{url}</p>
+          <div className={`flex shrink-0 flex-wrap items-center ${isQuiet ? "gap-3" : "gap-2"}`}>
             <CopyButton
               value={`https://${url}`}
               label="Copy Link"
-              className={quiet ? quietActionClass : secondaryButtonClass}
+              className={isQuiet ? quietActionClass : secondaryButtonClass}
             />
-            <button type="button" onClick={() => setEditing(true)} className={quiet ? quietActionClass : secondaryButtonClass}>
+            <button type="button" onClick={() => setEditing(true)} className={isQuiet ? quietActionClass : secondaryButtonClass}>
               Change
             </button>
           </div>
@@ -83,7 +98,7 @@ export default function FindmiUrlCard({
               <button type="submit" className={primaryButtonClass}>
                 {currentHandle ? "Save" : "Claim"}
               </button>
-              {currentHandle && (
+              {(currentHandle || compact) && (
                 <button type="button" onClick={() => setEditing(false)} className={secondaryButtonClass}>
                   Cancel
                 </button>

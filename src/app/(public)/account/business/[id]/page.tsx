@@ -1296,6 +1296,11 @@ export default async function ManageBusinessPage({
     upcomingAppearances: dashboardAppearances,
     newOrderCount: orderSummary.newCount,
     profileIncomplete,
+    missingProfile: {
+      logo: !business.logo_url,
+      description: !(business.short_description || business.description),
+      category: !currentCategoryId,
+    },
   });
 
   // Pro Products Foundation pass — Products are genuinely Pro/Pro
@@ -1674,6 +1679,7 @@ export default async function ManageBusinessPage({
               }
               metricsRangeLabel={performanceData?.rangeLabel ?? null}
               pendingInvitationCount={pendingInvitations.filter((o) => o.status === "pending").length}
+              pendingInvitationNames={pendingInvitations.filter((o) => o.status === "pending").map((o) => o.eventName)}
               newOrderCount={orderSummary.newCount}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
@@ -2130,7 +2136,7 @@ export default async function ManageBusinessPage({
               </div>
               <details className="group" open={addProductHasDraft || composeOpen}>
                 <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
-                  <span className="group-open:hidden">{products.length > 0 ? "+ Add Product" : "+ Add Your First Product"}</span>
+                  <span className="group-open:hidden">{products.length > 0 ? "+ Add a Product" : "+ Add Your First Product"}</span>
                   <span className="hidden group-open:inline">Close</span>
                 </summary>
 

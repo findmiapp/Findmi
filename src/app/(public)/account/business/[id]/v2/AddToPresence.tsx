@@ -2,22 +2,18 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import NavIcon from "@/components/NavIcon";
-import { GoalGlyph, MomentGlyph } from "@/components/opportunities/OpportunityGlyphs";
-import { businessCreateActions } from "./createActions";
+import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
+import { orderedCreateActions } from "./createActions";
+import CreateActionIcon from "./CreateActionIcon";
 
 /** The ONE "+ Add" entry for a Business owner — choose by intent, never by
- * Findmi's internal model:
- *   Add A Moment        → the canonical Moment composer (/my-world/journal/
- *                         new), prefilled with this Business.
- *   Host an Event       → the existing Event creation flow, with this
- *                         Business as host (?business_id=, validated
- *                         server-side).
- *   Where I'll Be       → the existing Event search / request-to-join
- *                         composer in Presence (manual Appearance fallback).
- *   At a Location       → the existing Business Locations add panel.
+ * Findmi's internal model. Its six creation actions (Where I'll Be, Host an
+ * Event, Add a Location, Add a Product, Add a Moment, Create a QR Code) come
+ * from ./createActions, the same definition Business Home's Create on
+ * Findmi rail uses (label, icon, route); this sheet shows each one's richer
+ * `detail` line.
  * Grow Your Business:
- *   Find An Opportunity → Opportunities, Explore view.
+ *   Find An Opportunity    → Opportunities, Explore view.
  *   Tell Findmi Your Goals → the Business goal flow.
  *
  * Mobile: bottom sheet (scrolls when tall). sm+: centered dialog. Esc /
@@ -31,7 +27,9 @@ export default function AddToPresence({
   basePath: string;
   businessId: string;
   initialOpen?: boolean;
-  variant?: "primary" | "chip";
+  /** "link" — a quiet text trigger (Business Home's Create on Findmi
+   * "View All"); opens this same sheet, never a second modal. */
+  variant?: "primary" | "chip" | "link";
 }) {
   const [open, setOpen] = useState(initialOpen);
 
@@ -48,16 +46,13 @@ export default function AddToPresence({
   // Same icon for the same action everywhere: pencil = Moment (Quick
   // Create), calendar = an Event (Quick Create's Add An Event), compass =
   // going somewhere, pin = Location, spark = Opportunities (Business nav).
-  // Labels, icons and destinations come from the one shared definition
-  // (./createActions) so this sheet always matches Business Home's Create
-  // on Findmi; only the one-line explanations are this sheet's own.
-  const create = businessCreateActions(basePath, businessId);
-  const doOptions = [
-    option(create.where.href, create.where.label, "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.", <NavIcon name="compass" className="h-5 w-5" />),
-    option(create.event.href, create.event.label, "Create an activation, pop-up, tasting, class, launch or Event you’re organizing.", <NavIcon name="calendar" className="h-5 w-5" />),
-    option(create.location.href, create.location.label, "Add or connect a store, café, showroom or other ongoing Location for this Business.", <NavIcon name="pin" className="h-5 w-5" />),
-    option(create.moment.href, create.moment.label, "Document something your Business experienced.", <MomentGlyph className="h-5 w-5" />),
-  ];
+  // Every Business creation action, in its intentional order, from the one
+  // shared definition (./createActions) — the same label, icon and route
+  // Business Home's Create on Findmi rail shows, with the sheet's richer
+  // `detail` line.
+  const doOptions = orderedCreateActions(basePath, businessId).map((a) =>
+    option(a.href, a.label, a.detail, <CreateActionIcon icon={a.icon} />)
+  );
   const growOptions = [
     option(`${basePath}?tab=opportunities&view=explore`, "Find An Opportunity", "Explore Opportunities available to your Business.", <SparkGlyph className="h-5 w-5" />),
     option(
@@ -70,20 +65,35 @@ export default function AddToPresence({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className={
-          variant === "chip"
-            ? "flex h-11 shrink-0 items-center gap-2 rounded-full bg-findmi pl-3 pr-4 text-button font-bold text-white shadow-sm transition hover:bg-findmi-600 active:scale-[0.98]"
-            : "flex h-11 w-fit items-center gap-2 rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]"
-        }
-      >
-        <PlusGlyph className="h-4 w-4" />
-        Add
-      </button>
+      {variant === "link" ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline"
+        >
+          View All
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-3 w-3">
+            <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className={
+            variant === "chip"
+              ? "flex h-11 shrink-0 items-center gap-2 rounded-full bg-findmi pl-3 pr-4 text-button font-bold text-white shadow-sm transition hover:bg-findmi-600 active:scale-[0.98]"
+              : "flex h-11 w-fit items-center gap-2 rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]"
+          }
+        >
+          <PlusGlyph className="h-4 w-4" />
+          Add
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center sm:p-4" role="presentation">

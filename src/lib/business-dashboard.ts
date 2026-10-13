@@ -443,6 +443,9 @@ export async function getCompletedAppearancesThisMonthCount(
 
 export interface NeedsAttentionItem {
   id: string;
+  /** WHAT needs attention, as a short title (Final Command Center UX pass). */
+  title: string;
+  /** WHY it matters / what exactly is missing — one sentence. */
   message: string;
   actionLabel: string;
   actionHref: string;
@@ -455,6 +458,8 @@ export interface NeedsAttentionInput {
   upcomingAppearances: DashboardAppearance[];
   newOrderCount: number;
   profileIncomplete: boolean;
+  /** Which of profileIncomplete's own signals are missing (optional detail). */
+  missingProfile?: { logo: boolean; description: boolean; category: boolean };
 }
 
 /** Every item here is derived from data the page already fetches — no new
@@ -477,8 +482,9 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   if (!input.hasPrimaryMarket && input.pendingMarketRequestText) {
     items.push({
       id: "pending-market",
-      message: `Your requested Market "${input.pendingMarketRequestText}" is awaiting review.`,
-      actionLabel: "View Market",
+      title: "Findmi Area Requested",
+      message: `Your requested area "${input.pendingMarketRequestText}" is awaiting review.`,
+      actionLabel: "View Request",
       actionHref: `${base}?tab=market`,
     });
   }
@@ -492,7 +498,8 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
     if (missingImage) {
       items.push({
         id: `missing-image-${missingImage.id}`,
-        message: `"${missingImage.title}" has no flyer image yet.`,
+        title: "Add an Image",
+        message: `"${missingImage.title}" has no flyer image yet. An image helps it stand out on Findmi Here.`,
         actionLabel: "Add Image",
         actionHref: missingImage.editHref,
       });
@@ -501,7 +508,8 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
     if (missingVenue) {
       items.push({
         id: `missing-venue-${missingVenue.id}`,
-        message: `"${missingVenue.title}" is missing venue/location details.`,
+        title: "Add Where It Is",
+        message: `"${missingVenue.title}" is missing venue/location details, so people can’t tell where to find you.`,
         actionLabel: "Add Details",
         actionHref: missingVenue.editHref,
       });
@@ -511,6 +519,7 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   if (input.newOrderCount > 0) {
     items.push({
       id: "new-orders",
+      title: input.newOrderCount === 1 ? "New Order" : "New Orders",
       message: `You have ${input.newOrderCount} new order${input.newOrderCount === 1 ? "" : "s"} to review.`,
       actionLabel: "View Orders",
       actionHref: `${base}?tab=orders`,
@@ -529,10 +538,22 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   // being added here to replace this.
 
   if (input.profileIncomplete) {
+    // The same three signals profileIncomplete is computed from (logo,
+    // description, category) — the first one missing says exactly what to
+    // add and why. No new requirement: geography is never one of them.
+    const missing = input.missingProfile;
+    const specific = missing?.logo
+      ? { message: "Add a logo so people can recognize your Business across Findmi.", actionLabel: "Add Logo" }
+      : missing?.description
+        ? { message: "Add a description so people know what your Business does.", actionLabel: "Add Description" }
+        : missing?.category
+          ? { message: "Choose a category so people can find your Business when they browse.", actionLabel: "Choose Category" }
+          : null;
     items.push({
       id: "incomplete-profile",
-      message: "Your profile is missing details that help customers find you.",
-      actionLabel: "Complete Profile",
+      title: "Complete Your Profile",
+      message: specific?.message ?? "Your profile is missing details that help customers find you.",
+      actionLabel: specific?.actionLabel ?? "Complete Profile",
       actionHref: `${base}?tab=profile`,
     });
   }

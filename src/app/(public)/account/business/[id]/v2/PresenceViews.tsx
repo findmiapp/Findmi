@@ -168,7 +168,7 @@ export function LocationsPresence({
       href={connectable.length > 0 ? `${locationsPath}&add=1` : createHref}
       className="flex h-11 w-fit items-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600"
     >
-      + Add location
+      + Add a Location
     </Link>
   ) : null;
 
@@ -218,9 +218,9 @@ export function LocationsPresence({
       )}
 
       {canEdit && addOpen && (
-        <section aria-label="Add location" className="rounded-2xl border border-black/[0.07] bg-white p-4 sm:p-5">
+        <section aria-label="Add a Location" className="rounded-2xl border border-black/[0.07] bg-white p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="font-display text-card-title-lg font-bold text-primary">Add location</h2>
+            <h2 className="font-display text-card-title-lg font-bold text-primary">Add a Location</h2>
             <Link href={locationsPath} className="text-metadata font-semibold text-muted hover:text-primary">
               Cancel
             </Link>
