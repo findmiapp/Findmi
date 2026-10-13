@@ -25,6 +25,7 @@ registerHooks({
 });
 
 const BD = await import("../src/lib/business-dashboard.ts");
+const CA = await import("../src/app/(public)/account/business/[id]/v2/createActions.ts");
 
 const B = "src/app/(public)/account/business/[id]";
 const read = (p) => readFileSync(p, "utf8");
@@ -69,42 +70,62 @@ test("Status is compact and never repeats the identity the context bar already s
 });
 
 test("Create on Findmi: exactly the five approved labels, in order, with the Findmi icon system", () => {
-  const block = HOME.slice(HOME.indexOf("export function createOnFindmiActions"), HOME.indexOf("] as const;"));
-  const labels = [...block.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ["Where I\u2019ll Be", "Host an Event", "Add To Product Catalog", "At a Location", "Create A QR Code"]);
-  assert.deepEqual([...block.matchAll(/icon: "([^"]+)"/g)].map((m) => m[1]), ["compass", "calendar", "tag", "pin", "qr"]);
-  assert.match(HOME, /<NavIcon name=\{action\.icon\}/);
+  const actions = CA.createOnFindmiActions("/account/business/biz", "biz");
+  assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "Add To Product Catalog", "At a Location", "Create A QR Code"]);
+  assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "tag", "pin", "qr"]);
+  assert.match(HOME, /\{createOnFindmiActions\(basePath, businessId\)\.map\(/);
+  assert.match(HOME, /<CreateIcon icon=\{action\.icon\} \/>/);
   assert.doesNotMatch(HOME + ADD, /Go Somewhere|Host Something/);
+  assert.ok(!actions.some((x) => x.key === "moment"), "Add A Moment is never a sixth primary tile");
 });
 
 test("route integrity: every Create on Findmi destination is an existing Business-scoped flow that reads its params", () => {
-  const block = HOME.slice(HOME.indexOf("export function createOnFindmiActions"), HOME.indexOf("] as const;"));
+  const a = CA.businessCreateActions("/account/business/biz", "biz");
   // Where I'll Be → Findmi Here (upcoming) request-to-join composer
-  assert.match(block, /href: `\$\{basePath\}\?tab=findmi-here&compose=1`/);
+  assert.equal(a.where.href, "/account/business/biz?tab=findmi-here&compose=1");
   assert.match(PAGE, /const composeOpen = composeParam === "1";/);
   assert.match(PAGE, /\{\(addHasDraft \|\| composeOpen\) && \(\s*<div id="going-somewhere"/);
   // Host an Event → Event creation with this Business as host
-  assert.match(block, /href: `\/account\/event\/new\?business_id=\$\{encodeURIComponent\(businessId\)\}`/);
+  assert.equal(a.event.href, "/account/event/new?business_id=biz");
   assert.match(EVENT_NEW, /business_id: businessIdParam,/);
   assert.match(EVENT_NEW, /<input type="hidden" name="business_id" value=\{businessContext\.id\} \/>/);
   // Add To Product Catalog → Products' Add Product panel
-  assert.match(block, /href: `\$\{basePath\}\?tab=products&compose=1`/);
+  assert.equal(a.product.href, "/account/business/biz?tab=products&compose=1");
   assert.match(PAGE, /<details className="group" open=\{addProductHasDraft \|\| composeOpen\}>/);
   // At a Location → Findmi Here Locations add panel
-  assert.match(block, /href: `\$\{basePath\}\?tab=findmi-here&view=locations&add=1`/);
+  assert.equal(a.location.href, "/account/business/biz?tab=findmi-here&view=locations&add=1");
   assert.match(PAGE, /addOpen=\{addParam === "1"\}/);
   // Create A QR Code → the Business QR creator route
-  assert.match(block, /href: `\$\{basePath\}\/qr\/new`/);
+  assert.equal(a.qr.href, "/account/business/biz/qr/new");
   assert.ok(existsSync(`${B}/qr/new/page.tsx`));
   assert.match(read(`${B}/qr/new/page.tsx`), /await requireBusinessMember\(id\);/);
+  // Add A Moment → the existing Moment composer, prefilled with this Business
+  assert.equal(a.moment.href, "/my-world/journal/new?business=biz");
+  const journal = read("src/app/(public)/my-world/journal/new/page.tsx");
+  assert.match(journal, /resolvePrefillBusiness\(params\.business\)/);
+  assert.match(journal, /if \(businessPrefill\) initial\.businesses\.push\(businessPrefill\.result\);/);
+  // ids are encoded
+  assert.equal(CA.businessCreateActions("/b", "a b").event.href, "/account/event/new?business_id=a%20b");
   // none of these routes is Pro-gated on the page (core Findmi stays open)
   for (const tab of ["products", "qr"]) assert.match(PAGE, new RegExp(`\\{activeTab === "${tab}" && \\(`));
 });
 
-test("the existing + Add sheet uses the same labels; the Event page titles a Business-hosted Event 'Host an Event'", () => {
-  for (const t of ["Host an Event", "Where I’ll Be", "At a Location"]) assert.ok(ADD.includes(`"${t}"`), t);
+test("one definition: Home and the + Add sheet read the same label/icon/route for each shared action", () => {
+  for (const k of ["where", "event", "location", "moment"]) assert.match(ADD, new RegExp(`option\\(create\\.${k}\\.href, create\\.${k}\\.label,`), k);
+  assert.match(ADD, /option\(create\.where\.href[^\n]*<NavIcon name="compass"/);
+  assert.match(ADD, /option\(create\.event\.href[^\n]*<NavIcon name="calendar"/);
+  assert.match(ADD, /option\(create\.location\.href[^\n]*<NavIcon name="pin"/);
+  assert.match(ADD, /option\(create\.moment\.href[^\n]*<MomentGlyph/);
+  assert.doesNotMatch(ADD, /\/account\/event\/new|journal\/new|tab=findmi-here/, "no locally re-typed routes");
   assert.match(EVENT_NEW, /\{businessContext \? "Host an Event" : "Add An Event"\}/);
   assert.match(PAGE, /<p className="text-card-title font-bold text-primary">Where I&rsquo;ll Be<\/p>/);
+});
+
+test("Add A Moment: a compact secondary link under Create on Findmi, same destination and mark as the + Add sheet", () => {
+  const create = HOME.slice(at('aria-labelledby="create-on-findmi"'), at('aria-labelledby="needs-attention"'));
+  assert.match(HOME, /const moment = businessCreateActions\(basePath, businessId\)\.moment;/);
+  assert.match(create, /<Link\s+href=\{moment\.href\}[\s\S]*?<MomentGlyph className="h-4 w-4" \/>\s*\{moment\.label\}/);
+  assert.ok(create.indexOf("{moment.label}") > create.indexOf("</ul>"), "below the five tiles, not one of them");
 });
 
 // ── Needs Attention rules (real function) ─────────────────────────────────
@@ -146,8 +167,9 @@ test("new Orders are ONE attention item (the duplicate Order tile is gone); pend
 
 // ── Coming Up / Opportunities / Performance ───────────────────────────────
 test("Coming Up: live cards first, then ≤4 rows; one empty line only when nothing is live or upcoming", () => {
-  assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\.slice\(0, 4\)\}/);
+  assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\}/);
   assert.match(PAGE, /liveActivities=\{homeActivities\.live\}/);
+  assert.match(PAGE, /const homeActivities = buildHomeComingUp\(\s*dashboardAppearances,\s*hostedUpcoming\.map\(/);
   const coming = HOME.slice(at('aria-labelledby="coming-up"'), at("<HomeOpportunities"));
   assert.ok(coming.indexOf("<LiveCard") < coming.indexOf("<UpcomingRow"));
   assert.match(coming, /liveNow\.length === 0 && \(/);

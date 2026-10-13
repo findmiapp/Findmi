@@ -204,7 +204,7 @@ test("H. Account Home groups an Event's dates into one row (+ N More Dates) with
   // "+ N More Dates" comes from the FULL schedule when the loaded list is paged.
   assert.equal(BD.buildHomeActivities(rows.slice(0, 2), new Map([["event:tabli", 30]])).comingUp[0].moreDates, 29);
   const home = readFileSync("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx", "utf8");
-  assert.match(home, /`\+ \$\{moreDates\} More Dates`/);
+  assert.match(home, /`\+ \$\{a\.moreDates\} More Dates`/);
 });
 
 test("H2. Account Home: standalone Appearances stay separate rows; full-schedule date counts use the same normalization", () => {

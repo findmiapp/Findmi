@@ -296,6 +296,113 @@ export function buildHomeActivities(
   return { live, comingUp };
 }
 
+/** B2 — an upcoming Event this Business HOSTS (events.host_business_id),
+ * summarized at its next not-yet-ended date (an Occurrence when the Event
+ * has dates, else the Event's own window). Read-side only. */
+export interface HostedEventSummary {
+  eventId: string;
+  name: string;
+  /** Every not-yet-ended, non-cancelled date (its Occurrences, else the
+   * Event's own window), soonest first. */
+  dates: { startAt: string; endAt: string | null }[];
+  where: string | null;
+  /** "In Review" / "Needs Changes" for a not-yet-public Event, else null. */
+  statusLabel: string | null;
+  imageUrl: string | null;
+  /** The one Event Manager, with this Business as context. */
+  href: string;
+}
+
+/** One Coming Up / Happening Now item on Business Home — either the
+ * Business's own Appearance (one per Event / standalone Appearance, from
+ * buildHomeActivities) or an Event it hosts. Presentation only: no
+ * Appearance is ever created for a hosted Event. */
+export interface HomeActivity {
+  /** "event:<eventId>" whenever the activity belongs to an Event (both
+   * kinds), "appearance:<id>" for a standalone Appearance. */
+  key: string;
+  kind: "appearance" | "hosted_event";
+  title: string;
+  startAt: string;
+  endAt: string | null;
+  place: string | null;
+  href: string;
+  imageUrl: string | null;
+  temporal: TemporalLabel;
+  moreDates: number;
+  /** Amber chip: a not-yet-approved participation or a not-yet-public hosted Event. */
+  pendingLabel: string | null;
+}
+
+function appearanceActivity(a: DashboardAppearance, moreDates: number): HomeActivity {
+  return {
+    key: a.eventId ? `event:${a.eventId}` : `appearance:${a.id}`,
+    kind: "appearance",
+    title: a.title,
+    startAt: a.startAt,
+    endAt: a.endAt,
+    place: a.venueName ?? a.geographyLabel ?? ([a.city, a.state].filter(Boolean).join(", ") || null),
+    href: a.managementHref,
+    imageUrl: a.displayImageUrl,
+    temporal: a.temporal,
+    moreDates,
+    pendingLabel: a.participationStatus && a.participationStatus !== "approved" ? a.statusLabel : null,
+  };
+}
+
+/** B2 — Business Home's Coming Up: the Business's actual upcoming Findmi
+ * activity, Appearances AND hosted Events.
+ *
+ * Deduplication is by canonical Event id, never by title: an Event this
+ * Business hosts is ONE item (the hosted Event, at its next date with
+ * "+ N More Dates"), so any Appearance of this Business linked to that same
+ * Event (event-level or per-Occurrence, official or manual) is folded into
+ * it rather than listed beside it. Appearances of other Events and
+ * standalone Appearances are untouched (one row per Event / standalone, via
+ * buildHomeActivities).
+ *
+ * Happening Now: every live item (live = now within start..end), first.
+ * Coming Up: everything not live, chronological, capped at `limit` — a
+ * hosted Event that is live now still lists its NEXT date here, exactly as
+ * a live Appearance group does. */
+export function buildHomeComingUp(
+  appearances: DashboardAppearance[],
+  hosted: HostedEventSummary[],
+  upcomingDateCounts?: Map<string, number>,
+  limit = 4
+): { live: HomeActivity[]; comingUp: HomeActivity[]; total: number } {
+  const hostedIds = new Set(hosted.map((h) => h.eventId));
+  const own = buildHomeActivities(
+    appearances.filter((a) => !(a.eventId && hostedIds.has(a.eventId))),
+    upcomingDateCounts
+  );
+  const live: HomeActivity[] = own.live.map((a) => appearanceActivity(a, 0));
+  const upcoming: HomeActivity[] = own.comingUp.map((i) => appearanceActivity(i.appearance, i.moreDates));
+  for (const h of hosted) {
+    const item = (date: { startAt: string; endAt: string | null }, moreDates: number): HomeActivity => ({
+      key: `event:${h.eventId}`,
+      kind: "hosted_event",
+      title: h.name,
+      startAt: date.startAt,
+      endAt: date.endAt,
+      place: h.where,
+      href: h.href,
+      imageUrl: h.imageUrl,
+      temporal: getTemporalLabel(date.startAt, date.endAt),
+      moreDates,
+      pendingLabel: h.statusLabel,
+    });
+    const liveDate = h.dates.find((d) => getTemporalLabel(d.startAt, d.endAt).live);
+    if (liveDate) live.push(item(liveDate, 0));
+    const later = h.dates.filter((d) => d !== liveDate && Date.parse(d.startAt) > Date.now());
+    if (later.length > 0) upcoming.push(item(later[0], later.length - 1));
+  }
+  const byStart = (a: HomeActivity, b: HomeActivity) => Date.parse(a.startAt) - Date.parse(b.startAt);
+  live.sort(byStart);
+  upcoming.sort(byStart);
+  return { live, comingUp: upcoming.slice(0, limit), total: upcoming.length };
+}
+
 /** Not-yet-live upcoming dated Appearances per presentation group (Event
  * or standalone), over the Business's complete (unpaged) row set, after the
  * same canonical normalization the dashboard list gets

@@ -4,10 +4,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
 import { GoalGlyph, MomentGlyph } from "@/components/opportunities/OpportunityGlyphs";
+import { businessCreateActions } from "./createActions";
 
 /** The ONE "+ Add" entry for a Business owner — choose by intent, never by
  * Findmi's internal model:
- *   Add Moment          → the canonical Moment composer (/my-world/journal/
+ *   Add A Moment        → the canonical Moment composer (/my-world/journal/
  *                         new), prefilled with this Business.
  *   Host an Event       → the existing Event creation flow, with this
  *                         Business as host (?business_id=, validated
@@ -47,31 +48,15 @@ export default function AddToPresence({
   // Same icon for the same action everywhere: pencil = Moment (Quick
   // Create), calendar = an Event (Quick Create's Add An Event), compass =
   // going somewhere, pin = Location, spark = Opportunities (Business nav).
+  // Labels, icons and destinations come from the one shared definition
+  // (./createActions) so this sheet always matches Business Home's Create
+  // on Findmi; only the one-line explanations are this sheet's own.
+  const create = businessCreateActions(basePath, businessId);
   const doOptions = [
-    option(
-      `/my-world/journal/new?business=${encodeURIComponent(businessId)}`,
-      "Add Moment",
-      "Document something your Business experienced.",
-      <MomentGlyph className="h-5 w-5" />
-    ),
-    option(
-      `/account/event/new?business_id=${encodeURIComponent(businessId)}`,
-      "Host an Event",
-      "Create an activation, pop-up, tasting, class, launch or Event you’re organizing.",
-      <NavIcon name="calendar" className="h-5 w-5" />
-    ),
-    option(
-      `${basePath}?tab=findmi-here&compose=1`,
-      "Where I’ll Be",
-      "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.",
-      <NavIcon name="compass" className="h-5 w-5" />
-    ),
-    option(
-      `${basePath}?tab=findmi-here&view=locations&add=1`,
-      "At a Location",
-      "Add or connect a store, café, showroom or other ongoing Location for this Business.",
-      <NavIcon name="pin" className="h-5 w-5" />
-    ),
+    option(create.where.href, create.where.label, "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.", <NavIcon name="compass" className="h-5 w-5" />),
+    option(create.event.href, create.event.label, "Create an activation, pop-up, tasting, class, launch or Event you’re organizing.", <NavIcon name="calendar" className="h-5 w-5" />),
+    option(create.location.href, create.location.label, "Add or connect a store, café, showroom or other ongoing Location for this Business.", <NavIcon name="pin" className="h-5 w-5" />),
+    option(create.moment.href, create.moment.label, "Document something your Business experienced.", <MomentGlyph className="h-5 w-5" />),
   ];
   const growOptions = [
     option(`${basePath}?tab=opportunities&view=explore`, "Find An Opportunity", "Explore Opportunities available to your Business.", <SparkGlyph className="h-5 w-5" />),

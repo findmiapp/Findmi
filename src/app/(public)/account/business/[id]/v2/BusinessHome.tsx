@@ -3,7 +3,9 @@ import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
 import ChevronIcon from "@/components/ChevronIcon";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
-import type { DashboardAppearance, HomeActivityItem, NeedsAttentionItem } from "@/lib/business-dashboard";
+import type { HomeActivity, NeedsAttentionItem } from "@/lib/business-dashboard";
+import { MomentGlyph } from "@/components/opportunities/OpportunityGlyphs";
+import { businessCreateActions, createOnFindmiActions, type BusinessCreateIcon } from "./createActions";
 import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { SparkGlyph } from "./BusinessAppShell";
@@ -29,7 +31,9 @@ const APP_TIMEZONE = "America/New_York";
  *   C. Needs Attention — only when something is actionable (existing
  *                      rules + pending Event Invitations, which used to be
  *                      a separate tile; new Orders were already an item)
- *   D. Coming Up     — Happening Now cards, then up to 4 upcoming rows
+ *   D. Coming Up     — Happening Now cards, then up to 4 upcoming rows;
+ *                      Appearances AND hosted Events, one item per Event
+ *                      (B2 — lib/business-dashboard.ts buildHomeComingUp)
  *   E. Opportunities — compact entry point (existing data only)
  *   F. Performance   — existing snapshot, existing Free/Pro gating
  *   then Your Findmi Link (the handle editor). */
@@ -40,24 +44,6 @@ export interface HomeMetric {
 }
 
 export type HomePublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
-
-/** The five Create on Findmi actions and their EXISTING destinations:
- *   Where I'll Be          → Findmi Here's request-to-join composer
- *                            (?tab=findmi-here&compose=1, manual fallback)
- *   Host an Event          → /account/event/new?business_id= (validated
- *                            server-side: Owner/Manager of this Business)
- *   Add To Product Catalog → Products' Add Product panel (?tab=products&compose=1)
- *   At a Location          → Findmi Here's Locations add panel (?view=locations&add=1)
- *   Create A QR Code       → the Business QR creator (/qr/new) */
-export function createOnFindmiActions(basePath: string, businessId: string) {
-  return [
-    { key: "where", label: "Where I’ll Be", href: `${basePath}?tab=findmi-here&compose=1`, icon: "compass" },
-    { key: "event", label: "Host an Event", href: `/account/event/new?business_id=${encodeURIComponent(businessId)}`, icon: "calendar" },
-    { key: "product", label: "Add To Product Catalog", href: `${basePath}?tab=products&compose=1`, icon: "tag" },
-    { key: "location", label: "At a Location", href: `${basePath}?tab=findmi-here&view=locations&add=1`, icon: "pin" },
-    { key: "qr", label: "Create A QR Code", href: `${basePath}/qr/new`, icon: "qr" },
-  ] as const;
-}
 
 const STATUS_COPY: Record<HomePublicationStatus, { label: string; tone: "aqua" | "amber" | "neutral"; line: string }> = {
   live: { label: "Live", tone: "aqua", line: "Your Business is live on Findmi." },
@@ -90,10 +76,10 @@ export default function BusinessHome({
   businessSlug: string | null;
   publicationStatus: HomePublicationStatus;
   pro: boolean;
-  /** One per live Event / standalone Appearance (lib/business-dashboard.ts buildHomeActivities). */
-  liveActivities: DashboardAppearance[];
-  /** One row per Event / standalone Appearance — next date + "+ N More Dates". */
-  comingUp: HomeActivityItem[];
+  /** Happening Now — every live Appearance group / hosted Event (lib/business-dashboard.ts buildHomeComingUp). */
+  liveActivities: HomeActivity[];
+  /** Next few not-yet-live items, chronological, one per Event / standalone Appearance. */
+  comingUp: HomeActivity[];
   needsAttention: NeedsAttentionItem[];
   metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
   metricsRangeLabel: string | null;
@@ -126,21 +112,24 @@ export default function BusinessHome({
     ...needsAttention,
   ];
   const publicHref = businessSlug ? `/business/${businessSlug}` : null;
+  const moment = businessCreateActions(basePath, businessId).moment;
 
   return (
     <div className="flex flex-col gap-7">
-      {/* A. Status — compact; identity lives in the context bar above. */}
-      <section aria-label="Business status" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-        <p className="flex min-w-0 items-center gap-2 text-body text-muted">
+      {/* A. Status — compact; identity lives in the context bar above.
+          Chip + link on one line, the one-line explanation under it, so
+          a long status (Pending Review) never squeezes beside the chip. */}
+      <section aria-label="Business status">
+        <div className="flex items-center justify-between gap-3">
           <Chip tone={status.tone}>{status.label}</Chip>
-          <span className="min-w-0">{status.line}</span>
-        </p>
-        {publicHref && (
-          <Link href={publicHref} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
-            {publicationStatus === "live" ? "View Public Profile" : "Preview"}
-            <ChevronIcon direction="right" className="h-3 w-3" />
-          </Link>
-        )}
+          {publicHref && (
+            <Link href={publicHref} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
+              {publicationStatus === "live" ? "View Public Profile" : "Preview"}
+              <ChevronIcon direction="right" className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
+        <p className="mt-1 text-metadata text-muted">{status.line}</p>
       </section>
 
       {/* B. Create on Findmi — the primary action area. */}
@@ -156,13 +145,22 @@ export default function BusinessHome({
                 className="flex h-full min-h-[56px] items-center gap-2.5 rounded-2xl border border-black/[0.07] bg-white px-3 py-2.5 transition hover:border-findmi/40 hover:bg-findmi-50/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
-                  {action.icon === "qr" ? <QrGlyph className="h-5 w-5" /> : <NavIcon name={action.icon} className="h-5 w-5" />}
+                  <CreateIcon icon={action.icon} />
                 </span>
                 <span className="min-w-0 text-card-title font-semibold leading-snug text-primary">{action.label}</span>
               </Link>
             </li>
           ))}
         </ul>
+        {/* Secondary creation — the existing Moment composer with this
+            Business prefilled; deliberately not a sixth primary tile. */}
+        <Link
+          href={moment.href}
+          className="mt-2 inline-flex items-center gap-1.5 text-metadata font-semibold text-accent hover:underline"
+        >
+          <MomentGlyph className="h-4 w-4" />
+          {moment.label}
+        </Link>
       </section>
 
       {/* C. Needs Attention — omitted entirely when nothing is actionable. */}
@@ -204,7 +202,7 @@ export default function BusinessHome({
             </p>
             <div className="mt-2 flex flex-col gap-3">
               {liveNow.map((a) => (
-                <LiveCard key={a.id} appearance={a} />
+                <LiveCard key={a.key} activity={a} />
               ))}
             </div>
           </div>
@@ -212,8 +210,8 @@ export default function BusinessHome({
         {comingUp.length > 0 ? (
           <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
             {comingUp.map((item) => (
-              <li key={item.appearance.id}>
-                <UpcomingRow appearance={item.appearance} moreDates={item.moreDates} />
+              <li key={item.key}>
+                <UpcomingRow activity={item} />
               </li>
             ))}
           </ul>
@@ -343,20 +341,15 @@ function SectionTitle({ id, title, href, linkLabel }: { id: string; title: strin
   );
 }
 
-function placeLine(a: DashboardAppearance): string | null {
-  return a.venueName ?? a.geographyLabel ?? ([a.city, a.state].filter(Boolean).join(", ") || null);
-}
-
-function LiveCard({ appearance: a }: { appearance: DashboardAppearance }) {
-  const place = placeLine(a);
+function LiveCard({ activity: a }: { activity: HomeActivity }) {
   return (
     <Link
-      href={a.managementHref}
+      href={a.href}
       className="flex overflow-hidden rounded-2xl border border-black/[0.07] bg-white shadow-sm transition hover:border-black/15 active:scale-[0.99]"
     >
       <div className="relative w-24 shrink-0 bg-black/[0.04] sm:w-32">
-        {a.displayImageUrl ? (
-          <SupabaseImage src={a.displayImageUrl} alt="" fill sizes="128px" className="object-cover" />
+        {a.imageUrl ? (
+          <SupabaseImage src={a.imageUrl} alt="" fill sizes="128px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink/20">
             <NavIcon name="calendar" className="h-7 w-7" />
@@ -364,9 +357,12 @@ function LiveCard({ appearance: a }: { appearance: DashboardAppearance }) {
         )}
       </div>
       <div className="min-w-0 flex-1 p-3.5">
-        <p className="text-label font-bold uppercase text-red-600">Live · until {formatTime(a.endAt)}</p>
+        <p className="text-label font-bold uppercase text-red-600">
+          Live{a.endAt ? ` · until ${formatTime(a.endAt)}` : ""}
+          {a.kind === "hosted_event" && <span className="text-subtle"> · Hosting</span>}
+        </p>
         <p className="mt-1 line-clamp-2 font-display text-card-title-lg font-semibold leading-snug text-primary">{a.title}</p>
-        {place && <p className="mt-0.5 truncate text-metadata text-muted">{place}</p>}
+        {a.place && <p className="mt-0.5 truncate text-metadata text-muted">{a.place}</p>}
         <p className="flex items-center gap-1 mt-2 text-metadata font-bold text-accent">
           Manage
           <ChevronIcon direction="right" className="h-3 w-3" />
@@ -376,11 +372,9 @@ function LiveCard({ appearance: a }: { appearance: DashboardAppearance }) {
   );
 }
 
-function UpcomingRow({ appearance: a, moreDates }: { appearance: DashboardAppearance; moreDates: number }) {
-  const place = placeLine(a);
-  const pendingStatus = a.participationStatus && a.participationStatus !== "approved";
+function UpcomingRow({ activity: a }: { activity: HomeActivity }) {
   return (
-    <Link href={a.managementHref} className="flex items-center gap-3 py-3">
+    <Link href={a.href} className="flex items-center gap-3 py-3">
       <span className="flex w-12 shrink-0 flex-col items-center rounded-xl bg-black/[0.04] py-1.5">
         <span className="text-[10px] font-bold uppercase tracking-wide text-muted">
           {new Date(a.startAt).toLocaleDateString("en-US", { month: "short", timeZone: APP_TIMEZONE })}
@@ -390,19 +384,21 @@ function UpcomingRow({ appearance: a, moreDates }: { appearance: DashboardAppear
       <span className="min-w-0 flex-1">
         <span className="block truncate text-card-title font-semibold text-primary">{a.title}</span>
         <span className="block truncate text-metadata text-muted">
-          {a.temporal.label} · {formatTime(a.startAt)}–{formatTime(a.endAt)}
-          {place ? ` · ${place}` : ""}
+          {a.kind === "hosted_event" ? "Hosting · " : ""}
+          {a.temporal.label} · {formatTime(a.startAt)}
+          {a.endAt ? `–${formatTime(a.endAt)}` : ""}
+          {a.place ? ` · ${a.place}` : ""}
         </span>
-        {/* A multi-date Event's Appearances share one row: its next date
-            above, the rest summarized here (every date is under See All). */}
-        {moreDates > 0 && (
+        {/* A multi-date Event is one row: its next date above, the rest
+            summarized here (every date is under See All). */}
+        {a.moreDates > 0 && (
           <span className="block truncate text-metadata font-semibold text-findmi-700">
-            {moreDates === 1 ? "+ 1 More Date" : `+ ${moreDates} More Dates`}
+            {a.moreDates === 1 ? "+ 1 More Date" : `+ ${a.moreDates} More Dates`}
           </span>
         )}
       </span>
-      {pendingStatus ? (
-        <Chip tone="amber">{a.statusLabel}</Chip>
+      {a.pendingLabel ? (
+        <Chip tone="amber">{a.pendingLabel}</Chip>
       ) : (
         <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
       )}
@@ -420,6 +416,14 @@ function MetricTile({ label, metric, pro }: { label: string; metric: HomeMetric;
       {change && <p className={`mt-0.5 text-microcopy font-bold ${up ? "text-accent" : "text-subtle"}`}>{change}</p>}
     </div>
   );
+}
+
+/** Findmi icon system for a creation action: NavIcon, plus the QR and
+ * Moment marks the Business More menu / + Add sheet already use. */
+function CreateIcon({ icon }: { icon: BusinessCreateIcon }) {
+  if (icon === "qr") return <QrGlyph className="h-5 w-5" />;
+  if (icon === "moment") return <MomentGlyph className="h-5 w-5" />;
+  return <NavIcon name={icon} className="h-5 w-5" />;
 }
 
 /** Same QR mark as the Business More menu (24px / 1.8-stroke family). */

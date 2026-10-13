@@ -21,7 +21,7 @@ import {
   buildNeedsAttentionItems,
   resolveDashboardAppearances,
   canonicalOwnerAppearances,
-  buildHomeActivities,
+  buildHomeComingUp,
   countUpcomingDatesPerPreviewGroup,
   type DashboardAppearance,
   type DashboardAppearanceSource,
@@ -902,6 +902,9 @@ export default async function ManageBusinessPage({
     state: string | null;
     upcomingCount: number;
     statusLabel: string | null;
+    coverImageUrl: string | null;
+    /** B2 — every not-yet-ended date, soonest first (Home's Coming Up). */
+    upcomingDates: { startAt: string; endAt: string | null }[];
   };
   const hostedUpcoming: HostedEventRow[] = [];
   const hostedPast: HostedEventRow[] = [];
@@ -1138,7 +1141,7 @@ export default async function ManageBusinessPage({
 
     const { data: hostedEvents } = await admin
       .from("events")
-      .select("id, name, slug, start_at, end_at, venue_name, city, state, is_demo, publication_status")
+      .select("id, name, slug, start_at, end_at, venue_name, city, state, is_demo, publication_status, cover_image_url")
       .eq("host_business_id", id)
       .is("trashed_at", null);
     const hostedIds = (hostedEvents ?? []).map((ev) => ev.id as string);
@@ -1188,6 +1191,8 @@ export default async function ManageBusinessPage({
           state: loc?.state ?? pick.state,
           upcomingCount: upcoming.length,
           statusLabel,
+          coverImageUrl: ev.cover_image_url ?? null,
+          upcomingDates: upcoming.map((o) => ({ startAt: o.start_at, endAt: o.end_at })),
         };
         (upcoming.length > 0 ? hostedUpcoming : hostedPast).push(row);
       } else {
@@ -1204,6 +1209,8 @@ export default async function ManageBusinessPage({
           state: ev.state,
           upcomingCount: ends && new Date(ends).getTime() > nowMs ? 1 : 0,
           statusLabel,
+          coverImageUrl: ev.cover_image_url ?? null,
+          upcomingDates: ends && new Date(ends).getTime() > nowMs ? [{ startAt: ev.start_at, endAt: ev.end_at }] : [],
         };
         (row.upcomingCount > 0 ? hostedUpcoming : hostedPast).push(row);
       }
@@ -1256,8 +1263,22 @@ export default async function ManageBusinessPage({
   // Home is a summary (presentation grouping, not counting): one live card
   // / Coming Up row per Event or standalone Appearance, with "+ N More
   // Dates" read from the full (unpaged) schedule.
-  const homeActivities = buildHomeActivities(
+  // B2 — Coming Up is the Business's actual upcoming activity: its
+  // Appearances AND the Events it hosts (events.host_business_id), one item
+  // per Event (deduped by Event id — see buildHomeComingUp). A hosted Event
+  // shows its cover, else the Business's own imagery; it opens the Event
+  // Manager with this Business as context, same as Findmi Here's Hosting row.
+  const homeActivities = buildHomeComingUp(
     dashboardAppearances,
+    hostedUpcoming.map((h) => ({
+      eventId: h.id,
+      name: h.name,
+      dates: h.upcomingDates,
+      where: h.where,
+      statusLabel: h.statusLabel,
+      imageUrl: h.coverImageUrl ?? business.cover_image_url ?? business.logo_url ?? null,
+      href: `/account/event/${h.id}?business_id=${encodeURIComponent(id)}`,
+    })),
     countUpcomingDatesPerPreviewGroup(allScheduleRows, eventIdsWithOccurrenceProjections)
   );
   // "Materially affects discovery" — the same fields a visitor would
@@ -1639,7 +1660,7 @@ export default async function ManageBusinessPage({
               publicationStatus={business.publication_status}
               pro={pro}
               liveActivities={homeActivities.live}
-              comingUp={homeActivities.comingUp.slice(0, 4)}
+              comingUp={homeActivities.comingUp}
               needsAttention={needsAttention}
               metrics={
                 performanceData
