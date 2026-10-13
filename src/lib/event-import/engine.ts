@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { safeFetchEventPage, validateFetchUrl, type SafeFetchResult } from "../safe-fetch";
 import { findEventMatches, findDuplicateMatches, type EventMatchCandidate, type DuplicateCandidate } from "../admin/appearance-matching";
 import type { AppearanceDraft } from "../admin/appearance-import";
-import { findLikelyDuplicateLocations } from "../locationCreation";
+import { findLikelyDuplicateLocations, findPossibleLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
 import { extractEventCandidate, needsAiAssist, isPastDate } from "./extract";
 import { classifySource } from "./sources";
@@ -29,12 +29,16 @@ import {
 /** Distinct places looked up per analysis (each once). */
 const MAX_PLACE_LOOKUPS = 15;
 
+type LocationRow = { id: string; name: string; address: string | null; city: string | null; state: string | null; postal_code?: string | null };
+
 export interface EventImportDeps {
   fetchPage: (url: URL) => Promise<SafeFetchResult>;
   ai: EventAiClient | null;
   matchEvent: (draft: AppearanceDraft) => Promise<EventMatchCandidate | null>;
   getEvent: (id: string) => Promise<{ slug: string; host_business_id: string | null } | null>;
-  matchLocations: (venue: { name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null }) => Promise<{ id: string; name: string; address: string | null; city: string | null; state: string | null }[]>;
+  matchLocations: (venue: { name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null }) => Promise<LocationRow[]>;
+  /** The matcher's "possible" tier (name containment) — only offered for confirmation. */
+  matchPossibleLocations?: (venue: { name: string; state: string | null }) => Promise<LocationRow[]>;
   matchOrganizer: (name: string, city: string | null, state: string | null) => Promise<{ id: string; name: string } | null>;
   matchExistingAppearance: (businessId: string, draft: AppearanceDraft) => Promise<DuplicateCandidate | null>;
   /** V1C retry safety: this Business's schedule item already imported from this Event link. */
@@ -73,6 +77,7 @@ export function defaultEventImportDeps(admin: SupabaseClient): EventImportDeps {
       return (data as { slug: string; host_business_id: string | null } | null) ?? null;
     },
     matchLocations: (venue) => findLikelyDuplicateLocations(admin, venue),
+    matchPossibleLocations: (venue) => findPossibleLocations(admin, venue),
     matchOrganizer: async (name, city, state) => {
       const matches = await findBusinessMatches(admin, { name, city, state });
       const m = matches.find((x) => x.isPublic && x.reasons.includes("name_location"));
@@ -252,13 +257,15 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
     const [eventMatch, locationLists, organizer, existing] = await Promise.all([
       first ? deps.matchEvent(draftFor(candidate, first)) : Promise.resolve(null),
       Promise.all(
-        [...places.entries()].map(async ([key, v]) => ({
-          key,
-          v,
-          found: await deps
+        [...places.entries()].map(async ([key, v]) => {
+          const found = await deps
             .matchLocations({ name: v.name!, address: v.address, city: v.city, state: v.state, postal_code: v.postalCode })
-            .catch(() => []),
-        }))
+            .catch(() => [] as LocationRow[]);
+          // Nothing exact → the matcher's possible tier, offered for confirmation only.
+          const possible =
+            found.length === 0 && deps.matchPossibleLocations ? await deps.matchPossibleLocations({ name: v.name!, state: v.state }).catch(() => [] as LocationRow[]) : [];
+          return { key, v, found, possible };
+        })
       ),
       candidate.organizer ? deps.matchOrganizer(candidate.organizer, city?.city ?? null, city?.state ?? null) : Promise.resolve(null),
       first && businessId ? deps.matchExistingAppearance(businessId, draftFor(candidate, first)) : Promise.resolve(null),
@@ -279,14 +286,15 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
         };
       }
     }
-    for (const { key, v, found } of locationLists) {
-      const loc = found[0];
+    for (const { key, v, found, possible } of locationLists) {
+      const loc = found[0] ?? possible[0];
       if (!loc) continue;
-      // Strong = exactly one Location, and the page gave more than a bare
-      // name to agree with (address, city or postal code). Otherwise it is
-      // shown as a possible match and never pre-selected.
+      // Strong = exactly one exact match, and the page gave more than a bare
+      // name to agree with (address, city or postal code). Anything else —
+      // including every name-containment match — is shown as a possible
+      // match for the person to confirm, never pre-selected.
       const strong = found.length === 1 && Boolean(v.address || v.city || v.postalCode);
-      matches.locations.push({ key, id: loc.id, name: loc.name, address: loc.address, city: loc.city, state: loc.state, confidence: strong ? "strong" : "possible" });
+      matches.locations.push({ key, id: loc.id, name: loc.name, address: loc.address, city: loc.city, state: loc.state, postalCode: loc.postal_code ?? null, confidence: strong ? "strong" : "possible" });
     }
     matches.organizerBusiness = organizer;
     if (existing && existing.confidence === "strong") matches.existingAppearance = { id: existing.id, title: existing.title, startAt: existing.start_at };

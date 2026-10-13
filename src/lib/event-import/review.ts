@@ -62,6 +62,9 @@ export function placeFromVenue(v: ImportedVenue, matches: EventImportMatches): R
     postalCode: v.postalCode,
     useLocationId: match && match.confidence === "strong" ? match.id : null,
     matchKey: key || null,
+    // A strong match starts linked (visibly, and can be undone); a possible
+    // one waits for the person's answer.
+    matchDecision: match && match.confidence === "strong" ? "use" : null,
   };
 }
 
@@ -151,6 +154,26 @@ export function successMessage(kind: "scheduled" | "requested" | "already", titl
 
 // ── V1C — several Events from one source ───────────────────────────────
 
+/** Answer one place's Findmi Location question everywhere that same page
+ * place appears in this review — the shared Where and every date — so a
+ * venue repeated across dates is confirmed once. Other places are
+ * untouched, and any single date can still be changed afterwards. */
+export function decidePlace(review: EventImportReview, matchKey: string, decision: "use" | "reject", locationId: string | null): EventImportReview {
+  const apply = (p: ReviewPlace): ReviewPlace =>
+    p.matchKey === matchKey ? { ...p, matchDecision: decision, useLocationId: decision === "use" ? locationId : null } : p;
+  return { ...review, place: apply(review.place), occurrences: review.occurrences.map((o) => ({ ...o, place: apply(o.place) })) };
+}
+
+/** Places in this review with a Findmi Location match still unanswered. */
+export function pendingPlaceMatches(review: EventImportReview, matches: EventImportMatches): string[] {
+  const places = review.sharedPlace ? [review.place] : review.occurrences.map((o) => o.place);
+  const keys = new Set<string>();
+  for (const p of places) {
+    if (p.matchKey && !p.matchDecision && !p.useLocationId && matches.locations.some((l) => l.key === p.matchKey)) keys.add(p.matchKey);
+  }
+  return [...keys];
+}
+
 export type BatchStatusKind = "ready" | "needs_details" | "possible_match" | "joins_existing";
 
 /** What a reviewed Event still needs before it can be added. Mirrors the
@@ -164,7 +187,7 @@ export function batchItemStatus(review: EventImportReview, matches: EventImportM
   }
   if (missing.length > 0) return { kind: "needs_details", missing };
   if (review.useEventId) return { kind: "joins_existing", missing };
-  if (matches.event) return { kind: "possible_match", missing };
+  if (matches.event || pendingPlaceMatches(review, matches).length > 0) return { kind: "possible_match", missing };
   return { kind: "ready", missing };
 }
 
@@ -198,4 +221,21 @@ export function batchSummary(
 export function defaultSelection(events: { key: string; past: boolean; alreadyOnSchedule: unknown }[], intent: EventImportIntent): string[] {
   if (intent !== "participating") return [];
   return events.filter((e) => !e.past && !e.alreadyOnSchedule).map((e) => e.key);
+}
+
+/** Answer a place's Findmi Location question from ONE spot in a review
+ * (the shared Where, or one date's place). The same page place on other
+ * dates that is still unanswered takes the same answer (a venue repeated
+ * across dates is confirmed once); places already answered keep their own
+ * answer, so changing one date later never changes another. */
+export function decidePlaceFrom(review: EventImportReview, target: string, decision: "use" | "reject", locationId: string | null): EventImportReview {
+  const targetPlace = target === "shared" ? review.place : review.occurrences.find((o) => o.id === target)?.place;
+  const key = targetPlace?.matchKey ?? null;
+  const answer = (p: ReviewPlace): ReviewPlace => ({ ...p, matchDecision: decision, useLocationId: decision === "use" ? locationId : null });
+  const follows = (p: ReviewPlace) => Boolean(key && p.matchKey === key && !p.matchDecision);
+  return {
+    ...review,
+    place: target === "shared" || follows(review.place) ? answer(review.place) : review.place,
+    occurrences: review.occurrences.map((o) => (o.id === target || follows(o.place) ? { ...o, place: answer(o.place) } : o)),
+  };
 }

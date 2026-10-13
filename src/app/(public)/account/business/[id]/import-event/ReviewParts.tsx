@@ -4,7 +4,7 @@
 import { useState } from "react";
 import ChevronIcon from "@/components/ChevronIcon";
 import type { EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
-import { emptyReviewOccurrence, occurrenceSummary } from "@/lib/event-import/review";
+import { decidePlaceFrom, emptyReviewOccurrence, occurrenceSummary } from "@/lib/event-import/review";
 
 export const MAX_DATES = 60;
 
@@ -85,6 +85,7 @@ export function WhenWhereEditor({
                   onToggle={() => toggle(d.id)}
                   onChange={(patch) => setOccurrence(d.id, patch)}
                   onRemove={many ? () => removeOccurrence(d.id) : null}
+                  onDecidePlace={(decision, locationId) => set(decidePlaceFrom(review, d.id ?? "", decision, locationId))}
                 />
               ))}
             </ol>
@@ -126,7 +127,13 @@ export function WhenWhereEditor({
               <h2 id={`${idPrefix}where`} className="text-label font-bold uppercase text-subtle">
                 Where
               </h2>
-              <PlaceFields idPrefix={`${idPrefix}place`} place={review.place} matches={matches} onChange={(patch) => set({ place: { ...review.place, ...patch } })} />
+              <PlaceFields
+                idPrefix={`${idPrefix}place`}
+                place={review.place}
+                matches={matches}
+                onChange={(patch) => set({ place: { ...review.place, ...patch } })}
+                onDecide={(decision, locationId) => set(decidePlaceFrom(review, "shared", decision, locationId))}
+              />
             </section>
           )}
     </>
@@ -167,6 +174,7 @@ export function OccurrenceRow({
   onToggle,
   onChange,
   onRemove,
+  onDecidePlace,
 }: {
   index: number;
   numbered: boolean;
@@ -178,6 +186,7 @@ export function OccurrenceRow({
   onToggle: () => void;
   onChange: (patch: Partial<ReviewOccurrence>) => void;
   onRemove: (() => void) | null;
+  onDecidePlace?: (decision: "use" | "reject", locationId: string) => void;
 }) {
   const id = d.id ?? String(index);
   const sum = occurrenceSummary(d);
@@ -196,6 +205,9 @@ export function OccurrenceRow({
                 <span className="flex min-w-0 items-center gap-1.5 text-metadata text-muted">
                   <span className="min-w-0 truncate">{where || <span className="text-amber-700">Add a place</span>}</span>
                   {d.place.useLocationId && <span className="shrink-0 rounded-full bg-findmi-50 px-1.5 py-0.5 text-microcopy font-semibold text-findmi-700">On Findmi</span>}
+                  {!d.place.useLocationId && !d.place.matchDecision && d.place.matchKey && matches.locations.some((l) => l.key === d.place.matchKey) && (
+                    <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-microcopy font-semibold text-amber-800">Confirm Place</span>
+                  )}
                 </span>
               )}
             </span>
@@ -231,7 +243,7 @@ export function OccurrenceRow({
           {endsAfterMidnight && <p className="col-span-2 text-microcopy text-subtle">Ends after midnight.</p>}
           {showPlace && (
             <div className="col-span-2 flex flex-col gap-2 pt-1">
-              <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} />
+              <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} onDecide={onDecidePlace} />
             </div>
           )}
         </div>
@@ -245,26 +257,24 @@ export function PlaceFields({
   place,
   matches,
   onChange,
+  onDecide,
 }: {
   idPrefix: string;
   place: ReviewPlace;
   matches: EventImportMatches;
   onChange: (patch: Partial<ReviewPlace>) => void;
+  /** Answer the Findmi Location question (lets the caller apply it to the same place elsewhere). */
+  onDecide?: (decision: "use" | "reject", locationId: string) => void;
 }) {
   const match = place.matchKey ? matches.locations.find((l) => l.key === place.matchKey) : undefined;
   return (
     <>
       {match && (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 text-metadata text-secondary">
-            {match.confidence === "strong" ? "Findmi already has " : "Is this "}
-            <span className="font-semibold text-primary">{match.name}</span>
-            {match.address || match.city ? ` (${[match.address, match.city].filter(Boolean).join(", ")})` : ""}
-            {match.confidence === "strong" ? "." : "?"}
-          </legend>
-          <Choice checked={place.useLocationId === match.id} onChange={() => onChange({ useLocationId: match.id })} title="Use This Place" line="Connect it to the place already on Findmi." />
-          <Choice checked={place.useLocationId === null} onChange={() => onChange({ useLocationId: null })} title="Use the Details Below" line="It’s a different place." />
-        </fieldset>
+        <LocationMatchCard
+          match={match}
+          decision={place.useLocationId === match.id ? "use" : place.matchDecision === "reject" ? "reject" : null}
+          onDecide={(decision) => (onDecide ? onDecide(decision, match.id) : onChange({ matchDecision: decision, useLocationId: decision === "use" ? match.id : null }))}
+        />
       )}
       {!place.useLocationId && (
         <div className="grid grid-cols-2 gap-2">
@@ -295,5 +305,43 @@ export function PlaceFields({
         </div>
       )}
     </>
+  );
+}
+
+type LocationMatch = EventImportMatches["locations"][number];
+
+/** A Findmi Location the page's place appears to be. Strong matches start
+ * linked (and say so); possible ones wait for an answer. Either can be
+ * changed before saving. */
+export function LocationMatchCard({
+  match,
+  decision,
+  onDecide,
+  pageText,
+}: {
+  match: LocationMatch;
+  decision: "use" | "reject" | null;
+  onDecide: (decision: "use" | "reject") => void;
+  /** e.g. "The page says Corgi Cafe · 6 Events". */
+  pageText?: string;
+}) {
+  const locality = [[match.city, match.state].filter(Boolean).join(", "), match.postalCode].filter(Boolean).join(" ");
+  return (
+    <fieldset className={`flex flex-col gap-2 rounded-xl border p-3 ${decision === null ? "border-amber-200 bg-amber-50/40" : "border-black/[0.08] bg-white"}`}>
+      <legend className="sr-only">Is this {match.name}?</legend>
+      <p className={`text-label font-bold uppercase ${match.confidence === "strong" ? "text-findmi-700" : "text-amber-800"}`}>
+        {match.confidence === "strong" ? "On Findmi" : "Possible Findmi Location"}
+      </p>
+      {pageText && <p className="-mt-1 text-metadata text-muted">{pageText}</p>}
+      <div>
+        <p className="text-body font-semibold text-primary">{match.name}</p>
+        {match.address && <p className="text-metadata text-secondary">{match.address}</p>}
+        {locality && <p className="text-metadata text-secondary">{locality}</p>}
+      </div>
+      <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+        <Choice checked={decision === "use"} onChange={() => onDecide("use")} title="Use This Location" line="Show it on this Location’s page." />
+        <Choice checked={decision === "reject"} onChange={() => onDecide("reject")} title="Not the Same Place" line="Keep the place as written." />
+      </div>
+    </fieldset>
   );
 }

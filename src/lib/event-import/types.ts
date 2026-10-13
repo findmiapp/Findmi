@@ -86,7 +86,7 @@ export interface EventImportMatches {
   /** One entry per distinct place on the page (keyed by venueKey). "strong"
    * = a single clear match and is pre-selected; "possible" is shown but the
    * Business decides. */
-  locations: { key: string; id: string; name: string; address: string | null; city: string | null; state: string | null; confidence: "strong" | "possible" }[];
+  locations: { key: string; id: string; name: string; address: string | null; city: string | null; state: string | null; postalCode?: string | null; confidence: "strong" | "possible" }[];
   organizerBusiness: { id: string; name: string } | null;
   /** This Business's existing standalone schedule item for the same day/title, if any. */
   existingAppearance: { id: string; title: string; startAt: string } | null;
@@ -153,6 +153,10 @@ export interface ReviewPlace {
   useLocationId: string | null;
   /** The page place this was read from — looks up its Location match. */
   matchKey?: string | null;
+  /** The person's answer to a Findmi Location match for this place:
+   * "use" (linked — useLocationId set), "reject" (not the same place), or
+   * unset (not answered yet; a possible match is never linked silently). */
+  matchDecision?: "use" | "reject" | null;
 }
 
 export interface ReviewOccurrence {

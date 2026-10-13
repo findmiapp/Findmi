@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
+import { usStateCode } from "./brand-website-extract";
 
 /** Admin Event Location Relationship UX pass — extracted out of
  * account/location/actions.ts (Inline Event Location Creation pass) so
@@ -147,4 +148,71 @@ export async function findLikelyDuplicateLocations(
   }
 
   return matches.slice(0, 3);
+}
+
+// Words that don't identify a place on their own ("Corgi Cafe" is
+// distinctive because of "corgi", never because of "cafe").
+const GENERIC_PLACE_WORDS = new Set([
+  "the", "a", "an", "at", "of", "and", "nyc", "ny", "new", "york", "cafe", "café", "coffee", "bar", "restaurant", "park", "pier",
+  "hall", "center", "centre", "room", "studio", "space", "club", "house", "market", "shop", "store", "gallery", "theater", "theatre",
+  "venue", "loft", "rooftop", "lounge", "kitchen", "bakery", "brewery", "hotel", "plaza", "square", "street", "st", "ave", "avenue",
+]);
+
+/** Event Import — the "possible" tier of the same matcher, used only to
+ * OFFER a place for the person to confirm (never auto-selected): one
+ * name's words all appear in the other's ("Corgi Cafe" ⊂ "Corgi Cafe
+ * NYC"), with at least one distinctive word and at least two words on the
+ * shorter side, and the state agreeing wherever both sides have one. City
+ * is not compared here — a borough ("Manhattan") and its city ("New York")
+ * name the same place. Exact matches stay findLikelyDuplicateLocations'
+ * job; this runs only when that found nothing. */
+export async function findPossibleLocations(
+  admin: SupabaseClient,
+  input: { name: string; state: string | null }
+): Promise<SelectedLocationDetail[]> {
+  const words = normalizeForMatch(input.name).split(" ").filter(Boolean);
+  const distinctive = words.filter((w) => !GENERIC_PLACE_WORDS.has(w) && w.length >= 3);
+  if (words.length === 0 || distinctive.length === 0) return [];
+  // Bounded query on the most distinctive word; containment checked below.
+  const key = [...distinctive].sort((a, b) => b.length - a.length)[0];
+  const { data } = await admin
+    .from("locations")
+    .select("id, slug, name, address, city, state, postal_code, is_demo, category:categories(name)")
+    .is("archived_at", null)
+    .is("trashed_at", null)
+    .ilike("name", `%${key.replace(/[%_\\]/g, "")}%`)
+    .limit(50);
+  const rows = (data ?? []) as {
+    id: string;
+    slug: string;
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    is_demo: boolean | null;
+    category: { name: string } | { name: string }[] | null;
+  }[];
+  const contains = (big: string[], small: string[]) => small.every((w) => big.includes(w));
+  const stateKey = (v: string) => usStateCode(v) ?? normalizeForMatch(v);
+  const stateAgrees = (s: string | null) => !input.state || !s || stateKey(input.state) === stateKey(s);
+  return rows
+    .filter((row) => {
+      if (row.is_demo || !stateAgrees(row.state)) return false;
+      const rowWords = normalizeForMatch(row.name).split(" ").filter(Boolean);
+      const [small, big] = rowWords.length <= words.length ? [rowWords, words] : [words, rowWords];
+      return small.length >= 2 && small.some((w) => !GENERIC_PLACE_WORDS.has(w) && w.length >= 3) && contains(big, small);
+    })
+    .slice(0, 3)
+    .map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      postal_code: row.postal_code,
+      category: (Array.isArray(row.category) ? row.category[0] : row.category)?.name ?? null,
+      is_public: !row.is_demo,
+    }));
 }

@@ -5,8 +5,8 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
-import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, defaultSelection, occurrenceSummary, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
-import { Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
+import { Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
  * calendar, a venue's events page). Step 1: choose Events (upcoming ones,
@@ -108,6 +108,35 @@ export default function MultiEventImport({
     setPhase("review");
   }
 
+  // Places across the chosen Events that Findmi may already have: each is
+  // answered ONCE here for every Event at that place (any single Event can
+  // still be changed when opened). Different places stay separate.
+  const placeGroups = (() => {
+    const groups = new Map<string, { key: string; venue: string; match: SourceEventAnalysis["matches"]["locations"][number]; events: Set<string>; decisions: Set<string> }>();
+    for (const e of chosen) {
+      const review = reviews[e.key];
+      if (!review || review.useEventId) continue;
+      const places = review.sharedPlace ? [review.place] : review.occurrences.map((o) => o.place);
+      for (const p of places) {
+        const match = p.matchKey ? e.matches.locations.find((l) => l.key === p.matchKey) : undefined;
+        if (!match || !p.matchKey) continue;
+        const g = groups.get(p.matchKey) ?? { key: p.matchKey, venue: p.venueName ?? match.name, match, events: new Set<string>(), decisions: new Set<string>() };
+        g.events.add(e.key);
+        g.decisions.add(p.useLocationId === match.id ? "use" : p.matchDecision === "reject" ? "reject" : "none");
+        groups.set(p.matchKey, g);
+      }
+    }
+    return [...groups.values()];
+  })();
+
+  function decideForAll(matchKey: string, decision: "use" | "reject", locationId: string) {
+    setReviews((prev) => {
+      const next = { ...prev };
+      for (const e of chosen) if (next[e.key]) next[e.key] = decidePlace(next[e.key], matchKey, decision, locationId);
+      return next;
+    });
+  }
+
   const statusOf = (key: string) => batchItemStatus(reviews[key], byKey.get(key)!.matches);
   const ready = chosen.filter((e) => reviews[e.key] && statusOf(e.key).kind !== "needs_details");
   const incomplete = chosen.length - ready.length;
@@ -203,6 +232,28 @@ export default function MultiEventImport({
             </h2>
             <p className="mt-1 text-metadata text-muted">Tap an Event to check or edit it. Each is added to {businessName} on its own.</p>
           </div>
+          {placeGroups.length > 0 && (
+            <div aria-labelledby="batch-places" className="flex flex-col gap-2">
+              <h3 id="batch-places" className="text-label font-bold uppercase text-subtle">
+                Places
+              </h3>
+              <p className="-mt-1 text-metadata text-muted">Confirm each place once — it applies to every Event there.</p>
+              {placeGroups.map((g) => {
+                const decision = g.decisions.size === 1 ? ([...g.decisions][0] as "use" | "reject" | "none") : "mixed";
+                return (
+                  <div key={g.key}>
+                    <LocationMatchCard
+                      match={g.match}
+                      decision={decision === "use" || decision === "reject" ? decision : null}
+                      onDecide={(d) => decideForAll(g.key, d, g.match.id)}
+                      pageText={`The page says “${g.venue}” · ${g.events.size} ${g.events.size === 1 ? "Event" : "Events"}`}
+                    />
+                    {decision === "mixed" && <p className="mt-1 text-microcopy text-muted">Some Events are set differently. Choosing here sets them all.</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <ol className="flex flex-col gap-2">
             {chosen.map((e) => {
               const review = reviews[e.key];
