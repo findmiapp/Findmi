@@ -114,6 +114,10 @@ export const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/more",
     groups: [
       {
+        label: "Discovery",
+        items: [{ href: "/admin/markets", label: "Markets & Areas", hint: "Control where Findmi is available" }],
+      },
+      {
         label: "Business Development · Private",
         items: [
           { href: "/admin/bd", label: "Business Development", hint: "Internal BD records — never public" },

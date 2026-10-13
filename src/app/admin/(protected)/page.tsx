@@ -14,6 +14,7 @@ import { imageVariantUrl } from "@/lib/image-variants";
 import AdminGlobalSearch from "./AdminGlobalSearch";
 import { MetricCell, ModulePanel } from "./dashboard-ui";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
+import NavIcon from "@/components/NavIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,22 @@ export default async function AdminDashboardPage() {
           </Link>
         ))}
       </div>
+
+      {/* Management shortcut (not a create action) — the existing Markets &
+          Areas manager, where "Visible on Findmi" is set per Market/Area. */}
+      <Link
+        href="/admin/markets"
+        className="flex min-h-[52px] items-center gap-3 rounded-xl border border-black/[0.08] bg-white px-4 py-2.5 transition hover:border-findmi/40"
+      >
+        <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700">
+          <NavIcon name="pin" className="h-[18px] w-[18px]" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-card-title font-semibold text-primary">Markets &amp; Areas</span>
+          <span className="block text-metadata text-muted">Control where Findmi is available.</span>
+        </span>
+        <ChevronRightGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+      </Link>
 
       {!counts && (
         <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-body text-amber-800">
