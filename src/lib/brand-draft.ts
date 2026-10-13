@@ -46,6 +46,8 @@ const httpsUrl = (max: number) =>
       }
     });
 
+const stagedPath = z.string().regex(/^brand-drafts\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(png|jpg|webp|gif)$/);
+
 const websiteUrl = z
   .string()
   .max(300)
@@ -72,8 +74,12 @@ const BrandDraftSchema = z
     ig: z.string().regex(/^[a-z0-9._]{1,30}$/).optional(),
     city: z.string().min(1).max(80).optional(),
     state: z.string().min(1).max(40).optional(),
-    logo: httpsUrl(512).optional(),
-    cover: httpsUrl(512).optional(),
+    logo: httpsUrl(1024).optional(),
+    cover: httpsUrl(1024).optional(),
+    /** VCL A3 recovery — the verified candidate's staged copy in Findmi
+     * storage (brand-drafts/<uid>/<uuid>.<ext>); re-checked on every use. */
+    logoStaged: stagedPath.optional(),
+    coverStaged: stagedPath.optional(),
   })
   .strict();
 
@@ -91,11 +97,35 @@ export interface BrandDraftCandidate {
   state?: string | null;
   logo?: string | null;
   cover?: string | null;
+  logoStaged?: string | null;
+  coverStaged?: string | null;
 }
 
 /** When a draft is too large, optional fields are dropped in this fixed
  * order (never truncated): About, cover, logo, short description. */
 export const BRAND_DRAFT_DROP_ORDER = ["about", "cover", "logo", "sd"] as const;
+
+/** VCL A3 recovery — validates each optional field on its own and DROPS
+ * only the invalid ones (reported in `dropped`), instead of discarding the
+ * whole draft — which used to silently lose every image and the About
+ * whenever any single field (e.g. a long CDN image URL) failed. */
+const CANDIDATE_KEYS = new Set(["site", "name", "cat", "sd", "about", "ig", "city", "state", "logo", "cover", "logoStaged", "coverStaged"]);
+export function sanitizeBrandDraftCandidate(candidate: BrandDraftCandidate): { clean: Record<string, unknown>; dropped: string[]; unknown: string[] } {
+  const shape = BrandDraftSchema.shape as Record<string, z.ZodTypeAny>;
+  const clean: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  const unknown: string[] = [];
+  for (const [key, value] of Object.entries(candidate)) {
+    if (!CANDIDATE_KEYS.has(key)) {
+      unknown.push(key);
+      continue;
+    }
+    if (value === null || value === undefined || value === "") continue;
+    if (shape[key].safeParse(value).success) clean[key] = value;
+    else dropped.push(key);
+  }
+  return { clean, dropped, unknown };
+}
 
 export function getBrandDraftSecret(): string | null {
   const secret = process.env.BRAND_DRAFT_SECRET?.trim();
@@ -120,10 +150,12 @@ export function signBrandDraft(
   secret: string | null
 ): string | null {
   if (!secret || !userId) return null;
-  const payload: Record<string, unknown> = { v: BRAND_DRAFT_VERSION, uid: userId, exp: now + BRAND_DRAFT_TTL_MS };
-  for (const [key, value] of Object.entries(candidate)) {
-    if (value !== null && value !== undefined && value !== "") payload[key] = value;
-  }
+  const { clean, unknown } = sanitizeBrandDraftCandidate(candidate);
+  // An unknown key (e.g. anything authority-bearing) is never signed: the
+  // whole draft is refused. Only invalid VALUES of known optional fields
+  // are dropped.
+  if (unknown.length) return null;
+  const payload: Record<string, unknown> = { v: BRAND_DRAFT_VERSION, uid: userId, exp: now + BRAND_DRAFT_TTL_MS, ...clean };
   if (!BrandDraftSchema.safeParse(payload).success) return null;
   let token = encode(payload, secret);
   for (const key of BRAND_DRAFT_DROP_ORDER) {

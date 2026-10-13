@@ -14,7 +14,13 @@ import {
   type InstagramDiscoveryInput,
   type InstagramDiscoveryStatus,
 } from "./brand-instagram-discovery";
-import { fetchVerifiedBrandImage, type BrandImageRole } from "./brand-images";
+import {
+  clearStagedBrandImages,
+  fetchVerifiedBrandImage,
+  stageBrandImage,
+  type BrandImageRole,
+  type VerifiedBrandImage,
+} from "./brand-images";
 import {
   buildCandidateFromExtraction,
   fetchBrandWebsite,
@@ -169,7 +175,12 @@ export interface BrandBuildDiagnostic {
   candidates: { logo: number; logoStrong: number; svgLogo: number; cover: number; manifestUrl: boolean } | null;
   verifications: { role: BrandImageRole; kind: "raster" | "svg"; host: string; ok: boolean; reason: string | null }[];
   manifest: { attempted: boolean; icons: number; failed: boolean } | null;
-  result: { logo: "page_logo" | "icon" | "svg" | "manifest" | null; cover: boolean; instagram: "seed" | "page" | "search" | null } | null;
+  result: {
+    logo: "page_logo" | "icon" | "svg" | "manifest" | null;
+    cover: boolean;
+    instagram: "seed" | "page" | "search" | null;
+    staged?: { logo: boolean; cover: boolean };
+  } | null;
   /** "disabled" = A3b flag off (search never runs); else the search status or "not_run". */
   instagramSearch: string;
 }
@@ -186,7 +197,12 @@ export interface WebsiteAnalysisDeps {
   discoverInstagram?: (input: InstagramDiscoveryInput) => Promise<InstagramDiscovery>;
   /** Diagnostics: verification WITH its rejection reason (optional; when
    * absent verifyImage is used and the reason is unknown). */
-  verifyImageDetailed?: (url: string, role: BrandImageRole) => Promise<{ ok: boolean; reason: string | null }>;
+  verifyImageDetailed?: (url: string, role: BrandImageRole) => Promise<{ ok: boolean; reason: string | null; image?: VerifiedBrandImage }>;
+  /** VCL A3 recovery — stage a VERIFIED image for this user (Findmi
+   * storage) so Review and creation never re-fetch it; null on failure. */
+  stageVerified?: (userId: string, image: VerifiedBrandImage) => Promise<string | null>;
+  /** Removes this user's previously staged images (best effort). */
+  clearStaged?: (userId: string) => Promise<void>;
   /** Diagnostics sink for BrandBuildDiagnostic (absent → not emitted). */
   diagnostic?: (entry: BrandBuildDiagnostic) => void;
   /** V1.1C — BRAND_DRAFT_SECRET configured: build an enriched signed draft.
@@ -286,7 +302,7 @@ export async function analyzeBrandWebsite(
     };
   }
   try {
-    return await analyzeSource(website, cacheKey, deps, log, finish, manual, seed);
+    return await analyzeSource(website, cacheKey, deps, log, finish, manual, seed, input.userId);
   } finally {
     settleInflight();
   }
@@ -306,8 +322,12 @@ async function analyzeSource(
   log: WebsiteAnalysisLog,
   finishOuter: (href: string, outcome: WebsiteAnalysisOutcome, extra?: Partial<WebsiteAnalysisLog>, result?: Partial<WebsiteAnalysisResult>) => WebsiteAnalysisResult,
   manual: (prefill: BrandPrefillStatus) => string,
-  seed: BrandSeed
+  seed: BrandSeed,
+  userId: string
 ): Promise<WebsiteAnalysisResult> {
+  // Verified bytes captured during THIS Build (url|role → image), reused
+  // for staging so a verified candidate is never fetched again.
+  const verifiedImages = new Map<string, VerifiedBrandImage>();
   // ── TEMPORARY diagnostics (see BrandBuildDiagnostic) ──
   const diag: BrandBuildDiagnostic = {
     event: "brand_build_diagnostic",
@@ -345,8 +365,11 @@ async function analyzeSource(
       let ok = false;
       let reason: string | null = null;
       try {
-        if (deps.verifyImageDetailed) ({ ok, reason } = await deps.verifyImageDetailed(url, role));
-        else ok = await deps.verifyImage(url, role);
+        if (deps.verifyImageDetailed) {
+          const r = await deps.verifyImageDetailed(url, role);
+          ({ ok, reason } = r);
+          if (r.ok && r.image) verifiedImages.set(`${role}|${url}`, r.image);
+        } else ok = await deps.verifyImage(url, role);
       } catch {
         reason = "threw";
       }
@@ -493,6 +516,21 @@ async function analyzeSource(
   );
   if (!deps.draftsEnabled) return finish(fallbackHref, "prefilled", { match: "none" });
 
+  // Stage each verified image ONCE (its bytes were already verified in
+  // this Build; after a cache hit they are verified one more time). Review
+  // shows the staged copy and creation re-hosts it — no further third-party
+  // fetch. A failed staging falls back to the remote URL as before.
+  const staged: Record<BrandImageRole, string | null> = { logo: null, cover: null };
+  if (deps.stageVerified && deps.draftsEnabled) {
+    await deps.clearStaged?.(userId).catch(() => {});
+    for (const [role, url] of [["logo", proposal.logoUrl], ["cover", proposal.coverUrl]] as const) {
+      if (!url) continue;
+      let image = verifiedImages.get(`${role}|${url}`);
+      if (!image && deps.verifyImageDetailed) image = (await deps.verifyImageDetailed(url, role).catch(() => null))?.image;
+      staged[role] = image ? await deps.stageVerified(userId, image).catch(() => null) : null;
+    }
+  }
+  if (diag.result && deps.stageVerified && deps.draftsEnabled) diag.result = { ...diag.result, staged: { logo: Boolean(staged.logo), cover: Boolean(staged.cover) } };
   const draft: BrandDraftCandidate = {
     site: proposal.websiteUrl,
     name: proposal.name,
@@ -502,8 +540,11 @@ async function analyzeSource(
     ig: proposal.instagramHandle,
     city: proposal.city,
     state: proposal.state,
-    logo: proposal.logoUrl,
-    cover: proposal.coverUrl,
+    // The remote URL only when no staged copy exists (fallback path).
+    logo: staged.logo ? null : proposal.logoUrl,
+    cover: staged.cover ? null : proposal.coverUrl,
+    ...(staged.logo ? { logoStaged: staged.logo } : {}),
+    ...(staged.cover ? { coverStaged: staged.cover } : {}),
   };
   return finish(BRAND_DRAFT_REVIEW_HREF, "prefilled", { match: "none" }, { draft, fallbackHref });
 }
@@ -524,8 +565,10 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
     verifyImage: async (url, role) => (await fetchVerifiedBrandImage(url, role)).ok,
     verifyImageDetailed: async (url, role) => {
       const r = await fetchVerifiedBrandImage(url, role);
-      return r.ok ? { ok: true, reason: null } : { ok: false, reason: r.reason };
+      return r.ok ? { ok: true, reason: null, image: r.image } : { ok: false, reason: r.reason };
     },
+    stageVerified: (userId, image) => stageBrandImage(admin, userId, image),
+    clearStaged: (userId) => clearStagedBrandImages(admin, userId),
     // TEMPORARY (VCL A3 root cause): one safe structured line per Build.
     diagnostic: (entry) => console.info(JSON.stringify(entry)),
     fetchManifestIcons: async (manifestUrl) => {

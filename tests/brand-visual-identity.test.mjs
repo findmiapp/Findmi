@@ -261,12 +261,16 @@ test("security: private/local/unsafe image targets stay blocked before any reque
 
 test("security: byte/type/dimension bounds unchanged; SVG and mismatched bytes are rejected", async () => {
   assert.equal(F.SAFE_FETCH_IMAGE_MAX_BYTES, 5 * 1024 * 1024);
-  assert.deepEqual([...F.SAFE_FETCH_IMAGE_TYPES].sort(), ["image/gif", "image/jpeg", "image/png", "image/webp"]);
+  assert.deepEqual([...F.SAFE_FETCH_IMAGE_TYPES].sort(), ["application/octet-stream", "binary/octet-stream", "image/gif", "image/jpeg", "image/jpg", "image/pjpeg", "image/png", "image/webp"], "first gate only — the bytes decide");
   assert.equal(IMG.BRAND_IMAGE_PIXEL_LIMIT, 40_000_000);
   const svg = transport({ "/l.png": { body: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'), type: "image/png" } });
   assert.deepEqual(await IMG.fetchVerifiedBrandImage("https://a.com/l.png", "logo", svg), { ok: false, reason: "invalid_file" });
-  const mismatch = transport({ "/l.png": { body: await photo(400, 300), type: "image/png" } });
-  assert.deepEqual(await IMG.fetchVerifiedBrandImage("https://a.com/l.png", "logo", mismatch), { ok: false, reason: "type_mismatch" });
+  // A CDN label that disagrees with the bytes no longer loses the image: the
+  // real format (sniffed) is what is verified and stored. A non-image label is refused.
+  const relabeled = await IMG.fetchVerifiedBrandImage("https://a.com/l.png", "logo", transport({ "/l.png": { body: await photo(400, 300), type: "image/png" } }));
+  assert.equal(relabeled.ok, true);
+  assert.equal(relabeled.image.validated.contentType, "image/jpeg");
+  assert.deepEqual(await IMG.fetchVerifiedBrandImage("https://a.com/l.png", "logo", transport({ "/l.png": { body: await photo(400, 300), type: "text/html" } })), { ok: false, reason: "type_mismatch" });
   assert.equal(IMG.isSuitableBrandImage("cover", 599, 400), false);
   assert.equal(IMG.isSuitableBrandImage("logo", 100, 100), false);
 });

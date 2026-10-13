@@ -5,7 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { analyzeBrandWebsite, defaultWebsiteAnalysisDeps, manualBrandFormHref } from "@/lib/brand-website-analysis";
 import { websiteAnalysisClientIp } from "@/lib/brand-website-rate-limit";
 import { BRAND_SEED_PARAMS, sanitizeBrandSeed } from "@/lib/brand-candidate";
-import { clearBrandDraftCookie, getBrandDraftSecret, signBrandDraft, writeBrandDraftCookie } from "@/lib/brand-draft";
+import { clearBrandDraftCookie, getBrandDraftSecret, sanitizeBrandDraftCandidate, signBrandDraft, writeBrandDraftCookie } from "@/lib/brand-draft";
 
 const WEBSITE_INPUT_MAX = 200;
 
@@ -38,12 +38,16 @@ export async function buildBrandProfile(formData: FormData) {
   // or too large after the documented drops) the bounded V1.1B text
   // prefill is used instead — never unsigned draft state.
   if (user && result.draft) {
+    const { dropped } = sanitizeBrandDraftCandidate(result.draft);
     const token = signBrandDraft(result.draft, user.id, Date.now(), getBrandDraftSecret());
+    // TEMPORARY diagnostic: which draft fields were dropped as invalid
+    // (field names only) and whether the draft was signed at all.
+    const draftOutcome = token ? "signed" : getBrandDraftSecret() ? "unsignable" : "unconfigured";
+    console.info(JSON.stringify({ event: "brand_draft", outcome: draftOutcome, dropped }));
     if (token) {
       await writeBrandDraftCookie(token);
       redirect(result.href);
     }
-    console.info(JSON.stringify({ event: "brand_draft", outcome: getBrandDraftSecret() ? "unsignable" : "unconfigured" }));
     await clearBrandDraftCookie();
     redirect(result.fallbackHref ?? result.href);
   }

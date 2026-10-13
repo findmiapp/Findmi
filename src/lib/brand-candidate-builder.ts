@@ -308,7 +308,7 @@ export async function selectVerifiedLogo(
   logoPool: readonly string[],
   manifestUrl: string | null | undefined,
   deps: Pick<BrandCandidateDeps, "verifyImage" | "fetchManifestIcons">,
-  svg: { candidates?: readonly string[]; strongCount?: number } = {}
+  svg: { candidates?: readonly string[]; strongCount?: number; conventionalIcon?: string | null } = {}
 ): Promise<string | null> {
   // VCL A3c — with an SVG logo candidate, the order is: strong raster logos
   // → strong SVG logos (rasterized + verified in lib/brand-images) → the
@@ -325,15 +325,38 @@ export async function selectVerifiedLogo(
       (await selectVerifiedImage(svgPool, "logo", deps.verifyImage)) ??
       (await selectVerifiedImage(logoPool.slice(strongCount), "logo", deps.verifyImage));
   }
-  if (fromPage || !manifestUrl || !deps.fetchManifestIcons) return fromPage;
-  let icons: string[];
+  if (fromPage) return fromPage;
+  const tried = [...logoPool, ...svgPool];
+  if (manifestUrl && deps.fetchManifestIcons) {
+    let icons: string[] = [];
+    try {
+      icons = await deps.fetchManifestIcons(manifestUrl);
+    } catch {
+      icons = [];
+    }
+    const fresh = icons.filter((url) => !tried.some((t) => sameImageSource(t, url)));
+    tried.push(...fresh);
+    const fromManifest = await selectVerifiedImage(fresh, "logo", deps.verifyImage);
+    if (fromManifest) return fromManifest;
+  }
+  // VCL A3 recovery — last resort: the site's own conventional
+  // /apple-touch-icon.png (where browsers look even when a page doesn't
+  // declare it). First-party, one fetch, same verification; never a cover.
+  const conventional = svg.conventionalIcon ?? null;
+  if (conventional && !tried.some((t) => sameImageSource(t, conventional))) {
+    return selectVerifiedImage([conventional], "logo", deps.verifyImage);
+  }
+  return null;
+}
+
+/** The site's conventional touch-icon URL (same origin as the page). */
+export function conventionalTouchIconUrl(finalUrl: string): string | null {
   try {
-    icons = await deps.fetchManifestIcons(manifestUrl);
+    const u = new URL("/apple-touch-icon.png", finalUrl);
+    return u.protocol === "https:" ? u.href : null;
   } catch {
     return null;
   }
-  const fresh = icons.filter((url) => !logoPool.some((tried) => sameImageSource(tried, url)));
-  return selectVerifiedImage(fresh, "logo", deps.verifyImage);
 }
 
 const instagramUrlOf = (handle: string | null | undefined) => (handle ? `https://www.instagram.com/${handle}` : null);
@@ -402,7 +425,11 @@ export async function buildCandidateFromExtraction(
     const logoPool = pool(profile.logoCandidates, profile.logoCandidateUrl);
     const coverPool = pool(profile.coverCandidates, profile.coverCandidateUrl);
     const images = options.verifyImages
-      ? Promise.all([selectVerifiedLogo(logoPool, profile.manifestUrl, deps, { candidates: profile.svgLogoCandidates, strongCount: profile.logoStrongCount }), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
+      ? Promise.all([selectVerifiedLogo(logoPool, profile.manifestUrl, deps, {
+          candidates: profile.svgLogoCandidates,
+          strongCount: profile.logoStrongCount,
+          conventionalIcon: conventionalTouchIconUrl(finalUrl),
+        }), selectVerifiedImage(coverPool, "cover", deps.verifyImage)])
       : Promise.resolve<[string | null, string | null]>([null, null]);
     // VCL A3b — search ONLY when no Instagram exists from the visitor's own
     // seed or the page itself, and only on the enriched (signed-in, drafts)

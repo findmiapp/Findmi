@@ -23,7 +23,7 @@ import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { findBusinessMatches } from "@/lib/business-matching";
 import { BRAND_SOURCE, SHORT_DESCRIPTION_MAX_LENGTH, parseBrandSource } from "@/lib/brand-candidate";
 import { clearBrandDraftCookie, readBrandDraft } from "@/lib/brand-draft";
-import { fetchVerifiedBrandImage, storeBrandImage, type BrandImageRole } from "@/lib/brand-images";
+import { clearStagedBrandImages, fetchVerifiedBrandImage, loadStagedBrandImage, storeBrandImage, type BrandImageRole } from "@/lib/brand-images";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -1425,12 +1425,19 @@ export async function createMemberBusiness(formData: FormData) {
     if (useLogo || useCover) {
       try {
         const draft = await readBrandDraft(user.id);
-        const wanted: [BrandImageRole, string | undefined][] = [
-          ["logo", useLogo ? draft?.logo : undefined],
-          ["cover", useCover ? draft?.cover : undefined],
+        const wanted: [BrandImageRole, boolean, string | undefined, string | undefined][] = [
+          ["logo", useLogo, draft?.logoStaged, draft?.logo],
+          ["cover", useCover, draft?.coverStaged, draft?.cover],
         ];
         const imported = await Promise.all(
-          wanted.map(async ([role, url]) => {
+          wanted.map(async ([role, use, stagedPath, url]) => {
+            if (!use) return null;
+            // VCL A3 recovery — the copy verified and staged during the
+            // Build (this user's own path only), re-verified, then re-hosted.
+            if (stagedPath) {
+              const image = await loadStagedBrandImage(admin, user.id, stagedPath, role);
+              if (image) return storeBrandImage(admin, image);
+            }
             if (!url) return null;
             const verified = await fetchVerifiedBrandImage(url, role);
             return verified.ok ? storeBrandImage(admin, verified.image) : null;
@@ -1448,6 +1455,7 @@ export async function createMemberBusiness(formData: FormData) {
       }
     }
     await clearBrandDraftCookie();
+    await clearStagedBrandImages(admin, user.id);
   }
 
   // Best-effort only — the atomic RPC above already succeeded, so a

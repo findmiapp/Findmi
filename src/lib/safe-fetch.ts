@@ -494,7 +494,19 @@ const HTML_PROFILE: FetchProfile = {
  * existing upload pipeline accepts (validateImageFile); SVG and ICO are
  * never requested or accepted. Same 5 MB cap as owner uploads. */
 export const SAFE_FETCH_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-export const SAFE_FETCH_IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+export const SAFE_FETCH_IMAGE_TYPES: ReadonlySet<string> = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  // Common real-world CDN labels for the same bytes (S3/GCS defaults, legacy
+  // aliases). Only a first gate — lib/brand-images sniffs and verifies the
+  // actual bytes (JPEG/PNG/WebP/GIF only) before anything is used.
+  "image/jpg",
+  "image/pjpeg",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
 const IMAGE_PROFILE: FetchProfile = {
   accept: "image/png,image/jpeg,image/webp,image/gif;q=0.8",
   mediaTypes: SAFE_FETCH_IMAGE_TYPES,

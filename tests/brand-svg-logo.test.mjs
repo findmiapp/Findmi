@@ -346,8 +346,8 @@ test("F/25/26. rasterizer failure or a hung/throwing verifier never blocks the B
 // ── Rendering / scope guards ─────────────────────────────────────────────
 test("24/25. no raw SVG is persisted or rendered; compact identity stays logo-only", () => {
   const review = read("src/app/(public)/account/business/new/page.tsx");
-  assert.match(review, /draft!\.logo \? previewBrandCandidateResult\(draft!\.logo, "logo"\)/, "Review shows only the verified preview data URI");
-  assert.match(review, /const logoPreview = logoResult\?\.preview \?\? null;/);
+  assert.match(review, /draft!\.logo && !logoStagedUrl \? previewBrandCandidateResult\(draft!\.logo, "logo"\)/, "Review shows only verified images: the staged copy, else the verified preview");
+  assert.match(review, /const logoPreview = logoStagedUrl \?\? logoResult\?\.preview \?\? null;/);
   assert.doesNotMatch(review, /dangerouslySetInnerHTML/);
   const create = read("src/app/(public)/account/business/actions.ts");
   assert.match(create, /const verified = await fetchVerifiedBrandImage\(url, role\);\s*return verified\.ok \? storeBrandImage\(admin, verified\.image\) : null;/, "creation stores the verified raster only");

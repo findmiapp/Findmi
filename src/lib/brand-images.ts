@@ -5,6 +5,7 @@ import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchI
 import { isSvgCandidateUrl } from "./brand-website-extract";
 import { validateImageFile, type ImageValidationResult } from "./imageUploadValidation";
 import { storePublicImage } from "./image-variants-server";
+import { randomUUID } from "node:crypto";
 
 /** Brand Onboarding V1.1C — logo / cover candidates found on a brand's
  * website. A candidate URL is untrusted at every step (even when it
@@ -27,6 +28,17 @@ import { storePublicImage } from "./image-variants-server";
 export type BrandImageRole = "logo" | "cover";
 
 export const BRAND_IMAGE_PIXEL_LIMIT = 40_000_000;
+/** Declared types accepted as a FIRST gate (the bytes still decide). */
+export const BRAND_IMAGE_DECLARED_TYPES: ReadonlySet<string> = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/jpg",
+  "image/pjpeg",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
 const UPLOAD_BUCKET = "findmi-media";
 const PREVIEW_MAX_BYTES = 120 * 1024;
 
@@ -232,17 +244,22 @@ async function fetchVerifiedSvgLogo(
 /** The raster verification shared by fetched rasters and rasterized SVGs:
  * actual bytes decide the format, declared type must match, dimension /
  * suitability rules, and (covers) the low-information-graphic test. */
-async function verifyRasterBytes(
+export async function verifyRasterBytes(
   body: Buffer,
   declared: string,
   role: BrandImageRole
 ): Promise<{ ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection }> {
-  const file = new File([new Uint8Array(body)], "brand-candidate", { type: declared });
+  // The ACTUAL bytes decide the format (validateImageFile sniffs them and
+  // reports the real type, which is what gets stored). A CDN's label is
+  // only a first gate: real CDNs say image/jpg, octet-stream, or serve a
+  // negotiated WebP under a JPEG label — none of which makes the bytes
+  // unsafe. Never HEIC (converted) and never anything that isn't an image.
+  if (!BRAND_IMAGE_DECLARED_TYPES.has(declared)) return { ok: false, reason: "type_mismatch" };
+  const sniffType = declared.startsWith("image/") && declared !== "image/jpg" && declared !== "image/pjpeg" ? declared : "image/png";
+  const file = new File([new Uint8Array(body)], "brand-candidate", { type: sniffType });
   const validated = await validateImageFile(file);
   if ("error" in validated) return { ok: false, reason: "invalid_file" };
-  // The bytes must be what the server said they are (and never a
-  // converted HEIC — those aren't offered as brand candidates).
-  if (validated.converted || validated.contentType !== declared) return { ok: false, reason: "type_mismatch" };
+  if (validated.converted) return { ok: false, reason: "type_mismatch" };
   let width: number | undefined;
   let height: number | undefined;
   try {
@@ -318,6 +335,77 @@ export async function storeBrandImage(admin: SupabaseClient, image: VerifiedBran
     return admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path).data.publicUrl;
   } catch {
     return null;
+  }
+}
+
+// ── Staged verified candidates (one fetch per Build) ─────────────────────
+//
+// A logo/cover that passed verification during the Build is staged ONCE in
+// Findmi storage under brand-drafts/<userId>/<uuid>.<ext> (verified raster
+// bytes only; an SVG is staged as its verified PNG). Review shows that
+// staged copy and Business creation re-validates and re-hosts it — so a
+// verified image can no longer vanish because the third-party site or CDN
+// refuses, times out or changes on a second or third fetch. The draft
+// cookie (signed, user-bound) carries only the short staging path, and
+// every use re-checks that the path belongs to the signed-in user.
+
+export const BRAND_STAGING_PREFIX = "brand-drafts";
+const STAGED_PATH = /^brand-drafts\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|gif)$/;
+const EXT_TYPE: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+
+/** True when `path` is a well-formed staging path owned by `userId`. */
+export function isStagedPathFor(path: string | null | undefined, userId: string): boolean {
+  const m = typeof path === "string" ? STAGED_PATH.exec(path) : null;
+  return Boolean(m && m[1] === userId.toLowerCase());
+}
+
+/** Stages a VERIFIED image for this user; returns its path or null. */
+export async function stageBrandImage(admin: SupabaseClient, userId: string, image: VerifiedBrandImage): Promise<string | null> {
+  try {
+    const ext = image.validated.extension === "jpeg" ? "jpg" : image.validated.extension;
+    if (!EXT_TYPE[ext]) return null;
+    const path = `${BRAND_STAGING_PREFIX}/${userId.toLowerCase()}/${randomUUID()}.${ext}`;
+    if (!isStagedPathFor(path, userId)) return null;
+    const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, image.body, { contentType: EXT_TYPE[ext], upsert: false, cacheControl: "600" });
+    return error ? null : path;
+  } catch {
+    return null;
+  }
+}
+
+/** Public URL of a staged image (display only; the bytes are verified). */
+export function stagedBrandImageUrl(admin: SupabaseClient, path: string): string {
+  return admin.storage.from(UPLOAD_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/** Re-loads and RE-VERIFIES a staged image owned by `userId`. */
+export async function loadStagedBrandImage(
+  admin: SupabaseClient,
+  userId: string,
+  path: string,
+  role: BrandImageRole
+): Promise<VerifiedBrandImage | null> {
+  if (!isStagedPathFor(path, userId)) return null;
+  try {
+    const { data, error } = await admin.storage.from(UPLOAD_BUCKET).download(path);
+    if (error || !data || data.size > SAFE_FETCH_SVG_MAX_BYTES * 40) return null;
+    const ext = path.slice(path.lastIndexOf(".") + 1);
+    const verified = await verifyRasterBytes(Buffer.from(await data.arrayBuffer()), EXT_TYPE[ext], role);
+    return verified.ok ? verified.image : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Removes this user's staged images (best effort; bounded). */
+export async function clearStagedBrandImages(admin: SupabaseClient, userId: string): Promise<void> {
+  try {
+    const folder = `${BRAND_STAGING_PREFIX}/${userId.toLowerCase()}`;
+    const { data } = await admin.storage.from(UPLOAD_BUCKET).list(folder, { limit: 50 });
+    const paths = (data ?? []).map((f) => `${folder}/${f.name}`).filter((p) => isStagedPathFor(p, userId));
+    if (paths.length) await admin.storage.from(UPLOAD_BUCKET).remove(paths);
+  } catch {
+    // best effort
   }
 }
 

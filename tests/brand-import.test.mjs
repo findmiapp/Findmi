@@ -192,7 +192,7 @@ test("process 9, 12, 17–18: a queued candidate is claimed once, run through th
   assert.equal(r.attempt_count, 1, "incremented exactly once");
   assert.equal(r.processing_started_at, null, "lease released");
   assert.equal(r.failure_code, null);
-  assert.deepEqual(r.proposal, { site: "https://milkmakeup.com", finalUrl: "https://milkmakeup.com/", name: "Milk Makeup", cat: CAT.id, sd: AI_RESULT.shortDescription, about: AI_RESULT.about, ig: "milkmakeup" });
+  assert.deepEqual(r.proposal, { site: "https://milkmakeup.com", finalUrl: "https://milkmakeup.com/", name: "Milk Makeup", cat: CAT.id, sd: AI_RESULT.shortDescription, about: AI_RESULT.about, ig: "milkmakeup", logo: "https://milkmakeup.com/apple-touch-icon.png" }, "the stub verifies everything, so the conventional touch icon is used");
   assert.deepEqual([e.calls.fetch, e.calls.enrich], [1, 1]);
 });
 

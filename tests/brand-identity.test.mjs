@@ -201,7 +201,7 @@ test("logo: a real 180×180 PNG passes; tiny favicon, ICO, SVG, bad MIME, MIME/b
     [{ "content-type": "image/svg+xml" }, Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "fetch_failed"],
     [{ "content-type": "image/png" }, Buffer.from("<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>"), "invalid_file"],
     [{ "content-type": "text/html" }, Buffer.from("<html></html>"), "fetch_failed"],
-    [{ "content-type": "image/png" }, await jpg(300, 300), "type_mismatch"],
+    [{ "content-type": "text/plain" }, await jpg(300, 300), "fetch_failed"],
     [{ "content-type": "image/png", "content-length": String(6 * 1024 * 1024) }, await png(200, 200), "fetch_failed"],
     [{ "content-type": "image/png" }, await png(1200, 100), "unsuitable"],
   ];
@@ -220,7 +220,7 @@ test("image fetch keeps every SSRF rule: IPs, http, ports, blocked DNS answers a
   const redirect = imageTransport({ "https://cdn.glossier.com/logo.png": { status: 302, headers: { location: "http://cdn.glossier.com/logo.png" } } });
   assert.equal((await F.safeFetchImage("https://cdn.glossier.com/logo.png", { transport: redirect })).code, "redirect_rejected");
   assert.equal(F.SAFE_FETCH_IMAGE_MAX_BYTES, 5 * 1024 * 1024);
-  assert.deepEqual([...F.SAFE_FETCH_IMAGE_TYPES].sort(), ["image/gif", "image/jpeg", "image/png", "image/webp"]);
+  assert.deepEqual([...F.SAFE_FETCH_IMAGE_TYPES].sort(), ["application/octet-stream", "binary/octet-stream", "image/gif", "image/jpeg", "image/jpg", "image/pjpeg", "image/png", "image/webp"], "first gate only — the bytes decide");
 });
 
 test("cover: landscape ≥600×300 passes; small or portrait images are rejected; never treated as a logo", async () => {
@@ -466,7 +466,8 @@ test("action: signs the draft for the session user, replaces any previous draft,
   assert.match(ACTION, /if \(token\) \{\s*await writeBrandDraftCookie\(token\);\s*redirect\(result\.href\);/);
   assert.match(ACTION, /redirect\(result\.fallbackHref \?\? result\.href\)/);
   assert.match(ACTION, /if \(user\) await clearBrandDraftCookie\(\);/, "a non-draft outcome clears a stale draft");
-  assert.match(ACTION, /outcome: getBrandDraftSecret\(\) \? "unsignable" : "unconfigured"/);
+  assert.match(ACTION, /const draftOutcome = token \? "signed" : getBrandDraftSecret\(\) \? "unsignable" : "unconfigured";/);
+  assert.match(ACTION, /console\.info\(JSON\.stringify\(\{ event: "brand_draft", outcome: draftOutcome, dropped \}\)\);/);
   assert.doesNotMatch(ACTION, /console\.\w+\([^)]*(token|draft\.|result\.draft)/, "never logs the draft");
 });
 
@@ -487,13 +488,15 @@ test("creation: images imported only after the RPC, only if selected, from the s
   const rpc = CREATE.indexOf('admin.rpc("create_owned_business"');
   const text = CREATE.indexOf("...(aboutDescription ? { description: aboutDescription } : {}),");
   const read_ = CREATE.indexOf("const draft = await readBrandDraft(user.id);");
-  const verify = CREATE.indexOf("await fetchVerifiedBrandImage(url, role)");
-  const store = CREATE.indexOf("storeBrandImage(admin, verified.image)");
+  const verify = CREATE.indexOf("await loadStagedBrandImage(admin, user.id, stagedPath, role)");
+  const store = CREATE.indexOf("storeBrandImage(admin, image)");
   const save = CREATE.indexOf("...(logoUrl ? { logo_url: logoUrl } : {})");
   const clear = CREATE.indexOf("await clearBrandDraftCookie();");
   const brandRedirect = CREATE.indexOf("if (brandOnboarding) redirect(`/account?created=${businessId}`);");
   assert.ok(rpc > 0 && rpc < text && text < read_ && read_ < verify && verify < store && store < save && save < clear && clear < brandRedirect);
-  assert.match(CREATE, /\["logo", useLogo \? draft\?\.logo : undefined\]/, "deselected → nothing fetched or stored");
+  assert.match(CREATE, /\["logo", useLogo, draft\?\.logoStaged, draft\?\.logo\]/);
+  assert.match(CREATE, /if \(!use\) return null;/, "deselected → nothing fetched or stored");
+  assert.ok(CREATE.indexOf("await fetchVerifiedBrandImage(url, role)") > CREATE.indexOf("await loadStagedBrandImage("), "remote re-fetch is only the fallback");
   assert.match(CREATE, /const useLogo = brandDraftFlag && str\(formData, "use_logo"\) === "1";/);
   assert.doesNotMatch(CREATE, /str\(formData, "(logo|cover)[^"]*_url"\)|formData\.get\("(logo|cover)/, "no submitted image URL is ever used");
   assert.match(CREATE, /\} catch \{\s*\/\/ best-effort — the Business already exists\s*\}/);

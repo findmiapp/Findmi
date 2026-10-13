@@ -103,6 +103,12 @@ export function handleMatchesDomain(handle: string, host: string): boolean {
   return BRAND_AFFIXES.some((a) => h === `${label}${a}` || h === `${a}${label}`);
 }
 
+/** Handle equals the brand's full name, compacted (≥ 4 chars). */
+export function handleMatchesName(handle: string, name: string | null): boolean {
+  const n = name ? compact(normalizeBusinessName(name) || name) : "";
+  return n.length >= 4 && compact(handle) === n;
+}
+
 /** The result title names the brand (normalized containment). */
 export function titleNamesBrand(title: string, name: string | null): boolean {
   const n = name ? compact(normalizeBusinessName(name) || name) : "";
@@ -161,7 +167,9 @@ export function parseVerdict(text: string): ModelVerdict | null {
 export function decideInstagram(input: InstagramDiscoveryInput, hits: SearchHit[], verdict: ModelVerdict | null): InstagramDiscoveryResult {
   const candidates = instagramCandidatesFrom(hits);
   if (candidates.length === 0) return NONE("not_found");
-  const domainMatches = candidates.filter((c) => handleMatchesDomain(c.handle, input.host));
+  // The handle must be the brand's own: its domain label (± a common brand
+  // affix) or its exact name ("ultabeauty" for "Ulta Beauty" on ulta.com).
+  const domainMatches = candidates.filter((c) => handleMatchesDomain(c.handle, input.host) || handleMatchesName(c.handle, input.name));
   if (domainMatches.length > 1) return { handle: null, confidence: "low", status: "ambiguous" };
   const pick = domainMatches[0];
   if (!pick) return { handle: null, confidence: "low", status: "not_found" };

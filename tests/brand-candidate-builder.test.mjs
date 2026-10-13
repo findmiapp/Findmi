@@ -329,7 +329,8 @@ test("adapter: a cached public analysis does not report a new Anthropic call", a
     ig: "milkmakeup",
     city: null,
     state: null,
-    logo: null,
+    // The stub verifies everything, so the conventional touch icon wins.
+    logo: "https://milkmakeup.com/apple-touch-icon.png",
     cover: null,
   });
 });

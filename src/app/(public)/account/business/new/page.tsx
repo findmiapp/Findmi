@@ -15,7 +15,8 @@ import {
   prefillHostLabel,
 } from "@/lib/brand-candidate";
 import { readBrandDraft } from "@/lib/brand-draft";
-import { previewBrandCandidateResult } from "@/lib/brand-images";
+import { isStagedPathFor, previewBrandCandidateResult, stagedBrandImageUrl } from "@/lib/brand-images";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { recordBrandImagePreview } from "@/lib/brand-website-rate-limit";
 
 export const metadata: Metadata = {
@@ -171,15 +172,24 @@ export default async function AddBusinessPage({
   // shown as a small re-encoded data URI — never hotlinked, never stored.
   // A candidate is offered (and selected by default) ONLY if that full
   // verification + preview succeeds; the owner can deselect it.
-  const previewsAllowed = Boolean(draft && (draft.logo || draft.cover)) && !recordBrandImagePreview(user.id);
+  // VCL A3 recovery — a candidate verified during the Build was staged in
+  // Findmi storage: Review shows that verified copy directly (no second
+  // third-party fetch, no preview limit), so it can't silently vanish. Only
+  // an unstaged (legacy/fallback) candidate is re-verified here as before.
+  const admin = draft && (draft.logoStaged || draft.coverStaged) ? getAdminSupabase() : null;
+  const stagedUrl = (path: string | undefined) => (admin && path && isStagedPathFor(path, user.id) ? stagedBrandImageUrl(admin, path) : null);
+  const logoStagedUrl = stagedUrl(draft?.logoStaged);
+  const coverStagedUrl = stagedUrl(draft?.coverStaged);
+  const needsPreview = Boolean(draft && ((draft.logo && !logoStagedUrl) || (draft.cover && !coverStagedUrl)));
+  const previewsAllowed = needsPreview && !recordBrandImagePreview(user.id);
   const [logoResult, coverResult] = previewsAllowed
     ? await Promise.all([
-        draft!.logo ? previewBrandCandidateResult(draft!.logo, "logo") : Promise.resolve(null),
-        draft!.cover ? previewBrandCandidateResult(draft!.cover, "cover") : Promise.resolve(null),
+        draft!.logo && !logoStagedUrl ? previewBrandCandidateResult(draft!.logo, "logo") : Promise.resolve(null),
+        draft!.cover && !coverStagedUrl ? previewBrandCandidateResult(draft!.cover, "cover") : Promise.resolve(null),
       ])
     : [null, null];
-  const logoPreview = logoResult?.preview ?? null;
-  const coverPreview = coverResult?.preview ?? null;
+  const logoPreview = logoStagedUrl ?? logoResult?.preview ?? null;
+  const coverPreview = coverStagedUrl ?? coverResult?.preview ?? null;
   // TEMPORARY (VCL A3 root cause): whether Review actually shows the
   // candidates analysis found — reason codes only, never URLs or user ids.
   if (brandOnboarding && draftParam === "1") {
@@ -187,12 +197,12 @@ export default async function AddBusinessPage({
       JSON.stringify({
         event: "brand_review_preview",
         draft: Boolean(draft),
-        logoCandidate: Boolean(draft?.logo),
-        coverCandidate: Boolean(draft?.cover),
+        logoCandidate: Boolean(draft?.logo || draft?.logoStaged),
+        coverCandidate: Boolean(draft?.cover || draft?.coverStaged),
         instagram: Boolean(draft?.ig),
         previewsAllowed,
-        logo: draft?.logo ? (logoResult ? (logoResult.preview ? "shown" : logoResult.reason) : "not_previewed") : null,
-        cover: draft?.cover ? (coverResult ? (coverResult.preview ? "shown" : coverResult.reason) : "not_previewed") : null,
+        logo: logoStagedUrl ? "staged" : draft?.logo ? (logoResult ? (logoResult.preview ? "shown" : logoResult.reason) : "not_previewed") : null,
+        cover: coverStagedUrl ? "staged" : draft?.cover ? (coverResult ? (coverResult.preview ? "shown" : coverResult.reason) : "not_previewed") : null,
       })
     );
   }
