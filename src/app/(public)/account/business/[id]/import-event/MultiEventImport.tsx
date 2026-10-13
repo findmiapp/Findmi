@@ -1,0 +1,394 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import ChevronIcon from "@/components/ChevronIcon";
+import { commitEventImportBatch } from "./actions";
+import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
+import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, defaultSelection, occurrenceSummary, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
+import { Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+
+/** Event Import V1C — a link that lists MANY distinct Events (an organizer
+ * calendar, a venue's events page). Step 1: choose Events (upcoming ones,
+ * not already on the schedule, are pre-chosen when participating). Step 2:
+ * review them as a compact list — each Event keeps its own name, link,
+ * image, dates and places, and is matched on its own; anything incomplete
+ * is clearly marked and not added. Every Event goes through the same
+ * validated save path as a single import. */
+
+const primaryButtonClass =
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryButtonClass =
+  "flex h-11 w-full items-center justify-center rounded-xl border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40";
+
+const STATUS_STYLE: Record<BatchStatusKind, string> = {
+  ready: "bg-findmi-50 text-findmi-700",
+  joins_existing: "bg-findmi-50 text-findmi-700",
+  possible_match: "bg-amber-50 text-amber-800",
+  needs_details: "bg-red-50 text-red-700",
+};
+
+function firstSummary(e: SourceEventAnalysis): { when: string; where: string; more: number } {
+  const upcoming = e.candidate.occurrences.filter((o) => !o.past);
+  const list = upcoming.length > 0 ? upcoming : e.candidate.occurrences;
+  const o = list[0];
+  if (!o) return { when: "Date not listed", where: "", more: 0 };
+  const sum = occurrenceSummary(reviewDateFor(o));
+  return { when: [sum.day, sum.time].filter(Boolean).join(" · ") || "Date not listed", where: [o.venue.name, o.venue.city].filter(Boolean).join(", "), more: list.length - 1 };
+}
+
+type Result = Awaited<ReturnType<typeof commitEventImportBatch>>;
+
+export default function MultiEventImport({
+  businessId,
+  businessName,
+  intent,
+  source,
+  events,
+  warnings,
+  header,
+  manualHref,
+  businessHome,
+  onTryAnother,
+}: {
+  businessId: string;
+  businessName: string;
+  intent: EventImportIntent;
+  source: ImportSource;
+  events: SourceEventAnalysis[];
+  warnings: string[];
+  header: React.ReactNode;
+  manualHref: string;
+  businessHome: string;
+  onTryAnother: () => void;
+}) {
+  const upcoming = events.filter((e) => !e.past);
+  const pastEvents = events.filter((e) => e.past);
+  const [phase, setPhase] = useState<"select" | "review" | "done">("select");
+  // Participating: upcoming Events not already on the schedule start chosen.
+  // Hosting: nothing is pre-chosen — a calendar listing an Event doesn't
+  // mean this Business organizes it.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelection(events, intent)));
+  const [showPast, setShowPast] = useState(false);
+  const [reviews, setReviews] = useState<Record<string, EventImportReview>>({});
+  const [initialPast, setInitialPast] = useState<Record<string, ReviewOccurrence[]>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{ result: Extract<Result, { ok: true }>; skipped: number } | null>(null);
+  const [saving, startSave] = useTransition();
+
+  const byKey = new Map(events.map((e) => [e.key, e]));
+  const chosen = events.filter((e) => selected.has(e.key));
+  const visible = showPast ? [...upcoming, ...pastEvents] : upcoming;
+
+  function toggle(key: string, on: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  function startReview() {
+    // Build each chosen Event's own review once (edits are kept if the
+    // Business goes back to the list).
+    const nextReviews = { ...reviews };
+    const nextPast = { ...initialPast };
+    for (const e of chosen) {
+      if (!nextReviews[e.key]) {
+        nextReviews[e.key] = reviewDefaults(e.candidate, e.matches, intent, businessName);
+        nextPast[e.key] = pastReviewOccurrences(e.candidate, e.matches);
+      }
+    }
+    setReviews(nextReviews);
+    setInitialPast(nextPast);
+    setExpanded(null);
+    setError(null);
+    setPhase("review");
+  }
+
+  const statusOf = (key: string) => batchItemStatus(reviews[key], byKey.get(key)!.matches);
+  const ready = chosen.filter((e) => reviews[e.key] && statusOf(e.key).kind !== "needs_details");
+  const incomplete = chosen.length - ready.length;
+
+  function save() {
+    setError(null);
+    startSave(async () => {
+      try {
+        const result = await commitEventImportBatch(
+          businessId,
+          ready.map((e) => reviews[e.key])
+        );
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setOutcome({ result, skipped: incomplete });
+        setPhase("done");
+      } catch {
+        setError("Couldn’t save them. Please try again.");
+      }
+    });
+  }
+
+  // ── Done ──
+  if (phase === "done" && outcome) {
+    const summary = batchSummary(outcome.result.results, outcome.skipped, businessName);
+    const group = (label: string, titles: string[]) =>
+      titles.length > 0 && (
+        <div>
+          <p className="text-label font-bold uppercase text-subtle">
+            {label} · {titles.length}
+          </p>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {titles.map((t, i) => (
+              <li key={`${t}-${i}`} className="truncate text-metadata text-secondary">
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <section role="status" className="flex flex-col gap-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
+          <p className="text-card-title font-semibold text-findmi-700">{summary.headline}</p>
+          {group("Added", summary.added)}
+          {group("Requests Sent", summary.connected)}
+          {group("Already on Your Schedule", summary.already)}
+          {summary.attention.length > 0 && (
+            <div>
+              <p className="text-label font-bold uppercase text-subtle">Needs Attention · {summary.attention.length}</p>
+              <ul className="mt-1 flex flex-col gap-1">
+                {summary.attention.map((a, i) => (
+                  <li key={`${a.title}-${i}`} className="text-metadata text-red-700">
+                    <span className="font-semibold">{a.title || "Untitled"}</span> — {a.error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {summary.skipped > 0 && (
+            <p className="text-metadata text-muted">
+              {summary.skipped} {summary.skipped === 1 ? "Event was" : "Events were"} skipped because details were missing.
+            </p>
+          )}
+        </section>
+        <div className="flex flex-col gap-2">
+          <Link href={`${businessHome}?tab=findmi-here`} className={primaryButtonClass}>
+            View Schedule
+          </Link>
+          <button type="button" onClick={onTryAnother} className={secondaryButtonClass}>
+            Import More
+          </button>
+          <Link href={businessHome} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
+            Back To {businessName}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 2: review the chosen Events ──
+  if (phase === "review") {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <section aria-labelledby="batch-review" className={`${sectionClass} flex flex-col gap-3`}>
+          <div>
+            <h2 id="batch-review" className="text-label font-bold uppercase text-subtle">
+              Review {chosen.length} {chosen.length === 1 ? "Event" : "Events"}
+            </h2>
+            <p className="mt-1 text-metadata text-muted">Tap an Event to check or edit it. Each is added to {businessName} on its own.</p>
+          </div>
+          <ol className="flex flex-col gap-2">
+            {chosen.map((e) => {
+              const review = reviews[e.key];
+              if (!review) return null;
+              const status = statusOf(e.key);
+              const isOpen = expanded === e.key;
+              const sum = review.occurrences[0] ? occurrenceSummary(review.occurrences[0]) : null;
+              const set = (patch: Partial<EventImportReview>) => setReviews((prev) => ({ ...prev, [e.key]: { ...prev[e.key], ...patch } }));
+              const match = e.matches.event;
+              const joining = Boolean(review.useEventId);
+              function setIntent(k: EventImportIntent) {
+                // Hosting never takes over another organizer's Event.
+                set({ intent: k, useEventId: k === "hosting" && match && !match.hostedByThisBusiness ? null : review.useEventId });
+              }
+              return (
+                <li key={e.key} className="rounded-xl border border-black/[0.08] bg-white">
+                  <div className="flex items-start gap-2 px-3 py-2.5">
+                    <button type="button" onClick={() => setExpanded(isOpen ? null : e.key)} aria-expanded={isOpen} aria-controls={`batch-${e.key}`} className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 block text-body font-semibold text-primary">{review.title || "Untitled Event"}</span>
+                        <span className="block text-metadata text-secondary">
+                          {joining ? "Dates from the Event on Findmi" : sum ? [sum.day, sum.time].filter(Boolean).join(" · ") || "Add a date" : "Add a date"}
+                          {!joining && review.occurrences.length > 1 ? ` · +${review.occurrences.length - 1} more` : ""}
+                        </span>
+                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-microcopy font-semibold ${STATUS_STYLE[status.kind]}`}>{BATCH_STATUS_LABEL[status.kind]}</span>
+                        {status.missing.length > 0 && <span className="mt-0.5 block text-microcopy text-red-700">Missing: {status.missing.join(", ")}</span>}
+                      </span>
+                      <ChevronIcon direction={isOpen ? "up" : "down"} className="mt-1 h-4 w-4 shrink-0 text-subtle" />
+                    </button>
+                    <button type="button" onClick={() => toggle(e.key, false)} aria-label={`Remove ${review.title || "this Event"}`} className="shrink-0 py-0.5 text-metadata font-semibold text-muted hover:text-red-600">
+                      Remove
+                    </button>
+                  </div>
+                  {isOpen && (
+                    <div id={`batch-${e.key}`} className="flex flex-col gap-3 border-t border-black/[0.05] px-3 pb-3 pt-2.5">
+                      <div>
+                        <span className={labelClass}>{businessName} Is</span>
+                        <div role="radiogroup" aria-label={`How ${businessName} is involved`} className="grid grid-cols-2 gap-1 rounded-lg bg-black/[0.04] p-0.5">
+                          {(["participating", "hosting"] as const).map((k) => (
+                            <label key={k} className={`flex h-8 cursor-pointer items-center justify-center rounded-md text-metadata font-semibold transition ${review.intent === k ? "bg-white text-primary shadow-sm" : "text-muted"}`}>
+                              <input type="radio" className="sr-only" checked={review.intent === k} onChange={setIntent.bind(null, k)} />
+                              {k === "participating" ? "Participating" : "Hosting"}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {match && (review.intent === "participating" || match.hostedByThisBusiness) && (
+                        <fieldset className="flex flex-col gap-2">
+                          <legend className="mb-1 text-metadata text-secondary">
+                            {match.confidence === "strong" ? "Already on Findmi: " : "Possibly on Findmi: "}
+                            <span className="font-semibold text-primary">{match.name}</span>
+                          </legend>
+                          <Choice checked={review.useEventId === match.id} onChange={() => set({ useEventId: match.id })} title="Yes, It’s This Event" line={review.intent === "participating" ? "We’ll ask the organizer to confirm your Business." : "It’s already on your schedule."} />
+                          <Choice checked={review.useEventId === null} onChange={() => set({ useEventId: null })} title="No, It’s Different" line="Add it with the details below." />
+                        </fieldset>
+                      )}
+                      <div>
+                        <label htmlFor={`batch-${e.key}-title`} className={labelClass}>
+                          Name
+                        </label>
+                        <input id={`batch-${e.key}-title`} value={review.title} onChange={(ev) => set({ title: ev.target.value })} className={inputClass} autoCapitalize="words" maxLength={200} />
+                      </div>
+                      <div>
+                        <label htmlFor={`batch-${e.key}-link`} className={labelClass}>
+                          Event Link
+                        </label>
+                        <input id={`batch-${e.key}-link`} type="url" inputMode="url" autoCapitalize="none" value={review.sourceUrl ?? ""} onChange={(ev) => set({ sourceUrl: ev.target.value })} className={inputClass} />
+                      </div>
+                      {!joining && <WhenWhereEditor review={review} set={set} matches={e.matches} initialPast={initialPast[e.key] ?? []} idPrefix={`batch-${e.key}-`} />}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        {error && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-metadata text-red-700">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-col gap-2 pb-4">
+          {incomplete > 0 && (
+            <p className="text-center text-metadata text-muted">
+              {incomplete} {incomplete === 1 ? "Event needs" : "Events need"} details and won&rsquo;t be added until completed.
+            </p>
+          )}
+          <button type="button" onClick={save} disabled={saving || ready.length === 0} className={primaryButtonClass}>
+            {saving ? "Adding…" : `Add ${ready.length} ${ready.length === 1 ? "Event" : "Events"}`}
+          </button>
+          <button type="button" onClick={() => setPhase("select")} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
+            Back To Events
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 1: choose Events ──
+  return (
+    <div className="flex flex-col gap-4">
+      {header}
+      <section aria-labelledby="events-found" className={`${sectionClass} flex flex-col gap-3`}>
+        <div>
+          <h2 id="events-found" className="text-label font-bold uppercase text-subtle">
+            Events Found
+          </h2>
+          <p className="mt-1 text-body text-primary">
+            We found {upcoming.length} upcoming {upcoming.length === 1 ? "Event" : "Events"}
+            {source.name ? ` from ${source.name}` : " from this page"}.
+          </p>
+          {warnings.map((w) => (
+            <p key={w} className="mt-1 text-metadata text-amber-900">
+              {w}
+            </p>
+          ))}
+        </div>
+        {intent === "hosting" && (
+          <p className="rounded-xl border border-amber-200/70 bg-amber-50/50 px-3 py-2 text-metadata text-amber-900">
+            These will be added as Events {businessName} hosts. Only choose Events {businessName} organizes.
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <button type="button" onClick={() => setSelected(new Set(visible.filter((e) => !e.alreadyOnSchedule).map((e) => e.key)))} className="text-metadata font-semibold text-accent hover:underline">
+            Select All
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="text-metadata font-semibold text-accent hover:underline">
+            Clear All
+          </button>
+          <span className="ml-auto text-metadata text-muted">{selected.size} Selected</span>
+        </div>
+        <ul className="flex flex-col gap-2">
+          {visible.map((e) => {
+            const s = firstSummary(e);
+            const checked = selected.has(e.key);
+            const match = e.matches.event;
+            return (
+              <li key={e.key}>
+                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition ${checked ? "border-findmi/50 bg-findmi-50/40" : "border-black/[0.08] bg-white"}`}>
+                  <input type="checkbox" checked={checked} onChange={(ev) => toggle(e.key, ev.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-findmi" aria-label={e.candidate.title ?? "Event"} />
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-2 block text-body font-semibold text-primary">{e.candidate.title}</span>
+                    <span className="block text-metadata text-secondary">
+                      {s.when}
+                      {s.more > 0 ? ` · +${s.more} more ${s.more === 1 ? "date" : "dates"}` : ""}
+                    </span>
+                    {s.where && <span className="block truncate text-metadata text-muted">{s.where}</span>}
+                    {(e.alreadyOnSchedule || match || e.past) && (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {e.alreadyOnSchedule && <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-secondary">On Your Schedule</span>}
+                        {match && !e.alreadyOnSchedule && (
+                          <span className={`rounded-full px-2 py-0.5 text-microcopy font-semibold ${match.confidence === "strong" ? "bg-findmi-50 text-findmi-700" : "bg-amber-50 text-amber-800"}`}>
+                            {match.confidence === "strong" ? "Already on Findmi" : "Possible Match"}
+                          </span>
+                        )}
+                        {e.past && <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-muted">Past</span>}
+                      </span>
+                    )}
+                  </span>
+                  {e.candidate.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element -- remote event-page image, preview only
+                    <img src={e.candidate.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />
+                  )}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        {pastEvents.length > 0 && (
+          <button type="button" onClick={() => setShowPast((v) => !v)} className="w-fit text-metadata font-semibold text-secondary hover:text-primary">
+            {showPast ? "Hide Past Events" : `Show Past Events (${pastEvents.length})`}
+          </button>
+        )}
+      </section>
+      <div className="flex flex-col gap-2 pb-4">
+        <button type="button" onClick={startReview} disabled={selected.size === 0} className={primaryButtonClass}>
+          Review Selected ({selected.size})
+        </button>
+        <button type="button" onClick={onTryAnother} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
+          Try Another Link
+        </button>
+        <Link href={manualHref} className="py-1 text-center text-metadata font-semibold text-muted hover:text-secondary">
+          {intent === "hosting" ? "Create Manually Instead" : "Add Manually Instead"}
+        </Link>
+      </div>
+    </div>
+  );
+}

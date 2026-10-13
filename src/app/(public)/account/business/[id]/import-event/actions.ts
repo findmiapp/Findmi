@@ -6,7 +6,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { getHostEventEligibility } from "@/lib/entitlements";
 import { analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
-import { normalizeReview, persistEventImport } from "@/lib/event-import/persist";
+import { normalizeReview, persistEventImport, type PersistDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { applyBusinessToEvent } from "@/lib/event-participation";
 import { fetchVerifiedBrandImage, storeBrandImage } from "@/lib/brand-images";
@@ -48,55 +48,87 @@ export async function analyzeEventImport(businessId: string, url: string): Promi
   }
 }
 
+type Ctx = NonNullable<Awaited<ReturnType<typeof authorize>>>;
+
+/** The existing domain paths, bound to this Business + signed-in person. */
+function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
+  const { admin, user, business } = ctx;
+  return {
+    admin,
+    userId: user.id,
+    businessId,
+    businessName: business.name,
+    applyToEvent: (eventId) => applyBusinessToEvent(admin, { eventId, businessId, userId: user.id }),
+    canHost: async () => (await getHostEventEligibility(admin, user.id, businessId)).ok,
+    storeImage: async (url) => {
+      const verified = await fetchVerifiedBrandImage(url, "cover");
+      return verified.ok ? storeBrandImage(admin, verified.image) : null;
+    },
+    geography: async (text) => {
+      const match = await findExistingGeographyMatch(admin, text);
+      return match ? { marketId: match.marketId, areaId: match.areaId ?? null } : null;
+    },
+    uniqueEventSlug: async (title) => {
+      const base = resolveSlugInput(null, title);
+      return base ? ensureUniqueSlug(base, (candidate) => isSlugTaken("events", candidate)) : null;
+    },
+    notifyNewEvent: async (eventId, title, startIso) => {
+      await notifyAdmin({
+        subject: `Event awaiting review: ${title}`,
+        heading: "New Event awaiting review",
+        body: [`Event: ${title}`, `Host: ${business.name}`, `Starts: ${new Date(startIso).toLocaleString()}`, "Source: Event Import"],
+        actionLabel: "Review Event",
+        actionUrl: `/admin/events/${eventId}`,
+      });
+    },
+    propagateDates: (eventId, ids) => propagateAllDatesParticipation(admin, eventId, ids),
+  };
+}
+
+async function commitOne(ctx: Ctx, businessId: string, review: EventImportReview, emailVerified: () => Promise<boolean>): Promise<EventImportOutcome> {
+  const normalized = normalizeReview(review);
+  if (!normalized.ok) return normalized;
+  if (normalized.value.intent === "participating" && normalized.value.useEventId && !(await emailVerified())) {
+    return { ok: false, error: "Verify your email before asking to join an Event." };
+  }
+  try {
+    return await persistEventImport(normalized.value, persistDepsFor(ctx, businessId));
+  } catch {
+    return { ok: false, error: "Couldn't save it. Please try again." };
+  }
+}
+
 /** Create / connect — only from the reviewed values. */
 export async function commitEventImport(businessId: string, review: EventImportReview): Promise<EventImportOutcome> {
   const ctx = await authorize(businessId);
   if (!ctx) return { ok: false, error: "You don't have access to this Business." };
-  const normalized = normalizeReview(review);
-  if (!normalized.ok) return normalized;
-  const { admin, user, business } = ctx;
-
-  if (normalized.value.intent === "participating" && normalized.value.useEventId && !(await isEmailVerified(admin, user.id))) {
-    return { ok: false, error: "Verify your email before asking to join an Event." };
+  const outcome = await commitOne(ctx, businessId, review, () => isEmailVerified(ctx.admin, ctx.user.id));
+  if (outcome.ok) {
+    revalidatePath(`/account/business/${businessId}`);
+    revalidatePath("/account");
   }
+  return outcome;
+}
 
-  try {
-    const outcome = await persistEventImport(normalized.value, {
-      admin,
-      userId: user.id,
-      businessId,
-      businessName: business.name,
-      applyToEvent: (eventId) => applyBusinessToEvent(admin, { eventId, businessId, userId: user.id }),
-      canHost: async () => (await getHostEventEligibility(admin, user.id, businessId)).ok,
-      storeImage: async (url) => {
-        const verified = await fetchVerifiedBrandImage(url, "cover");
-        return verified.ok ? storeBrandImage(admin, verified.image) : null;
-      },
-      geography: async (text) => {
-        const match = await findExistingGeographyMatch(admin, text);
-        return match ? { marketId: match.marketId, areaId: match.areaId ?? null } : null;
-      },
-      uniqueEventSlug: async (title) => {
-        const base = resolveSlugInput(null, title);
-        return base ? ensureUniqueSlug(base, (candidate) => isSlugTaken("events", candidate)) : null;
-      },
-      notifyNewEvent: async (eventId, title, startIso) => {
-        await notifyAdmin({
-          subject: `Event awaiting review: ${title}`,
-          heading: "New Event awaiting review",
-          body: [`Event: ${title}`, `Host: ${business.name}`, `Starts: ${new Date(startIso).toLocaleString()}`, "Source: Event Import"],
-          actionLabel: "Review Event",
-          actionUrl: `/admin/events/${eventId}`,
-        });
-      },
-      propagateDates: (eventId, ids) => propagateAllDatesParticipation(admin, eventId, ids),
-    });
-    if (outcome.ok) {
-      revalidatePath(`/account/business/${businessId}`);
-      revalidatePath("/account");
-    }
-    return outcome;
-  } catch {
-    return { ok: false, error: "Couldn't save it. Please try again." };
+const BATCH_MAX = 40;
+
+/** V1C — several reviewed Events from one source. Each one is validated
+ * and saved on its own through the same path as a single import: one that
+ * fails never undoes or blocks the others, and nothing unreviewed is sent. */
+export async function commitEventImportBatch(businessId: string, reviews: EventImportReview[]): Promise<{ ok: true; results: { title: string; outcome: EventImportOutcome }[] } | { ok: false; error: string }> {
+  const ctx = await authorize(businessId);
+  if (!ctx) return { ok: false, error: "You don't have access to this Business." };
+  if (!Array.isArray(reviews) || reviews.length === 0) return { ok: false, error: "Choose at least one Event." };
+  if (reviews.length > BATCH_MAX) return { ok: false, error: `Add up to ${BATCH_MAX} Events at a time.` };
+  let verified: boolean | null = null;
+  const emailVerified = async () => (verified ??= await isEmailVerified(ctx.admin, ctx.user.id));
+  const results: { title: string; outcome: EventImportOutcome }[] = [];
+  for (const review of reviews) {
+    results.push({ title: typeof review?.title === "string" ? review.title : "", outcome: await commitOne(ctx, businessId, review, emailVerified) });
   }
+  if (results.some((r) => r.outcome.ok)) {
+    revalidatePath(`/account/business/${businessId}`);
+    revalidatePath("/account");
+  }
+  return { ok: true, results };
 }

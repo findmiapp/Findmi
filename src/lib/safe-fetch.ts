@@ -648,8 +648,11 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
  * bounded body: event pages commonly place their schema.org Event JSON-LD
  * near the end of <body>, past the brand profile's 256 KB prefix. Still
  * capped by SAFE_FETCH_HTML_MAX_BYTES. */
-export const SAFE_FETCH_EVENT_BODY_BYTES = 1024 * 1024;
-const EVENT_HTML_PROFILE: FetchProfile = { ...HTML_PROFILE, headStop: { bodyBytes: SAFE_FETCH_EVENT_BODY_BYTES }, allowSharedPlatforms: true };
+// Event Import V1C — calendar/organizer pages keep their event list in
+// page state at the END of the body, so event pages read further.
+export const SAFE_FETCH_EVENT_BODY_BYTES = 3 * 1024 * 1024;
+export const SAFE_FETCH_EVENT_MAX_BYTES = 3 * 1024 * 1024;
+const EVENT_HTML_PROFILE: FetchProfile = { ...HTML_PROFILE, maxBytes: SAFE_FETCH_EVENT_MAX_BYTES, headStop: { bodyBytes: SAFE_FETCH_EVENT_BODY_BYTES }, allowSharedPlatforms: true };
 
 export async function safeFetchEventPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
   const r = await safeFetchResource(input, EVENT_HTML_PROFILE, options);

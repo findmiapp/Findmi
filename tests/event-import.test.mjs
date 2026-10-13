@@ -180,7 +180,7 @@ test("event pages on shared platforms are allowed for Event Import only; Brand r
   assert.equal(SF.validateFetchUrl("https://www.eventbrite.com/e/1", { allowSharedPlatforms: true }).ok, true);
   assert.equal(SF.validateFetchUrl("https://127.0.0.1/e", { allowSharedPlatforms: true }).ok, false, "safety rules still apply");
   const src = read("src/lib/safe-fetch.ts");
-  assert.match(src, /const EVENT_HTML_PROFILE: FetchProfile = \{ \.\.\.HTML_PROFILE, headStop: \{ bodyBytes: SAFE_FETCH_EVENT_BODY_BYTES \}, allowSharedPlatforms: true \};/);
+  assert.match(src, /const EVENT_HTML_PROFILE: FetchProfile = \{ \.\.\.HTML_PROFILE, maxBytes: SAFE_FETCH_EVENT_MAX_BYTES, headStop: \{ bodyBytes: SAFE_FETCH_EVENT_BODY_BYTES \}, allowSharedPlatforms: true \};/);
   assert.match(src, /const checked = validateFetchUrl\(next, \{ allowSharedPlatforms: profile\.allowSharedPlatforms \}\);/, "redirects re-checked with the same rules");
 });
 

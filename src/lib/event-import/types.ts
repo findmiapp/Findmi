@@ -99,11 +99,35 @@ export type EventImportFailure =
   | "blocked_by_site"
   | "not_html"
   | "no_event"
+  | "calendar_unreadable"
   | "rate_limited"
   | "server";
 
+/** V1C — one Event found on a page that lists many distinct Events. Each
+ * is matched on its own; nothing is shared between them. */
+export interface SourceEventAnalysis {
+  /** Identity within the source (its own Event link, else title + date). */
+  key: string;
+  candidate: EventCandidate;
+  matches: EventImportMatches;
+  warnings: string[];
+  /** Every date has passed. */
+  past: boolean;
+  /** Already on this Business's Findmi schedule (same Event link, or same
+   * name on the same day) — importing again would duplicate it. */
+  alreadyOnSchedule: { title: string; startAt: string } | null;
+}
+
+export interface ImportSource {
+  /** The pasted page (a calendar / organizer / venue page). */
+  url: string;
+  name: string | null;
+  platform: string | null;
+}
+
 export type EventImportAnalysis =
-  | { ok: true; candidate: EventCandidate; matches: EventImportMatches; warnings: string[] }
+  | { ok: true; kind: "single"; candidate: EventCandidate; matches: EventImportMatches; warnings: string[] }
+  | { ok: true; kind: "multi"; source: ImportSource; events: SourceEventAnalysis[]; warnings: string[] }
   | { ok: false; code: EventImportFailure };
 
 /** Plain-language failure copy (never internal errors). */
@@ -114,6 +138,7 @@ export const EVENT_IMPORT_FAILURE_COPY: Record<EventImportFailure, string> = {
   blocked_by_site: "That site didn't let Findmi read the page. You can add the details manually instead.",
   not_html: "That link isn't an event web page. Paste the link to the event's page.",
   no_event: "We couldn't find event details on that page. Try another link, or add it manually.",
+  calendar_unreadable: "We found an Event calendar, but couldn't read its Events yet. Try a link to one Event, or add it manually.",
   rate_limited: "You've imported a lot of links in a short time. Please wait a few minutes and try again.",
   server: "Something went wrong on our side. Please try again.",
 };

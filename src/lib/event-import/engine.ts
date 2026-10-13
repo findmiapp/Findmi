@@ -13,8 +13,18 @@ import type { AppearanceDraft } from "../admin/appearance-import";
 import { findLikelyDuplicateLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
 import { extractEventCandidate, needsAiAssist, isPastDate } from "./extract";
+import { classifySource } from "./sources";
 import { assistWithAi, defaultEventAiClient, type EventAiClient } from "./ai";
-import { venueKey, type EventCandidate, type EventImportAnalysis, type EventImportFailure, type EventImportMatches, type ImportedDate, type ImportedOccurrence } from "./types";
+import {
+  venueKey,
+  type EventCandidate,
+  type EventImportAnalysis,
+  type EventImportFailure,
+  type EventImportMatches,
+  type ImportedDate,
+  type ImportedOccurrence,
+  type SourceEventAnalysis,
+} from "./types";
 
 /** Distinct places looked up per analysis (each once). */
 const MAX_PLACE_LOOKUPS = 15;
@@ -27,6 +37,10 @@ export interface EventImportDeps {
   matchLocations: (venue: { name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null }) => Promise<{ id: string; name: string; address: string | null; city: string | null; state: string | null }[]>;
   matchOrganizer: (name: string, city: string | null, state: string | null) => Promise<{ id: string; name: string } | null>;
   matchExistingAppearance: (businessId: string, draft: AppearanceDraft) => Promise<DuplicateCandidate | null>;
+  /** V1C retry safety: this Business's schedule item already imported from this Event link. */
+  findScheduledBySourceUrl: (businessId: string, url: string) => Promise<{ title: string; startAt: string } | null>;
+  /** V1C: a Findmi Event already carrying this Event link. */
+  findEventBySourceUrl: (url: string) => Promise<{ id: string; name: string; startAt: string; venueName: string | null; city: string | null } | null>;
   isRateLimited: (key: string) => boolean;
   now: () => number;
 }
@@ -65,6 +79,29 @@ export function defaultEventImportDeps(admin: SupabaseClient): EventImportDeps {
       return m ? { id: m.id, name: m.name } : null;
     },
     matchExistingAppearance: async (businessId, draft) => (await findDuplicateMatches(businessId, [draft]))[0] ?? null,
+    findScheduledBySourceUrl: async (businessId, url) => {
+      const { data } = await admin
+        .from("appearances")
+        .select("title, start_at")
+        .eq("business_id", businessId)
+        .eq("external_url", url)
+        .neq("status", "canceled")
+        .order("start_at", { ascending: true })
+        .limit(1);
+      const row = ((data ?? []) as { title: string; start_at: string }[])[0];
+      return row ? { title: row.title, startAt: row.start_at } : null;
+    },
+    findEventBySourceUrl: async (url) => {
+      const { data } = await admin
+        .from("events")
+        .select("id, name, start_at, venue_name, city")
+        .eq("external_url", url)
+        .is("trashed_at", null)
+        .eq("is_demo", false)
+        .limit(1);
+      const row = ((data ?? []) as { id: string; name: string; start_at: string; venue_name: string | null; city: string | null }[])[0];
+      return row ? { id: row.id, name: row.name, startAt: row.start_at, venueName: row.venue_name, city: row.city } : null;
+    },
     isRateLimited: (key) => recordEventImportAnalysis(key),
     now: () => Date.now(),
   };
@@ -143,6 +180,25 @@ export async function analyzeEventUrl(
   if (!page.ok) return { ok: false, code: FETCH_FAILURE[page.code] ?? "unreachable" };
 
   const now = deps.now();
+
+  // V1C — one Event, or a source listing many distinct Events?
+  const source = classifySource(page.html, page.url, now);
+  if (source.kind === "multi_unreadable") return { ok: false, code: "calendar_unreadable" };
+  if (source.kind === "multi") {
+    const events: SourceEventAnalysis[] = [];
+    const list = source.events;
+    // Each Event is normalized and matched on its own (small batches keep
+    // the lookups bounded).
+    for (let i = 0; i < list.length; i += 4) {
+      const batch = await Promise.all(list.slice(i, i + 4).map((e) => analyzeSourceEvent(e.identity, e.candidate, input.businessId, now, deps)));
+      events.push(...batch);
+    }
+    const upcoming = events.filter((e) => !e.past).length;
+    const warnings: string[] = [];
+    if (events.length > 0 && upcoming === 0) warnings.push("All the Events on that page have already happened.");
+    return { ok: true, kind: "multi", source: { url: page.url.toString(), name: source.sourceName, platform: list[0]?.candidate.platform ?? null }, events, warnings };
+  }
+
   const extracted = extractEventCandidate(page.html, page.url, now);
   let candidate = extracted.candidate;
   if (needsAiAssist(candidate)) candidate = (await assistWithAi(candidate, extracted.excerpt, deps.ai, { now, yearHint: extracted.yearHint })).candidate;
@@ -174,6 +230,15 @@ export async function analyzeEventUrl(
   if (candidate.online) warnings.push("This looks like an online event.");
   if (Object.values(candidate.sources).includes("ai")) warnings.push("Some details were read from the page text. Please check them.");
 
+  const matches = await matchCandidate(candidate, input.businessId, deps);
+
+  return { ok: true, kind: "single", candidate, matches, warnings };
+}
+
+/** Advisory matching for ONE Event candidate: existing Findmi Event, each
+ * distinct place's Location, organizer Business, this Business's existing
+ * schedule item. A failure means "no match found", never a blocked import. */
+async function matchCandidate(candidate: EventCandidate, businessId: string | null, deps: EventImportDeps): Promise<EventImportMatches> {
   const matches: EventImportMatches = { event: null, locations: [], organizerBusiness: null, existingAppearance: null };
   const first = candidate.occurrences.find((o) => !o.past) ?? candidate.occurrences[0];
   // Each distinct place on the page is looked up once.
@@ -196,7 +261,7 @@ export async function analyzeEventUrl(
         }))
       ),
       candidate.organizer ? deps.matchOrganizer(candidate.organizer, city?.city ?? null, city?.state ?? null) : Promise.resolve(null),
-      first && input.businessId ? deps.matchExistingAppearance(input.businessId, draftFor(candidate, first)) : Promise.resolve(null),
+      first && businessId ? deps.matchExistingAppearance(businessId, draftFor(candidate, first)) : Promise.resolve(null),
     ]);
     if (eventMatch) {
       const ev = await deps.getEvent(eventMatch.id);
@@ -210,7 +275,7 @@ export async function analyzeEventUrl(
           city: eventMatch.city,
           confidence: eventMatch.confidence,
           hostBusinessId: ev.host_business_id,
-          hostedByThisBusiness: Boolean(input.businessId && ev.host_business_id === input.businessId),
+          hostedByThisBusiness: Boolean(businessId && ev.host_business_id === businessId),
         };
       }
     }
@@ -229,5 +294,50 @@ export async function analyzeEventUrl(
     // Matching is advisory: a failure means "no match found", never a blocked import.
   }
 
-  return { ok: true, candidate, matches, warnings };
+  return matches;
+}
+
+/** One Event from a multi-Event source: past flags, its own warnings, its
+ * own matches, and retry safety by its own Event link. */
+async function analyzeSourceEvent(key: string, raw: EventCandidate, businessId: string | null, now: number, deps: EventImportDeps): Promise<SourceEventAnalysis> {
+  const candidate: EventCandidate = { ...raw, occurrences: raw.occurrences.map((o) => ({ ...o, past: isPastDate(o, now) })) };
+  const past = candidate.occurrences.length > 0 && candidate.occurrences.every((o) => o.past);
+  const warnings: string[] = [];
+  if (candidate.occurrences.length === 0) warnings.push("Add a date.");
+  else if (candidate.occurrences.some((o) => !o.hasTime)) warnings.push("Add a start time.");
+  if (!candidate.occurrences.some((o) => venueKey(o.venue) || o.venue.city) && !candidate.online) warnings.push("Add the place.");
+  if (candidate.online) warnings.push("Online event.");
+
+  const matches = await matchCandidate(candidate, businessId, deps);
+  let alreadyOnSchedule: SourceEventAnalysis["alreadyOnSchedule"] = null;
+  try {
+    if (candidate.sourceUrl) {
+      const [scheduled, event] = await Promise.all([
+        businessId ? deps.findScheduledBySourceUrl(businessId, candidate.sourceUrl) : Promise.resolve(null),
+        matches.event ? Promise.resolve(null) : deps.findEventBySourceUrl(candidate.sourceUrl),
+      ]);
+      alreadyOnSchedule = scheduled;
+      if (event) {
+        const ev = await deps.getEvent(event.id);
+        if (ev) {
+          // Same Event link = the same Event: a strong match.
+          matches.event = {
+            id: event.id,
+            name: event.name,
+            slug: ev.slug,
+            startAt: event.startAt,
+            venueName: event.venueName,
+            city: event.city,
+            confidence: "strong",
+            hostBusinessId: ev.host_business_id,
+            hostedByThisBusiness: Boolean(businessId && ev.host_business_id === businessId),
+          };
+        }
+      }
+    }
+  } catch {
+    // advisory only
+  }
+  if (!alreadyOnSchedule && matches.existingAppearance) alreadyOnSchedule = { title: matches.existingAppearance.title, startAt: matches.existingAppearance.startAt };
+  return { key, candidate, matches, warnings, past, alreadyOnSchedule };
 }

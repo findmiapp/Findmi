@@ -148,3 +148,54 @@ export function successMessage(kind: "scheduled" | "requested" | "already", titl
     ? `${title} is now on ${businessName}'s Findmi schedule. Findmi reviews new Events before they're public.`
     : `${title} is now on ${businessName}'s Findmi schedule.`;
 }
+
+// ── V1C — several Events from one source ───────────────────────────────
+
+export type BatchStatusKind = "ready" | "needs_details" | "possible_match" | "joins_existing";
+
+/** What a reviewed Event still needs before it can be added. Mirrors the
+ * server's normalizeReview requirements (the server re-checks anyway). */
+export function batchItemStatus(review: EventImportReview, matches: EventImportMatches): { kind: BatchStatusKind; missing: string[] } {
+  const missing: string[] = [];
+  if (!review.title.trim()) missing.push("Name");
+  if (!review.useEventId) {
+    if (review.occurrences.length === 0 || review.occurrences.some((o) => !/^\d{4}-\d{2}-\d{2}$/.test(o.date))) missing.push("Date");
+    if (review.occurrences.some((o) => !o.startTime || !o.endTime)) missing.push("Start and end time");
+  }
+  if (missing.length > 0) return { kind: "needs_details", missing };
+  if (review.useEventId) return { kind: "joins_existing", missing };
+  if (matches.event) return { kind: "possible_match", missing };
+  return { kind: "ready", missing };
+}
+
+export const BATCH_STATUS_LABEL: Record<BatchStatusKind, string> = {
+  ready: "Ready",
+  needs_details: "Needs Details",
+  possible_match: "Possible Match",
+  joins_existing: "Already on Findmi",
+};
+
+export type BatchOutcomeKind = "scheduled" | "requested" | "already";
+
+/** Business-facing batch summary (never database words). */
+export function batchSummary(
+  results: { title: string; outcome: { ok: true; kind: BatchOutcomeKind } | { ok: false; error: string } }[],
+  skipped: number,
+  businessName: string
+): { headline: string; added: string[]; connected: string[]; already: string[]; attention: { title: string; error: string }[]; skipped: number } {
+  const added = results.filter((r) => r.outcome.ok && r.outcome.kind === "scheduled").map((r) => r.title);
+  const connected = results.filter((r) => r.outcome.ok && r.outcome.kind === "requested").map((r) => r.title);
+  const already = results.filter((r) => r.outcome.ok && r.outcome.kind === "already").map((r) => r.title);
+  const attention = results.flatMap((r) => (r.outcome.ok ? [] : [{ title: r.title, error: r.outcome.error }]));
+  const n = added.length;
+  const headline = n > 0 ? `${n} ${n === 1 ? "Event" : "Events"} Added To ${businessName}` : connected.length > 0 ? `Requests Sent For ${businessName}` : `Nothing New Added To ${businessName}`;
+  return { headline, added, connected, already, attention, skipped };
+}
+
+/** Which Events start chosen on a several-Events page: participating →
+ * upcoming ones not already on this Business's schedule; hosting → none (a
+ * calendar listing an Event doesn't mean this Business organizes it). */
+export function defaultSelection(events: { key: string; past: boolean; alreadyOnSchedule: unknown }[], intent: EventImportIntent): string[] {
+  if (intent !== "participating") return [];
+  return events.filter((e) => !e.past && !e.alreadyOnSchedule).map((e) => e.key);
+}

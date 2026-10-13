@@ -30,7 +30,7 @@ const JSONLD_MAX_BLOCK_CHARS = 300_000;
 const MAX_DOM_NODES = 60_000;
 export const EXCERPT_MAX_CHARS = 12000;
 
-type JsonObject = Record<string, unknown>;
+export type JsonObject = Record<string, unknown>;
 interface HtmlNode {
   nodeName: string;
   tagName?: string;
@@ -199,7 +199,7 @@ export function normalizeDateValue(value: unknown): { iso: string; hasTime: bool
 }
 
 type Dated = { start: string; end: string | null; hasTime: boolean; assumedZone: boolean };
-function toImportedDate(startRaw: unknown, endRaw: unknown): Dated | null {
+export function toImportedDate(startRaw: unknown, endRaw: unknown): Dated | null {
   const start = normalizeDateValue(startRaw);
   if (!start) return null;
   const end = normalizeDateValue(endRaw);
@@ -209,11 +209,11 @@ function toImportedDate(startRaw: unknown, endRaw: unknown): Dated | null {
   return { start: start.iso, end: validEnd, hasTime: start.hasTime, assumedZone: start.assumedZone || Boolean(end?.assumedZone) };
 }
 
-type StructuredOccurrence = ImportedOccurrence & { assumedZone: boolean };
+export type StructuredOccurrence = ImportedOccurrence & { assumedZone: boolean };
 
 /** A node's dates, each with its own place: a sub-event's own location
  * wins over the parent Event's. */
-function occurrencesFrom(node: JsonObject, eventVenue: ImportedVenue): StructuredOccurrence[] {
+export function occurrencesFrom(node: JsonObject, eventVenue: ImportedVenue): StructuredOccurrence[] {
   const out: StructuredOccurrence[] = [];
   const own = toImportedDate(node.startDate, node.endDate);
   const subs = (Array.isArray(node.subEvent) ? node.subEvent : node.subEvent ? [node.subEvent] : []) as JsonObject[];
@@ -231,15 +231,29 @@ function occurrencesFrom(node: JsonObject, eventVenue: ImportedVenue): Structure
   return out;
 }
 
-function str(value: unknown): unknown {
+export function str(value: unknown): unknown {
   return Array.isArray(value) ? value.find((v) => typeof v === "string") : value;
 }
 
-function nameOf(value: unknown): string | null {
+export function nameOf(value: unknown): string | null {
   const v = Array.isArray(value) ? value[0] : value;
   if (typeof v === "string") return cleanText(v, 160);
   if (v && typeof v === "object") return cleanText(str((v as JsonObject).name), 160);
   return null;
+}
+
+/** Same page, ignoring scheme, "www.", query, hash and a trailing slash. */
+export function sameEventUrl(a: string | URL | null | undefined, b: string | URL | null | undefined): boolean {
+  if (!a || !b) return false;
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    const host = (u: URL) => u.hostname.toLowerCase().replace(/^www\./, "");
+    const path = (u: URL) => u.pathname.replace(/\/+$/, "") || "/";
+    return host(x) === host(y) && path(x) === path(y);
+  } catch {
+    return false;
+  }
 }
 
 /** https only, resolved against the page; never data:/javascript:. */
@@ -254,14 +268,14 @@ export function absoluteHttps(value: unknown, base: URL): string | null {
   }
 }
 
-function imageOf(value: unknown, base: URL): string | null {
+export function imageOf(value: unknown, base: URL): string | null {
   const v = Array.isArray(value) ? value[0] : value;
   if (typeof v === "string") return absoluteHttps(v, base);
   if (v && typeof v === "object") return absoluteHttps(str((v as JsonObject).url) ?? str((v as JsonObject).contentUrl), base);
   return null;
 }
 
-function venueFrom(value: unknown): { venue: ImportedVenue; online: boolean } {
+export function venueFrom(value: unknown): { venue: ImportedVenue; online: boolean } {
   const list = (Array.isArray(value) ? value : value ? [value] : []) as unknown[];
   let online = false;
   for (const item of list) {
@@ -299,7 +313,7 @@ function venueFrom(value: unknown): { venue: ImportedVenue; online: boolean } {
 }
 
 /** Strips tags/entities from rich-text descriptions some platforms put in JSON-LD. */
-function plainDescription(value: unknown): string | null {
+export function plainDescription(value: unknown): string | null {
   const raw = typeof str(value) === "string" ? (str(value) as string) : null;
   if (!raw) return null;
   const stripped = raw
@@ -359,10 +373,11 @@ export function extractEventCandidate(html: string, pageUrl: URL, now: number = 
   const siteName = cleanText(c.meta.get("og:site_name"), 80);
   const sources: EventCandidate["sources"] = {};
 
-  // Primary node: the first Event; sibling Event nodes with the same name
-  // (platforms list each date of a series) contribute their dates, each
-  // with its own place.
-  const primary = nodes[0] ?? null;
+  // Primary node: the Event whose own URL is this page (V1C — a page can
+  // also list related Events), else the first Event; sibling Event nodes
+  // with the same name (platforms list each date of a series) contribute
+  // their dates, each with its own place.
+  const primary = nodes.find((n) => sameEventUrl(absoluteHttps(str(n.url), pageUrl), pageUrl)) ?? nodes[0] ?? null;
   const primaryName = primary ? cleanText(str(primary.name), EVENT_TITLE_MAX) : null;
   const { venue: eventVenue, online } = primary ? venueFrom(primary.location) : { venue: { ...EMPTY_VENUE }, online: false };
   let structured: StructuredOccurrence[] = [];
