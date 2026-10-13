@@ -57,7 +57,9 @@ export const SAFE_FETCH_HTML_BODY_BYTES = 256 * 1024;
 export const SAFE_FETCH_TIMEOUT_MS = 8000;
 export const SAFE_FETCH_SOCKET_TIMEOUT_MS = 3000;
 export const SAFE_FETCH_MAX_HEADER_BYTES = 16 * 1024;
-export const SAFE_FETCH_USER_AGENT = "FindmiBot/1.0 (+https://findmi.app; one-page brand profile preview requested by a Findmi user)";
+// One honest, generic identity for every Findmi server-side fetch (brand
+// profile, Event Import, images): no browser or other-crawler impersonation.
+export const SAFE_FETCH_USER_AGENT = "FindmiBot/1.0 (+https://findmi.app; reads one public page or image a Findmi user asked for)";
 
 const REQUEST_HEADERS: Readonly<Record<string, string>> = {
   "User-Agent": SAFE_FETCH_USER_AGENT,
@@ -108,6 +110,10 @@ export type SafeFetchResult =
       status?: number;
       contentType?: string;
       host?: string;
+      /** Diagnostics only: a 429/503's Retry-After, in ms (when parseable). */
+      retryAfterMs?: number;
+      /** Event pages only: requests made (2 when the one transient retry ran). */
+      attempts?: number;
     };
 
 // ── Destination rules ─────────────────────────────────────────────────────
@@ -345,6 +351,8 @@ export function createHttpsTransport(resolveAll: ResolveAll = systemResolveAll):
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const SITE_REFUSAL_STATUSES = new Set([401, 403, 407, 429, 451, 503]);
+/** The only refusals that may be temporary (rate limited / overloaded). */
+const TRANSIENT_STATUSES = new Set([429, 503]);
 const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 
 function header(headers: TransportResponse["headers"], name: string): string | null {
@@ -472,6 +480,9 @@ function abortedPromise(signal: AbortSignal): Promise<never> {
 export interface SafeFetchOptions {
   transport?: Transport;
   timeoutMs?: number;
+  /** Event pages' one transient retry: injectable wait/clock (tests). */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
 }
 
 /** What one fetch accepts. Only these vary between profiles — every
@@ -532,7 +543,19 @@ type ResourceResult =
       status?: number;
       contentType?: string;
       host?: string;
+      retryAfterMs?: number;
     };
+
+/** Retry-After (delta-seconds or HTTP-date) → ms; null when absent/invalid. Exported for tests. */
+export function parseRetryAfter(value: string | null, now: number = Date.now()): number | null {
+  if (!value) return null;
+  const v = value.trim();
+  if (/^\d{1,9}$/.test(v)) return Number(v) * 1000;
+  if (!/^[a-z]{3}, /i.test(v)) return null; // HTTP-date ("Tue, 13 Oct 2026 20:00:00 GMT")
+  const at = Date.parse(v);
+  if (!Number.isFinite(at)) return null;
+  return Math.max(0, at - now);
+}
 
 async function safeFetchResource(input: string | URL, profile: FetchProfile, options: SafeFetchOptions): Promise<ResourceResult> {
   const transport = options.transport ?? createHttpsTransport();
@@ -546,7 +569,7 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
   const visited = new Set<string>();
   let declaredBytes: number | null = null;
   // Diagnostics only (never used for decisions): the last response seen.
-  let seen: { status?: number; contentType?: string; host?: string } = {};
+  let seen: { status?: number; contentType?: string; host?: string; retryAfterMs?: number } = {};
   const fail = (code: SafeFetchFailure, limit?: SafeFetchSizeLimit): ResourceResult =>
     limit ? { ok: false, code, redirects, limit, declaredBytes, ...seen } : { ok: false, code, redirects, ...seen };
 
@@ -580,6 +603,10 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
           continue;
         }
         if (res.status !== 200) {
+          if (TRANSIENT_STATUSES.has(res.status)) {
+            const retryAfter = parseRetryAfter(header(res.headers, "retry-after"));
+            if (retryAfter !== null) seen = { ...seen, retryAfterMs: retryAfter };
+          }
           return fail(SITE_REFUSAL_STATUSES.has(res.status) ? "blocked_by_site" : "http_error");
         }
         const contentType = header(res.headers, "content-type") ?? "";
@@ -654,9 +681,35 @@ export const SAFE_FETCH_EVENT_BODY_BYTES = 3 * 1024 * 1024;
 export const SAFE_FETCH_EVENT_MAX_BYTES = 3 * 1024 * 1024;
 const EVENT_HTML_PROFILE: FetchProfile = { ...HTML_PROFILE, maxBytes: SAFE_FETCH_EVENT_MAX_BYTES, headStop: { bodyBytes: SAFE_FETCH_EVENT_BODY_BYTES }, allowSharedPlatforms: true };
 
+// At most ONE retry, and only for 429/503 (rate limited / temporarily
+// unavailable — never 401/403/407/451 or any other failure). The retry is a
+// complete new safeFetchResource call on the ORIGINAL input: the URL is
+// re-validated, DNS re-guarded and every redirect re-checked exactly as the
+// first time. Both attempts together stay inside SAFE_FETCH_EVENT_BUDGET_MS;
+// a Retry-After longer than SAFE_FETCH_RETRY_MAX_WAIT_MS (or one that would
+// overrun the budget) means no retry — the refusal is returned as is.
+export const SAFE_FETCH_EVENT_BUDGET_MS = 10_000;
+export const SAFE_FETCH_RETRY_MAX_WAIT_MS = 2000;
+export const SAFE_FETCH_RETRY_DEFAULT_WAIT_MS = 500;
+/** The retry runs only if at least this much of the budget is left for it. */
+export const SAFE_FETCH_RETRY_MIN_ATTEMPT_MS = 3000;
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export async function safeFetchEventPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
-  const r = await safeFetchResource(input, EVENT_HTML_PROFILE, options);
-  if (!r.ok) return r;
+  const now = options.now ?? Date.now;
+  const started = now();
+  let r = await safeFetchResource(input, EVENT_HTML_PROFILE, options);
+  let attempts = 1;
+  if (!r.ok && r.code === "blocked_by_site" && r.status !== undefined && TRANSIENT_STATUSES.has(r.status)) {
+    const wait = r.retryAfterMs ?? SAFE_FETCH_RETRY_DEFAULT_WAIT_MS;
+    const remaining = SAFE_FETCH_EVENT_BUDGET_MS - (now() - started) - wait;
+    if (wait <= SAFE_FETCH_RETRY_MAX_WAIT_MS && remaining >= SAFE_FETCH_RETRY_MIN_ATTEMPT_MS) {
+      await (options.sleep ?? defaultSleep)(wait);
+      attempts = 2;
+      r = await safeFetchResource(input, EVENT_HTML_PROFILE, { ...options, timeoutMs: Math.min(options.timeoutMs ?? SAFE_FETCH_TIMEOUT_MS, remaining) });
+    }
+  }
+  if (!r.ok) return { ...r, attempts };
   return {
     ok: true,
     url: r.url,

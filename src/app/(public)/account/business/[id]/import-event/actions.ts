@@ -6,6 +6,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { getHostEventEligibility } from "@/lib/entitlements";
 import { analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
+import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { normalizeReview, persistEventImport, type PersistDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { applyBusinessToEvent } from "@/lib/event-participation";
@@ -42,7 +43,8 @@ export async function analyzeEventImport(businessId: string, url: string): Promi
   const ctx = await authorize(businessId);
   if (!ctx) return { ok: false, code: "server" };
   try {
-    return await analyzeEventUrl({ url, businessId, rateKey: ctx.user.id }, defaultEventImportDeps(ctx.admin));
+    // Consumer-facing: the plain failure code only, never fetch diagnostics.
+    return publicImportAnalysis(await analyzeEventUrl({ url, businessId, rateKey: ctx.user.id }, defaultEventImportDeps(ctx.admin)));
   } catch {
     return { ok: false, code: "server" };
   }

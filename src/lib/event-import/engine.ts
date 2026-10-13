@@ -14,6 +14,7 @@ import { findLikelyDuplicateLocations, findPossibleLocations } from "../location
 import { findBusinessMatches } from "../business-matching";
 import { extractEventCandidate, needsAiAssist, isPastDate } from "./extract";
 import { classifySource } from "./sources";
+import { fetchFailureLogLine, safeFetchDiagnostics } from "./diagnostics";
 import { assistWithAi, defaultEventAiClient, type EventAiClient } from "./ai";
 import {
   venueKey,
@@ -47,6 +48,8 @@ export interface EventImportDeps {
   findEventBySourceUrl: (url: string) => Promise<{ id: string; name: string; startAt: string; venueName: string | null; city: string | null } | null>;
   isRateLimited: (key: string) => boolean;
   now: () => number;
+  /** Server-side diagnostic for a failed source fetch (one concise line). */
+  logFetchFailure?: (line: string) => void;
 }
 
 // ── rate limit: 20 analyses per user per 10 minutes (in-memory, per instance) ──
@@ -112,6 +115,7 @@ export function defaultEventImportDeps(admin: SupabaseClient): EventImportDeps {
     },
     isRateLimited: (key) => recordEventImportAnalysis(key),
     now: () => Date.now(),
+    logFetchFailure: (line) => console.warn(line),
   };
 }
 
@@ -200,7 +204,14 @@ export async function analyzeEventUrl(
   } catch {
     return { ok: false, code: "unreachable" };
   }
-  if (!page.ok) return { ok: false, code: FETCH_FAILURE[page.code] ?? "unreachable" };
+  if (!page.ok) {
+    const code = FETCH_FAILURE[page.code] ?? "unreachable";
+    // Only a failure where the site actually answered carries diagnostics.
+    if (page.status === undefined && page.host === undefined) return { ok: false, code };
+    const fetch = safeFetchDiagnostics(page);
+    deps.logFetchFailure?.(fetchFailureLogLine(normalized.url.hostname, code, fetch));
+    return { ok: false, code, fetch };
+  }
 
   const now = deps.now();
 

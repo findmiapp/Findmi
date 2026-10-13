@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
 import { recoverEventImage } from "@/lib/event-import/media";
+import { describeSourceFailure, type EventImportFetchDiagnostics } from "@/lib/event-import/diagnostics";
 import { convertAppearanceToEvent, type ConvertResult } from "@/lib/appearance-conversion";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { isSlugTaken } from "@/lib/admin/queries";
@@ -28,7 +29,7 @@ export type AdminConvertSummary =
       warnings: string[];
       recovered: { title: string | null; description: boolean; imageUrl: string | null; organizer: string | null; sourceUrl: string; dates: string[] };
     }
-  | { status: "not_converted"; reason: string; detail?: string; eventId?: string };
+  | { status: "not_converted"; reason: string; detail?: string; eventId?: string; fetch?: EventImportFetchDiagnostics };
 
 export async function convertLegacyAppearanceToEvent(appearanceId: string): Promise<AdminConvertSummary> {
   const admin = await requireAdminSupabase();
@@ -44,7 +45,9 @@ async function runConversion(admin: SupabaseClient, appearanceId: string): Promi
 
   // The same analysis a new import runs (safe fetch, extraction, matching).
   const analysis = await analyzeEventUrl({ url: row.external_url, businessId: row.business_id, rateKey: `admin-convert:${row.id}` }, defaultEventImportDeps(admin));
-  if (!analysis.ok) return { status: "not_converted", reason: "source_unavailable", detail: analysis.code };
+  // Admin-only: the site's own status + final host, e.g. "Source unavailable
+  // — luma.com returned HTTP 403." (consumer importers never see these).
+  if (!analysis.ok) return { status: "not_converted", reason: "source_unavailable", detail: describeSourceFailure(analysis.code, analysis.fetch), fetch: analysis.fetch };
   if (analysis.kind !== "single") return { status: "not_converted", reason: "source_is_calendar", detail: "That link lists several Events, not this one." };
   // A conservative Event match already on Findmi: joining it is a separate,
   // reviewed decision — never a second Event.
@@ -102,5 +105,7 @@ export async function convertAppearanceFromAdminPage(appearanceId: string) {
     const note = out.image === "failed" ? "&convertNote=image" : "";
     redirect(`${base}?converted=${out.eventId}${note}`);
   }
-  redirect(`${base}?convertError=${encodeURIComponent([out.reason, out.detail].filter(Boolean).join(": "))}`);
+  // A source failure's detail is already a full sentence.
+  const message = out.reason === "source_unavailable" && out.detail ? out.detail : [out.reason, out.detail].filter(Boolean).join(": ");
+  redirect(`${base}?convertError=${encodeURIComponent(message)}`);
 }

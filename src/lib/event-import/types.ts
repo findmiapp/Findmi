@@ -9,6 +9,7 @@
 // Internally: Event (the canonical thing), Event Occurrence (a dated
 // instance), Appearance (a Business's participation), host_business_id
 // (hosting). A host never gets a manufactured Appearance.
+import type { EventImportFetchDiagnostics } from "./diagnostics";
 
 export type EventImportIntent = "participating" | "hosting";
 
@@ -134,7 +135,13 @@ export interface ImportSource {
 export type EventImportAnalysis =
   | { ok: true; kind: "single"; candidate: EventCandidate; matches: EventImportMatches; warnings: string[] }
   | { ok: true; kind: "multi"; source: ImportSource; events: SourceEventAnalysis[]; warnings: string[] }
-  | { ok: false; code: EventImportFailure };
+  | {
+      ok: false;
+      code: EventImportFailure;
+      /** Admin diagnostics only (status / final host of a failed source
+       * fetch) — stripped by publicImportAnalysis for consumer surfaces. */
+      fetch?: EventImportFetchDiagnostics;
+    };
 
 /** Plain-language failure copy (never internal errors). */
 export const EVENT_IMPORT_FAILURE_COPY: Record<EventImportFailure, string> = {
