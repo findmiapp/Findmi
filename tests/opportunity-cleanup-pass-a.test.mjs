@@ -121,13 +121,14 @@ test("the commercial Opportunities view no longer embeds Event Invitations & App
 });
 
 // ---------------------------------------------------------------- 8. Home Event Invitation tile routing
-test("Home's Event Invitation tile routes to the Inbox's Event destination, not the commercial Opportunities tab", () => {
-  const sectionAt = HOME.indexOf("pendingInvitationCount > 0 &&");
-  const tileAt = HOME.indexOf("{pendingInvitationCount} Event Invitation");
-  assert.ok(sectionAt > -1 && tileAt > sectionAt, "tile copy present");
-  const tile = HOME.slice(sectionAt, tileAt);
-  assert.match(tile, /href="\/account\/messages\?filter=opportunities"/);
-  assert.equal(/href=\{`\$\{basePath\}\?tab=opportunities`\}/.test(tile), false);
+// B1 — the tile became a Needs Attention item; same canonical routing.
+test("Home's Event Invitation attention item routes to the Inbox's Event destination, not the commercial Opportunities tab", () => {
+  const at = HOME.indexOf('id: "event-invitations"');
+  assert.ok(at > -1, "attention item present");
+  const item = HOME.slice(at, HOME.indexOf("...needsAttention", at));
+  assert.match(item, /Event Invitation\$\{pendingInvitationCount === 1 \? "" : "s"\}/);
+  assert.match(item, /actionHref: "\/account\/messages\?filter=opportunities"/);
+  assert.equal(/tab=opportunities/.test(item), false);
 });
 
 // ---------------------------------------------------------------- 9/13. Notifications + dedup + response scoping

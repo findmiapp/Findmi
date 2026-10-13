@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
 import ChevronIcon from "@/components/ChevronIcon";
@@ -8,8 +7,6 @@ import type { DashboardAppearance, HomeActivityItem, NeedsAttentionItem } from "
 import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { SparkGlyph } from "./BusinessAppShell";
-import Greeting from "./Greeting";
-import AddToPresence from "./AddToPresence";
 import type { BusinessOpportunityItem } from "@/lib/opportunity-listings";
 import BusinessOpportunityCard from "@/components/opportunities/BusinessOpportunityCard";
 import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
@@ -22,24 +19,60 @@ const APP_TIMEZONE = "America/New_York";
  * already loads (no new query, metric or notification); a section with
  * nothing truthful to say is omitted instead of rendered empty.
  *
- * Business Overview Information-Hierarchy pass — render order is now,
- * after Greeting/Quick Actions: Happening Now, Needs Attention, Coming
- * Up, pending Invitation/Order tiles, Performance, Opportunities, Your
- * Findmi Link. Opportunities (recommendations/Explore/Goals) moved below
- * Performance — its own empty state (Explore Opportunities / Tell Findmi
- * What You Need) was previously the first substantive section, outranking
- * the business's own live/attention/schedule/performance state. Same
- * component, same props, same internal logic — presentation order only. */
+ * B1 Business Command Center — the hierarchy for ONE Business is:
+ *   A. Status        — publication status + public profile link (name,
+ *                      logo and Free/Pro already sit in the shell's
+ *                      context bar directly above, never repeated here)
+ *   B. Create on Findmi — the primary action area: Where I'll Be, Host an
+ *                      Event, Add To Product Catalog, At a Location, Create
+ *                      A QR Code — each an EXISTING Business-scoped flow
+ *   C. Needs Attention — only when something is actionable (existing
+ *                      rules + pending Event Invitations, which used to be
+ *                      a separate tile; new Orders were already an item)
+ *   D. Coming Up     — Happening Now cards, then up to 4 upcoming rows
+ *   E. Opportunities — compact entry point (existing data only)
+ *   F. Performance   — existing snapshot, existing Free/Pro gating
+ *   then Your Findmi Link (the handle editor). */
 
 export interface HomeMetric {
   value: number;
   changeLabel: string | null;
 }
 
+export type HomePublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
+
+/** The five Create on Findmi actions and their EXISTING destinations:
+ *   Where I'll Be          → Findmi Here's request-to-join composer
+ *                            (?tab=findmi-here&compose=1, manual fallback)
+ *   Host an Event          → /account/event/new?business_id= (validated
+ *                            server-side: Owner/Manager of this Business)
+ *   Add To Product Catalog → Products' Add Product panel (?tab=products&compose=1)
+ *   At a Location          → Findmi Here's Locations add panel (?view=locations&add=1)
+ *   Create A QR Code       → the Business QR creator (/qr/new) */
+export function createOnFindmiActions(basePath: string, businessId: string) {
+  return [
+    { key: "where", label: "Where I’ll Be", href: `${basePath}?tab=findmi-here&compose=1`, icon: "compass" },
+    { key: "event", label: "Host an Event", href: `/account/event/new?business_id=${encodeURIComponent(businessId)}`, icon: "calendar" },
+    { key: "product", label: "Add To Product Catalog", href: `${basePath}?tab=products&compose=1`, icon: "tag" },
+    { key: "location", label: "At a Location", href: `${basePath}?tab=findmi-here&view=locations&add=1`, icon: "pin" },
+    { key: "qr", label: "Create A QR Code", href: `${basePath}/qr/new`, icon: "qr" },
+  ] as const;
+}
+
+const STATUS_COPY: Record<HomePublicationStatus, { label: string; tone: "aqua" | "amber" | "neutral"; line: string }> = {
+  live: { label: "Live", tone: "aqua", line: "Your Business is live on Findmi." },
+  pending_review: { label: "Pending Review", tone: "amber", line: "Visible to you now, live in discovery after Findmi reviews it." },
+  draft: { label: "Draft", tone: "neutral", line: "Not visible on Findmi yet." },
+  paused: { label: "Paused", tone: "neutral", line: "Hidden from Findmi discovery for now." },
+  rejected: { label: "Not Approved", tone: "amber", line: "Not visible on Findmi. Contact Findmi with any questions." },
+};
+
 export default function BusinessHome({
   basePath,
   businessId,
   businessName,
+  businessSlug,
+  publicationStatus,
   pro,
   liveActivities,
   comingUp,
@@ -47,7 +80,6 @@ export default function BusinessHome({
   metrics,
   metricsRangeLabel,
   pendingInvitationCount,
-  newOrderCount,
   businessHandle,
   updateHandleAction,
   opportunityItems,
@@ -55,6 +87,8 @@ export default function BusinessHome({
   basePath: string;
   businessId: string;
   businessName: string;
+  businessSlug: string | null;
+  publicationStatus: HomePublicationStatus;
   pro: boolean;
   /** One per live Event / standalone Appearance (lib/business-dashboard.ts buildHomeActivities). */
   liveActivities: DashboardAppearance[];
@@ -64,6 +98,8 @@ export default function BusinessHome({
   metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
   metricsRangeLabel: string | null;
   pendingInvitationCount: number;
+  /** Already an item in needsAttention (buildNeedsAttentionItems) — kept
+   * as a prop for callers; not rendered a second time. */
   newOrderCount: number;
   businessHandle: string | null;
   updateHandleAction: (formData: FormData) => void | Promise<void>;
@@ -71,49 +107,75 @@ export default function BusinessHome({
   opportunityItems: BusinessOpportunityItem[];
 }) {
   const liveNow = liveActivities;
+  const status = STATUS_COPY[publicationStatus] ?? STATUS_COPY.draft;
+  // Pending Event Invitations join Needs Attention (they wait on this
+  // Business's response). Routed to the Inbox's Event Invitations filter —
+  // the canonical Event-participation destination, never the commercial
+  // Opportunities tab.
+  const attention: NeedsAttentionItem[] = [
+    ...(pendingInvitationCount > 0
+      ? [
+          {
+            id: "event-invitations",
+            message: `${pendingInvitationCount} Event Invitation${pendingInvitationCount === 1 ? "" : "s"} waiting for your response.`,
+            actionLabel: "Respond",
+            actionHref: "/account/messages?filter=opportunities",
+          },
+        ]
+      : []),
+    ...needsAttention,
+  ];
+  const publicHref = businessSlug ? `/business/${businessSlug}` : null;
 
   return (
     <div className="flex flex-col gap-7">
-      <header>
-        <Greeting />
-        <p className="mt-0.5 text-body text-muted">Here&rsquo;s what&rsquo;s happening with {businessName}.</p>
-      </header>
+      {/* A. Status — compact; identity lives in the context bar above. */}
+      <section aria-label="Business status" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <p className="flex min-w-0 items-center gap-2 text-body text-muted">
+          <Chip tone={status.tone}>{status.label}</Chip>
+          <span className="min-w-0">{status.line}</span>
+        </p>
+        {publicHref && (
+          <Link href={publicHref} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
+            {publicationStatus === "live" ? "View Public Profile" : "Preview"}
+            <ChevronIcon direction="right" className="h-3 w-3" />
+          </Link>
+        )}
+      </section>
 
-      {/* Quick actions — Pass A: one intent-based activity entry (+ Add:
-          host / go / add a location) instead of competing Event vs
-          Appearance vs Location buttons; Product stays separate. */}
-      <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
-        <AddToPresence basePath={basePath} businessId={businessId} variant="chip" />
-        <QuickAction href={`${basePath}?tab=products&compose=1`} icon={<NavIcon name="tag" className="h-[18px] w-[18px]" />} label="Product" />
-      </nav>
+      {/* B. Create on Findmi — the primary action area. */}
+      <section aria-labelledby="create-on-findmi">
+        <h2 id="create-on-findmi" className="font-display text-section-title font-bold text-primary">
+          Create on Findmi
+        </h2>
+        <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {createOnFindmiActions(basePath, businessId).map((action, i) => (
+            <li key={action.key} className={i === 0 ? "col-span-2 sm:col-span-1" : ""}>
+              <Link
+                href={action.href}
+                className="flex h-full min-h-[56px] items-center gap-2.5 rounded-2xl border border-black/[0.07] bg-white px-3 py-2.5 transition hover:border-findmi/40 hover:bg-findmi-50/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+                  {action.icon === "qr" ? <QrGlyph className="h-5 w-5" /> : <NavIcon name={action.icon} className="h-5 w-5" />}
+                </span>
+                <span className="min-w-0 text-card-title font-semibold leading-snug text-primary">{action.label}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-      {liveNow.length > 0 && (
-        <section aria-labelledby="happening-now">
-          <h2 id="happening-now" className="flex items-center gap-2 font-display text-section-title font-bold text-primary">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
-            </span>
-            Happening Now
-          </h2>
-          <div className="mt-3 flex flex-col gap-3">
-            {liveNow.map((a) => (
-              <LiveCard key={a.id} appearance={a} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {needsAttention.length > 0 && (
+      {/* C. Needs Attention — omitted entirely when nothing is actionable. */}
+      {attention.length > 0 && (
         <section aria-labelledby="needs-attention">
           <div className="flex items-center gap-2">
             <h2 id="needs-attention" className="font-display text-section-title font-bold text-primary">
               Needs Attention
             </h2>
-            <Chip tone="amber">{needsAttention.length}</Chip>
+            <Chip tone="amber">{attention.length}</Chip>
           </div>
           <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
-            {needsAttention.map((item) => (
+            {attention.map((item) => (
               <li key={item.id}>
                 <Link href={item.actionHref} className="flex items-center justify-between gap-3 py-3">
                   <span className="min-w-0 text-body text-secondary">{item.message}</span>
@@ -128,8 +190,25 @@ export default function BusinessHome({
         </section>
       )}
 
+      {/* D. Coming Up — anything live right now first, then the next few. */}
       <section aria-labelledby="coming-up">
         <SectionTitle id="coming-up" title="Coming Up" href={`${basePath}?tab=findmi-here`} linkLabel="See All" />
+        {liveNow.length > 0 && (
+          <div aria-labelledby="happening-now" className="mt-3">
+            <p id="happening-now" className="flex items-center gap-2 text-label font-bold uppercase text-red-600">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+              </span>
+              Happening Now
+            </p>
+            <div className="mt-2 flex flex-col gap-3">
+              {liveNow.map((a) => (
+                <LiveCard key={a.id} appearance={a} />
+              ))}
+            </div>
+          </div>
+        )}
         {comingUp.length > 0 ? (
           <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
             {comingUp.map((item) => (
@@ -139,57 +218,19 @@ export default function BusinessHome({
             ))}
           </ul>
         ) : (
-          <p className="mt-2 text-body text-muted">
-            Nothing scheduled yet. Use <span className="font-semibold text-secondary">+ Add</span> to add where your
-            business is showing up.
-          </p>
+          liveNow.length === 0 && (
+            <p className="mt-2 text-body text-muted">
+              Nothing scheduled yet. Add <span className="font-semibold text-secondary">Where I&rsquo;ll Be</span> or{" "}
+              <span className="font-semibold text-secondary">Host an Event</span> above.
+            </p>
+          )
         )}
       </section>
 
-      {(pendingInvitationCount > 0 || newOrderCount > 0) && (
-        <section className="grid gap-2 sm:grid-cols-2">
-          {pendingInvitationCount > 0 && (
-            // Opportunities Cleanup Pass A — routes to the canonical Event-
-            // participation destination (Inbox's Event Invitations filter),
-            // not the commercial Opportunities tab these invitations are
-            // unrelated to. Query value stays "opportunities" (route/param
-            // unchanged); only the Inbox's own label is no longer that word.
-            <Link
-              href="/account/messages?filter=opportunities"
-              className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white px-4 py-3.5 transition hover:border-black/15"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
-                <SparkGlyph className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-card-title font-semibold text-primary">
-                  {pendingInvitationCount} Event Invitation{pendingInvitationCount === 1 ? "" : "s"}
-                </span>
-                <span className="block text-metadata text-muted">Waiting for your response</span>
-              </span>
-              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
-            </Link>
-          )}
-          {newOrderCount > 0 && (
-            <Link
-              href={`${basePath}?tab=orders`}
-              className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white px-4 py-3.5 transition hover:border-black/15"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
-                <NavIcon name="cart" className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-card-title font-semibold text-primary">
-                  {newOrderCount} New Order{newOrderCount === 1 ? "" : "s"}
-                </span>
-                <span className="block text-metadata text-muted">Ready to confirm</span>
-              </span>
-              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
-            </Link>
-          )}
-        </section>
-      )}
+      {/* E. Opportunities — compact entry point, existing data only. */}
+      <HomeOpportunities basePath={basePath} items={opportunityItems} />
 
+      {/* F. Performance — existing snapshot; trends and full Analytics stay Pro. */}
       {metrics && (
         <section aria-labelledby="performance-snapshot">
           <SectionTitle
@@ -208,10 +249,7 @@ export default function BusinessHome({
         </section>
       )}
 
-      <HomeOpportunities basePath={basePath} items={opportunityItems} />
-
-      {/* Your Findmi link — previously only on the old Overview; kept on
-          Home so the handle editor stays reachable. */}
+      {/* Your Findmi link — kept on Home so the handle editor stays reachable. */}
       <section aria-labelledby="findmi-link">
         <h2 id="findmi-link" className="font-display text-section-title font-bold text-primary">
           Your Findmi Link
@@ -258,59 +296,36 @@ function HomeOpportunities({ basePath, items }: { basePath: string; items: Busin
           </div>
         </>
       ) : (
-        <>
-          <p className="mt-0.5 text-metadata text-muted">Find new ways to grow your Business.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Link
-              href={`${basePath}?tab=opportunities&view=explore`}
-              className="group flex flex-col justify-between gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/60 p-4 transition hover:border-findmi/40"
-            >
-              <span className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-findmi-700 shadow-sm">
-                  <SparkGlyph className="h-5 w-5" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-card-title font-semibold text-primary">Explore Opportunities</span>
-                  <span className="mt-0.5 block text-metadata text-secondary">Discover activations, pop-ups, sampling, vending, partnerships and more.</span>
-                </span>
+        // B1 — compact when there's nothing recommended yet: two quiet
+        // entry rows, not two large promo cards.
+        <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
+          <li>
+            <Link href={`${basePath}?tab=opportunities&view=explore`} className="flex items-center gap-3 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+                <SparkGlyph className="h-5 w-5" />
               </span>
-              <span className="flex h-10 w-fit items-center gap-1.5 rounded-xl bg-findmi px-4 text-button font-bold text-white transition group-hover:bg-findmi-600">
-                Browse Opportunities
-                <span aria-hidden="true">→</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-card-title font-semibold text-primary">Explore Opportunities</span>
+                <span className="block truncate text-metadata text-muted">Activations, pop-ups, sampling, vending and more.</span>
               </span>
+              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
             </Link>
-            <Link
-              href={`${basePath}/opportunities/goals/new`}
-              className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white p-4 transition hover:border-black/15"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+          </li>
+          <li>
+            <Link href={`${basePath}/opportunities/goals/new`} className="flex items-center gap-3 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
                 <GoalGlyph className="h-5 w-5" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-card-title font-semibold text-primary">Tell Findmi What You Need</span>
-                <span className="mt-0.5 block text-metadata text-muted">Tell Findmi what your Business is looking for, so our team can recommend the right Opportunities.</span>
+                <span className="block truncate text-metadata text-muted">So our team can recommend the right Opportunities.</span>
               </span>
               <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
             </Link>
-          </div>
-        </>
+          </li>
+        </ul>
       )}
     </section>
-  );
-}
-
-function QuickAction({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex h-11 shrink-0 items-center gap-2 rounded-full border border-black/[0.08] bg-white pl-3 pr-4 text-button font-semibold text-primary shadow-sm transition hover:border-black/15 active:scale-[0.98]"
-    >
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-findmi text-white">
-        <PlusGlyph className="h-3.5 w-3.5" />
-      </span>
-      <span className="text-ink/45">{icon}</span>
-      {label}
-    </Link>
   );
 }
 
@@ -407,10 +422,14 @@ function MetricTile({ label, metric, pro }: { label: string; metric: HomeMetric;
   );
 }
 
-function PlusGlyph({ className }: { className?: string }) {
+/** Same QR mark as the Business More menu (24px / 1.8-stroke family). */
+function QrGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+      <rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="14" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="4" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5z" fill="currentColor" />
     </svg>
   );
 }

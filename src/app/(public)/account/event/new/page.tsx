@@ -135,7 +135,7 @@ export default async function AddEventPage({
     return (
       <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
         {backToBusiness}
-        <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Host Something</h1>
+        <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Host an Event</h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <p className="text-body font-semibold text-primary">Only an Owner or Manager of {businessContext.name} can host Events for it.</p>
           <Link href="/account/event/new" className={`mt-5 ${primaryButtonClass}`}>
@@ -152,7 +152,7 @@ export default async function AddEventPage({
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-        {businessContext ? "Host Something" : "Add An Event"}
+        {businessContext ? "Host an Event" : "Add An Event"}
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext

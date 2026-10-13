@@ -363,22 +363,17 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   // Preview Your Page link) above this section; a second, smaller
   // mention of the same thing in this list would just be noise.
 
-  if (!input.hasPrimaryMarket) {
-    items.push(
-      input.pendingMarketRequestText
-        ? {
-            id: "pending-market",
-            message: `Your requested Market "${input.pendingMarketRequestText}" is awaiting review.`,
-            actionLabel: "View Market",
-            actionHref: `${base}?tab=market`,
-          }
-        : {
-            id: "no-market",
-            message: "No Findmi Market is assigned yet. You won't appear in general discovery.",
-            actionLabel: "View Market",
-            actionHref: `${base}?tab=market`,
-          }
-    );
+  // B1 — a Business without geography is valid (VCL A2b), so having no
+  // Findmi Market is never an attention item on its own, and never claims
+  // the Business is hidden from discovery. Only the owner's
+  // own pending Market Request is surfaced.
+  if (!input.hasPrimaryMarket && input.pendingMarketRequestText) {
+    items.push({
+      id: "pending-market",
+      message: `Your requested Market "${input.pendingMarketRequestText}" is awaiting review.`,
+      actionLabel: "View Market",
+      actionHref: `${base}?tab=market`,
+    });
   }
 
   // Opportunities V2 — an empty schedule is NOT an attention item ("Nothing

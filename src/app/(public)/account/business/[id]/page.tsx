@@ -1615,20 +1615,8 @@ export default async function ManageBusinessPage({
               </p>
             )}
 
-            {business.publication_status === "pending_review" && (
-              <div className="flex max-w-2xl items-center justify-between gap-3 rounded-lg bg-amber-50 px-3.5 py-2.5">
-                <p className="text-body text-amber-900">
-                  <span className="font-bold">Pending Review</span>: visible to you now, live in discovery after Findmi reviews it.
-                </p>
-                {business.slug && (
-                  <Link href={`/business/${business.slug}`} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-amber-800 underline underline-offset-2">
-                    Preview
-                    <ChevronIcon direction="right" className="h-3 w-3" />
-                  </Link>
-                )}
-              </div>
-            )}
-
+            {/* B1 — publication status (incl. Pending Review + Preview) now
+                renders inside BusinessHome's compact Status row. */}
             {/* Business Overview V2 — command-center recomposition of the
                 old 2-region "Today / Needs Attention / Where I'll Be" +
                 "Business rail" layout above. Every module's real
@@ -1647,6 +1635,8 @@ export default async function ManageBusinessPage({
               basePath={basePath}
               businessId={id}
               businessName={business.name}
+              businessSlug={business.slug ?? null}
+              publicationStatus={business.publication_status}
               pro={pro}
               liveActivities={homeActivities.live}
               comingUp={homeActivities.comingUp.slice(0, 4)}
@@ -2397,7 +2387,7 @@ export default async function ManageBusinessPage({
               <div id="going-somewhere" className={cardClass}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-card-title font-bold text-primary">Go somewhere</p>
+                    <p className="text-card-title font-bold text-primary">Where I&rsquo;ll Be</p>
                     <p className="mt-0.5 text-metadata text-muted">Find the event on Findmi and request to join.</p>
                   </div>
                   <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
@@ -2813,15 +2803,15 @@ export default async function ManageBusinessPage({
                   Findmi area pending review: {pendingMarketRequest.requestedText}
                 </p>
                 <p className="mt-2 text-metadata text-subtle">
-                  Findmi is reviewing your requested area. Your business is live in the meantime, but won&rsquo;t
-                  appear in general area-based discovery until this is approved.
+                  Findmi is reviewing your requested area. Once approved, your business is added to that
+                  area&rsquo;s browsing.
                 </p>
               </>
             ) : (
               <>
                 <p className="mt-1.5 text-body font-semibold text-muted">No Findmi area selected yet</p>
                 <p className="mt-2 text-metadata text-subtle">
-                  Your Findmi area determines where your business receives general discovery. Where you&rsquo;ll be
+                  A Findmi area is optional. It places your business in that area&rsquo;s browsing. Where you&rsquo;ll be
                   (events and pop-ups) can still happen anywhere.
                 </p>
                 <p className="mt-2 text-metadata text-subtle">Contact Findmi to update this.</p>

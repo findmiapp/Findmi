@@ -273,7 +273,7 @@ test("Home: Opportunities section; no informational Needs Attention item", () =>
   // for the full render-order regression coverage.
   assert.ok(HOME.indexOf('aria-labelledby="needs-attention"') < HOME.indexOf("<HomeOpportunities"), "Needs Attention above Opportunities");
   assert.ok(HOME.indexOf('aria-labelledby="needs-attention"') < HOME.indexOf('aria-labelledby="coming-up"'));
-  assert.match(HOME, /needsAttention\.length > 0 &&/);
+  assert.match(HOME, /attention\.length > 0 &&/);
   assert.match(HOME, /Explore Opportunities/);
   assert.match(HOME, /Tell Findmi What You Need/);
   assert.equal(/No recommendations yet/.test(HOME), false);
@@ -281,7 +281,7 @@ test("Home: Opportunities section; no informational Needs Attention item", () =>
 });
 
 test("Add modal: six intents, canonical Moment route, Grow Your Business", () => {
-  for (const t of ["Add Moment", "Host Something", "Go Somewhere", "Add A Location", "Find An Opportunity", "Tell Findmi Your Goals"]) assert.ok(ADD.includes(`"${t}"`), t);
+  for (const t of ["Add Moment", "Host an Event", "Where I\u2019ll Be", "At a Location", "Find An Opportunity", "Tell Findmi Your Goals"]) assert.ok(ADD.includes(`"${t}"`), t);
   assert.match(ADD, /\/my-world\/journal\/new\?business=/);
   assert.match(ADD, /Grow Your Business/);
   assert.match(ADD, /\?tab=opportunities&view=explore/);

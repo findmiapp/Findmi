@@ -9,12 +9,12 @@ import { GoalGlyph, MomentGlyph } from "@/components/opportunities/OpportunityGl
  * Findmi's internal model:
  *   Add Moment          → the canonical Moment composer (/my-world/journal/
  *                         new), prefilled with this Business.
- *   Host Something      → the existing Event creation flow, with this
+ *   Host an Event       → the existing Event creation flow, with this
  *                         Business as host (?business_id=, validated
  *                         server-side).
- *   Go Somewhere        → the existing Event search / request-to-join
+ *   Where I'll Be       → the existing Event search / request-to-join
  *                         composer in Presence (manual Appearance fallback).
- *   Add A Location      → the existing Business Locations add panel.
+ *   At a Location       → the existing Business Locations add panel.
  * Grow Your Business:
  *   Find An Opportunity → Opportunities, Explore view.
  *   Tell Findmi Your Goals → the Business goal flow.
@@ -56,19 +56,19 @@ export default function AddToPresence({
     ),
     option(
       `/account/event/new?business_id=${encodeURIComponent(businessId)}`,
-      "Host Something",
+      "Host an Event",
       "Create an activation, pop-up, tasting, class, launch or Event you’re organizing.",
       <NavIcon name="calendar" className="h-5 w-5" />
     ),
     option(
       `${basePath}?tab=findmi-here&compose=1`,
-      "Go Somewhere",
+      "Where I’ll Be",
       "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.",
       <NavIcon name="compass" className="h-5 w-5" />
     ),
     option(
       `${basePath}?tab=findmi-here&view=locations&add=1`,
-      "Add A Location",
+      "At a Location",
       "Add or connect a store, café, showroom or other ongoing Location for this Business.",
       <NavIcon name="pin" className="h-5 w-5" />
     ),
