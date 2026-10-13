@@ -35,6 +35,19 @@ export interface ImportedVenue {
   postalCode: string | null;
 }
 
+/** One dated instance of the Event, kept together with ITS OWN place —
+ * a tour's stops each have their own date, time and venue, so a date is
+ * never separated from where it happens. An empty venue means the page
+ * didn't say. */
+export interface ImportedOccurrence extends ImportedDate {
+  venue: ImportedVenue;
+  /** The page line(s) this was read from, when it came from page text. */
+  evidence: string | null;
+  /** Set by Analyze: already over. Past dates are kept (not discarded) so
+   * Review can show them; they just start out not included. */
+  past?: boolean;
+}
+
 export interface EventCandidate {
   title: string | null;
   description: string | null;
@@ -43,17 +56,37 @@ export interface EventCandidate {
   sourceUrl: string;
   /** "Eventbrite", "Luma", … when the host is recognisable. */
   platform: string | null;
-  dates: ImportedDate[];
-  venue: ImportedVenue;
+  /** Chronological; each with its own place. */
+  occurrences: ImportedOccurrence[];
   online: boolean;
   organizer: string | null;
   sources: Partial<Record<"title" | "description" | "image" | "dates" | "venue" | "organizer", FieldSource>>;
 }
 
+export const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };
+
+const keyPart = (s: string | null) => (s ?? "").toLowerCase().normalize("NFKC").replace(/[^a-z0-9]+/g, " ").trim();
+/** Identity of a place as read from the page ("" = no place). */
+export function venueKey(v: { name: string | null; address: string | null }): string {
+  const name = keyPart(v.name);
+  const address = keyPart(v.address);
+  return name || address ? `${name}|${address}` : "";
+}
+
+/** The one place every occurrence shares, or null when they differ. */
+export function sharedVenue(occurrences: ImportedOccurrence[]): ImportedVenue | null {
+  if (occurrences.length === 0) return { ...EMPTY_VENUE };
+  const key = venueKey(occurrences[0].venue);
+  return occurrences.every((o) => venueKey(o.venue) === key) ? occurrences[0].venue : null;
+}
+
 /** What Analyze returns to Review. Nothing is written by Analyze. */
 export interface EventImportMatches {
   event: { id: string; name: string; slug: string; startAt: string; venueName: string | null; city: string | null; confidence: "strong" | "weak"; hostBusinessId: string | null; hostedByThisBusiness: boolean } | null;
-  location: { id: string; name: string; address: string | null; city: string | null; state: string | null } | null;
+  /** One entry per distinct place on the page (keyed by venueKey). "strong"
+   * = a single clear match and is pre-selected; "possible" is shown but the
+   * Business decides. */
+  locations: { key: string; id: string; name: string; address: string | null; city: string | null; state: string | null; confidence: "strong" | "possible" }[];
   organizerBusiness: { id: string; name: string } | null;
   /** This Business's existing standalone schedule item for the same day/title, if any. */
   existingAppearance: { id: string; title: string; startAt: string } | null;
@@ -85,6 +118,29 @@ export const EVENT_IMPORT_FAILURE_COPY: Record<EventImportFailure, string> = {
   server: "Something went wrong on our side. Please try again.",
 };
 
+export interface ReviewPlace {
+  venueName: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  /** Confirmed existing Findmi Location (null = use the typed details). */
+  useLocationId: string | null;
+  /** The page place this was read from — looks up its Location match. */
+  matchKey?: string | null;
+}
+
+export interface ReviewOccurrence {
+  /** Client-side row identity only. */
+  id?: string;
+  /** NY wall-clock values from the Review form: YYYY-MM-DD + HH:MM. An end
+   * earlier than the start means it ends after midnight. */
+  date: string;
+  startTime: string;
+  endTime: string;
+  place: ReviewPlace;
+}
+
 /** The reviewed values the Business confirms. Re-validated server-side. */
 export interface EventImportReview {
   intent: EventImportIntent;
@@ -92,17 +148,14 @@ export interface EventImportReview {
   description: string | null;
   imageUrl: string | null;
   sourceUrl: string | null;
-  /** NY wall-clock values from the Review form: YYYY-MM-DD + HH:MM. */
-  dates: { date: string; startTime: string; endTime: string }[];
-  venueName: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  postalCode: string | null;
+  occurrences: ReviewOccurrence[];
+  /** true: every date happens at `place` (one Where section); false: each
+   * occurrence carries its own place. */
+  sharedPlace: boolean;
+  place: ReviewPlace;
   organizer: string | null;
-  /** Confirmed existing records to reuse (null = create new / none). */
+  /** Confirmed existing Findmi Event to join / reuse (null = none). */
   useEventId: string | null;
-  useLocationId: string | null;
 }
 
 export type EventImportOutcome =

@@ -10,18 +10,25 @@
 //      which only fills what is still missing (see ./ai.ts).
 // Nothing is invented: a value the page doesn't evidence stays null and is
 // filled in by the Business during Review.
+//
+// V1B: dates are OCCURRENCES — each keeps its own time and place (a
+// sub-event's own location, or the place on its schedule line), so a tour
+// with different stops is never flattened into one place. When structured
+// data has no dates (or only one umbrella span), the page's visible
+// schedule lines are read by ./schedule.ts.
 import { parse } from "parse5";
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { localDateTimeToIso } from "../admin/form-helpers";
-import type { EventCandidate, ImportedDate, ImportedVenue } from "./types";
+import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
+import { dedupeOccurrences, parseScheduleLines, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
 
 export const EVENT_TITLE_MAX = 200;
 export const EVENT_DESCRIPTION_MAX = 2000;
-export const EVENT_MAX_DATES = 12;
+export const EVENT_MAX_DATES = SCHEDULE_MAX_OCCURRENCES;
 const JSONLD_MAX_BLOCKS = 12;
 const JSONLD_MAX_BLOCK_CHARS = 300_000;
 const MAX_DOM_NODES = 60_000;
-export const EXCERPT_MAX_CHARS = 6000;
+export const EXCERPT_MAX_CHARS = 12000;
 
 type JsonObject = Record<string, unknown>;
 interface HtmlNode {
@@ -64,14 +71,27 @@ interface Collected {
   meta: Map<string, string>;
   jsonLd: string[];
   text: string[];
+  /** Visible text grouped by block element (one schedule entry per line). */
+  lines: string[];
 }
 
 const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "svg", "head", "nav", "footer"]);
+const BLOCK = new Set([
+  "p", "div", "li", "ul", "ol", "tr", "table", "tbody", "thead", "section", "article", "main", "header", "aside",
+  "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "dd", "dt", "dl", "figure", "figcaption", "pre", "address",
+]);
+const MAX_LINES = 800;
 
 function collect(html: string): Collected {
-  const out: Collected = { title: null, meta: new Map(), jsonLd: [], text: [] };
+  const out: Collected = { title: null, meta: new Map(), jsonLd: [], text: [], lines: [] };
   const doc = parse(html) as unknown as HtmlNode;
   let textChars = 0;
+  let line = "";
+  const flush = () => {
+    const t = line.replace(/\s+/g, " ").replace(/^\s*\|\s*|\s*\|\s*$/g, "").trim();
+    if (t && out.lines.length < MAX_LINES) out.lines.push(t);
+    line = "";
+  };
   const walk = (node: HtmlNode, skip: boolean, budget: { n: number }) => {
     if (budget.n-- <= 0) return;
     const tag = node.tagName;
@@ -85,17 +105,28 @@ function collect(html: string): Collected {
       if (type === "application/ld+json" && out.jsonLd.length < JSONLD_MAX_BLOCKS) out.jsonLd.push(textOf(node));
       return;
     }
-    if (node.nodeName === "#text" && !skip && textChars < EXCERPT_MAX_CHARS * 2) {
+    if (node.nodeName === "#text" && !skip) {
       const t = (node.value ?? "").replace(/\s+/g, " ").trim();
-      if (t) {
+      if (t && textChars < EXCERPT_MAX_CHARS * 2) {
         out.text.push(t);
         textChars += t.length + 1;
       }
+      if (node.value) line += node.value;
     }
-    const childSkip = skip || (tag ? SKIP_TEXT.has(tag) : false);
+    if (skip) return;
+    if (tag === "br") {
+      flush();
+      return;
+    }
+    const childSkip = tag ? SKIP_TEXT.has(tag) : false;
+    const block = tag ? BLOCK.has(tag) : false;
+    if (block) flush();
+    if (tag === "td" || tag === "th") line += " | ";
     for (const child of node.childNodes ?? []) walk(child, childSkip, budget);
+    if (block) flush();
   };
   walk(doc, false, { n: MAX_DOM_NODES });
+  flush();
   return out;
 }
 
@@ -167,7 +198,8 @@ export function normalizeDateValue(value: unknown): { iso: string; hasTime: bool
   return null;
 }
 
-function toImportedDate(startRaw: unknown, endRaw: unknown): (ImportedDate & { assumedZone: boolean }) | null {
+type Dated = { start: string; end: string | null; hasTime: boolean; assumedZone: boolean };
+function toImportedDate(startRaw: unknown, endRaw: unknown): Dated | null {
   const start = normalizeDateValue(startRaw);
   if (!start) return null;
   const end = normalizeDateValue(endRaw);
@@ -177,19 +209,25 @@ function toImportedDate(startRaw: unknown, endRaw: unknown): (ImportedDate & { a
   return { start: start.iso, end: validEnd, hasTime: start.hasTime, assumedZone: start.assumedZone || Boolean(end?.assumedZone) };
 }
 
-function datesFrom(node: JsonObject): (ImportedDate & { assumedZone: boolean })[] {
-  const out: (ImportedDate & { assumedZone: boolean })[] = [];
+type StructuredOccurrence = ImportedOccurrence & { assumedZone: boolean };
+
+/** A node's dates, each with its own place: a sub-event's own location
+ * wins over the parent Event's. */
+function occurrencesFrom(node: JsonObject, eventVenue: ImportedVenue): StructuredOccurrence[] {
+  const out: StructuredOccurrence[] = [];
   const own = toImportedDate(node.startDate, node.endDate);
   const subs = (Array.isArray(node.subEvent) ? node.subEvent : node.subEvent ? [node.subEvent] : []) as JsonObject[];
-  for (const sub of subs.slice(0, 60)) {
+  for (const sub of subs.slice(0, 120)) {
     if (sub && typeof sub === "object") {
       const d = toImportedDate(sub.startDate, sub.endDate);
-      if (d) out.push(d);
+      if (!d) continue;
+      const subVenue = venueFrom(sub.location).venue;
+      out.push({ ...d, venue: venueKey(subVenue) ? subVenue : eventVenue, evidence: null });
     }
   }
   // A series whose sub-events carry the dates: its own (overall) range is
   // not itself a date people attend.
-  if (own && out.length === 0) out.push(own);
+  if (own && out.length === 0) out.push({ ...own, venue: eventVenue, evidence: null });
   return out;
 }
 
@@ -222,8 +260,6 @@ function imageOf(value: unknown, base: URL): string | null {
   if (v && typeof v === "object") return absoluteHttps(str((v as JsonObject).url) ?? str((v as JsonObject).contentUrl), base);
   return null;
 }
-
-const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };
 
 function venueFrom(value: unknown): { venue: ImportedVenue; online: boolean } {
   const list = (Array.isArray(value) ? value : value ? [value] : []) as unknown[];
@@ -300,23 +336,42 @@ export interface ExtractionResult {
   excerpt: string;
   /** A local date-time without a zone was read as New York time. */
   assumedZone: boolean;
+  /** Date ranges on the page without a weekday rule to expand them by. */
+  unresolvedRanges: number;
+  /** The page listed more dates than Findmi reads at once. */
+  truncated: boolean;
+  /** The single year the page mentions (for reading "9/26"-style dates). */
+  yearHint: number | null;
+}
+
+/** One structured span covering several days (an umbrella "Sep 24 – Oct 31"
+ * rather than a date people attend). */
+function isUmbrellaSpan(o: { start: string; end: string | null; hasTime: boolean }): boolean {
+  if (!o.end) return false;
+  const days = (Date.parse(o.end) - Date.parse(o.start)) / 86_400_000;
+  return days >= 2;
 }
 
 /** Deterministic extraction of ONE event candidate from a page. */
-export function extractEventCandidate(html: string, pageUrl: URL): ExtractionResult {
+export function extractEventCandidate(html: string, pageUrl: URL, now: number = Date.now()): ExtractionResult {
   const c = collect(html);
   const nodes = collectEventNodes(c.jsonLd);
   const siteName = cleanText(c.meta.get("og:site_name"), 80);
   const sources: EventCandidate["sources"] = {};
 
   // Primary node: the first Event; sibling Event nodes with the same name
-  // (platforms list each date of a series) contribute their dates.
+  // (platforms list each date of a series) contribute their dates, each
+  // with its own place.
   const primary = nodes[0] ?? null;
   const primaryName = primary ? cleanText(str(primary.name), EVENT_TITLE_MAX) : null;
-  let dates: (ImportedDate & { assumedZone: boolean })[] = [];
+  const { venue: eventVenue, online } = primary ? venueFrom(primary.location) : { venue: { ...EMPTY_VENUE }, online: false };
+  let structured: StructuredOccurrence[] = [];
   if (primary) {
     const sameName = nodes.filter((n) => !primaryName || cleanText(str(n.name), EVENT_TITLE_MAX) === primaryName);
-    for (const n of sameName) dates.push(...datesFrom(n));
+    for (const n of sameName) {
+      const nodeVenue = n === primary ? eventVenue : venueFrom(n.location).venue;
+      structured.push(...occurrencesFrom(n, venueKey(nodeVenue) ? nodeVenue : eventVenue));
+    }
   }
 
   let title = cleanEventTitle(primaryName, siteName);
@@ -340,30 +395,44 @@ export function extractEventCandidate(html: string, pageUrl: URL): ExtractionRes
     if (imageUrl) sources.image = "page";
   }
 
-  if (dates.length > 0) sources.dates = "structured";
+  if (structured.length > 0) sources.dates = "structured";
   else {
     const metaDate = toImportedDate(c.meta.get("event:start_time"), c.meta.get("event:end_time"));
     if (metaDate) {
-      dates = [metaDate];
+      structured = [{ ...metaDate, venue: eventVenue, evidence: null }];
       sources.dates = "page";
     }
   }
 
-  const { venue, online } = primary ? venueFrom(primary.location) : { venue: { ...EMPTY_VENUE }, online: false };
-  if (venue.name || venue.address || venue.city) sources.venue = "structured";
+  // The page's visible schedule: used when structured data has no dates,
+  // or only one umbrella span that the schedule breaks into real dates.
+  const yearHint = yearHintFrom(c.lines);
+  const schedule = parseScheduleLines(c.lines, { now, yearHint });
+  let occurrences: (ImportedOccurrence & { assumedZone?: boolean })[] = structured;
+  let scheduleTruncated = false;
+  if (schedule.occurrences.length > 0 && (structured.length === 0 || (structured.length === 1 && isUmbrellaSpan(structured[0]) && schedule.occurrences.length >= 2))) {
+    occurrences = schedule.occurrences.map((o) => ({
+      ...o,
+      // A line without its own place happens at the Event's stated place.
+      venue: venueKey(o.venue) ? o.venue : eventVenue,
+      assumedZone: o.hasTime,
+    }));
+    sources.dates = "page";
+    scheduleTruncated = schedule.truncated;
+  }
+
+  if (occurrences.some((o) => venueKey(o.venue) || o.venue.city)) {
+    sources.venue = occurrences.every((o) => !o.evidence) ? "structured" : "page";
+  }
   const organizer = primary ? nameOf(primary.organizer) : null;
   if (organizer) sources.organizer = "structured";
 
-  // Unique by start, chronological, capped.
-  const seen = new Set<string>();
-  const unique = dates
-    .filter((d) => (seen.has(d.start) ? false : (seen.add(d.start), true)))
-    .sort((a, b) => a.start.localeCompare(b.start))
-    .slice(0, EVENT_MAX_DATES);
+  const all = dedupeOccurrences(occurrences);
+  const unique = all.slice(0, EVENT_MAX_DATES) as (ImportedOccurrence & { assumedZone?: boolean })[];
 
   const canonical = primary ? absoluteHttps(str(primary.url), pageUrl) : null;
   const sourceUrl = canonical && new URL(canonical).host === pageUrl.host ? canonical : pageUrl.toString();
-  const excerptParts = [c.title, c.meta.get("og:title"), c.meta.get("og:description"), c.meta.get("description"), ...c.text].filter(
+  const excerptParts = [c.title, c.meta.get("og:title"), c.meta.get("og:description"), c.meta.get("description"), ...c.lines].filter(
     (v): v is string => Boolean(v && v.trim())
   );
 
@@ -374,24 +443,27 @@ export function extractEventCandidate(html: string, pageUrl: URL): ExtractionRes
       imageUrl,
       sourceUrl,
       platform: platformForHost(pageUrl.hostname),
-      dates: unique.map(({ start, end, hasTime }) => ({ start, end, hasTime })),
-      venue,
+      occurrences: unique.map(({ start, end, hasTime, venue, evidence }) => ({ start, end, hasTime, venue, evidence })),
       online,
       organizer,
       sources,
     },
     excerpt: excerptParts.join("\n").replace(/\n{2,}/g, "\n").slice(0, EXCERPT_MAX_CHARS),
     assumedZone: unique.some((d) => d.assumedZone),
+    // Unreadable ranges matter only when the page's schedule is what we used.
+    unresolvedRanges: sources.dates === "structured" ? 0 : schedule.unresolvedRanges,
+    truncated: all.length > unique.length || scheduleTruncated,
+    yearHint,
   };
 }
 
-/** Is there enough to review? A title and at least one date. */
+/** Is there enough to review? A title, at least one date and a place. */
 export function needsAiAssist(candidate: EventCandidate): boolean {
-  return !candidate.title || candidate.dates.length === 0 || (!candidate.venue.name && !candidate.venue.address && !candidate.online);
+  return !candidate.title || candidate.occurrences.length === 0 || (!candidate.occurrences.some((o) => venueKey(o.venue) || o.venue.city) && !candidate.online);
 }
 
 /** Dates that have already ended (or, date-only, are before today in NY). */
-export function isPastDate(d: ImportedDate, now: number = Date.now()): boolean {
+export function isPastDate(d: { start: string; end: string | null; hasTime: boolean }, now: number = Date.now()): boolean {
   if (!d.hasTime) {
     const today = new Date(now).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
     return d.start < today;

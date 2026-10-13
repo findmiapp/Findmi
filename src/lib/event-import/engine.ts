@@ -14,7 +14,10 @@ import { findLikelyDuplicateLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
 import { extractEventCandidate, needsAiAssist, isPastDate } from "./extract";
 import { assistWithAi, defaultEventAiClient, type EventAiClient } from "./ai";
-import type { EventCandidate, EventImportAnalysis, EventImportFailure, EventImportMatches, ImportedDate } from "./types";
+import { venueKey, type EventCandidate, type EventImportAnalysis, type EventImportFailure, type EventImportMatches, type ImportedDate, type ImportedOccurrence } from "./types";
+
+/** Distinct places looked up per analysis (each once). */
+const MAX_PLACE_LOOKUPS = 15;
 
 export interface EventImportDeps {
   fetchPage: (url: URL) => Promise<SafeFetchResult>;
@@ -109,17 +112,17 @@ export function nyDateOf(d: ImportedDate): string {
   return d.hasTime ? new Date(d.start).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) : d.start;
 }
 
-function draftFor(candidate: EventCandidate, d: ImportedDate): AppearanceDraft {
+function draftFor(candidate: EventCandidate, d: ImportedOccurrence): AppearanceDraft {
   return {
     title: candidate.title ?? "",
     date: nyDateOf(d),
     start_time: null,
     end_time: null,
     time_tbd: !d.hasTime,
-    venue_name: candidate.venue.name,
-    address: candidate.venue.address,
-    city: candidate.venue.city,
-    state: candidate.venue.state,
+    venue_name: d.venue.name,
+    address: d.venue.address,
+    city: d.venue.city,
+    state: d.venue.state,
   } as unknown as AppearanceDraft;
 }
 
@@ -139,43 +142,60 @@ export async function analyzeEventUrl(
   }
   if (!page.ok) return { ok: false, code: FETCH_FAILURE[page.code] ?? "unreachable" };
 
-  const extracted = extractEventCandidate(page.html, page.url);
+  const now = deps.now();
+  const extracted = extractEventCandidate(page.html, page.url, now);
   let candidate = extracted.candidate;
-  if (needsAiAssist(candidate)) candidate = (await assistWithAi(candidate, extracted.excerpt, deps.ai)).candidate;
+  if (needsAiAssist(candidate)) candidate = (await assistWithAi(candidate, extracted.excerpt, deps.ai, { now, yearHint: extracted.yearHint })).candidate;
 
+  const hasPlace = candidate.occurrences.some((o) => venueKey(o.venue) || o.venue.city);
   // Not an event page at all: nothing that identifies an event.
-  if (!candidate.title || (candidate.dates.length === 0 && candidate.sources.title === "page" && !candidate.venue.name)) {
+  if (!candidate.title || (candidate.occurrences.length === 0 && candidate.sources.title === "page" && !hasPlace)) {
     return { ok: false, code: "no_event" };
   }
 
+  // Past/future is decided on the FINAL occurrence set (after recurrence
+  // expansion and AI fill-in). Past dates are kept and flagged — Review
+  // shows them, not included by default — never silently discarded.
+  candidate = { ...candidate, occurrences: candidate.occurrences.map((o) => ({ ...o, past: isPastDate(o, now) })) };
+  const total = candidate.occurrences.length;
+  const pastCount = candidate.occurrences.filter((o) => o.past).length;
+
   const warnings: string[] = [];
-  const now = deps.now();
-  const upcoming = candidate.dates.filter((d) => !isPastDate(d, now));
-  if (candidate.dates.length > 0 && upcoming.length === 0) warnings.push("All the dates on that page have already passed.");
-  else if (upcoming.length < candidate.dates.length) warnings.push("Dates that have already passed were left out.");
-  if (upcoming.length > 0) candidate = { ...candidate, dates: upcoming };
-  if (candidate.dates.length === 0) warnings.push("We couldn't find a date. Add it below.");
-  if (candidate.dates.some((d) => !d.hasTime)) warnings.push("We couldn't find a start time. Add it below.");
-  if (extracted.assumedZone) warnings.push("The page didn't say which time zone it uses. Times are shown in Eastern Time. Please check them.");
-  if (!candidate.venue.name && !candidate.venue.address && !candidate.online) warnings.push("We couldn't find where it's happening. Add the place below.");
+  if (total > 0 && pastCount === total) warnings.push("All the dates on that page have already passed.");
+  else if (pastCount > 0) warnings.push("Some dates on this page have already passed. Future dates are shown below.");
+  if (total === 0) warnings.push("We couldn't find a date. Add it below.");
+  if (extracted.unresolvedRanges > 0 && candidate.sources.dates !== "structured") {
+    warnings.push("Part of the schedule on that page couldn't be turned into dates. Please compare with the page and add any missing dates.");
+  }
+  if (extracted.truncated) warnings.push(`That page lists a lot of dates. The first ${total} are shown.`);
+  if (candidate.occurrences.some((d) => !d.hasTime)) warnings.push("Some dates don't have a start time. Add it below.");
+  if (extracted.assumedZone || candidate.sources.dates === "ai") warnings.push("The page didn't say which time zone it uses. Times are shown in Eastern Time. Please check them.");
+  if (!hasPlace && !candidate.online) warnings.push("We couldn't find where it's happening. Add the place below.");
   if (candidate.online) warnings.push("This looks like an online event.");
   if (Object.values(candidate.sources).includes("ai")) warnings.push("Some details were read from the page text. Please check them.");
 
-  const matches: EventImportMatches = { event: null, location: null, organizerBusiness: null, existingAppearance: null };
-  const first = candidate.dates[0];
+  const matches: EventImportMatches = { event: null, locations: [], organizerBusiness: null, existingAppearance: null };
+  const first = candidate.occurrences.find((o) => !o.past) ?? candidate.occurrences[0];
+  // Each distinct place on the page is looked up once.
+  const places = new Map<string, ImportedOccurrence["venue"]>();
+  for (const o of candidate.occurrences) {
+    const key = venueKey(o.venue);
+    if (key && o.venue.name && !places.has(key) && places.size < MAX_PLACE_LOOKUPS) places.set(key, o.venue);
+  }
+  const city = candidate.occurrences.find((o) => o.venue.city)?.venue ?? null;
   try {
-    const [eventMatch, locations, organizer, existing] = await Promise.all([
+    const [eventMatch, locationLists, organizer, existing] = await Promise.all([
       first ? deps.matchEvent(draftFor(candidate, first)) : Promise.resolve(null),
-      candidate.venue.name
-        ? deps.matchLocations({
-            name: candidate.venue.name,
-            address: candidate.venue.address,
-            city: candidate.venue.city,
-            state: candidate.venue.state,
-            postal_code: candidate.venue.postalCode,
-          })
-        : Promise.resolve([]),
-      candidate.organizer ? deps.matchOrganizer(candidate.organizer, candidate.venue.city, candidate.venue.state) : Promise.resolve(null),
+      Promise.all(
+        [...places.entries()].map(async ([key, v]) => ({
+          key,
+          v,
+          found: await deps
+            .matchLocations({ name: v.name!, address: v.address, city: v.city, state: v.state, postal_code: v.postalCode })
+            .catch(() => []),
+        }))
+      ),
+      candidate.organizer ? deps.matchOrganizer(candidate.organizer, city?.city ?? null, city?.state ?? null) : Promise.resolve(null),
       first && input.businessId ? deps.matchExistingAppearance(input.businessId, draftFor(candidate, first)) : Promise.resolve(null),
     ]);
     if (eventMatch) {
@@ -194,8 +214,15 @@ export async function analyzeEventUrl(
         };
       }
     }
-    const loc = locations[0];
-    if (loc) matches.location = { id: loc.id, name: loc.name, address: loc.address, city: loc.city, state: loc.state };
+    for (const { key, v, found } of locationLists) {
+      const loc = found[0];
+      if (!loc) continue;
+      // Strong = exactly one Location, and the page gave more than a bare
+      // name to agree with (address, city or postal code). Otherwise it is
+      // shown as a possible match and never pre-selected.
+      const strong = found.length === 1 && Boolean(v.address || v.city || v.postalCode);
+      matches.locations.push({ key, id: loc.id, name: loc.name, address: loc.address, city: loc.city, state: loc.state, confidence: strong ? "strong" : "possible" });
+    }
     matches.organizerBusiness = organizer;
     if (existing && existing.confidence === "strong") matches.existingAppearance = { id: existing.id, title: existing.title, startAt: existing.start_at };
   } catch {

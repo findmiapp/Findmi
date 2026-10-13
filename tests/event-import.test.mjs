@@ -67,8 +67,8 @@ test("deterministic structured-data extraction (schema.org Event JSON-LD, @graph
   assert.equal(candidate.imageUrl, "https://img.example-cdn.com/fest.jpg");
   assert.equal(candidate.platform, "Eventbrite");
   assert.equal(candidate.sourceUrl, "https://www.eventbrite.com/e/nyc-coffee-festival-123");
-  assert.deepEqual(candidate.dates, [{ start: new Date(`${DAY1}T14:00:00Z`).toISOString(), end: new Date(`${DAY1}T22:00:00Z`).toISOString(), hasTime: true }]);
-  assert.deepEqual(candidate.venue, { name: "Metropolitan Pavilion", address: "125 W 18th St", city: "New York", state: "NY", postalCode: "10011" });
+  assert.deepEqual(candidate.occurrences.map(({ start, end, hasTime }) => ({ start, end, hasTime })), [{ start: new Date(`${DAY1}T14:00:00Z`).toISOString(), end: new Date(`${DAY1}T22:00:00Z`).toISOString(), hasTime: true }]);
+  assert.deepEqual(candidate.occurrences[0].venue, { name: "Metropolitan Pavilion", address: "125 W 18th St", city: "New York", state: "NY", postalCode: "10011" });
   assert.equal(candidate.organizer, "Specialty Coffee NYC");
   assert.equal(candidate.sources.title, "structured");
   assert.equal(X.needsAiAssist(candidate), false, "complete → no AI call");
@@ -81,15 +81,15 @@ test("multiple dates: subEvent and same-name sibling Event nodes become one cand
   ] };
   const { candidate } = X.extractEventCandidate(page(series), new URL("https://lu.ma/tabli"));
   assert.equal(candidate.platform, "Luma");
-  assert.deepEqual(candidate.dates.map((d) => d.start), [`${DAY1}T15:00:00.000Z`, `${DAY2}T15:00:00.000Z`], "chronological");
+  assert.deepEqual(candidate.occurrences.map((d) => d.start), [`${DAY1}T15:00:00.000Z`, `${DAY2}T15:00:00.000Z`], "chronological");
 });
 
 test("missing optional fields stay unknown; date-only keeps no time; Open Graph fills title/image", () => {
   const thin = { "@type": "Event", name: "Pop-Up Market", startDate: DAY1 };
   const { candidate } = X.extractEventCandidate(page(thin, '<meta property="og:image" content="https://img.site.com/a.jpg">'), new URL("https://organizer.com/market"));
   assert.equal(candidate.title, "Pop-Up Market");
-  assert.deepEqual(candidate.dates, [{ start: DAY1, end: null, hasTime: false }]);
-  assert.deepEqual(candidate.venue, { name: null, address: null, city: null, state: null, postalCode: null });
+  assert.deepEqual(candidate.occurrences.map(({ start, end, hasTime }) => ({ start, end, hasTime })), [{ start: DAY1, end: null, hasTime: false }]);
+  assert.deepEqual(candidate.occurrences[0].venue, { name: null, address: null, city: null, state: null, postalCode: null });
   assert.equal(candidate.organizer, null);
   assert.equal(candidate.imageUrl, "https://img.site.com/a.jpg");
   assert.equal(X.needsAiAssist(candidate), true);
@@ -105,7 +105,7 @@ test("date normalization never guesses: bad values are dropped, bare local times
   assert.equal(local.assumedZone, true);
   const r = X.extractEventCandidate(page({ "@type": "Event", name: "X Fest", startDate: `${DAY1}T10:00`, location: "Pier 17" }), new URL("https://x.com/e"));
   assert.equal(r.assumedZone, true);
-  assert.equal(r.candidate.venue.name, "Pier 17");
+  assert.equal(r.candidate.occurrences[0].venue.name, "Pier 17");
 });
 
 test("non-https / script image and source values are never accepted", () => {
@@ -115,14 +115,31 @@ test("non-https / script image and source values are never accepted", () => {
 });
 
 // ── AI fill-in (only missing fields, only evidenced values) ─────────────
+const NATURAL1 = FUTURE.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+
 test("AI output is sanitized against the page text; hallucinated values are dropped", () => {
-  const text = "Brooklyn Holiday Market at Industry City, 220 36th St, Brooklyn NY 11232 on December 12";
+  const text = `Brooklyn Holiday Market at Industry City, 220 36th St, Brooklyn NY 11232\n${NATURAL1}, 11am–6pm – Industry City`;
   const out = AI.sanitizeEventAiOutput(
-    { title: "Brooklyn Holiday Market", dates: [{ start: "2026-12-12", end: null }, { start: "soon", end: null }], venue_name: "Barclays Center", street_address: "220 36th St", city: "Brooklyn", state: "New York", postal_code: "11232", organizer: "Invented Org" },
-    text
+    {
+      title: "Brooklyn Holiday Market",
+      schedule: [
+        { evidence: `${NATURAL1}, 11am–6pm – Industry City`, date: DAY1, start_time: "11:00", end_time: "18:00", venue_name: "Industry City", street_address: null },
+        { evidence: "Dec 31, 9pm – Barclays Center", date: "2026-12-31", start_time: "21:00", end_time: null, venue_name: "Barclays Center", street_address: null },
+      ],
+      venue_name: "Barclays Center",
+      street_address: "220 36th St",
+      city: "Brooklyn",
+      state: "New York",
+      postal_code: "11232",
+      organizer: "Invented Org",
+      organizer_evidence: null,
+    },
+    text,
+    { now: Date.now(), yearHint: null }
   );
   assert.equal(out.title, "Brooklyn Holiday Market");
-  assert.deepEqual(out.dates, [{ start: "2026-12-12", end: null, hasTime: false }]);
+  assert.equal(out.occurrences.length, 1, "an entry quoting a line that isn't on the page is dropped");
+  assert.equal(out.occurrences[0].venue.name, "Industry City");
   assert.equal(out.venue.name, null, "not on the page");
   assert.equal(out.venue.address, "220 36th St");
   assert.equal(out.venue.state, "NY");
@@ -131,13 +148,14 @@ test("AI output is sanitized against the page text; hallucinated values are drop
 
 test("AI fills only what is missing, and is skipped entirely when structured data is complete", async () => {
   let calls = 0;
-  const client = { messages: { parse: async () => { calls++; return { stop_reason: "end_turn", parsed_output: { title: "Other Title", dates: [{ start: DAY1, end: null }], venue_name: "Hall A", street_address: null, city: null, state: null, postal_code: null, organizer: null } }; } } };
-  const thin = X.extractEventCandidate(page({ "@type": "Event", name: "Known Title" }, "", "<p>Known Title at Hall A on " + DAY1 + "</p>"), new URL("https://a.com/e"));
-  const r = await AI.assistWithAi(thin.candidate, thin.excerpt, client);
+  const line = `${NATURAL1}, 7pm – Hall A`;
+  const client = { messages: { parse: async () => { calls++; return { stop_reason: "end_turn", parsed_output: { title: "Other Title", schedule: [{ evidence: line, date: DAY1, start_time: "19:00", end_time: null, venue_name: "Hall A", street_address: null }], venue_name: null, street_address: null, city: null, state: null, postal_code: null, organizer: null, organizer_evidence: null } }; } } };
+  const thin = X.extractEventCandidate(page({ "@type": "Event", name: "Known Title" }, "", "<h1>Known Title</h1>"), new URL("https://a.com/e"));
+  const r = await AI.assistWithAi(thin.candidate, `${thin.excerpt}\n${line}`, client);
   assert.equal(calls, 1);
   assert.equal(r.candidate.title, "Known Title", "existing value never overwritten");
   assert.equal(r.candidate.sources.dates, "ai");
-  assert.equal(r.candidate.venue.name, "Hall A");
+  assert.equal(r.candidate.occurrences[0].venue.name, "Hall A");
   const none = await AI.assistWithAi(thin.candidate, thin.excerpt, null);
   assert.equal(none.called, false, "no API key → no call, candidate unchanged");
 });
@@ -205,11 +223,12 @@ test("analyze: existing Event + existing Location are reported as matches (conse
   assert.equal(r.ok, true);
   assert.equal(r.matches.event.id, "ev-1");
   assert.equal(r.matches.event.hostedByThisBusiness, false);
-  assert.equal(r.matches.location.id, "loc-1");
+  assert.equal(r.matches.locations[0].id, "loc-1");
+  assert.equal(r.matches.locations[0].confidence, "strong", "one Location agreeing on address/city");
   // Review: participating pre-selects a strong Event; hosting never pre-selects someone else's Event.
   assert.equal(R.reviewDefaults(r.candidate, r.matches, "participating").useEventId, "ev-1");
   assert.equal(R.reviewDefaults(r.candidate, r.matches, "hosting").useEventId, null);
-  assert.equal(R.reviewDefaults(r.candidate, r.matches, "participating").useLocationId, "loc-1");
+  assert.equal(R.reviewDefaults(r.candidate, r.matches, "participating").place.useLocationId, "loc-1");
   const weak = { ...r.matches, event: { ...r.matches.event, confidence: "weak" } };
   assert.equal(R.reviewDefaults(r.candidate, weak, "participating").useEventId, null, "weak match shown, never pre-selected");
 });
@@ -218,7 +237,7 @@ test("analyze: unknown / unlaunched geography never blocks; past dates are left 
   const huntsville = { "@type": "Event", name: "Rocket City Food Fest", startDate: `${DAY1}T10:00:00-05:00`, endDate: `${DAY1}T16:00:00-05:00`, location: { "@type": "Place", name: "Whole Foods Market", address: { "@type": "PostalAddress", streetAddress: "6002 Ready Section Rd", addressLocality: "Huntsville", addressRegion: "Alabama" } } };
   const r = await E.analyzeEventUrl({ url: "https://huntsville.com/e", businessId: "b", rateKey: "u" }, deps({ fetchPage: async (url) => ({ ok: true, url, html: page(huntsville), bytes: 1, redirects: 0, truncated: false, declaredBytes: null }) }));
   assert.equal(r.ok, true);
-  assert.equal(r.candidate.venue.state, "AL");
+  assert.equal(r.candidate.occurrences[0].venue.state, "AL");
   assert.doesNotMatch(r.warnings.join(" "), /not available|area|market/i);
   const past = { "@type": "Event", name: "Old Fest", startDate: "2020-01-01T10:00:00Z", endDate: "2020-01-01T12:00:00Z" };
   const p2 = await E.analyzeEventUrl({ url: "https://x.com/e", businessId: "b", rateKey: "u" }, deps({ fetchPage: async (url) => ({ ok: true, url, html: page(past), bytes: 1, redirects: 0, truncated: false, declaredBytes: null }) }));
@@ -284,23 +303,28 @@ function persistDeps(admin, over = {}) {
   };
 }
 
-const review = (over = {}) => ({
-  intent: "participating",
-  title: "NYC Coffee Festival",
-  description: "Tastings",
-  imageUrl: "https://img.example-cdn.com/fest.jpg",
-  sourceUrl: "https://www.eventbrite.com/e/nyc-coffee-festival-123",
-  dates: [{ date: DAY1, startTime: "10:00", endTime: "18:00" }],
-  venueName: "Metropolitan Pavilion",
-  address: "125 W 18th St",
-  city: "New York",
-  state: "NY",
-  postalCode: "10011",
-  organizer: "Specialty Coffee NYC",
-  useEventId: null,
-  useLocationId: null,
-  ...over,
-});
+const PLACE_KEYS = ["venueName", "address", "city", "state", "postalCode", "useLocationId"];
+/** V1 shape helper: `dates` + shared place fields → occurrences + one shared place. */
+const review = (over = {}) => {
+  const place = { venueName: "Metropolitan Pavilion", address: "125 W 18th St", city: "New York", state: "NY", postalCode: "10011", useLocationId: null };
+  const rest = {};
+  for (const [k, v] of Object.entries(over)) (PLACE_KEYS.includes(k) ? place : rest)[k] = v;
+  const dates = rest.dates ?? [{ date: DAY1, startTime: "10:00", endTime: "18:00" }];
+  delete rest.dates;
+  return {
+    intent: "participating",
+    title: "NYC Coffee Festival",
+    description: "Tastings",
+    imageUrl: "https://img.example-cdn.com/fest.jpg",
+    sourceUrl: "https://www.eventbrite.com/e/nyc-coffee-festival-123",
+    occurrences: dates.map((d) => ({ ...d, place: { ...place } })),
+    sharedPlace: true,
+    place,
+    organizer: "Specialty Coffee NYC",
+    useEventId: null,
+    ...rest,
+  };
+};
 const norm = (r) => {
   const n = P.normalizeReview(r);
   assert.equal(n.ok, true, JSON.stringify(n));
@@ -361,7 +385,7 @@ test("PARTICIPATING at a confirmed existing Location → the Location's own deta
 });
 
 test("duplicate avoidance: a date already on the schedule is not added again", async () => {
-  const start = P.normalizeReview(review()).value.dates[0].start;
+  const start = P.normalizeReview(review()).value.occurrences[0].start;
   const { client, ops } = fakeAdmin({ existingAppearances: [{ start_at: start, title: "NYC Coffee Festival" }] });
   const { deps: d } = persistDeps(client);
   const out = await P.persistEventImport(norm(review()), d);

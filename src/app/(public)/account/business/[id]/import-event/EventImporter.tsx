@@ -3,13 +3,29 @@
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
+import ChevronIcon from "@/components/ChevronIcon";
 import { analyzeEventImport, commitEventImport } from "./actions";
-import { EVENT_IMPORT_FAILURE_COPY, type EventCandidate, type EventImportIntent, type EventImportMatches, type EventImportReview } from "@/lib/event-import/types";
-import { reviewDefaults, successMessage } from "@/lib/event-import/review";
+import {
+  EVENT_IMPORT_FAILURE_COPY,
+  type EventCandidate,
+  type EventImportIntent,
+  type EventImportMatches,
+  type EventImportReview,
+  type ReviewOccurrence,
+  type ReviewPlace,
+} from "@/lib/event-import/types";
+import { emptyReviewOccurrence, occurrenceSummary, pastReviewOccurrences, reviewDefaults, successMessage } from "@/lib/event-import/review";
 
 /** Event Import V1 — Business importer: paste a link → Findmi reads it →
  * Review (everything editable, existing Findmi records clearly marked) →
- * Add. Nothing is saved before the Business confirms Review. */
+ * Add. Nothing is saved before the Business confirms Review.
+ *
+ * V1B: each date is reviewed together with its own place. When every date
+ * shares one place there is a single Where section; when places differ the
+ * dates become compact "When & Where" rows (date · time · place at a
+ * glance, tap to edit). */
+
+const MAX_DATES = 60;
 
 const inputClass =
   "w-full rounded-lg border border-black/10 bg-white px-3 py-2.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/15";
@@ -52,6 +68,8 @@ export default function EventImporter({
   const [step, setStep] = useState<Step>({ kind: "url", error: null });
   const [review, setReview] = useState<EventImportReview | null>(null);
   const [useImage, setUseImage] = useState(true);
+  const [pastDates, setPastDates] = useState<ReviewOccurrence[]>([]);
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
   const [analyzing, startAnalyze] = useTransition();
   const [saving, startSave] = useTransition();
@@ -107,7 +125,10 @@ export default function EventImporter({
           setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY[result.code] });
           return;
         }
-        setReview(reviewDefaults(result.candidate, result.matches, intent!));
+        const defaults = reviewDefaults(result.candidate, result.matches, intent!, businessName);
+        setReview(defaults);
+        setPastDates(pastReviewOccurrences(result.candidate, result.matches));
+        setOpen(initiallyOpen(defaults.occurrences));
         setUseImage(Boolean(result.candidate.imageUrl));
         setSaveError(null);
         setStep({ kind: "review", candidate: result.candidate, matches: result.matches, warnings: result.warnings });
@@ -222,8 +243,30 @@ export default function EventImporter({
   const { matches, warnings, candidate } = step;
   const set = (patch: Partial<EventImportReview>) => setReview((r) => (r ? { ...r, ...patch } : r));
   const joiningExisting = intent === "participating" && Boolean(review.useEventId);
-  const setDate = (i: number, patch: Partial<EventImportReview["dates"][number]>) =>
-    set({ dates: review.dates.map((d, idx) => (idx === i ? { ...d, ...patch } : d)) });
+  const setOccurrence = (id: string | undefined, patch: Partial<ReviewOccurrence>) =>
+    set({ occurrences: review.occurrences.map((d) => (d.id === id ? { ...d, ...patch } : d)) });
+  const toggle = (id: string | undefined) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (id && next.has(id)) next.delete(id);
+      else if (id) next.add(id);
+      return next;
+    });
+  const removeOccurrence = (id: string | undefined) => set({ occurrences: review.occurrences.filter((d) => d.id !== id) });
+  const addOccurrence = () => {
+    const row = emptyReviewOccurrence();
+    set({ occurrences: [...review.occurrences, row] });
+    setOpen((prev) => new Set(prev).add(row.id!));
+  };
+  const addBack = (row: ReviewOccurrence) => {
+    setPastDates((prev) => prev.filter((d) => d.id !== row.id));
+    set({ occurrences: [...review.occurrences, row].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)) });
+  };
+  // Switching layouts keeps every value: one place → copied to each date;
+  // each date's own place → the first one becomes the shared place.
+  const usePlacePerDate = () => set({ sharedPlace: false, occurrences: review.occurrences.map((d) => ({ ...d, place: { ...review.place } })) });
+  const useOnePlace = () => set({ sharedPlace: true, place: { ...(review.occurrences[0]?.place ?? review.place) } });
+  const many = review.occurrences.length > 1;
 
   return (
     <div className="flex flex-col gap-4">
@@ -253,7 +296,10 @@ export default function EventImporter({
             onClick={() => {
               const next = intent === "hosting" ? "participating" : "hosting";
               setIntent(next);
-              setReview(reviewDefaults(candidate, matches, next));
+              const defaults = reviewDefaults(candidate, matches, next, businessName);
+              setReview(defaults);
+              setPastDates(pastReviewOccurrences(candidate, matches));
+              setOpen(initiallyOpen(defaults.occurrences));
             }}
             className="text-metadata font-semibold text-accent hover:underline"
           >
@@ -346,94 +392,77 @@ export default function EventImporter({
         </p>
       ) : (
         <>
-          {/* When */}
-          <section aria-labelledby="when" className={`${sectionClass} flex flex-col gap-3`}>
-            <h2 id="when" className="text-label font-bold uppercase text-subtle">
-              When
-            </h2>
-            {review.dates.map((d, i) => (
-              <div key={i} className="grid grid-cols-2 gap-2 border-b border-black/[0.05] pb-3 last:border-0 last:pb-0">
-                <div className="col-span-2">
-                  <label htmlFor={`date-${i}`} className={labelClass}>
-                    {review.dates.length > 1 ? `Date ${i + 1}` : "Date"}
-                  </label>
-                  <input id={`date-${i}`} type="date" value={d.date} onChange={(e) => setDate(i, { date: e.target.value })} className={inputClass} />
-                </div>
-                <div>
-                  <label htmlFor={`start-${i}`} className={labelClass}>
-                    Starts
-                  </label>
-                  <input id={`start-${i}`} type="time" value={d.startTime} onChange={(e) => setDate(i, { startTime: e.target.value })} className={inputClass} />
-                </div>
-                <div>
-                  <label htmlFor={`end-${i}`} className={labelClass}>
-                    Ends
-                  </label>
-                  <input id={`end-${i}`} type="time" value={d.endTime} onChange={(e) => setDate(i, { endTime: e.target.value })} className={inputClass} />
-                </div>
-                {review.dates.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => set({ dates: review.dates.filter((_, idx) => idx !== i) })}
-                    className="col-span-2 w-fit text-metadata font-semibold text-muted hover:text-red-600"
-                  >
-                    Remove This Date
-                  </button>
-                )}
-              </div>
-            ))}
-            {review.dates.length < 12 && (
-              <button type="button" onClick={() => set({ dates: [...review.dates, { date: "", startTime: "", endTime: "" }] })} className="w-fit text-metadata font-semibold text-accent hover:underline">
+          {/* When (& Where) — each date is reviewed with its own place. */}
+          <section aria-labelledby="when" className={`${sectionClass} flex flex-col gap-2`}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <h2 id="when" className="text-label font-bold uppercase text-subtle">
+                {review.sharedPlace ? "When" : "When & Where"}
+                {many ? ` · ${review.occurrences.length} Dates` : ""}
+              </h2>
+              {many && (
+                <button type="button" onClick={review.sharedPlace ? usePlacePerDate : useOnePlace} className="text-metadata font-semibold text-accent hover:underline">
+                  {review.sharedPlace ? "Different Place Each Date" : "Same Place for All Dates"}
+                </button>
+              )}
+            </div>
+            <ol className="flex flex-col gap-2">
+              {review.occurrences.map((d, i) => (
+                <OccurrenceRow
+                  key={d.id}
+                  index={i}
+                  numbered={many}
+                  occurrence={d}
+                  showPlace={!review.sharedPlace}
+                  expanded={!many || open.has(d.id ?? "")}
+                  collapsible={many}
+                  matches={matches}
+                  onToggle={() => toggle(d.id)}
+                  onChange={(patch) => setOccurrence(d.id, patch)}
+                  onRemove={many ? () => removeOccurrence(d.id) : null}
+                />
+              ))}
+            </ol>
+            {review.occurrences.length < MAX_DATES && (
+              <button type="button" onClick={addOccurrence} className="w-fit py-1 text-metadata font-semibold text-accent hover:underline">
                 + Add a Date
               </button>
             )}
-            <p className="text-microcopy text-subtle">Times are Eastern Time.</p>
+            {pastDates.length > 0 && (
+              <details className="rounded-xl border border-black/[0.06] bg-black/[0.015] px-3 py-2">
+                <summary className="cursor-pointer text-metadata font-semibold text-secondary">
+                  {pastDates.length} Earlier {pastDates.length === 1 ? "Date" : "Dates"} Not Included
+                </summary>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {pastDates.map((d) => {
+                    const sum = occurrenceSummary(d);
+                    return (
+                      <li key={d.id} className="flex items-center justify-between gap-2 text-metadata text-muted">
+                        <span className="min-w-0 truncate">
+                          {sum.day}
+                          {sum.time ? ` · ${sum.time}` : ""}
+                          {d.place.venueName ? ` · ${d.place.venueName}` : ""}
+                        </span>
+                        <button type="button" onClick={() => addBack(d)} className="shrink-0 font-semibold text-accent hover:underline">
+                          Add
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            )}
+            <p className="text-microcopy text-subtle">Times are Eastern Time. An end time earlier than the start means it ends after midnight.</p>
           </section>
 
-          {/* Where */}
-          <section aria-labelledby="where" className={`${sectionClass} flex flex-col gap-3`}>
-            <h2 id="where" className="text-label font-bold uppercase text-subtle">
-              Where
-            </h2>
-            {matches.location && (
-              <fieldset className="flex flex-col gap-2">
-                <legend className="mb-1 text-metadata text-secondary">
-                  Findmi already has <span className="font-semibold text-primary">{matches.location.name}</span>
-                  {matches.location.address || matches.location.city ? ` (${[matches.location.address, matches.location.city].filter(Boolean).join(", ")})` : ""}.
-                </legend>
-                <Choice checked={review.useLocationId === matches.location.id} onChange={() => set({ useLocationId: matches.location!.id })} title="Use This Place" line="Connect it to the place already on Findmi." />
-                <Choice checked={review.useLocationId === null} onChange={() => set({ useLocationId: null })} title="Use the Details Below" line="It’s a different place." />
-              </fieldset>
-            )}
-            {!review.useLocationId && (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label htmlFor="venue" className={labelClass}>
-                    Place
-                  </label>
-                  <input id="venue" value={review.venueName ?? ""} onChange={(e) => set({ venueName: e.target.value })} className={inputClass} autoCapitalize="words" />
-                </div>
-                <div className="col-span-2">
-                  <label htmlFor="address" className={labelClass}>
-                    Street Address
-                  </label>
-                  <input id="address" value={review.address ?? ""} onChange={(e) => set({ address: e.target.value })} className={inputClass} autoCapitalize="words" />
-                </div>
-                <div>
-                  <label htmlFor="city" className={labelClass}>
-                    City
-                  </label>
-                  <input id="city" value={review.city ?? ""} onChange={(e) => set({ city: e.target.value })} className={inputClass} autoCapitalize="words" />
-                </div>
-                <div>
-                  <label htmlFor="state" className={labelClass}>
-                    State
-                  </label>
-                  <input id="state" value={review.state ?? ""} onChange={(e) => set({ state: e.target.value })} className={inputClass} autoCapitalize="words" />
-                </div>
-              </div>
-            )}
-          </section>
+          {/* Where — one place for every date. */}
+          {review.sharedPlace && (
+            <section aria-labelledby="where" className={`${sectionClass} flex flex-col gap-3`}>
+              <h2 id="where" className="text-label font-bold uppercase text-subtle">
+                Where
+              </h2>
+              <PlaceFields idPrefix="place" place={review.place} matches={matches} onChange={(patch) => set({ place: { ...review.place, ...patch } })} />
+            </section>
+          )}
         </>
       )}
 
@@ -447,7 +476,7 @@ export default function EventImporter({
             ? businessName
             : matches.organizerBusiness
               ? `${matches.organizerBusiness.name} (on Findmi)`
-              : (candidate.organizer ?? "Not listed on the page")}
+              : (review.organizer ?? "Not listed on the page")}
         </p>
       </section>
 
@@ -486,5 +515,158 @@ function Choice({ checked, onChange, title, line }: { checked: boolean; onChange
         <span className="block text-metadata text-muted">{line}</span>
       </span>
     </label>
+  );
+}
+
+/** Rows open at first: a single date, or any date still missing its day or times. */
+function initiallyOpen(rows: ReviewOccurrence[]): Set<string> {
+  return new Set(rows.filter((d) => rows.length === 1 || !d.date || !d.startTime || !d.endTime).map((d) => d.id ?? ""));
+}
+
+function placeLine(p: ReviewPlace, matches: EventImportMatches): string {
+  const loc = p.useLocationId ? matches.locations.find((l) => l.id === p.useLocationId) : null;
+  if (loc) return [loc.name, loc.address].filter(Boolean).join(" · ");
+  return [p.venueName, p.address].filter(Boolean).join(" · ");
+}
+
+function OccurrenceRow({
+  index,
+  numbered,
+  occurrence: d,
+  showPlace,
+  expanded,
+  collapsible,
+  matches,
+  onToggle,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  numbered: boolean;
+  occurrence: ReviewOccurrence;
+  showPlace: boolean;
+  expanded: boolean;
+  collapsible: boolean;
+  matches: EventImportMatches;
+  onToggle: () => void;
+  onChange: (patch: Partial<ReviewOccurrence>) => void;
+  onRemove: (() => void) | null;
+}) {
+  const id = d.id ?? String(index);
+  const sum = occurrenceSummary(d);
+  const where = placeLine(d.place, matches);
+  const label = numbered ? `Date ${index + 1}` : "Date";
+  const endsAfterMidnight = Boolean(d.startTime && d.endTime && d.endTime < d.startTime);
+  return (
+    <li className={collapsible ? "rounded-xl border border-black/[0.08] bg-white" : ""}>
+      {collapsible && (
+        <div className="flex items-start gap-2 px-3 py-2.5">
+          <button type="button" onClick={onToggle} aria-expanded={expanded} aria-controls={`occ-${id}`} className="flex min-w-0 flex-1 items-start gap-2 text-left">
+            <span className="min-w-0 flex-1">
+              <span className="block text-body font-semibold text-primary">{sum.day || <span className="text-amber-700">Add a date</span>}</span>
+              <span className="block text-metadata text-secondary">{sum.time || <span className="text-amber-700">Add a time</span>}</span>
+              {showPlace && (
+                <span className="flex min-w-0 items-center gap-1.5 text-metadata text-muted">
+                  <span className="min-w-0 truncate">{where || <span className="text-amber-700">Add a place</span>}</span>
+                  {d.place.useLocationId && <span className="shrink-0 rounded-full bg-findmi-50 px-1.5 py-0.5 text-microcopy font-semibold text-findmi-700">On Findmi</span>}
+                </span>
+              )}
+            </span>
+            <ChevronIcon direction={expanded ? "up" : "down"} className="mt-1 h-4 w-4 shrink-0 text-subtle" />
+          </button>
+          {onRemove && (
+            <button type="button" onClick={onRemove} aria-label={`Remove ${label}`} className="shrink-0 py-0.5 text-metadata font-semibold text-muted hover:text-red-600">
+              Remove
+            </button>
+          )}
+        </div>
+      )}
+      {expanded && (
+        <div id={`occ-${id}`} className={`grid grid-cols-2 gap-2 ${collapsible ? "border-t border-black/[0.05] px-3 pb-3 pt-2.5" : ""}`}>
+          <div className="col-span-2">
+            <label htmlFor={`date-${id}`} className={labelClass}>
+              {label}
+            </label>
+            <input id={`date-${id}`} type="date" value={d.date} onChange={(e) => onChange({ date: e.target.value })} className={inputClass} />
+          </div>
+          <div>
+            <label htmlFor={`start-${id}`} className={labelClass}>
+              Starts
+            </label>
+            <input id={`start-${id}`} type="time" value={d.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className={inputClass} />
+          </div>
+          <div>
+            <label htmlFor={`end-${id}`} className={labelClass}>
+              Ends
+            </label>
+            <input id={`end-${id}`} type="time" value={d.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className={inputClass} />
+          </div>
+          {endsAfterMidnight && <p className="col-span-2 text-microcopy text-subtle">Ends after midnight.</p>}
+          {showPlace && (
+            <div className="col-span-2 flex flex-col gap-2 pt-1">
+              <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} />
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function PlaceFields({
+  idPrefix,
+  place,
+  matches,
+  onChange,
+}: {
+  idPrefix: string;
+  place: ReviewPlace;
+  matches: EventImportMatches;
+  onChange: (patch: Partial<ReviewPlace>) => void;
+}) {
+  const match = place.matchKey ? matches.locations.find((l) => l.key === place.matchKey) : undefined;
+  return (
+    <>
+      {match && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-metadata text-secondary">
+            {match.confidence === "strong" ? "Findmi already has " : "Is this "}
+            <span className="font-semibold text-primary">{match.name}</span>
+            {match.address || match.city ? ` (${[match.address, match.city].filter(Boolean).join(", ")})` : ""}
+            {match.confidence === "strong" ? "." : "?"}
+          </legend>
+          <Choice checked={place.useLocationId === match.id} onChange={() => onChange({ useLocationId: match.id })} title="Use This Place" line="Connect it to the place already on Findmi." />
+          <Choice checked={place.useLocationId === null} onChange={() => onChange({ useLocationId: null })} title="Use the Details Below" line="It’s a different place." />
+        </fieldset>
+      )}
+      {!place.useLocationId && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="col-span-2">
+            <label htmlFor={`${idPrefix}-venue`} className={labelClass}>
+              Place
+            </label>
+            <input id={`${idPrefix}-venue`} value={place.venueName ?? ""} onChange={(e) => onChange({ venueName: e.target.value })} className={inputClass} autoCapitalize="words" />
+          </div>
+          <div className="col-span-2">
+            <label htmlFor={`${idPrefix}-address`} className={labelClass}>
+              Street Address
+            </label>
+            <input id={`${idPrefix}-address`} value={place.address ?? ""} onChange={(e) => onChange({ address: e.target.value })} className={inputClass} autoCapitalize="words" />
+          </div>
+          <div>
+            <label htmlFor={`${idPrefix}-city`} className={labelClass}>
+              City
+            </label>
+            <input id={`${idPrefix}-city`} value={place.city ?? ""} onChange={(e) => onChange({ city: e.target.value })} className={inputClass} autoCapitalize="words" />
+          </div>
+          <div>
+            <label htmlFor={`${idPrefix}-state`} className={labelClass}>
+              State
+            </label>
+            <input id={`${idPrefix}-state`} value={place.state ?? ""} onChange={(e) => onChange({ state: e.target.value })} className={inputClass} autoCapitalize="words" />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
