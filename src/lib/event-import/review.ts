@@ -120,6 +120,7 @@ export function reviewDefaults(candidate: EventCandidate, matches: EventImportMa
     place: placeFromVenue(shared ?? EMPTY_VENUE, matches),
     organizer,
     useEventId: useEvent,
+    asEvent: candidate.persistAs === "event",
   };
 }
 
@@ -144,10 +145,10 @@ export function occurrenceSummary(o: { date: string; startTime: string; endTime:
 }
 
 /** Business-facing success sentence — never "Appearance". */
-export function successMessage(kind: "scheduled" | "requested" | "already", title: string, businessName: string, intent: EventImportIntent): string {
+export function successMessage(kind: "scheduled" | "requested" | "already", title: string, businessName: string, intent: EventImportIntent, newEvent = false): string {
   if (kind === "already") return `${title} is already on ${businessName}'s Findmi schedule.`;
   if (kind === "requested") return `Request sent to join ${title}. It shows on ${businessName}'s schedule once the organizer confirms.`;
-  return intent === "hosting"
+  return intent === "hosting" || newEvent
     ? `${title} is now on ${businessName}'s Findmi schedule. Findmi reviews new Events before they're public.`
     : `${title} is now on ${businessName}'s Findmi schedule.`;
 }
@@ -238,4 +239,12 @@ export function decidePlaceFrom(review: EventImportReview, target: string, decis
     place: target === "shared" || follows(review.place) ? answer(review.place) : review.place,
     occurrences: review.occurrences.map((o) => (o.id === target || follows(o.place) ? { ...o, place: answer(o.place) } : o)),
   };
+}
+
+/** How a reviewed item will be saved, in Business words (never "Appearance"). */
+export function persistNote(review: EventImportReview, businessName: string): { label: string; line: string } {
+  if (review.intent === "hosting") return { label: "Your Event", line: `Findmi will add this Event with ${businessName} as its host.` };
+  if (review.useEventId) return { label: "On Findmi", line: `${businessName} will ask to join this Event.` };
+  if (review.asEvent) return { label: "Event", line: `Findmi will add this Event and put ${businessName} on its schedule.` };
+  return { label: "Schedule Item", line: `This will be added to ${businessName}’s schedule.` };
 }

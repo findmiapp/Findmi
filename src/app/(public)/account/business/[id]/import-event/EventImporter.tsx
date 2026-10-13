@@ -16,7 +16,7 @@ import {
   type ReviewOccurrence,
   type SourceEventAnalysis,
 } from "@/lib/event-import/types";
-import { pastReviewOccurrences, reviewDefaults, successMessage } from "@/lib/event-import/review";
+import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage } from "@/lib/event-import/review";
 
 /** Event Import V1 — Business importer: paste a link → Findmi reads it →
  * Review (everything editable, existing Findmi records clearly marked) →
@@ -155,7 +155,7 @@ export default function EventImporter({
           setSaveError(outcome.error);
           return;
         }
-        setStep({ kind: "done", message: successMessage(outcome.kind, outcome.title, businessName, intent!), viewHref: outcome.viewHref });
+        setStep({ kind: "done", message: successMessage(outcome.kind, outcome.title, businessName, intent!, outcome.kind === "scheduled" && outcome.newEvent === true), viewHref: outcome.viewHref });
       } catch {
         setSaveError("Couldn’t save it. Please try again.");
       }
@@ -308,6 +308,8 @@ export default function EventImporter({
             {intent === "hosting" ? "We’re Participating Instead" : "We’re Hosting Instead"}
           </button>
         </div>
+        {/* How this will be saved — Business words, never database ones. */}
+        <p className="mt-1.5 text-metadata text-muted">{persistNote(review, businessName).line}</p>
       </section>
 
       {/* Existing Findmi Event? */}

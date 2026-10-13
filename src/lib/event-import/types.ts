@@ -61,6 +61,12 @@ export interface EventCandidate {
   online: boolean;
   organizer: string | null;
   sources: Partial<Record<"title" | "description" | "image" | "dates" | "venue" | "organizer", FieldSource>>;
+  /** Rich Event Persistence — set by Analyze: "event" when the source
+   * grounds a genuine Event (structured Event data, or a dedicated Event
+   * page with its own details) → saved as a canonical Findmi Event the
+   * Business takes part in; "schedule_item" otherwise → the Business's own
+   * standalone schedule item, exactly as before. */
+  persistAs?: "event" | "schedule_item";
 }
 
 export const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };
@@ -185,11 +191,14 @@ export interface EventImportReview {
   organizer: string | null;
   /** Confirmed existing Findmi Event to join / reuse (null = none). */
   useEventId: string | null;
+  /** Participating only: save as a canonical Findmi Event (from Analyze's
+   * persistAs) rather than a standalone schedule item. Re-checked on save. */
+  asEvent?: boolean;
 }
 
 export type EventImportOutcome =
   /** Now on this Business's Findmi schedule. */
-  | { ok: true; kind: "scheduled"; title: string; viewHref: string }
+  | { ok: true; kind: "scheduled"; title: string; viewHref: string; newEvent?: boolean }
   /** Request sent to an existing Findmi Event's organizer (participation needs their confirmation). */
   | { ok: true; kind: "requested"; title: string; viewHref: string }
   /** Already on this Business's schedule — nothing new created. */

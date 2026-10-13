@@ -102,7 +102,10 @@ export function defaultEventImportDeps(admin: SupabaseClient): EventImportDeps {
         .select("id, name, start_at, venue_name, city")
         .eq("external_url", url)
         .is("trashed_at", null)
-        .eq("is_demo", false)
+        .is("archived_at", null)
+        // A just-imported Event awaiting review is still the same Event —
+        // matching it prevents a second copy; a rejected one is not reused.
+        .neq("publication_status", "rejected")
         .limit(1);
       const row = ((data ?? []) as { id: string; name: string; start_at: string; venue_name: string | null; city: string | null }[])[0];
       return row ? { id: row.id, name: row.name, startAt: row.start_at, venueName: row.venue_name, city: row.city } : null;
@@ -147,6 +150,21 @@ export function normalizeImportUrl(input: string): { ok: true; url: URL } | { ok
   const v = validateFetchUrl(parsed, { allowSharedPlatforms: true });
   if (!v.ok) return { ok: false, code: v.code === "invalid_url" ? "invalid_url" : "blocked_url" };
   return { ok: true, url: v.url };
+}
+
+/** Rich Event Persistence — does the source ground a genuine Event (not
+ * just a Business's whereabouts)? Conservative: a title and at least one
+ * dated occurrence, plus Event evidence — structured Event data
+ * (schema.org / page data / event meta), or a dedicated Event page of its
+ * own with real details (its own link and a description). A schedule read
+ * only by the AI step, or a bare line of text, stays a schedule item.
+ * Nothing is invented either way: missing details stay "Needs Details". */
+export function classifyPersistence(candidate: EventCandidate, opts: { ownPage: boolean }): "event" | "schedule_item" {
+  if (!candidate.title || candidate.occurrences.length === 0) return "schedule_item";
+  const structured = candidate.sources.title === "structured" || candidate.sources.dates === "structured";
+  if (structured) return "event";
+  if (candidate.sources.dates === "ai") return "schedule_item";
+  return opts.ownPage && Boolean(candidate.sourceUrl) && Boolean(candidate.description) ? "event" : "schedule_item";
 }
 
 /** NY calendar date for an imported date (date-only values pass through). */
@@ -236,6 +254,7 @@ export async function analyzeEventUrl(
   if (Object.values(candidate.sources).includes("ai")) warnings.push("Some details were read from the page text. Please check them.");
 
   const matches = await matchCandidate(candidate, input.businessId, deps);
+  candidate = { ...candidate, persistAs: classifyPersistence(candidate, { ownPage: true }) };
 
   return { ok: true, kind: "single", candidate, matches, warnings };
 }
@@ -308,7 +327,11 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
 /** One Event from a multi-Event source: past flags, its own warnings, its
  * own matches, and retry safety by its own Event link. */
 async function analyzeSourceEvent(key: string, raw: EventCandidate, businessId: string | null, now: number, deps: EventImportDeps): Promise<SourceEventAnalysis> {
-  const candidate: EventCandidate = { ...raw, occurrences: raw.occurrences.map((o) => ({ ...o, past: isPastDate(o, now) })) };
+  const dated: EventCandidate = { ...raw, occurrences: raw.occurrences.map((o) => ({ ...o, past: isPastDate(o, now) })) };
+  // A calendar's Event read from page data or its own card with its own
+  // Event link is a distinct Event of its own (page-data records ARE
+  // structured Event records).
+  const candidate: EventCandidate = { ...dated, persistAs: Boolean(dated.title && dated.occurrences.length > 0 && dated.sourceUrl) ? "event" : classifyPersistence(dated, { ownPage: false }) };
   const past = candidate.occurrences.length > 0 && candidate.occurrences.every((o) => o.past);
   const warnings: string[] = [];
   if (candidate.occurrences.length === 0) warnings.push("Add a date.");

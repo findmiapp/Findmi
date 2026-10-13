@@ -197,46 +197,55 @@ test("review is required: batch status marks what's missing; incomplete Events a
 
 function fakeAdmin({ failTitles = [] } = {}) {
   const ops = [];
+  let n = 0;
   const builder = (table) => {
     const api = {
       select: () => api, eq: () => api, neq: () => api, is: () => api, in: () => api,
       maybeSingle: async () => ({ data: null }),
       then: (resolve) => resolve({ data: [] }),
-      insert: (rows) => {
-        const failed = rows.some((r) => failTitles.includes(r.title));
+      insert: (input) => {
+        const rows = Array.isArray(input) ? input : [input];
+        const failed = rows.some((r) => failTitles.includes(r.title ?? r.name));
         if (!failed) ops.push({ table, rows });
         const res = { error: failed ? { message: "boom" } : null, data: null };
-        return { ...res, select: async () => ({ data: rows.map((_, i) => ({ id: `o${i}` })) }), then: (r) => r(res) };
+        const ids = rows.map(() => `${table}-${++n}`);
+        return { ...res, select: () => ({ single: async () => (failed ? { data: null, error: res.error } : { data: { id: ids[0] }, error: null }), then: (r) => r({ data: ids.map((id) => ({ id })) }) }), then: (r) => r(res) };
       },
+      upsert: (row) => (ops.push({ table, rows: [row], upsert: true }), Promise.resolve({ error: null })),
       update: () => ({ eq: async () => ({ error: null }) }),
     };
     return api;
   };
   return { ops, client: { from: builder, rpc: async () => ({ data: { id: "new" }, error: null }) } };
 }
-const persistDeps = (admin) => ({
+const persistDeps = (admin, propagated = []) => ({
   admin, userId: "u", businessId: "corgi", businessName: "Corgi", applyToEvent: async () => "applied", canHost: async () => true,
-  storeImage: async (u) => `stored:${u}`, geography: async () => null, uniqueEventSlug: async (t) => t.toLowerCase().replace(/\W+/g, "-"), notifyNewEvent: async () => {}, propagateDates: async () => {},
+  storeImage: async (u) => `stored:${u}`, geography: async () => null, uniqueEventSlug: async (t) => t.toLowerCase().replace(/\W+/g, "-"), notifyNewEvent: async () => {},
+  propagateDates: async (eventId, ids) => propagated.push([eventId, ids]), findEventBySourceUrl: async () => null,
 });
 
-test("batch persistence: each Event saved on its own with its own link/image/place; one failure doesn't touch the others", async () => {
+test("batch persistence: each calendar Event becomes its OWN canonical Event with its own link/image/place; one failure doesn't touch the others", async () => {
   const r = await analyze(LUMA.toString(), deps(F.lumaCalendar()));
   const picked = r.events.filter((e) => ["AI Founders Roundtable", "Term Sheet Teardown", "A Pancake Social"].includes(e.candidate.title));
   const reviews = picked.map((e) => R.reviewDefaults(e.candidate, e.matches, "participating", "Corgi"));
+  assert.ok(reviews.every((rv) => rv.asEvent === true), "rich calendar Events are saved as Events");
   const { client, ops } = fakeAdmin({ failTitles: ["Term Sheet Teardown"] });
+  const propagated = [];
   const results = [];
   for (const rv of reviews) {
     const n = P.normalizeReview(rv);
     assert.equal(n.ok, true, JSON.stringify(n));
-    results.push({ title: rv.title, outcome: await P.persistEventImport(n.value, persistDeps(client)) });
+    results.push({ title: rv.title, outcome: await P.persistEventImport(n.value, persistDeps(client, propagated)) });
   }
   assert.deepEqual(results.map((x) => x.outcome.ok), [true, false, true]);
-  assert.deepEqual(ops.map((o) => o.rows[0].title), ["AI Founders Roundtable", "A Pancake Social"]);
-  const rose = ops[0].rows[0];
+  const events = ops.filter((o) => o.table === "events").map((o) => o.rows[0]);
+  assert.deepEqual(events.map((e) => e.name), ["AI Founders Roundtable", "A Pancake Social"], "one Event each; the failed one wrote nothing");
+  const rose = events[0];
   assert.equal(rose.external_url, "https://luma.com/ai-founders-roundtable");
-  assert.equal(rose.flyer_image_url, "stored:https://images.lumacdn.com/event-covers/ai-founders-roundtable.jpg");
-  assert.equal(rose.venue_name, "Rose Hill");
-  assert.equal(rose.source, "manual", "the Business's own schedule item — participating, never owning the Event");
+  assert.equal(rose.cover_image_url, "stored:https://images.lumacdn.com/event-covers/ai-founders-roundtable.jpg");
+  assert.equal(rose.host_business_id, null, "participating — never the host");
+  assert.equal(ops.filter((o) => o.table === "appearances").length, 0, "schedule items come from the shared participation sync, not a standalone insert");
+  assert.equal(propagated.length, 2);
   const summary = R.batchSummary(results, 1, "Corgi");
   assert.equal(summary.headline, "2 Events Added To Corgi");
   assert.deepEqual(summary.attention.map((a) => a.title), ["Term Sheet Teardown"]);

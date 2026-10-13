@@ -5,7 +5,7 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
-import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
+import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
 import { Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
@@ -278,7 +278,10 @@ export default function MultiEventImport({
                           {joining ? "Dates from the Event on Findmi" : sum ? [sum.day, sum.time].filter(Boolean).join(" · ") || "Add a date" : "Add a date"}
                           {!joining && review.occurrences.length > 1 ? ` · +${review.occurrences.length - 1} more` : ""}
                         </span>
-                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-microcopy font-semibold ${STATUS_STYLE[status.kind]}`}>{BATCH_STATUS_LABEL[status.kind]}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-microcopy font-semibold ${STATUS_STYLE[status.kind]}`}>{BATCH_STATUS_LABEL[status.kind]}</span>
+                          <span className="inline-flex rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-secondary">{persistNote(review, businessName).label}</span>
+                        </span>
                         {status.missing.length > 0 && <span className="mt-0.5 block text-microcopy text-red-700">Missing: {status.missing.join(", ")}</span>}
                       </span>
                       <ChevronIcon direction={isOpen ? "up" : "down"} className="mt-1 h-4 w-4 shrink-0 text-subtle" />
@@ -289,6 +292,7 @@ export default function MultiEventImport({
                   </div>
                   {isOpen && (
                     <div id={`batch-${e.key}`} className="flex flex-col gap-3 border-t border-black/[0.05] px-3 pb-3 pt-2.5">
+                      <p className="text-metadata text-muted">{persistNote(review, businessName).line}</p>
                       <div>
                         <span className={labelClass}>{businessName} Is</span>
                         <div role="radiogroup" aria-label={`How ${businessName} is involved`} className="grid grid-cols-2 gap-1 rounded-lg bg-black/[0.04] p-0.5">

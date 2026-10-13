@@ -27,8 +27,18 @@ export async function applyBusinessToEvent(
   input: { eventId: string; businessId: string; userId: string | null; note?: string | null }
 ): Promise<EventApplicationResult> {
   const { eventId, businessId } = input;
-  const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
-  if (!event) return "unavailable";
+  // Public Events, plus Events still awaiting Findmi review (an Event
+  // another Business just imported — a request recorded now is decided
+  // with it). Rejected, archived and trashed Events are never joinable.
+  const { data: event } = await admin
+    .from("events")
+    .select("id, is_demo, publication_status")
+    .eq("id", eventId)
+    .is("trashed_at", null)
+    .is("archived_at", null)
+    .maybeSingle();
+  const ev = event as { id: string; is_demo: boolean; publication_status: string | null } | null;
+  if (!ev || (ev.is_demo && ev.publication_status !== "pending_review")) return "unavailable";
 
   const { data: existingRow } = await admin
     .from("event_businesses")

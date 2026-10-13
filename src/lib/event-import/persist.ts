@@ -7,10 +7,16 @@ import "server-only";
 //   - confirmed existing Findmi Event → applyBusinessToEvent (the shared
 //     participation invariant: 'applied', or approved now only if the
 //     organizer already invited this Business). No new Event, no new Date.
-//   - no Findmi Event → this Business's own standalone schedule item(s)
-//     (appearances, source 'manual' — the existing Where I'll Be path), one
-//     per date, never a second copy of a date already on the schedule.
-//     A participant never becomes the owner of someone else's Event.
+//   - a genuine Event (Rich Event Persistence — review.asEvent) → ONE
+//     canonical Event (no host, no owner, pending Findmi review) + its
+//     Occurrences + this Business's approved participation and Event-linked
+//     schedule items; an Event already carrying the same source link is
+//     joined instead (see persistParticipatingEvent);
+//   - otherwise (whereabouts, thin sources) → this Business's own
+//     standalone schedule item(s) (appearances, source 'manual' — the
+//     existing Where I'll Be path), one per date, never a second copy of a
+//     date already on the schedule.
+//     A participant never becomes the owner or host of someone else's Event.
 //
 // HOSTING (this Business organizes it)
 //   - new Event via create_owned_event(p_host_business_id) — the existing
@@ -49,6 +55,10 @@ export interface NormalizedImport {
   /** Chronological; each date with its own place. */
   occurrences: { start: string; end: string; place: NormalizedPlace }[];
   useEventId: string | null;
+  /** Participating: create (or reuse) a canonical Event for this import. */
+  asEvent: boolean;
+  /** Organizer named by the source (evidence-gated upstream); never a host link. */
+  organizer: string | null;
 }
 
 function normalizePlace(p: ReviewPlace | null | undefined): NormalizedPlace {
@@ -128,6 +138,11 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       sourceUrl,
       occurrences,
       useEventId: review.useEventId && UUID.test(review.useEventId) ? review.useEventId : null,
+      // An Event needs its own link to the source (identity for matching,
+      // retries and the public "event page" link); without one it stays a
+      // schedule item.
+      asEvent: review.intent === "participating" && review.asEvent === true && Boolean(sourceUrl),
+      organizer: cleanText(review.organizer, 160),
     },
   };
 }
@@ -146,6 +161,9 @@ export interface PersistDeps {
   uniqueEventSlug: (title: string) => Promise<string | null>;
   notifyNewEvent: (eventId: string, title: string, startIso: string) => Promise<void>;
   propagateDates: (eventId: string, occurrenceIds: string[]) => Promise<void>;
+  /** Rich Event Persistence: an Event already carrying this source link
+   * (pending review included) — reused instead of creating a second one. */
+  findEventBySourceUrl?: (url: string) => Promise<{ id: string } | null>;
 }
 
 const businessHome = (businessId: string) => `/account/business/${businessId}`;
@@ -195,6 +213,8 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
     if (result === "approved_now") return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref };
     return { ok: true, kind: "requested", title: input.title, viewHref: scheduleHref };
   }
+
+  if (input.asEvent) return persistParticipatingEvent(input, deps);
 
   // Never add a second copy of a date already on this Business's schedule.
   const { data: existing } = await admin
@@ -254,6 +274,126 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
   return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref };
 }
 
+/** Rich Event Persistence — a genuine Event the Business takes part in
+ * (Where I'll Be). The Business is a PARTICIPANT, never the host:
+ *
+ *   1. same source link already on Findmi → that Event, through the shared
+ *      join path (applyToEvent — the organizer/Findmi confirms);
+ *   2. otherwise ONE new Event (no host, no owner membership — the
+ *      importer doesn't manage someone else's Event), awaiting Findmi
+ *      review exactly like every other new Event (is_demo + pending_review
+ *      until approved), with the source's description, link, image and
+ *      organizer name;
+ *   3. one Event Occurrence per date, each with its own confirmed Location
+ *      (or venue text);
+ *   4. the Business's participation: event_businesses approved for all
+ *      dates (there is no other organizer on Findmi to agree with yet — the
+ *      same self-asserted presence a schedule item records), realized by
+ *      the shared propagateAllDatesParticipation into one Event-linked
+ *      schedule item per date (event_id + event_occurrence_id + the
+ *      occurrence's Location).
+ *
+ * No Appearance is invented for anyone else, and the Business never
+ * becomes host_business_id. */
+async function persistParticipatingEvent(input: NormalizedImport, deps: PersistDeps): Promise<EventImportOutcome> {
+  const { admin, businessId } = deps;
+  const scheduleHref = `${businessHome(businessId)}?tab=findmi-here`;
+
+  // 1. Retry / second Business: the same source Event is never created twice.
+  const existing = input.sourceUrl && deps.findEventBySourceUrl ? await deps.findEventBySourceUrl(input.sourceUrl) : null;
+  if (existing) {
+    const result = await deps.applyToEvent(existing.id);
+    if (result === "unavailable") return { ok: false, error: "That Event is already on Findmi but isn't open for new participants right now." };
+    if (result === "already_approved") return { ok: true, kind: "already", title: input.title, viewHref: scheduleHref };
+    if (result === "approved_now") return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref };
+    return { ok: true, kind: "requested", title: input.title, viewHref: scheduleHref };
+  }
+
+  const slug = await deps.uniqueEventSlug(input.title);
+  if (!slug) return { ok: false, error: "Add the event's name.", field: "title" };
+  const first = input.occurrences[0];
+  const lastEnd = input.occurrences.reduce((max, d) => (d.end > max ? d.end : max), first.end);
+  const locations = await loadLocations(admin, input.occurrences.flatMap((d) => (d.place.locationId ? [d.place.locationId] : [])));
+  const snaps = input.occurrences.map((d) => snapshotFor(d.place, locations));
+  const eventPlace = eventPlaceFor(snaps);
+  const geoText = [eventPlace.city ?? snaps[0].city, eventPlace.state ?? snaps[0].state].filter(Boolean).join(", ");
+  const geo = geoText ? await deps.geography(geoText) : null;
+  const cover = input.imageUrl ? await deps.storeImage(input.imageUrl) : null;
+
+  // 2. The Event — same review state create_owned_event gives every new
+  // Event (that RPC isn't used here: it always makes the caller the
+  // Event's owner, which is hosting, not participating).
+  const { data: created, error } = await admin
+    .from("events")
+    .insert({
+      name: input.title,
+      slug,
+      start_at: first.start,
+      end_at: lastEnd,
+      is_demo: true,
+      publication_status: "pending_review",
+      host_business_id: null,
+      organizer_name: input.organizer,
+      description: input.description,
+      external_url: input.sourceUrl,
+      cover_image_url: cover,
+      market_id: geo?.marketId ?? null,
+      market_area_id: geo?.areaId ?? null,
+      ...eventPlace,
+    })
+    .select("id")
+    .single();
+  if (error || !created) return { ok: false, error: "Couldn't add this Event. Please try again." };
+  const eventId = (created as { id: string }).id;
+
+  // 4a. Participation first, so creating the dates realizes it per date.
+  const { error: rosterError } = await admin
+    .from("event_businesses")
+    .upsert({ event_id: eventId, business_id: businessId, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" });
+  if (rosterError) return { ok: false, error: "Couldn't add this Event. Please try again." };
+
+  // 3. One Event Occurrence per date, each at its own place.
+  const { data: occs } = await admin
+    .from("event_occurrences")
+    .insert(
+      input.occurrences.map((d, i) => ({
+        event_id: eventId,
+        start_at: d.start,
+        end_at: d.end,
+        location_id: snaps[i].location_id,
+        venue_name: snaps[i].venue_name,
+        address: snaps[i].address,
+        city: snaps[i].city,
+        state: snaps[i].state,
+        postal_code: snaps[i].postal_code,
+      }))
+    )
+    .select("id");
+  const ids = ((occs ?? []) as { id: string }[]).map((o) => o.id);
+  if (ids.length === 0) {
+    // Never leave a dateless Event behind: soft-trash the row just created
+    // (nothing is deleted) and report the failure.
+    await admin.from("events").update({ trashed_at: new Date().toISOString() }).eq("id", eventId);
+    return { ok: false, error: "Couldn't add this Event's dates. Please try again." };
+  }
+  // 4b. The Business's Event-linked schedule item for every date.
+  await deps.propagateDates(eventId, ids);
+
+  await deps.notifyNewEvent(eventId, input.title, first.start);
+  return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true };
+}
+
+/** Event-level place: the shared one, or — for a multi-place Event — only
+ * the city/state every date has in common (each date keeps its own). */
+function eventPlaceFor(snaps: ReturnType<typeof snapshotFor>[]) {
+  const sameKey = (s: (typeof snaps)[number]) => s.location_id ?? `${(s.venue_name ?? "").toLowerCase()}|${(s.address ?? "").toLowerCase()}`;
+  const onePlace = snaps.every((s) => sameKey(s) === sameKey(snaps[0]));
+  const common = <K extends "city" | "state">(k: K) => (snaps.every((s) => (s[k] ?? "") === (snaps[0][k] ?? "")) ? snaps[0][k] : null);
+  return onePlace
+    ? { venue_name: snaps[0].venue_name, address: snaps[0].address, city: snaps[0].city, state: snaps[0].state, postal_code: snaps[0].postal_code, latitude: snaps[0].latitude, longitude: snaps[0].longitude }
+    : { venue_name: null, address: null, city: common("city"), state: common("state"), postal_code: null, latitude: null, longitude: null };
+}
+
 async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promise<EventImportOutcome> {
   const { admin, businessId } = deps;
   if (!(await deps.canHost())) return { ok: false, error: `Only an Owner or Manager of ${deps.businessName} can host an Event for it.` };
@@ -277,14 +417,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
 
   const locations = await loadLocations(admin, input.occurrences.flatMap((d) => (d.place.locationId ? [d.place.locationId] : [])));
   const snaps = input.occurrences.map((d) => snapshotFor(d.place, locations));
-  const sameKey = (s: (typeof snaps)[number]) => s.location_id ?? `${(s.venue_name ?? "").toLowerCase()}|${(s.address ?? "").toLowerCase()}`;
-  const onePlace = snaps.every((s) => sameKey(s) === sameKey(snaps[0]));
-  const common = <K extends "city" | "state">(k: K) => (snaps.every((s) => (s[k] ?? "") === (snaps[0][k] ?? "")) ? snaps[0][k] : null);
-  // Event-level place: the shared one, or — for a multi-place Event — only
-  // the city/state every date has in common (each date keeps its own place).
-  const eventPlace = onePlace
-    ? { venue_name: snaps[0].venue_name, address: snaps[0].address, city: snaps[0].city, state: snaps[0].state, postal_code: snaps[0].postal_code, latitude: snaps[0].latitude, longitude: snaps[0].longitude }
-    : { venue_name: null, address: null, city: common("city"), state: common("state"), postal_code: null, latitude: null, longitude: null };
+  const eventPlace = eventPlaceFor(snaps);
   const geoText = [eventPlace.city ?? snaps[0].city, eventPlace.state ?? snaps[0].state].filter(Boolean).join(", ");
   const geo = geoText ? await deps.geography(geoText) : null;
 

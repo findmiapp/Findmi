@@ -82,6 +82,17 @@ function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
       });
     },
     propagateDates: (eventId, ids) => propagateAllDatesParticipation(admin, eventId, ids),
+    findEventBySourceUrl: async (url) => {
+      const { data } = await admin
+        .from("events")
+        .select("id")
+        .eq("external_url", url)
+        .is("trashed_at", null)
+        .is("archived_at", null)
+        .neq("publication_status", "rejected")
+        .limit(1);
+      return ((data ?? []) as { id: string }[])[0] ?? null;
+    },
   };
 }
 
