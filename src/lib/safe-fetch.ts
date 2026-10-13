@@ -95,8 +95,20 @@ export type SafeFetchResult =
       truncated: boolean;
       /** The server's Content-Length, if any (observability only). */
       declaredBytes: number | null;
+      /** Diagnostics only: the response's media type. */
+      contentType?: string;
     }
-  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
+  | {
+      ok: false;
+      code: SafeFetchFailure;
+      redirects: number;
+      limit?: SafeFetchSizeLimit;
+      declaredBytes?: number | null;
+      /** Diagnostics only: last HTTP status / media type / host seen (when a response arrived). */
+      status?: number;
+      contentType?: string;
+      host?: string;
+    };
 
 // ── Destination rules ─────────────────────────────────────────────────────
 
@@ -492,7 +504,16 @@ const IMAGE_PROFILE: FetchProfile = {
 
 type ResourceResult =
   | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number; truncated: boolean; declaredBytes: number | null }
-  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
+  | {
+      ok: false;
+      code: SafeFetchFailure;
+      redirects: number;
+      limit?: SafeFetchSizeLimit;
+      declaredBytes?: number | null;
+      status?: number;
+      contentType?: string;
+      host?: string;
+    };
 
 async function safeFetchResource(input: string | URL, profile: FetchProfile, options: SafeFetchOptions): Promise<ResourceResult> {
   const transport = options.transport ?? createHttpsTransport();
@@ -505,8 +526,10 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
   let redirects = 0;
   const visited = new Set<string>();
   let declaredBytes: number | null = null;
+  // Diagnostics only (never used for decisions): the last response seen.
+  let seen: { status?: number; contentType?: string; host?: string } = {};
   const fail = (code: SafeFetchFailure, limit?: SafeFetchSizeLimit): ResourceResult =>
-    limit ? { ok: false, code, redirects, limit, declaredBytes } : { ok: false, code, redirects };
+    limit ? { ok: false, code, redirects, limit, declaredBytes, ...seen } : { ok: false, code, redirects, ...seen };
 
   try {
     for (;;) {
@@ -518,6 +541,7 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
         const code = mapTransportError(err, controller.signal.aborted);
         return fail(code, code === "too_large" ? "headers" : undefined);
       }
+      seen = { status: res.status, host: url.hostname };
       try {
         if (REDIRECT_STATUSES.has(res.status)) {
           const location = header(res.headers, "location");
@@ -541,6 +565,7 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
         }
         const contentType = header(res.headers, "content-type") ?? "";
         const mediaType = contentType.split(";")[0].trim().toLowerCase();
+        seen = { ...seen, contentType: mediaType.slice(0, 80) };
         if (!profile.mediaTypes.has(mediaType)) return fail("unsupported_content");
         const declaredLength = Number(header(res.headers, "content-length") ?? NaN);
         declaredBytes = Number.isFinite(declaredLength) && declaredLength >= 0 ? declaredLength : null;
@@ -595,6 +620,7 @@ export async function safeFetchHtml(input: string | URL, options: SafeFetchOptio
     redirects: r.redirects,
     truncated: r.truncated,
     declaredBytes: r.declaredBytes,
+    contentType: r.contentType.split(";")[0].trim().toLowerCase().slice(0, 80),
   };
 }
 

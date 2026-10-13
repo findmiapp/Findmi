@@ -15,7 +15,7 @@ import {
   prefillHostLabel,
 } from "@/lib/brand-candidate";
 import { readBrandDraft } from "@/lib/brand-draft";
-import { previewBrandCandidate } from "@/lib/brand-images";
+import { previewBrandCandidateResult } from "@/lib/brand-images";
 import { recordBrandImagePreview } from "@/lib/brand-website-rate-limit";
 
 export const metadata: Metadata = {
@@ -172,12 +172,30 @@ export default async function AddBusinessPage({
   // A candidate is offered (and selected by default) ONLY if that full
   // verification + preview succeeds; the owner can deselect it.
   const previewsAllowed = Boolean(draft && (draft.logo || draft.cover)) && !recordBrandImagePreview(user.id);
-  const [logoPreview, coverPreview] = previewsAllowed
+  const [logoResult, coverResult] = previewsAllowed
     ? await Promise.all([
-        draft!.logo ? previewBrandCandidate(draft!.logo, "logo") : Promise.resolve(null),
-        draft!.cover ? previewBrandCandidate(draft!.cover, "cover") : Promise.resolve(null),
+        draft!.logo ? previewBrandCandidateResult(draft!.logo, "logo") : Promise.resolve(null),
+        draft!.cover ? previewBrandCandidateResult(draft!.cover, "cover") : Promise.resolve(null),
       ])
     : [null, null];
+  const logoPreview = logoResult?.preview ?? null;
+  const coverPreview = coverResult?.preview ?? null;
+  // TEMPORARY (VCL A3 root cause): whether Review actually shows the
+  // candidates analysis found — reason codes only, never URLs or user ids.
+  if (brandOnboarding && draftParam === "1") {
+    console.info(
+      JSON.stringify({
+        event: "brand_review_preview",
+        draft: Boolean(draft),
+        logoCandidate: Boolean(draft?.logo),
+        coverCandidate: Boolean(draft?.cover),
+        instagram: Boolean(draft?.ig),
+        previewsAllowed,
+        logo: draft?.logo ? (logoResult ? (logoResult.preview ? "shown" : logoResult.reason) : "not_previewed") : null,
+        cover: draft?.cover ? (coverResult ? (coverResult.preview ? "shown" : coverResult.reason) : "not_previewed") : null,
+      })
+    );
+  }
   const useLogoDefault = roundTrip ? submittedUseLogo === "1" : true;
   const useCoverDefault = roundTrip ? submittedUseCover === "1" : true;
   const prefillHost = prefillHostLabel(values.websiteUrl);

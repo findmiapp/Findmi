@@ -86,6 +86,10 @@ export interface BrandFetchMeta {
   size: BrandHtmlSize | null;
   /** The server declared a Content-Length over the old 1 MB limit. */
   declaredSizeExceededOldLimit: boolean | null;
+  /** Diagnostics only: last HTTP status, media type and host seen. */
+  status?: number | null;
+  contentType?: string | null;
+  finalHost?: string | null;
 }
 
 const SIZE_LIMIT: Record<SafeFetchSizeLimit, BrandHtmlSize> = {
@@ -125,8 +129,14 @@ export async function fetchBrandWebsite(
   };
   if (!fetched.ok) {
     if (fetched.limit) fetch.size = SIZE_LIMIT[fetched.limit];
+    fetch.status = fetched.status ?? null;
+    fetch.contentType = fetched.contentType ?? null;
+    fetch.finalHost = fetched.host ?? null;
     return { ok: false, code: fetched.code, fetch };
   }
+  fetch.status = 200;
+  fetch.contentType = fetched.contentType ?? null;
+  fetch.finalHost = fetched.url.hostname;
   fetch.bytes = fetched.bytes;
   fetch.truncated = fetched.truncated;
   fetch.size = fetched.truncated ? "successful_truncated_html" : "complete_html";

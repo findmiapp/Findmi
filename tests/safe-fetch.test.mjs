@@ -25,6 +25,15 @@ const F = await import("../src/lib/safe-fetch.ts");
 const E = await import("../src/lib/brand-website-extract.ts");
 
 // ── Destination rules ─────────────────────────────────────────────────────
+/** VCL A3 diagnostics: failure results may also carry the last HTTP
+ * status / media type / host seen (observability only) — stripped here so
+ * these assertions keep pinning the decision fields exactly. */
+const core = (r) => {
+  if (!r || r.ok) return r;
+  const { status, contentType, host, ...rest } = r;
+  return rest;
+};
+
 test("URL: https only — http and every other scheme are rejected", () => {
   for (const u of ["http://brand.com/", "ftp://brand.com/", "javascript:alert(1)", "data:text/html,hi", "file:///etc/passwd", "ws://brand.com/", "brand.com", ""]) {
     assert.equal(F.validateFetchUrl(u).ok, false, u);
@@ -148,7 +157,7 @@ test("REAL node:https transport: blocked DNS answers are refused before any conn
   ]) {
     const transport = F.createHttpsTransport(async () => addresses);
     const r = await F.safeFetchHtml("https://brand-example.com/", { transport });
-    assert.deepEqual(r, { ok: false, code: "blocked_destination", redirects: 0 }, JSON.stringify(addresses));
+    assert.deepEqual(core(r), { ok: false, code: "blocked_destination", redirects: 0 }, JSON.stringify(addresses));
   }
 });
 
@@ -220,7 +229,7 @@ test("redirects: https→http downgrade, IPs, localhost, ports, credentials and 
   ]) {
     const { transport, calls } = stub({ "https://brand.com/": respond(302, { location }) });
     const r = await F.safeFetchHtml("https://brand.com/", { transport });
-    assert.deepEqual(r, { ok: false, code: "redirect_rejected", redirects: 0 }, location);
+    assert.deepEqual(core(r), { ok: false, code: "redirect_rejected", redirects: 0 }, location);
     assert.equal(calls.length, 1, "the rejected destination is never requested");
   }
 });
@@ -239,7 +248,7 @@ test("redirects: loops are detected and more than 3 redirects are refused", asyn
     "https://a.com/4": respond(200, HTML, "x"),
   });
   const r = await F.safeFetchHtml("https://a.com/", { transport: chain.transport });
-  assert.deepEqual(r, { ok: false, code: "too_many_redirects", redirects: 3 });
+  assert.deepEqual(core(r), { ok: false, code: "too_many_redirects", redirects: 3 });
   assert.equal(chain.calls.length, 4, "max 3 redirects = at most 4 requests");
   assert.equal(F.SAFE_FETCH_MAX_REDIRECTS, 3);
 });
@@ -349,7 +358,7 @@ test("size: reading stops after the head + bounded body excerpt WITHOUT waiting 
 test("size: a huge page whose head never ends is refused at the hard ceiling (streamed limit)", async () => {
   const res = endless(HTML, Buffer.from("<html><head><title>x</title>"));
   const r = await F.safeFetchHtml("https://brand.com/", { transport: async () => res });
-  assert.deepEqual(r, { ok: false, code: "too_large", redirects: 0, limit: "streamed", declaredBytes: null });
+  assert.deepEqual(core(r), { ok: false, code: "too_large", redirects: 0, limit: "streamed", declaredBytes: null });
   assert.ok(res.pulled <= F.SAFE_FETCH_HTML_MAX_BYTES + 4 * FILLER.length, `pulled ${res.pulled}`);
   // Under the ceiling with no head end, a finite page still reads to EOF.
   const finite = stub({ "https://brand.com/": respond(200, HTML, fillerChunks(17 * 64 * KB)) });
@@ -387,7 +396,7 @@ test("size: compressed oversized pages — head-first success, and the bomb is b
 test("size: image profile unchanged — declared or streamed over 5 MB is refused, no head-first read", async () => {
   const PNG = { "content-type": "image/png" };
   const declared = stub({ "https://cdn.brand.com/logo.png": respond(200, { ...PNG, "content-length": String(F.SAFE_FETCH_IMAGE_MAX_BYTES + 1) }, "x") });
-  assert.deepEqual(await F.safeFetchImage("https://cdn.brand.com/logo.png", { transport: declared.transport }), {
+  assert.deepEqual(core(await F.safeFetchImage("https://cdn.brand.com/logo.png", { transport: declared.transport })), {
     ok: false,
     code: "too_large",
     redirects: 0,

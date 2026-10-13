@@ -4,7 +4,7 @@ import { getCategories } from "./data";
 import { findBusinessMatches, type BusinessMatch, type BusinessMatchInput } from "./business-matching";
 import { brandBuildSignInHref, claimHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
-import { manifestIconCandidates, type ExtractedBrandProfile } from "./brand-website-extract";
+import { isSvgCandidateUrl, manifestIconCandidates, type BrandPageSignals, type ExtractedBrandProfile } from "./brand-website-extract";
 import { safeFetchHtml, safeFetchManifest, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
 import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput } from "./brand-ai-enrichment";
 import {
@@ -154,6 +154,26 @@ export interface WebsiteAnalysisLog {
   match: "none" | "public" | "hidden" | null;
 }
 
+/** TEMPORARY diagnostic for the real Brand Build path (VCL A3 root cause).
+ * Hosts, statuses, counts, source kinds and reason codes only — never
+ * full URLs, query strings, HTML, page text, cookies, keys or user ids. */
+export interface BrandBuildDiagnostic {
+  event: "brand_build_diagnostic";
+  host: string;
+  outcome: WebsiteAnalysisOutcome;
+  cached: boolean;
+  /** Images are only verified (and offered) when signed drafts are enabled. */
+  imagesEnabled: boolean;
+  fetch: { status: number | null; contentType: string | null; finalHost: string | null; redirects: number | null; bytes: number | null; size: string | null } | null;
+  signals: BrandPageSignals | null;
+  candidates: { logo: number; logoStrong: number; svgLogo: number; cover: number; manifestUrl: boolean } | null;
+  verifications: { role: BrandImageRole; kind: "raster" | "svg"; host: string; ok: boolean; reason: string | null }[];
+  manifest: { attempted: boolean; icons: number; failed: boolean } | null;
+  result: { logo: "page_logo" | "icon" | "svg" | "manifest" | null; cover: boolean; instagram: "seed" | "page" | "search" | null } | null;
+  /** "disabled" = A3b flag off (search never runs); else the search status or "not_run". */
+  instagramSearch: string;
+}
+
 export interface WebsiteAnalysisDeps {
   fetchHtml: (url: URL) => Promise<SafeFetchResult>;
   /** V1.1C — one bounded AI enrichment (null result = keep deterministic). */
@@ -164,6 +184,11 @@ export interface WebsiteAnalysisDeps {
   fetchManifestIcons?: (manifestUrl: string) => Promise<string[]>;
   /** VCL A3b — present only when paid Instagram search is enabled. */
   discoverInstagram?: (input: InstagramDiscoveryInput) => Promise<InstagramDiscovery>;
+  /** Diagnostics: verification WITH its rejection reason (optional; when
+   * absent verifyImage is used and the reason is unknown). */
+  verifyImageDetailed?: (url: string, role: BrandImageRole) => Promise<{ ok: boolean; reason: string | null }>;
+  /** Diagnostics sink for BrandBuildDiagnostic (absent → not emitted). */
+  diagnostic?: (entry: BrandBuildDiagnostic) => void;
   /** V1.1C — BRAND_DRAFT_SECRET configured: build an enriched signed draft.
    * Off → the bounded V1.1B text prefill (no About, no images). */
   draftsEnabled: boolean;
@@ -279,10 +304,71 @@ async function analyzeSource(
   cacheKey: string,
   deps: WebsiteAnalysisDeps,
   log: WebsiteAnalysisLog,
-  finish: (href: string, outcome: WebsiteAnalysisOutcome, extra?: Partial<WebsiteAnalysisLog>, result?: Partial<WebsiteAnalysisResult>) => WebsiteAnalysisResult,
+  finishOuter: (href: string, outcome: WebsiteAnalysisOutcome, extra?: Partial<WebsiteAnalysisLog>, result?: Partial<WebsiteAnalysisResult>) => WebsiteAnalysisResult,
   manual: (prefill: BrandPrefillStatus) => string,
   seed: BrandSeed
 ): Promise<WebsiteAnalysisResult> {
+  // ── TEMPORARY diagnostics (see BrandBuildDiagnostic) ──
+  const diag: BrandBuildDiagnostic = {
+    event: "brand_build_diagnostic",
+    host: website.host,
+    outcome: "invalid_input",
+    cached: false,
+    imagesEnabled: deps.draftsEnabled,
+    fetch: null,
+    signals: null,
+    candidates: null,
+    verifications: [],
+    manifest: null,
+    result: null,
+    instagramSearch: deps.discoverInstagram ? "not_run" : "disabled",
+  };
+  const hostOf = (url: string) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return "invalid";
+    }
+  };
+  const finish: typeof finishOuter = (href, outcome, extra, result) => {
+    diag.outcome = outcome;
+    try {
+      deps.diagnostic?.(diag);
+    } catch {
+      // diagnostics never affect the Build
+    }
+    return finishOuter(href, outcome, extra, result);
+  };
+  const buildDeps: WebsiteAnalysisDeps = {
+    ...deps,
+    verifyImage: async (url, role) => {
+      let ok = false;
+      let reason: string | null = null;
+      try {
+        if (deps.verifyImageDetailed) ({ ok, reason } = await deps.verifyImageDetailed(url, role));
+        else ok = await deps.verifyImage(url, role);
+      } catch {
+        reason = "threw";
+      }
+      if (diag.verifications.length < 20) diag.verifications.push({ role, kind: isSvgCandidateUrl(url) ? "svg" : "raster", host: hostOf(url), ok, reason: ok ? null : (reason ?? "rejected") });
+      return ok;
+    },
+    ...(deps.fetchManifestIcons
+      ? {
+          fetchManifestIcons: async (manifestUrl: string) => {
+            try {
+              const icons = await deps.fetchManifestIcons!(manifestUrl);
+              diag.manifest = { attempted: true, icons: icons.length, failed: false };
+              return icons;
+            } catch (err) {
+              diag.manifest = { attempted: true, icons: 0, failed: true };
+              throw err;
+            }
+          },
+        }
+      : {}),
+  };
+
   let cached = deps.cache.get(cacheKey, deps.now());
   if (cached) {
     log.cached = true;
@@ -306,16 +392,33 @@ async function analyzeSource(
     log.size = fetched.fetch.size;
     log.bytes = fetched.fetch.bytes;
     log.truncated = fetched.fetch.truncated;
+    diag.fetch = {
+      status: fetched.fetch.status ?? null,
+      contentType: fetched.fetch.contentType ?? null,
+      finalHost: fetched.fetch.finalHost ?? null,
+      redirects: fetched.fetch.redirects,
+      bytes: fetched.fetch.bytes,
+      size: fetched.fetch.size,
+    };
     if (!fetched.ok) return finish(manual("unavailable"), fetched.code);
     cached = { profile: fetched.extraction.profile, finalUrl: fetched.extraction.finalUrl };
     deps.cache.set(cacheKey, cached, deps.now());
   }
   const entry = cached;
+  diag.cached = log.cached;
+  diag.signals = entry.profile.signals ?? null;
+  diag.candidates = {
+    logo: entry.profile.logoCandidates?.length ?? 0,
+    logoStrong: entry.profile.logoStrongCount ?? 0,
+    svgLogo: entry.profile.svgLogoCandidates?.length ?? 0,
+    cover: entry.profile.coverCandidates?.length ?? 0,
+    manifestUrl: Boolean(entry.profile.manifestUrl),
+  };
 
   const built = await buildCandidateFromExtraction(
     website,
     { profile: entry.profile, finalUrl: entry.finalUrl },
-    deps,
+    buildDeps,
     {
       verifyImages: deps.draftsEnabled,
       // The visitor's original name / Instagram search is preferred over
@@ -349,6 +452,26 @@ async function analyzeSource(
     log.aiEstimatedCostUsd = built.ai.usage.estimatedCostUsd;
   }
   log.ai = built.ai.status;
+  {
+    const p = built.proposal;
+    const logos = entry.profile.logoCandidates ?? [];
+    const logoIndex = p.logoUrl ? logos.indexOf(p.logoUrl) : -1;
+    diag.result = {
+      logo: !p.logoUrl
+        ? null
+        : (entry.profile.svgLogoCandidates ?? []).includes(p.logoUrl)
+          ? "svg"
+          : logoIndex >= 0
+            ? logoIndex < (entry.profile.logoStrongCount ?? logos.length)
+              ? "page_logo"
+              : "icon"
+            : "manifest",
+      cover: Boolean(p.coverUrl),
+      instagram: seed.instagram ? "seed" : entry.profile.instagramHandle ? "page" : p.instagramHandle ? "search" : null,
+    };
+    if (built.ai.instagramSearch) diag.instagramSearch = built.ai.instagramSearch.status;
+    else if (built.ai.reused && deps.discoverInstagram) diag.instagramSearch = "cached";
+  }
   if (built.ai.instagramSearch) {
     log.igSearch = built.ai.instagramSearch.status;
     log.igSearches = built.ai.instagramSearch.usage?.searches ?? null;
@@ -399,6 +522,12 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
     listCategories: async () => (await getCategories()).map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
     enrich: (input) => enrichBrandWithAi(input),
     verifyImage: async (url, role) => (await fetchVerifiedBrandImage(url, role)).ok,
+    verifyImageDetailed: async (url, role) => {
+      const r = await fetchVerifiedBrandImage(url, role);
+      return r.ok ? { ok: true, reason: null } : { ok: false, reason: r.reason };
+    },
+    // TEMPORARY (VCL A3 root cause): one safe structured line per Build.
+    diagnostic: (entry) => console.info(JSON.stringify(entry)),
     fetchManifestIcons: async (manifestUrl) => {
       const fetched = await safeFetchManifest(manifestUrl);
       return fetched.ok ? manifestIconCandidates(fetched.text, fetched.url) : [];

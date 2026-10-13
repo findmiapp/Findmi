@@ -149,7 +149,30 @@ export interface ExtractedBrandProfile {
   /** VCL A3c — how many leading logoCandidates come from strong logo
    * evidence (the rest are touch/site icons). */
   logoStrongCount?: number;
+  /** Diagnostics only: what the fetched page actually contained (counts
+   * and yes/no — never URLs or text). */
+  signals?: BrandPageSignals;
   excerpt: BrandPageExcerpt;
+}
+
+export interface BrandPageSignals {
+  title: boolean;
+  ogTitle: boolean;
+  ogImage: number;
+  twitterImage: number;
+  metaLogo: boolean;
+  jsonLdBlocks: number;
+  brandEntity: boolean;
+  entityLogo: boolean;
+  instagramSameAs: number;
+  instagramLinks: number;
+  iconLinks: number;
+  touchIcons: number;
+  manifest: boolean;
+  images: number;
+  headerImages: number;
+  headings: number;
+  paragraphs: number;
 }
 
 // ── Text normalization ────────────────────────────────────────────────────
@@ -963,6 +986,25 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     manifestUrl: absoluteHttps(c.links.find((l) => l.rel.includes("manifest"))?.href, pageUrl),
     svgLogoCandidates,
     logoStrongCount,
+    signals: {
+      title: Boolean(c.title),
+      ogTitle: Boolean(meta("og:title")),
+      ogImage: OG_IMAGE_KEYS.filter((k) => meta(k)).length,
+      twitterImage: TWITTER_IMAGE_KEYS.filter((k) => meta(k)).length,
+      metaLogo: Boolean(meta("og:logo") || meta("logo")),
+      jsonLdBlocks: c.jsonLd.length,
+      brandEntity: Boolean(entity),
+      entityLogo: Boolean(entity?.node.logo),
+      instagramSameAs: fromSameAs.size,
+      instagramLinks: fromPage.size,
+      iconLinks: c.links.filter((l) => l.rel.includes("icon")).length,
+      touchIcons: c.links.filter((l) => l.rel.includes("apple-touch-icon") || l.rel.includes("apple-touch-icon-precomposed")).length,
+      manifest: c.links.some((l) => l.rel.includes("manifest")),
+      images: c.images.length,
+      headerImages: c.images.filter((i) => i.inHeader).length,
+      headings: c.headings.length,
+      paragraphs: c.paragraphs.length,
+    },
     excerpt,
   };
 }

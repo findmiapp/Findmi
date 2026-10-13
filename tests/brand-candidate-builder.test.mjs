@@ -97,7 +97,7 @@ test("core: a fully deterministic candidate is built with no AI call", async () 
   assert.ok(r.proposal.shortDescription && r.proposal.shortDescription.length <= 160);
   assert.deepEqual(r.completeness, { name: true, category: true, shortDescription: true, about: true, instagram: true, logo: true, cover: true });
   assert.deepEqual(r.website, { websiteUrl: "https://glow.example.com", host: "glow.example.com", fetchUrl: new URL("https://glow.example.com/") });
-  assert.deepEqual(r.fetch, { redirects: 0, bytes: FULL.length, truncated: false, size: "complete_html", declaredSizeExceededOldLimit: null });
+  assert.deepEqual(r.fetch, { redirects: 0, bytes: FULL.length, truncated: false, size: "complete_html", declaredSizeExceededOldLimit: null, status: 200, contentType: null, finalHost: "glow.example.com" });
   assert.equal(r.fields.category, true);
 });
 
@@ -214,7 +214,7 @@ test("core: input rejection and safe-fetch failures propagate through the typed 
   const r = await B.buildBrandCandidate("glow.example.com", big.deps, OPTS);
   assert.equal(r.status, "failed");
   assert.equal(r.code, "too_large");
-  assert.deepEqual(r.fetch, { redirects: 1, bytes: null, truncated: null, size: "streamed_limit", declaredSizeExceededOldLimit: true });
+  assert.deepEqual(r.fetch, { redirects: 1, bytes: null, truncated: null, size: "streamed_limit", declaredSizeExceededOldLimit: true, status: null, contentType: null, finalHost: null });
   assert.equal(big.calls.match.length, 0);
   const empty = deps({ fetchHtml: html("<html></html>") });
   const e = await B.buildBrandCandidate("glow.example.com", empty.deps, OPTS);
