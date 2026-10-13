@@ -9,6 +9,7 @@ import { bool, errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso,
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { createOpportunity, resolveOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
 import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
+import { applyBusinessToEvent } from "@/lib/event-participation";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile, type ImageValidationResult } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
@@ -638,49 +639,13 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
   let addedNow = false;
 
   if (kind === "event") {
-    const eventId = a;
-    const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
-    if (!event) redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
-
-    const { data: existingRow } = await admin
-      .from("event_businesses")
-      .select("status")
-      .eq("event_id", eventId)
-      .eq("business_id", businessId)
-      .maybeSingle();
-    const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
-
-    if (currentStatus === "approved") {
-      redirect(appendQuery(redirectPath, { error: "You're already a confirmed participant in that event." }));
-    }
-
-    if (currentStatus === "invited") {
-      await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
-      await ensureEventAppearance(admin, eventId, businessId);
-      addedNow = true;
-    } else if (currentStatus !== "applied" && currentStatus !== "pending") {
-      // No row yet, or a terminal 'declined' row being re-applied to —
-      // a full upsert (never ignoreDuplicates) so re-applying after a
-      // decline correctly resets status back to 'applied'.
-      await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: "applied" }, { onConflict: "event_id,business_id" });
-    }
-
-    if (user) {
-      try {
-        await createOpportunity(admin, {
-          type: "event_application",
-          eventId,
-          eventOccurrenceId: null,
-          businessId,
-          initiatorUserId: user.id,
-          initiatorEntityType: "business",
-          initiatorEntityId: businessId,
-          note: note?.trim() || null,
-        });
-      } catch (err) {
-        console.error("[opportunities] failed to record application Opportunity", err);
-      }
-    }
+    // Event Import V1 — the whole-Event application now lives in ONE shared
+    // helper (lib/event-participation.ts) so Event Import applies the exact
+    // same invariant. Same outcomes and messages as before.
+    const result = await applyBusinessToEvent(admin, { eventId: a, businessId, userId: user?.id ?? null, note });
+    if (result === "unavailable") redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
+    if (result === "already_approved") redirect(appendQuery(redirectPath, { error: "You're already a confirmed participant in that event." }));
+    addedNow = result === "approved_now";
   } else if (kind === "occ") {
     const eventId = a;
     const occurrenceId = b;

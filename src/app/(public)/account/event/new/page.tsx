@@ -162,7 +162,21 @@ export default async function AddEventPage({
 
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
 
-      <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+      {/* Event Import V1 — import-first for a Business host (hosting
+          context, same importer as Where I'll Be). Manual creation below is
+          unchanged. */}
+      {businessContext && (
+        <div className="mt-6 rounded-3xl border border-findmi/20 bg-findmi-50/50 p-5 sm:p-6">
+          <p className="text-card-title font-semibold text-primary">Already Have an Event Page?</p>
+          <p className="mt-0.5 text-metadata text-muted">Paste its link and Findmi fills in the details. You review everything first.</p>
+          <Link href={`/account/business/${businessContext.id}/import-event?intent=hosting`} className={`mt-3 ${primaryButtonClass}`}>
+            Import From Link
+          </Link>
+        </div>
+      )}
+      {businessContext && <p className="mt-6 text-label font-bold uppercase text-subtle">Or Create Manually</p>}
+
+      <div className={`${businessContext ? "mt-2" : "mt-6"} rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6`}>
         <form action={createMemberEvent} className="flex flex-col gap-4">
           {businessContext && <input type="hidden" name="business_id" value={businessContext.id} />}
           {/* Geography Foundation Pass 2 — Location selection/manual venue

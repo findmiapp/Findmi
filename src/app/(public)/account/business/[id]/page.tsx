@@ -2415,12 +2415,24 @@ export default async function ManageBusinessPage({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-card-title font-bold text-primary">Where I&rsquo;ll Be</p>
-                    <p className="mt-0.5 text-metadata text-muted">Find the event on Findmi and request to join.</p>
+                    <p className="mt-0.5 text-metadata text-muted">Add something your Business is participating in.</p>
                   </div>
                   <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
                     Close
                   </Link>
                 </div>
+
+                {/* Event Import V1 — import-first: paste the event's link and
+                    Findmi fills in the details (participating context). The
+                    Findmi search and manual entry below stay as they were. */}
+                <Link
+                  href={`/account/business/${id}/import-event?intent=participating`}
+                  className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]"
+                >
+                  Import From Link
+                </Link>
+                <p className="mt-1.5 text-center text-microcopy text-subtle">Paste an event page and Findmi fills in the details.</p>
+                <p className="mt-4 text-label font-bold uppercase text-subtle">Or Find It on Findmi</p>
 
                 {requestOptions.length > 0 ? (
                   <form action={addFromEvent} className="mt-3">

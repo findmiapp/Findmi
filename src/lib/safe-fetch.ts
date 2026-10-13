@@ -145,7 +145,10 @@ export function isAllowedFetchHostname(hostname: string): boolean {
 }
 
 /** Validates an absolute fetch target. Returns a copy without fragment. */
-export function validateFetchUrl(input: string | URL): { ok: true; url: URL } | { ok: false; code: SafeFetchFailure } {
+export function validateFetchUrl(
+  input: string | URL,
+  options: { allowSharedPlatforms?: boolean } = {}
+): { ok: true; url: URL } | { ok: false; code: SafeFetchFailure } {
   let url: URL;
   try {
     url = new URL(typeof input === "string" ? input : input.href);
@@ -157,8 +160,10 @@ export function validateFetchUrl(input: string | URL): { ok: true; url: URL } | 
   if (url.port !== "") return { ok: false, code: "invalid_url" };
   if (!isAllowedFetchHostname(url.hostname)) return { ok: false, code: "blocked_destination" };
   // Shared platforms (instagram.com, linktr.ee, etsy.com …) are never a
-  // brand's own website — same list the Business matcher uses.
-  if (normalizeWebsiteHost(url.href) === null) return { ok: false, code: "blocked_destination" };
+  // brand's own website — same list the Business matcher uses. A product
+  // rule for brand profiles, not a safety rule: Event Import (whose pages
+  // legitimately live on Eventbrite, Facebook, …) opts out of it only.
+  if (!options.allowSharedPlatforms && normalizeWebsiteHost(url.href) === null) return { ok: false, code: "blocked_destination" };
   url.hash = "";
   return { ok: true, url };
 }
@@ -480,6 +485,8 @@ interface FetchProfile {
    * resources). HTML analysis reads a bounded prefix instead. */
   rejectDeclaredOverMax: boolean;
   headStop?: { bodyBytes: number };
+  /** Skip ONLY the brand-profile "not a shared platform" host rule. */
+  allowSharedPlatforms?: boolean;
 }
 
 const HTML_PROFILE: FetchProfile = {
@@ -529,7 +536,7 @@ type ResourceResult =
 
 async function safeFetchResource(input: string | URL, profile: FetchProfile, options: SafeFetchOptions): Promise<ResourceResult> {
   const transport = options.transport ?? createHttpsTransport();
-  const first = validateFetchUrl(input);
+  const first = validateFetchUrl(input, { allowSharedPlatforms: profile.allowSharedPlatforms });
   if (!first.ok) return { ok: false, code: first.code, redirects: 0 };
 
   const controller = new AbortController();
@@ -565,7 +572,7 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
           } catch {
             return fail("redirect_rejected");
           }
-          const checked = validateFetchUrl(next); // also refuses https→http
+          const checked = validateFetchUrl(next, { allowSharedPlatforms: profile.allowSharedPlatforms }); // also refuses https→http
           if (!checked.ok) return fail("redirect_rejected");
           if (visited.has(checked.url.href)) return fail("redirect_loop");
           redirects += 1;
@@ -623,6 +630,29 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
  * network/site problems — every failure is a coded result. */
 export async function safeFetchHtml(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
   const r = await safeFetchResource(input, HTML_PROFILE, options);
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    url: r.url,
+    html: decodeHtml(r.body, r.contentType),
+    bytes: r.bytes,
+    redirects: r.redirects,
+    truncated: r.truncated,
+    declaredBytes: r.declaredBytes,
+    contentType: r.contentType.split(";")[0].trim().toLowerCase().slice(0, 80),
+  };
+}
+
+/** Event Import V1 — the same guarded HTML fetch (every destination, DNS,
+ * redirect, TLS, timeout and header rule shared), but reading a larger
+ * bounded body: event pages commonly place their schema.org Event JSON-LD
+ * near the end of <body>, past the brand profile's 256 KB prefix. Still
+ * capped by SAFE_FETCH_HTML_MAX_BYTES. */
+export const SAFE_FETCH_EVENT_BODY_BYTES = 1024 * 1024;
+const EVENT_HTML_PROFILE: FetchProfile = { ...HTML_PROFILE, headStop: { bodyBytes: SAFE_FETCH_EVENT_BODY_BYTES }, allowSharedPlatforms: true };
+
+export async function safeFetchEventPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  const r = await safeFetchResource(input, EVENT_HTML_PROFILE, options);
   if (!r.ok) return r;
   return {
     ok: true,
