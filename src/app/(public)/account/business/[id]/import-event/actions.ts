@@ -9,7 +9,7 @@ import { analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engi
 import { normalizeReview, persistEventImport, type PersistDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { applyBusinessToEvent } from "@/lib/event-participation";
-import { fetchVerifiedBrandImage, storeBrandImage } from "@/lib/brand-images";
+import { recoverEventImage } from "@/lib/event-import/media";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { isSlugTaken } from "@/lib/admin/queries";
@@ -60,9 +60,11 @@ function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
     businessName: business.name,
     applyToEvent: (eventId) => applyBusinessToEvent(admin, { eventId, businessId, userId: user.id }),
     canHost: async () => (await getHostEventEligibility(admin, user.id, businessId)).ok,
+    // The one Event image path (lib/event-import/media.ts) — Event art
+    // rules, not the Brand header rules.
     storeImage: async (url) => {
-      const verified = await fetchVerifiedBrandImage(url, "cover");
-      return verified.ok ? storeBrandImage(admin, verified.image) : null;
+      const stored = await recoverEventImage(admin, url);
+      return stored.ok ? stored.url : null;
     },
     geography: async (text) => {
       const match = await findExistingGeographyMatch(admin, text);
