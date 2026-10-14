@@ -21,9 +21,10 @@ import { cleanText, usStateCode } from "../brand-website-extract";
 import { localDateTimeToIso } from "../admin/form-helpers";
 import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
 import { dedupeOccurrences, parseScheduleLines, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
+import { EVENT_DESCRIPTION_MAX, cleanEventDescription, htmlToDescriptionText } from "./description";
 
 export const EVENT_TITLE_MAX = 200;
-export const EVENT_DESCRIPTION_MAX = 2000;
+export { EVENT_DESCRIPTION_MAX };
 export const EVENT_MAX_DATES = SCHEDULE_MAX_OCCURRENCES;
 const JSONLD_MAX_BLOCKS = 12;
 const JSONLD_MAX_BLOCK_CHARS = 300_000;
@@ -312,21 +313,16 @@ export function venueFrom(value: unknown): { venue: ImportedVenue; online: boole
   return { venue: { ...EMPTY_VENUE }, online };
 }
 
-/** Strips tags/entities from rich-text descriptions some platforms put in JSON-LD. */
+const HTML_TAG = /<\/?[a-z][a-z0-9]*\b[^>]*>/i;
+
+/** An Event description from structured data: rich text (HTML) becomes
+ * plain text with its paragraphs/line breaks kept; plain text keeps its
+ * own (cleanEventDescription — never the one-line cleanText). */
 export function plainDescription(value: unknown): string | null {
   const raw = typeof str(value) === "string" ? (str(value) as string) : null;
   if (!raw) return null;
-  const stripped = raw
-    .slice(0, EVENT_DESCRIPTION_MAX * 4)
-    .replace(/<\s*br\s*\/?>/gi, " ")
-    .replace(/<\/p>/gi, " ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;|&gt;/g, " ");
-  return cleanText(stripped, EVENT_DESCRIPTION_MAX);
+  const clipped = raw.slice(0, EVENT_DESCRIPTION_MAX * 8);
+  return cleanEventDescription(HTML_TAG.test(clipped) ? htmlToDescriptionText(clipped) : clipped);
 }
 
 /** Removes a trailing " | Site" / " - Site" when it is the site's own name. */
@@ -399,7 +395,7 @@ export function extractEventCandidate(html: string, pageUrl: URL, now: number = 
   let description = primary ? plainDescription(primary.description) : null;
   if (description) sources.description = "structured";
   else {
-    description = cleanText(c.meta.get("og:description") ?? c.meta.get("description"), EVENT_DESCRIPTION_MAX);
+    description = cleanEventDescription(c.meta.get("og:description") ?? c.meta.get("description"));
     if (description) sources.description = "page";
   }
 

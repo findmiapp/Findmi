@@ -262,7 +262,7 @@ function fromPageData(page: Page, pageUrl: URL, siteName: string | null): Source
           identity,
           candidate: baseCandidate(pageUrl, {
             title: cleanEventTitle(title, siteName),
-            description: description ? cleanText(description, EVENT_DESCRIPTION_MAX) : null,
+            description, // already cleanEventDescription'd by plainDescription
             imageUrl: imageFromRecord(o, pageUrl),
             sourceUrl: url ?? "",
             occurrences: [occ],

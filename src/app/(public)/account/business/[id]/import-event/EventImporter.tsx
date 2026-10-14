@@ -5,6 +5,7 @@ import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
 import { analyzeEventImport, commitEventImport } from "./actions";
 import MultiEventImport from "./MultiEventImport";
+import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
 import { Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 import {
   EVENT_IMPORT_FAILURE_COPY,
@@ -371,7 +372,7 @@ export default function EventImporter({
               onChange={(e) => set({ description: e.target.value })}
               className={inputClass}
               autoCapitalize="sentences"
-              maxLength={2000}
+              maxLength={EVENT_DESCRIPTION_MAX}
             />
           </div>
         )}

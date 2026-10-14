@@ -29,6 +29,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { localDateTimeToIso } from "../admin/form-helpers";
 import { validateCustomDestination } from "../navigation";
 import { cleanText, usStateCode } from "../brand-website-extract";
+import { cleanEventDescription } from "./description";
 import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPlace } from "./types";
 import type { EventApplicationResult } from "../event-participation";
 import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
@@ -134,7 +135,7 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
     value: {
       intent: review.intent,
       title,
-      description: cleanText(review.description, 2000),
+      description: cleanEventDescription(review.description),
       imageUrl,
       sourceUrl,
       occurrences,

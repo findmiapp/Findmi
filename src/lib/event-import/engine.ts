@@ -180,7 +180,9 @@ function draftFor(candidate: EventCandidate, d: ImportedOccurrence): AppearanceD
   return {
     title: candidate.title ?? "",
     date: nyDateOf(d),
-    start_time: null,
+    // NY wall-clock start, so the Event matcher can tell same-day Events
+    // hours apart from one another.
+    start_time: d.hasTime ? new Date(d.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York" }) : null,
     end_time: null,
     time_tbd: !d.hasTime,
     venue_name: d.venue.name,
