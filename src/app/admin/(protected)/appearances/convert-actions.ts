@@ -28,6 +28,8 @@ export type AdminConvertSummary =
       image: "stored" | "failed" | "none" | undefined;
       warnings: string[];
       recovered: { title: string | null; description: boolean; imageUrl: string | null; organizer: string | null; sourceUrl: string; dates: string[] };
+      /** Read back from the saved Event: what is actually persisted. */
+      persisted: { slug: string | null; coverUrl: string | null; live: boolean; hostBusinessId: string | null };
     }
   | { status: "not_converted"; reason: string; detail?: string; eventId?: string; fetch?: EventImportFetchDiagnostics };
 
@@ -78,6 +80,8 @@ async function runConversion(admin: SupabaseClient, appearanceId: string): Promi
   }
   revalidatePath("/admin/events");
   revalidatePath(`/admin/appearances/${row.id}`);
+  const { data: saved } = await admin.from("events").select("slug, cover_image_url, is_demo, host_business_id").eq("id", result.eventId).maybeSingle();
+  const ev = saved as { slug: string; cover_image_url: string | null; is_demo: boolean; host_business_id: string | null } | null;
   return {
     status: "converted",
     eventId: result.eventId,
@@ -93,6 +97,7 @@ async function runConversion(admin: SupabaseClient, appearanceId: string): Promi
       sourceUrl: candidate.sourceUrl,
       dates: candidate.occurrences.map((o) => o.start),
     },
+    persisted: { slug: ev?.slug ?? null, coverUrl: ev?.cover_image_url ?? null, live: ev ? !ev.is_demo : false, hostBusinessId: ev?.host_business_id ?? null },
   };
 }
 

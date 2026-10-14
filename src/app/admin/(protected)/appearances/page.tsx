@@ -69,6 +69,12 @@ export default async function AdminAppearancesPage({
             Import Appearances
           </Link>
           <Link
+            href="/admin/appearances/convert"
+            className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:border-black/20"
+          >
+            Convert To Events
+          </Link>
+          <Link
             href="/admin/appearances/new"
             className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
           >
