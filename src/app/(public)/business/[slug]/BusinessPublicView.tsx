@@ -28,6 +28,8 @@ import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import BrandHeading from "@/components/BrandHeading";
 import OurLocations from "@/components/OurLocations";
+import FindUsAt from "@/components/FindUsAt";
+import { FIND_US_AT_PUBLIC_LIMIT, getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
 import { getLocationsForBusiness } from "@/lib/business-locations";
 
 /** Our Locations shown on the public page — bounded, so a large chain never
@@ -244,7 +246,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, activity, people, galleryImages, journal, ourLocations] = await Promise.all([
+  const [products, activity, people, galleryImages, journal, ourLocations, findUsAt] = await Promise.all([
     getProductsForBusiness(business.id),
     // Upcoming activity reconciled with the Business's approved Event
     // participation and each Event's CURRENT schedule (read-only — see
@@ -261,6 +263,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     // Our Locations — public (anon) read: published, non-archived Locations
     // explicitly connected to this Business. Fails safe to none.
     getLocationsForBusiness(getSupabase(), business.id, { publicOnly: true, limit: OUR_LOCATIONS_LIMIT }),
+    // Find Us At — public (anon) read of third-party places carrying this
+    // Business (explicit links only; never one it operates). Only the small
+    // displayed set is requested.
+    getAvailabilityLocationsForBusiness(getSupabase(), business.id, { publicOnly: true, limit: FIND_US_AT_PUBLIC_LIMIT }),
   ]);
   // EVENT IDENTITY != SCHEDULE OCCURRENCES. The Featured Appearance card
   // shows a multi-date Event ONCE (its live date, else its next date — see
@@ -871,6 +877,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               Appearance venues). Physical presence sits beside Findmi
               Here (temporary presence); nothing renders with none. */}
           <OurLocations businessName={business.name} locations={ourLocations.items} first={scheduleAppearances.length === 0} />
+
+          {/* Find Us At — third-party places that carry/serve this Business,
+              directly after Our Locations (places it operates) so the
+              physical-presence story reads: Findmi Here → Our Locations →
+              Find Us At. Nothing renders with none. */}
+          <FindUsAt businessName={business.name} locations={findUsAt.items} />
 
           {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin.
               Free Tier Entitlement Reset V1 — both are core "distribute

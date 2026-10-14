@@ -39,6 +39,10 @@ import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
 import { getOperatorsForLocation } from "@/lib/business-locations";
+import { getAvailableBrandsForLocation } from "@/lib/business-location-availability";
+
+/** Brands Available Here shown on a Location page (bounded). */
+const BRANDS_AVAILABLE_HERE_LIMIT = 12;
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Location's public page, shared verbatim by both the canonical
@@ -114,7 +118,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings, journal, operators] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings, journal, operators, availableBrands] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
@@ -132,6 +136,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
     // (business_locations). Public read; empty if none (or if the table
     // isn't there yet).
     getOperatorsForLocation(getSupabase(), location.id, { limit: 6, publicOnly: true }),
+    // Find Us At (reverse) — live Brands normally available here
+    // (business_location_availability); never this place's operators.
+    getAvailableBrandsForLocation(getSupabase(), location.id, { limit: BRANDS_AVAILABLE_HERE_LIMIT, publicOnly: true }),
   ]);
   // Location Detail V1 — one unified "What's Happening Here" module
   // replaces the old split Featured Event hero + separate "Coming Up
@@ -564,6 +571,33 @@ export async function LocationPublicView({ slug }: { slug: string }) {
                 </p>
               </div>
             )}
+          </section>
+        )}
+
+        {/* Brands Available Here — the reverse of Find Us At: Brands normally
+            stocked, sold, served or carried here. Its own section — never
+            Operated By (Our Locations) and never event content. Absent when
+            there are none. */}
+        {availableBrands.items.length > 0 && (
+          <section id="brands-available-here" className="mt-8 scroll-mt-20" aria-labelledby="brands-available-here-heading">
+            <h2 id="brands-available-here-heading" className="font-display text-lg font-bold tracking-tight text-ink">
+              Brands Available Here
+            </h2>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {availableBrands.items.map((b) => (
+                <li key={b.businessId} className="min-w-0 max-w-full">
+                  <Link
+                    href={`/business/${b.slug}`}
+                    className="flex min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white py-1.5 pl-1.5 pr-3.5 transition hover:border-findmi/40"
+                  >
+                    <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
+                      {b.logoUrl ? <SupabaseImage src={b.logoUrl} alt="" fill sizes="32px" className="object-contain p-0.5" /> : b.name.charAt(0)}
+                    </span>
+                    <span className="truncate text-sm font-semibold text-ink">{b.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 

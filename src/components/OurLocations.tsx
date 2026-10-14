@@ -34,7 +34,7 @@ export default function OurLocations({
       <ul className={`mt-3 grid gap-3 ${single ? "" : "sm:grid-cols-2"}`}>
         {locations.map((l) => (
           <li key={l.locationId}>
-            <OurLocationCard location={l} />
+            <CompactLocationCard location={l} />
           </li>
         ))}
       </ul>
@@ -42,7 +42,11 @@ export default function OurLocations({
   );
 }
 
-function OurLocationCard({ location }: { location: BusinessLocationItem }) {
+/** The compact canonical-Location card shared by Our Locations and Find Us At
+ * (image, name, address, Open Now / Closed, link to the Location page). */
+export type CompactLocation = Pick<BusinessLocationItem, "name" | "slug" | "address" | "city" | "state" | "logoUrl" | "coverImageUrl" | "hours">;
+
+export function CompactLocationCard({ location }: { location: CompactLocation }) {
   const image = location.coverImageUrl ?? location.logoUrl;
   const contain = !location.coverImageUrl && Boolean(location.logoUrl);
   const place = cityState(location.city, location.state);

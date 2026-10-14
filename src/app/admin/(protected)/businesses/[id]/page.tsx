@@ -17,6 +17,8 @@ import {
   adminRemoveBusinessLocation,
   adminSetPrimaryBusinessLocation,
 } from "../location-actions";
+import { adminConnectFindUsAt, adminRemoveFindUsAt } from "../availability-actions";
+import { getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
 import SubmitBar from "@/components/admin/SubmitBar";
 import {
@@ -101,6 +103,7 @@ const ADMIN_TABS: TabNavItem[] = [
   { key: "products", label: "Products" },
   { key: "appearances", label: "Appearances" },
   { key: "locations", label: "Locations" },
+  { key: "find-us-at", label: "Find Us At" },
   { key: "categories", label: "Categories" },
   { key: "ownership", label: "Ownership" },
   { key: "plan", label: "Plan" },
@@ -162,6 +165,10 @@ export default async function EditBusinessPage({
   // the migration isn't applied yet.
   const businessLocations =
     tab === "locations" && marketsAdmin ? await getLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
+  // Find Us At V1 — third-party Locations where this Business is available
+  // (business_location_availability), only fetched for its tab.
+  const availabilityLocations =
+    tab === "find-us-at" && marketsAdmin ? await getAvailabilityLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
@@ -706,6 +713,72 @@ export default async function EditBusinessPage({
               >
                 Connect
               </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── Find Us At ───────────────────────────────────────────── */}
+        {/* Find Us At V1 — third-party places where this Business/Brand is
+            normally available (stocked, sold, served, carried). Admin only.
+            Never Our Locations (refused if this Business operates the place)
+            and never inferred from Events/Appearances. Remove deletes only
+            the connection. */}
+        {tab === "find-us-at" && (
+          <div className="rounded-2xl border border-black/10 bg-white p-4">
+            <p className="text-sm font-semibold text-ink">Find Us At</p>
+            <p className="mt-1 text-xs text-ink/45">
+              Third-party places where this business is normally available — stocked, sold, served or carried. Not places
+              it operates (those are Our Locations) and not one-off events or pop-ups.
+            </p>
+            {availabilityLocations.items.length > 0 ? (
+              <ul className="mt-3 flex flex-col gap-2">
+                {availabilityLocations.items.map((l) => (
+                  <li key={l.locationId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 px-3 py-2">
+                    <div className="min-w-0">
+                      <Link href={`/admin/locations/${l.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
+                        {l.name}
+                      </Link>
+                      <p className="text-xs text-ink/45">
+                        {[l.city, l.state].filter(Boolean).join(", ") || "No city"}
+                        {l.isPending ? " · Not public" : ""}
+                        {l.isArchived ? " · Archived" : ""}
+                      </p>
+                    </div>
+                    <form action={adminRemoveFindUsAt.bind(null, id, l.locationId)}>
+                      <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                        Remove
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-ink/50">No Find Us At locations.</p>
+            )}
+            {availabilityLocations.hasMore && (
+              <p className="mt-2 text-xs text-ink/45">Showing the first {availabilityLocations.items.length}.</p>
+            )}
+            <form action={adminConnectFindUsAt.bind(null, id)} className="mt-4 flex flex-col gap-3">
+              <RelationField
+                label="Connect a location"
+                name="location_id"
+                entity="locations"
+                initial={null}
+                clearLabel={null}
+                placeholder="Search Findmi locations"
+                hint="Only existing Findmi places. Removing later deletes only the connection — the Location itself stays."
+              />
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  type="submit"
+                  className="w-fit rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Connect
+                </button>
+                <Link href="/admin/locations/new" className="text-xs font-semibold text-findmi-700 hover:underline">
+                  Place not on Findmi yet? Create Location
+                </Link>
+              </div>
             </form>
           </div>
         )}
