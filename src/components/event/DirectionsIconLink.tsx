@@ -16,7 +16,8 @@ export default function DirectionsIconLink({
   href: string;
   placeName: string | null;
   trackPayload: TrackEventPayload;
-  variant?: "icon" | "expanded";
+  /** "compact": the Event Location card's primary "Get Directions" button. */
+  variant?: "icon" | "expanded" | "compact";
 }) {
   const label = placeName ? `Directions to ${placeName}` : "Directions";
   const glyph = (
@@ -24,6 +25,21 @@ export default function DirectionsIconLink({
       <path d="M20 4L4 10.5l6.5 3 3 6.5L20 4z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
     </svg>
   );
+  if (variant === "compact") {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={label}
+        onClick={() => trackEvent(trackPayload)}
+        className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full bg-findmi px-4 text-sm font-bold text-white transition hover:bg-findmi-600 active:scale-[0.98]"
+      >
+        {glyph}
+        Get Directions
+      </a>
+    );
+  }
   if (variant === "expanded") {
     return (
       <a href={href} target="_blank" rel="noreferrer" aria-label={label} onClick={() => trackEvent(trackPayload)} className={`${EVENT_PRIMARY_CTA_CLASS} gap-2`}>
