@@ -167,10 +167,10 @@ export default async function AddEventPage({
           unchanged. */}
       {businessContext && (
         <div className="mt-6 rounded-3xl border border-findmi/20 bg-findmi-50/50 p-5 sm:p-6">
-          <p className="text-card-title font-semibold text-primary">Already Have an Event Page?</p>
-          <p className="mt-0.5 text-metadata text-muted">Paste its link and Findmi fills in the details. You review everything first.</p>
+          <p className="text-card-title font-semibold text-primary">Already Have the Details?</p>
+          <p className="mt-0.5 text-metadata text-muted">Use an event link, paste the details or upload a flyer, and Findmi fills them in. You review everything first.</p>
           <Link href={`/account/business/${businessContext.id}/import-event?intent=hosting`} className={`mt-3 ${primaryButtonClass}`}>
-            Import From Link
+            Import Event
           </Link>
         </div>
       )}

@@ -103,8 +103,9 @@ export function reviewDefaults(candidate: EventCandidate, matches: EventImportMa
   const event = matches.event;
   const useEvent = event && event.confidence === "strong" && (intent === "participating" || event.hostedByThisBusiness) ? event.id : null;
   const included = includedByDefault(candidate);
-  const shared = sharedVenue(included);
-  const occurrences = included.length > 0 ? included.map((o) => toReviewOccurrence(o, matches)) : [emptyReviewOccurrence()];
+  // Pasted text / an image may state the place without a readable date.
+  const shared = included.length === 0 && candidate.place ? candidate.place : sharedVenue(included);
+  const occurrences = included.length > 0 ? included.map((o) => toReviewOccurrence(o, matches)) : [emptyReviewOccurrence(candidate.place ? placeFromVenue(candidate.place, matches) : null)];
   const organizer =
     intent === "participating" && businessName && candidate.organizer && sameName(candidate.organizer, businessName) && candidate.sources.organizer !== "structured"
       ? null

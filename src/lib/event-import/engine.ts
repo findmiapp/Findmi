@@ -25,7 +25,16 @@ import {
   structuredAttendance,
 } from "./attendance";
 import { fetchFailureLogLine, safeFetchDiagnostics } from "./diagnostics";
-import { assistWithAi, defaultEventAiClient, type EventAiClient } from "./ai";
+import {
+  assistWithAi,
+  defaultEventAiClient,
+  readEventImageWithAi,
+  readEventTextWithAi,
+  sanitizeEventAiOutput,
+  type EventAiClient,
+  type EventImportImageMediaType,
+} from "./ai";
+import { extractTextEventCandidate, mergeTextAi, needsTextAssist, PASTE_MAX_CHARS, PASTE_MIN_CHARS, type TextExtraction } from "./text-source";
 import {
   venueKey,
   type EventCandidate,
@@ -34,6 +43,7 @@ import {
   type EventImportMatches,
   type ImportedDate,
   type ImportedOccurrence,
+  type ImportedVenue,
   type SourceEventAnalysis,
 } from "./types";
 
@@ -301,6 +311,98 @@ export async function analyzeEventUrl(
   return { ok: true, kind: "single", candidate, matches, warnings };
 }
 
+// ── Paste Details / Upload ─────────────────────────────────────────────
+// The same engine for evidence that isn't a link: pasted text, or an
+// uploaded image (its visible text, read by the multimodal AI step). Both
+// become the SAME EventCandidate (./text-source.ts), then share everything
+// below with From Link: attendance + location-privacy evidence (from the
+// text itself, never the AI), matching, Review, persistence. No source link
+// or image is ever invented: the candidate has no sourceUrl, and an uploaded
+// image is evidence only — never the Event's cover.
+
+/** Never a real destination: only absolute https links in the text are
+ * read, and nothing is ever resolved against this. */
+const TEXT_BASE = new URL("https://evidence.findmi.invalid/");
+
+export async function analyzeEventText(input: { text: string; businessId: string | null; rateKey: string }, deps: EventImportDeps): Promise<EventImportAnalysis> {
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  if (text.length > PASTE_MAX_CHARS) return { ok: false, code: "text_too_long" };
+  if (text.length < PASTE_MIN_CHARS) return { ok: false, code: "text_no_event" };
+  if (deps.isRateLimited(input.rateKey)) return { ok: false, code: "rate_limited" };
+  const now = deps.now();
+  const extraction = extractTextEventCandidate(text, { now, origin: "text" });
+  if (extraction.multipleEvents) return { ok: false, code: "multiple_events" };
+  const hidden = pageAttendance(extraction.controls, extraction.lines, TEXT_BASE).hiddenLocation;
+  const ai = needsTextAssist(extraction.candidate, hidden) ? await readEventTextWithAi(text, deps.ai) : null;
+  if (ai?.multiple_events) return { ok: false, code: "multiple_events" };
+  const sanitized = ai ? sanitizeEventAiOutput(ai, text, { now, yearHint: extraction.yearHint }) : null;
+  return finishEvidenceCandidate(extraction, sanitized ? mergeTextAi(extraction.candidate, sanitized) : extraction.candidate, "text_no_event", input.businessId, now, deps);
+}
+
+export async function analyzeEventImage(
+  input: { image: { mediaType: EventImportImageMediaType; base64: string }; businessId: string | null; rateKey: string },
+  deps: EventImportDeps
+): Promise<EventImportAnalysis> {
+  if (!deps.ai) return { ok: false, code: "image_unavailable" };
+  if (deps.isRateLimited(input.rateKey)) return { ok: false, code: "rate_limited" };
+  const now = deps.now();
+  const read = await readEventImageWithAi(input.image, deps.ai);
+  if (!read) return { ok: false, code: "image_no_event" };
+  if (read.output.multiple_events) return { ok: false, code: "multiple_events" };
+  // The image's visible text is the evidence: read deterministically, and
+  // every AI value is checked against it.
+  const extraction = extractTextEventCandidate(read.visibleText, { now, origin: "image" });
+  if (extraction.multipleEvents) return { ok: false, code: "multiple_events" };
+  const sanitized = sanitizeEventAiOutput(read.output, read.visibleText, { now, yearHint: extraction.yearHint });
+  return finishEvidenceCandidate(extraction, mergeTextAi(extraction.candidate, sanitized), "image_no_event", input.businessId, now, deps);
+}
+
+function hiddenVenue(v: ImportedVenue): ImportedVenue {
+  return { name: null, address: null, postalCode: null, city: v.city, state: v.state };
+}
+
+async function finishEvidenceCandidate(
+  extraction: TextExtraction,
+  read: EventCandidate,
+  failure: EventImportFailure,
+  businessId: string | null,
+  now: number,
+  deps: EventImportDeps
+): Promise<EventImportAnalysis> {
+  let candidate = read;
+  // Attendance + location privacy: the text's own wording and explicit
+  // links only (the same reader a web page's text gets) — never the AI.
+  const evidence = combineEvidence(structuredAttendance(null, TEXT_BASE), pageRecordAttendance(null), pageAttendance(extraction.controls, extraction.lines, TEXT_BASE));
+  const withPlace = { ...candidate, occurrences: candidate.place ? [...candidate.occurrences, { start: "", end: null, hasTime: false, venue: candidate.place, evidence: null }] : candidate.occurrences };
+  const locationVisibility = decideLocationVisibility(withPlace, evidence.hiddenLocation);
+  candidate = applyLocationVisibility(candidate, locationVisibility);
+  if (candidate.place && locationVisibility === "hidden") candidate = { ...candidate, place: hiddenVenue(candidate.place) };
+  candidate = { ...candidate, locationVisibility, attendance: decideAttendance(evidence, { lumaEventUrl: null }) };
+
+  const venues = [...candidate.occurrences.map((o) => o.venue), ...(candidate.place ? [candidate.place] : [])];
+  const hasPlace = venues.some((v) => venueKey(v) || v.city);
+  if (!candidate.title || (candidate.occurrences.length === 0 && !hasPlace)) return { ok: false, code: failure };
+
+  candidate = { ...candidate, occurrences: candidate.occurrences.map((o) => ({ ...o, past: isPastDate(o, now) })) };
+  const total = candidate.occurrences.length;
+  const pastCount = candidate.occurrences.filter((o) => o.past).length;
+  const noun = candidate.origin === "image" ? "image" : "text";
+  const warnings: string[] = [];
+  if (total > 0 && pastCount === total) warnings.push("That date has already passed.");
+  else if (pastCount > 0) warnings.push("Some dates have already passed. Future dates are shown below.");
+  if (total === 0) warnings.push("We couldn't find a date. Add it below.");
+  if (extraction.unresolvedRanges > 0 && candidate.sources.dates !== "ai") warnings.push("Part of the schedule couldn't be turned into dates. Please add any missing dates.");
+  if (candidate.occurrences.some((d) => !d.hasTime)) warnings.push("Some dates don't have a start time. Add it below.");
+  if (candidate.occurrences.some((d) => d.hasTime)) warnings.push("Times are shown in Eastern Time. Please check them.");
+  if (!hasPlace && locationVisibility !== "hidden") warnings.push("We couldn't find where it's happening. Add the place below.");
+  if (locationVisibility === "hidden") warnings.push("The organizer shares the exact location only after registration. Findmi won't show or link an address.");
+  if (Object.values(candidate.sources).includes("ai")) warnings.push(`Some details were read from your ${noun} by Findmi. Please check them.`);
+
+  const matches = await matchCandidate(candidate, businessId, deps);
+  candidate = { ...candidate, persistAs: classifyPersistence(candidate, { ownPage: false }) };
+  return { ok: true, kind: "single", candidate, matches, warnings };
+}
+
 /** Advisory matching for ONE Event candidate: existing Findmi Event, each
  * distinct place's Location, organizer Business, this Business's existing
  * schedule item. A failure means "no match found", never a blocked import. */
@@ -313,7 +415,10 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
     const key = venueKey(o.venue);
     if (key && o.venue.name && !places.has(key) && places.size < MAX_PLACE_LOOKUPS) places.set(key, o.venue);
   }
-  const city = candidate.occurrences.find((o) => o.venue.city)?.venue ?? null;
+  // Pasted text / an image may state the place without a readable date.
+  const placeKey = candidate.place ? venueKey(candidate.place) : "";
+  if (candidate.place?.name && placeKey && !places.has(placeKey)) places.set(placeKey, candidate.place);
+  const city = candidate.occurrences.find((o) => o.venue.city)?.venue ?? (candidate.place?.city ? candidate.place : null);
   try {
     const [eventMatch, locationLists, organizer, existing] = await Promise.all([
       first ? deps.matchEvent(draftFor(candidate, first)) : Promise.resolve(null),

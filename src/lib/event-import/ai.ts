@@ -51,6 +51,34 @@ export const EventAiSchema = z.object({
 });
 export type EventAiOutput = z.infer<typeof EventAiSchema>;
 
+// ── Paste Details / Upload ─────────────────────────────────────────────
+// The same grounded extraction, for text a Business pasted or an image it
+// uploaded. Same schema (plus a multiple-Events flag, and for an image the
+// visible text it was read from); same sanitizer — every value must be
+// evidenced by the text (for an image: by the text visible in it), or it is
+// dropped. How people get in and whether the address is public are never
+// read here: those stay evidence-only (the deterministic reader) on the text.
+export const EVENT_AI_EVIDENCE_PROMPT = `You read details about ONE event that a business owner pasted (a social post caption, an email, a newsletter, a press release, copied website text, a text message) or uploaded as an image (a flyer, an invitation, a screenshot), and report the event's facts so they can review them before anything is saved.
+
+Report only what the material states. If a fact is not stated, return null for it — never estimate, infer or fill in a likely value. Do not invent an organizer, host, address, link or date.
+
+Schedule: return one entry per schedule line, keeping each date together with the time and place written with it — never pair a date with a time or place from a different line. For each entry, copy the exact line(s) it comes from into "evidence". For a single date, give "date" as YYYY-MM-DD and times as 24-hour HH:MM. For a recurring schedule, return ONE entry whose evidence contains those lines exactly as written and leave "date" null.
+
+Organizer: only a person or organization the material explicitly calls the organizer, host or presenter ("organized by", "hosted by", "presented by", "produced by"). A brand that is featured, named in the title, sampled or sponsoring is not the organizer unless the material says so. Copy the phrase that says so into "organizer_evidence".
+
+Multiple events: set "multiple_events" to true only when the material describes two or more SEPARATE events (different event names). One event with several dates or stops is one event.`;
+
+export const EVENT_AI_IMAGE_INSTRUCTIONS = `This is an image. First copy every piece of event-related text visible in it into "visible_text", one line per visual line, exactly as written (keep its spelling and capitalization). Every other value you return must be supported by that visible text — the evidence lines must be copied from it.`;
+
+export const EventAiTextSchema = EventAiSchema.extend({ multiple_events: z.boolean() });
+export const EventAiImageSchema = EventAiTextSchema.extend({ visible_text: z.string() });
+export type EventAiTextOutput = z.infer<typeof EventAiTextSchema>;
+export type EventAiImageOutput = z.infer<typeof EventAiImageSchema>;
+export const EVENT_AI_IMAGE_TIMEOUT_MS = 30_000;
+const VISIBLE_TEXT_MAX = 12_000;
+
+export type EventImportImageMediaType = "image/jpeg" | "image/png" | "image/webp";
+
 /** The narrow client surface used here (injectable for tests). */
 export interface EventAiClient {
   messages: { parse: Anthropic["messages"]["parse"] };
@@ -213,5 +241,64 @@ export async function assistWithAi(
     return { candidate: next, called: true };
   } catch {
     return { candidate, called: true };
+  }
+}
+
+/** Paste Details — reads pasted text. Null when AI is unavailable or the
+ * call fails (the deterministic reading still stands). Never throws. */
+export async function readEventTextWithAi(text: string, client: EventAiClient | null = defaultEventAiClient()): Promise<EventAiTextOutput | null> {
+  if (!client || !text.trim()) return null;
+  try {
+    const response = await client.messages.parse(
+      {
+        model: getModel(),
+        max_tokens: 4000,
+        system: EVENT_AI_EVIDENCE_PROMPT,
+        messages: [{ role: "user", content: `<pasted_text>\n${text}\n</pasted_text>` }],
+        output_config: { effort: "low", format: zodOutputFormat(EventAiTextSchema) },
+      },
+      { timeout: EVENT_AI_TIMEOUT_MS, maxRetries: 0 }
+    );
+    if (response.stop_reason === "refusal" || !response.parsed_output) return null;
+    return response.parsed_output as EventAiTextOutput;
+  } catch {
+    return null;
+  }
+}
+
+/** Upload — reads an uploaded image (multimodal). Returns the text visible
+ * in it (what every other value is checked against) plus the reading, or
+ * null when AI is unavailable / fails / the image shows no text. The image
+ * is sent for this one reading only — never stored. Never throws. */
+export async function readEventImageWithAi(
+  image: { mediaType: EventImportImageMediaType; base64: string },
+  client: EventAiClient | null = defaultEventAiClient()
+): Promise<{ visibleText: string; output: EventAiImageOutput } | null> {
+  if (!client || !image.base64) return null;
+  try {
+    const response = await client.messages.parse(
+      {
+        model: getModel(),
+        max_tokens: 6000,
+        system: EVENT_AI_EVIDENCE_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } },
+              { type: "text", text: EVENT_AI_IMAGE_INSTRUCTIONS },
+            ],
+          },
+        ],
+        output_config: { effort: "low", format: zodOutputFormat(EventAiImageSchema) },
+      },
+      { timeout: EVENT_AI_IMAGE_TIMEOUT_MS, maxRetries: 0 }
+    );
+    if (response.stop_reason === "refusal" || !response.parsed_output) return null;
+    const output = response.parsed_output as EventAiImageOutput;
+    const visibleText = (output.visible_text ?? "").replace(/\r\n?/g, "\n").slice(0, VISIBLE_TEXT_MAX).trim();
+    return visibleText ? { visibleText, output } : null;
+  } catch {
+    return null;
   }
 }

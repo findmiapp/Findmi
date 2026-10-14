@@ -8,6 +8,8 @@ import ChevronIcon from "@/components/ChevronIcon";
 import EventImporter from "./EventImporter";
 
 export const dynamic = "force-dynamic";
+// Upload reads a flyer / screenshot with the multimodal AI step (up to 30s).
+export const maxDuration = 60;
 
 /** Event Import V1 — Business entry. `?intent=participating` comes from
  * Where I'll Be, `?intent=hosting` from Host an Event; without one the

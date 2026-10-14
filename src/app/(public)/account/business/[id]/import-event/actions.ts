@@ -5,7 +5,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { getHostEventEligibility } from "@/lib/entitlements";
-import { analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
+import { analyzeEventImage, analyzeEventText, analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
+import { readEventImportImage } from "@/lib/event-import/image-source";
 import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { normalizeReview, persistEventImport, type PersistDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
@@ -45,6 +46,32 @@ export async function analyzeEventImport(businessId: string, url: string): Promi
   try {
     // Consumer-facing: the plain failure code only, never fetch diagnostics.
     return publicImportAnalysis(await analyzeEventUrl({ url, businessId, rateKey: ctx.user.id }, defaultEventImportDeps(ctx.admin)));
+  } catch {
+    return { ok: false, code: "server" };
+  }
+}
+
+/** Paste Details — analyze pasted text through the same engine (same
+ * per-person rate limit). Writes nothing. */
+export async function analyzeEventImportText(businessId: string, text: string): Promise<EventImportAnalysis> {
+  const ctx = await authorize(businessId);
+  if (!ctx) return { ok: false, code: "server" };
+  try {
+    return publicImportAnalysis(await analyzeEventText({ text: typeof text === "string" ? text : "", businessId, rateKey: ctx.user.id }, defaultEventImportDeps(ctx.admin)));
+  } catch {
+    return { ok: false, code: "server" };
+  }
+}
+
+/** Upload — analyze one flyer / screenshot through the same engine (same
+ * per-person rate limit). The image is read once and never stored. */
+export async function analyzeEventImportImage(businessId: string, form: FormData): Promise<EventImportAnalysis> {
+  const ctx = await authorize(businessId);
+  if (!ctx) return { ok: false, code: "server" };
+  try {
+    const image = await readEventImportImage(form instanceof FormData ? form.get("image") : null);
+    if (!image.ok) return { ok: false, code: image.code };
+    return publicImportAnalysis(await analyzeEventImage({ image: image.image, businessId, rateKey: ctx.user.id }, defaultEventImportDeps(ctx.admin)));
   } catch {
     return { ok: false, code: "server" };
   }

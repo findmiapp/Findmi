@@ -1,15 +1,18 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
-import { analyzeEventImport, commitEventImport } from "./actions";
+import { analyzeEventImport, analyzeEventImportImage, analyzeEventImportText, commitEventImport } from "./actions";
 import MultiEventImport from "./MultiEventImport";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
 import { AttendanceEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 import {
   EVENT_IMPORT_FAILURE_COPY,
+  EVENT_IMPORT_IMAGE_ACCEPT,
+  EVENT_IMPORT_IMAGE_MAX_BYTES,
   type EventCandidate,
+  type EventImportAnalysis,
   type EventImportIntent,
   type EventImportMatches,
   type EventImportReview,
@@ -19,7 +22,8 @@ import {
 } from "@/lib/event-import/types";
 import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage } from "@/lib/event-import/review";
 
-/** Event Import V1 — Business importer: paste a link → Findmi reads it →
+/** Event Import V1 — Business importer: a link, pasted details or an
+ * uploaded flyer/screenshot → Findmi reads it →
  * Review (everything editable, existing Findmi records clearly marked) →
  * Add. Nothing is saved before the Business confirms Review.
  *
@@ -30,7 +34,19 @@ import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage } fr
  *
  * V1C: a link that lists many distinct Events (an organizer calendar)
  * opens the several-Events flow instead (MultiEventImport) — never just
- * its first Event. */
+ * its first Event.
+ *
+ * Unified Import: From Link / Paste Details / Upload are three INPUTS to the
+ * same engine — each returns the same analysis, reviewed here with the same
+ * Review and saved through the same commit. */
+
+type ImportMethod = "link" | "text" | "image";
+const METHODS: { key: ImportMethod; label: string }[] = [
+  { key: "link", label: "From Link" },
+  { key: "text", label: "Paste Details" },
+  { key: "image", label: "Upload" },
+];
+const PASTE_MAX = 12000;
 
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60";
@@ -67,6 +83,10 @@ export default function EventImporter({
 }) {
   const [intent, setIntent] = useState<EventImportIntent | null>(initialIntent);
   const [url, setUrl] = useState("");
+  const [method, setMethod] = useState<ImportMethod>("link");
+  const [pasted, setPasted] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [step, setStep] = useState<Step>({ kind: "url", error: null });
   const [review, setReview] = useState<EventImportReview | null>(null);
   const [useImage, setUseImage] = useState(true);
@@ -76,6 +96,25 @@ export default function EventImporter({
   const [analyzing, startAnalyze] = useTransition();
   const [saving, startSave] = useTransition();
   const urlRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // The local preview of a chosen image (never uploaded anywhere but the
+  // one analysis request). A data: URL — the site's CSP allows data: images,
+  // not blob:.
+  useEffect(() => {
+    setImagePreview(null);
+    if (!imageFile) return;
+    let live = true;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (live && typeof reader.result === "string") setImagePreview(reader.result);
+    };
+    reader.readAsDataURL(imageFile);
+    return () => {
+      live = false;
+      reader.abort();
+    };
+  }, [imageFile]);
 
   // ── How is the Business involved? (only when no entry point decided it) ──
   if (!intent) {
@@ -83,7 +122,7 @@ export default function EventImporter({
       <div className="flex flex-col gap-4">
         <header>
           <h1 className="font-display text-page-title font-bold text-primary">Import an Event</h1>
-          <p className="mt-1 text-body text-muted">Paste a link and Findmi fills in the details.</p>
+          <p className="mt-1 text-body text-muted">Add a link, paste the details or upload a flyer, and Findmi fills in the details.</p>
         </header>
         <section aria-labelledby="involvement" className="flex flex-col gap-2">
           <h2 id="involvement" className="text-card-title font-semibold text-primary">
@@ -114,36 +153,76 @@ export default function EventImporter({
 
   const copy = INTENT_COPY[intent];
 
+  /** Every input method lands here: the same analysis → the same Review. */
+  function showAnalysis(result: EventImportAnalysis) {
+    if (!result.ok) {
+      setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY[result.code] });
+      return;
+    }
+    if (result.kind === "multi") {
+      setReview(null);
+      setSaveError(null);
+      setStep({ kind: "multi", source: result.source, events: result.events, warnings: result.warnings });
+      return;
+    }
+    const defaults = reviewDefaults(result.candidate, result.matches, intent!, businessName);
+    setReview(defaults);
+    setInitialPast(pastReviewOccurrences(result.candidate, result.matches));
+    setReviewVersion((v) => v + 1);
+    setUseImage(Boolean(result.candidate.imageUrl));
+    setSaveError(null);
+    setStep({ kind: "review", candidate: result.candidate, matches: result.matches, warnings: result.warnings });
+  }
+
   function analyze(e: React.FormEvent) {
     e.preventDefault();
-    if (!url.trim()) {
+    if (method === "link" && !url.trim()) {
       setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY.invalid_url });
+      return;
+    }
+    if (method === "text" && !pasted.trim()) {
+      setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY.text_no_event });
+      return;
+    }
+    if (method === "image" && !imageFile) {
+      setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY.unsupported_image });
       return;
     }
     startAnalyze(async () => {
       try {
-        const result = await analyzeEventImport(businessId, url);
-        if (!result.ok) {
-          setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY[result.code] });
-          return;
+        if (method === "link") showAnalysis(await analyzeEventImport(businessId, url));
+        else if (method === "text") showAnalysis(await analyzeEventImportText(businessId, pasted));
+        else {
+          const form = new FormData();
+          form.append("image", imageFile!);
+          showAnalysis(await analyzeEventImportImage(businessId, form));
         }
-        if (result.kind === "multi") {
-          setReview(null);
-          setSaveError(null);
-          setStep({ kind: "multi", source: result.source, events: result.events, warnings: result.warnings });
-          return;
-        }
-        const defaults = reviewDefaults(result.candidate, result.matches, intent!, businessName);
-        setReview(defaults);
-        setInitialPast(pastReviewOccurrences(result.candidate, result.matches));
-        setReviewVersion((v) => v + 1);
-        setUseImage(Boolean(result.candidate.imageUrl));
-        setSaveError(null);
-        setStep({ kind: "review", candidate: result.candidate, matches: result.matches, warnings: result.warnings });
       } catch {
         setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY.server });
       }
     });
+  }
+
+  function chooseMethod(next: ImportMethod) {
+    setMethod(next);
+    setStep({ kind: "url", error: null });
+  }
+
+  function chooseImage(file: File | null) {
+    if (!file) return;
+    // Quick checks here; the server re-checks the real bytes.
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name)) {
+      setImageFile(null);
+      setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY.unsupported_image });
+      return;
+    }
+    if (file.size > EVENT_IMPORT_IMAGE_MAX_BYTES) {
+      setImageFile(null);
+      setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY.image_too_large });
+      return;
+    }
+    setImageFile(file);
+    setStep({ kind: "url", error: null });
   }
 
   function save() {
@@ -168,7 +247,9 @@ export default function EventImporter({
     setReview(null);
     setSaveError(null);
     setStep({ kind: "url", error: null });
-    requestAnimationFrame(() => urlRef.current?.focus());
+    setPasted("");
+    setImageFile(null);
+    requestAnimationFrame(() => (method === "link" ? urlRef.current?.focus() : undefined));
   }
 
   const header = (
@@ -223,40 +304,119 @@ export default function EventImporter({
     );
   }
 
-  // ── Paste a link ──
+  // ── Import Event: From Link / Paste Details / Upload ──
   if (step.kind === "url" || !review) {
     const error = step.kind === "url" ? step.error : null;
+    const errorId = "event-import-error";
     return (
       <div className="flex flex-col gap-4">
         {header}
         <form onSubmit={analyze} noValidate className={`${sectionClass} flex flex-col gap-3`}>
-          <label htmlFor="event-link" className="text-card-title font-semibold text-primary">
-            Import From Link
-          </label>
-          <p className="-mt-2 text-metadata text-muted">Paste the event&rsquo;s page, for example on Eventbrite, Luma or the organizer&rsquo;s website. You&rsquo;ll review everything before it&rsquo;s added.</p>
-          <input
-            ref={urlRef}
-            id="event-link"
-            type="url"
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://"
-            className={inputClass}
-            aria-invalid={Boolean(error)}
-            aria-describedby={error ? "event-link-error" : undefined}
-            disabled={analyzing}
-          />
+          <h2 className="text-card-title font-semibold text-primary">Import Event</h2>
+          <div role="group" aria-label="How to import" className="grid grid-cols-3 gap-1 rounded-xl bg-black/[0.04] p-1">
+            {METHODS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                aria-pressed={method === m.key}
+                onClick={() => chooseMethod(m.key)}
+                disabled={analyzing}
+                className={`h-10 min-w-0 truncate rounded-lg px-1 text-metadata font-semibold transition ${
+                  method === m.key ? "bg-white text-primary shadow-sm" : "text-muted hover:text-secondary"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {method === "link" && (
+            <>
+              <label htmlFor="event-link" className="sr-only">
+                Event Link
+              </label>
+              <p className="text-metadata text-muted">Paste the event&rsquo;s page, for example on Eventbrite, Luma or the organizer&rsquo;s website. You&rsquo;ll review everything before it&rsquo;s added.</p>
+              <input
+                ref={urlRef}
+                id="event-link"
+                type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://"
+                className={inputClass}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
+                disabled={analyzing}
+              />
+            </>
+          )}
+
+          {method === "text" && (
+            <>
+              <label htmlFor="event-details" className="text-metadata text-muted">
+                Paste the event details from a caption, email, newsletter or listing. Include the name, date, time and place if you have them.
+              </label>
+              <textarea
+                id="event-details"
+                rows={9}
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                maxLength={PASTE_MAX}
+                autoCapitalize="sentences"
+                placeholder={"Event name\nDate and time\nVenue and address\n\nDescription…"}
+                className={`${inputClass} min-h-[12rem] resize-y`}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
+                disabled={analyzing}
+              />
+            </>
+          )}
+
+          {method === "image" && (
+            <>
+              <p className="text-metadata text-muted">Upload a flyer, invitation or screenshot. Findmi reads the event details from it. The image is only used to read the details.</p>
+              <input
+                ref={fileRef}
+                id="event-image"
+                type="file"
+                accept={EVENT_IMPORT_IMAGE_ACCEPT}
+                onChange={(e) => {
+                  chooseImage(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+                className="sr-only"
+                disabled={analyzing}
+              />
+              <label
+                htmlFor="event-image"
+                aria-describedby={error ? errorId : undefined}
+                className="flex min-h-[9rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-findmi/40 bg-findmi-50/40 p-4 text-center transition hover:border-findmi"
+              >
+                {imagePreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- a local preview of the chosen file
+                  <img src={imagePreview} alt="Chosen image" className="max-h-56 w-auto max-w-full rounded-xl object-contain" />
+                ) : (
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-findmi-700">
+                    <NavIcon name="calendar" className="h-6 w-6" />
+                  </span>
+                )}
+                <span className="text-body font-semibold text-primary">{imageFile ? "Choose a Different Image" : "Choose an Image"}</span>
+                <span className="max-w-full truncate text-microcopy text-subtle">{imageFile ? imageFile.name : "JPG, PNG or WebP · up to 5MB"}</span>
+              </label>
+            </>
+          )}
+
           {error && (
-            <p id="event-link-error" role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-metadata text-red-700">
+            <p id={errorId} role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-metadata text-red-700">
               {error}
             </p>
           )}
           <button type="submit" disabled={analyzing} className={primaryButtonClass}>
-            {analyzing ? "Reading the Page…" : "Find Event Details"}
+            {analyzing ? (method === "link" ? "Reading the Page…" : method === "text" ? "Reading the Details…" : "Reading the Image…") : "Find Event Details"}
           </button>
         </form>
         <Link href={manualHrefs[intent]} className={secondaryButtonClass}>
@@ -376,6 +536,11 @@ export default function EventImporter({
             />
           </div>
         )}
+        {candidate.origin === "image" && !joiningExisting && (
+          <p className="rounded-lg bg-black/[0.03] px-3 py-2 text-metadata text-muted">
+            Your uploaded image was only used to read these details. It won&rsquo;t be shown as the Event image.
+          </p>
+        )}
         {review.imageUrl && !joiningExisting && (
           <label className="flex items-center gap-2 text-metadata text-secondary">
             <input type="checkbox" checked={useImage} onChange={(e) => setUseImage(e.target.checked)} className="h-5 w-5 accent-findmi" />
@@ -414,7 +579,7 @@ export default function EventImporter({
             ? businessName
             : matches.organizerBusiness
               ? `${matches.organizerBusiness.name} (on Findmi)`
-              : (review.organizer ?? "Not listed on the page")}
+              : (review.organizer ?? (candidate.origin === "text" || candidate.origin === "image" ? "Not listed" : "Not listed on the page"))}
         </p>
       </section>
 
@@ -434,7 +599,7 @@ export default function EventImporter({
           {saving ? "Adding…" : `Add To ${businessName}`}
         </button>
         <button type="button" onClick={addAnother} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
-          Try Another Link
+          {candidate.origin === "text" || candidate.origin === "image" ? "Start Over" : "Try Another Link"}
         </button>
         <Link href={manualHrefs[intent]} className="py-1 text-center text-metadata font-semibold text-muted hover:text-secondary">
           {intent === "hosting" ? "Create Manually Instead" : "Add Manually Instead"}

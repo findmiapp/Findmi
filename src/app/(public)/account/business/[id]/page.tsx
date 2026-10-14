@@ -2422,16 +2422,16 @@ export default async function ManageBusinessPage({
                   </Link>
                 </div>
 
-                {/* Event Import V1 — import-first: paste the event's link and
-                    Findmi fills in the details (participating context). The
+                {/* Event Import V1 — import-first: a link, pasted details or a
+                    flyer, and Findmi fills in the details (participating context). The
                     Findmi search and manual entry below stay as they were. */}
                 <Link
                   href={`/account/business/${id}/import-event?intent=participating`}
                   className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]"
                 >
-                  Import From Link
+                  Import Event
                 </Link>
-                <p className="mt-1.5 text-center text-microcopy text-subtle">Paste an event page and Findmi fills in the details.</p>
+                <p className="mt-1.5 text-center text-microcopy text-subtle">Use a link, pasted details or a flyer. Findmi fills in the details.</p>
                 <p className="mt-4 text-label font-bold uppercase text-subtle">Or Find It on Findmi</p>
 
                 {requestOptions.length > 0 ? (

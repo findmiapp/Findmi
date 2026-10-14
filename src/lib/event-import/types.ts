@@ -15,6 +15,14 @@ import type { LocationVisibility, RsvpCta } from "../event-attendance";
 
 export type EventImportIntent = "participating" | "hosting";
 
+/** Unified Event Import — the input methods feeding the ONE engine. */
+export type EventImportOrigin = "link" | "text" | "image";
+
+/** Upload (V1): flyers / screenshots / invitations. The bytes decide the
+ * type server-side (lib/imageUploadValidation.ts); this is the picker hint. */
+export const EVENT_IMPORT_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
+export const EVENT_IMPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
 export function parseEventImportIntent(value: unknown): EventImportIntent | null {
   return value === "participating" || value === "hosting" ? value : null;
 }
@@ -55,8 +63,15 @@ export interface EventCandidate {
   title: string | null;
   description: string | null;
   imageUrl: string | null;
-  /** The page the Business pasted (after redirects), always https. */
+  /** The page the Business pasted (after redirects), always https. Empty
+   * for pasted text / an uploaded image — never invented. */
   sourceUrl: string;
+  /** Which input fed this candidate (ephemeral; never stored): a link, text
+   * the Business pasted, or an image it uploaded. Absent = a link. */
+  origin?: EventImportOrigin;
+  /** The Event's stated place when no date carries it (pasted text / an
+   * image that gives an address but no readable date). */
+  place?: ImportedVenue;
   /** "Eventbrite", "Luma", … when the host is recognisable. */
   platform: string | null;
   /** Chronological; each with its own place. */
@@ -116,7 +131,15 @@ export type EventImportFailure =
   | "no_event"
   | "calendar_unreadable"
   | "rate_limited"
-  | "server";
+  | "server"
+  // Paste Details / Upload
+  | "text_no_event"
+  | "text_too_long"
+  | "image_no_event"
+  | "unsupported_image"
+  | "image_too_large"
+  | "image_unavailable"
+  | "multiple_events";
 
 /** V1C — one Event found on a page that lists many distinct Events. Each
  * is matched on its own; nothing is shared between them. */
@@ -162,6 +185,13 @@ export const EVENT_IMPORT_FAILURE_COPY: Record<EventImportFailure, string> = {
   calendar_unreadable: "We found an Event calendar, but couldn't read its Events yet. Try a link to one Event, or add it manually.",
   rate_limited: "You've imported a lot of links in a short time. Please wait a few minutes and try again.",
   server: "Something went wrong on our side. Please try again.",
+  text_no_event: "We couldn't find enough Event information in that text. Include the Event's name, date and place.",
+  text_too_long: "That's a lot of text. Paste just the Event's details.",
+  image_no_event: "We couldn't find enough Event information in that image.",
+  unsupported_image: "Upload a JPG, PNG or WebP image.",
+  image_too_large: "That image is too large. Upload one under 5MB.",
+  image_unavailable: "Reading images isn't available right now. Paste the details instead.",
+  multiple_events: "This looks like it contains multiple Events. Try one Event at a time.",
 };
 
 export interface ReviewPlace {

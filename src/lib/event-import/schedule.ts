@@ -352,3 +352,19 @@ export function yearHintFrom(lines: string[]): number | null {
   for (const l of lines.slice(0, MAX_LINES)) for (const m of l.matchAll(/\b(20\d{2})\b/g)) years.add(Number(m[1]));
   return years.size === 1 ? [...years][0] : null;
 }
+
+/** Paste Details / Upload — a line that is ONLY one date ("OCT 15",
+ * "Thursday, October 15, 2026", "10/15") → YYYY-MM-DD, else null. Flyers and
+ * captions often put the date on its own line, which the schedule grammar
+ * above (date + time/place on one line) deliberately skips on web pages. */
+export function bareDate(line: string, ctx: ScheduleContext): string | null {
+  const clean = line.replace(/\u00A0/g, " ").replace(/^[\s•*·▪◦>|–—-]+/, "").trim();
+  if (!clean || clean.length > 60) return null;
+  const tokens = dateTokens(clean);
+  if (tokens.length !== 1 || tokens[0].index > 4) return null;
+  const rest = (clean.slice(0, tokens[0].index) + clean.slice(tokens[0].end)).replace(/[\s,.;:–—\-|·•]+/g, "");
+  if (rest) return null;
+  const t = tokens[0];
+  const year = t.year ?? resolveYear(t.month, t.day, ctx);
+  return validDay(year, t.month, t.day) ? ymd(year, t.month, t.day) : null;
+}
