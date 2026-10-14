@@ -144,6 +144,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
     .filter(Boolean)
     .join(", ");
   const mapsQuery = encodeURIComponent([location.name, fullAddress].filter(Boolean).join(", "));
+  // Address card: street on line 1 (stronger), "City, ST ZIP" on line 2
+  // (secondary but readable) — from the structured fields, never a split
+  // of the joined string. Either line alone still renders on its own.
+  const addressLine1 = location.address?.trim() || null;
+  const addressLine2 = cityStateZip(location.city, location.state, location.postal_code) || null;
+  const addressBlock = (
+    <span className="min-w-0 flex-1 leading-snug">
+      {addressLine1 && <span className="block break-words text-sm font-semibold text-ink">{addressLine1}</span>}
+      {addressLine2 && <span className="block break-words text-sm text-ink/75">{addressLine2}</span>}
+    </span>
+  );
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
   const showHours = hasAnyHours(location.hours);
   const website = isSafeExternalUrl(location.website_url) ? location.website_url : null;
@@ -331,13 +342,13 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-left transition hover:border-ink/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi"
             >
               <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              <span className="min-w-0 flex-1 text-sm leading-snug text-ink/70">{fullAddress}</span>
+              {addressBlock}
               <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/40" />
             </a>
           ) : (
             <p className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl border border-black/10 bg-white px-3.5 py-2.5">
               <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              <span className="min-w-0 flex-1 text-sm leading-snug text-ink/70">{fullAddress}</span>
+              {addressBlock}
             </p>
           ))}
         {/* Location Final Hero Hierarchy pass — Hours as one full-width
