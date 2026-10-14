@@ -10,6 +10,8 @@
 // instance), Appearance (a Business's participation), host_business_id
 // (hosting). A host never gets a manufactured Appearance.
 import type { EventImportFetchDiagnostics } from "./diagnostics";
+import type { ImportedAttendance } from "./attendance";
+import type { LocationVisibility, RsvpCta } from "../event-attendance";
 
 export type EventImportIntent = "participating" | "hosting";
 
@@ -68,6 +70,12 @@ export interface EventCandidate {
    * Business takes part in; "schedule_item" otherwise → the Business's own
    * standalone schedule item, exactly as before. */
   persistAs?: "event" | "schedule_item";
+  /** Attendance evidence (./attendance.ts) — only what the source states;
+   * never filled by the AI step. Absent = unknown. */
+  attendance?: ImportedAttendance;
+  /** What the source made public about the place (exact / broad / hidden /
+   * none). "hidden" occurrences carry no venue name or street address. */
+  locationVisibility?: LocationVisibility;
 }
 
 export const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };
@@ -201,6 +209,13 @@ export interface EventImportReview {
   /** Participating only: save as a canonical Findmi Event (from Analyze's
    * persistAs) rather than a standalone schedule item. Re-checked on save. */
   asEvent?: boolean;
+  /** Attendance action for a new Event: "tickets" → Get Tickets, "rsvp" /
+   * "register" → the RSVP action with that label; null/absent → none.
+   * Re-validated server-side (https link required). */
+  attendance?: { cta: "tickets" | RsvpCta | null; url: string | null } | null;
+  /** From Analyze; "hidden" means the organizer withholds the address — no
+   * venue, street address or Findmi Location is saved. */
+  locationVisibility?: LocationVisibility | null;
 }
 
 export type EventImportOutcome =

@@ -102,7 +102,7 @@ test("security: Contact data never reaches public code, a Client Component's imp
 
 test("security: no migration, grant, policy or public Business write introduced", () => {
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.deepEqual(files.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql"]);
+  assert.deepEqual(files.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql", "20261014010000_event_attendance_cta_and_location_visibility.sql" /* Event attendance pass */]);
   for (const f of [...walk(C), join("src", "lib", "admin", "bd", "contacts.ts")]) {
     const src = readFileSync(f, "utf8");
     assert.doesNotMatch(src, /\bgrant\b|\bpolicy\b|row level security|SUPABASE_SERVICE_ROLE_KEY|NEXT_PUBLIC_SUPABASE/i, f);

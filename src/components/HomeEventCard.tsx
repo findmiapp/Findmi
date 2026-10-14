@@ -11,6 +11,7 @@ import EventShareButton from "./EventShareButton";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { rsvpActionLabel } from "@/lib/event-attendance";
 
 // Homepage discovery event card (2026 feed-builder pass, Part 2) —
 // deliberately NOT built on EventCard/PostCard (both kept untouched/safe
@@ -39,7 +40,7 @@ function resolvePrimaryCta(
   event: FindmiEvent
 ): { label: string; url: string; eventName: "click_tickets" | "click_rsvp" | "click_apply_to_vend" } | null {
   if (event.tickets_enabled && event.tickets_url) return { label: "Get Tickets", url: event.tickets_url, eventName: "click_tickets" };
-  if (event.rsvp_enabled && event.rsvp_url) return { label: "RSVP", url: event.rsvp_url, eventName: "click_rsvp" };
+  if (event.rsvp_enabled && event.rsvp_url) return { label: rsvpActionLabel(event.rsvp_cta), url: event.rsvp_url, eventName: "click_rsvp" };
   const deadlinePassed = event.vendor_application_deadline ? new Date(event.vendor_application_deadline) < new Date() : false;
   if (event.vendor_applications_enabled && event.vendor_application_url && !deadlinePassed) {
     return { label: "Apply to Vend", url: event.vendor_application_url, eventName: "click_apply_to_vend" };

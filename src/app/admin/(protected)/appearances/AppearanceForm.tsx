@@ -46,6 +46,16 @@ export default function AppearanceForm({
           createLabel="New Business"
         />
 
+        {/* The link this form was rendered with — saveAppearance refuses
+            the save if the stored link has changed since (stale copy after
+            Convert To Event). See lib/admin/appearance-stale-link.ts. */}
+        {appearance && (
+          <>
+            <input type="hidden" name="loaded_event_id" value={appearance.event_id ?? ""} />
+            <input type="hidden" name="loaded_event_occurrence_id" value={appearance.event_occurrence_id ?? ""} />
+          </>
+        )}
+
         <AppearanceEventFields
           initialEvent={initialEvent}
           initialOccurrenceId={appearance?.event_occurrence_id ?? null}

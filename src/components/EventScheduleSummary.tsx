@@ -11,6 +11,7 @@ import {
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import { EndedStatus, FactsBand, QuietStatus, WhenFact, WhereFact } from "./event/KeyFacts";
+import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -71,7 +72,10 @@ export default function EventScheduleSummary({
   historical,
   eventId,
   directionsEnabled,
+  locationHidden = false,
 }: {
+  /** The organizer shares the address only after registration. */
+  locationHidden?: boolean;
   canonicalLocation: EventLocationCardLocation | null;
   /** Public Event V2.1 — when no date is upcoming any more, the event's
    * real historical schedule (resolved server-side from its past dates)
@@ -144,7 +148,9 @@ export default function EventScheduleSummary({
     <FactsBand
       when={<WhenFact dateLabel={dateRangeLabel} detail={timeLabel} count={countLabel} status={status} />}
       where={
-        location ? (
+        locationHidden ? (
+          <WhereFact name={HIDDEN_LOCATION_COPY} lines={[cityState(selected.city, selected.state)]} />
+        ) : location ? (
           <WhereFact name={location.name} href={`/location/${location.slug}`} lines={addressLines} />
         ) : (
           <WhereFact name={manualVenueName} lines={manualAddressLines} />

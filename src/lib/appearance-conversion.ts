@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EventCandidate, ImportedOccurrence } from "./event-import/types";
 import { NEW_EVENT_PUBLICATION } from "./event-publication";
+import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance } from "./event-import/attendance";
 
 /** Rich Event Persistence — the domain operation that upgrades ONE existing
  * standalone schedule item (an Appearance with no Event) into the canonical
@@ -30,7 +31,10 @@ import { NEW_EVENT_PUBLICATION } from "./event-publication";
  * date/time); otherwise nothing is written. Then the Event takes the
  * source's name, description, link, organizer name and (re-hosted) image,
  * and the date its source time — while the item's confirmed Findmi
- * Location is always kept. An image that can't be recovered is reported,
+ * Location is kept, EXCEPT when the source withholds the exact address
+ * until registration (or states only broad geography): then no venue or
+ * Location is carried over (location privacy). An evidenced attendance
+ * action (Get Tickets / RSVP / Register) is saved with the Event. An image that can't be recovered is reported,
  * never replaced by other media. Organizer is a name only: it never makes
  * anyone host or owner. */
 
@@ -219,10 +223,30 @@ export async function convertAppearanceToEvent(
   // Findmi Location (and its venue text) is always kept.
   const startAt = sourceDate?.hasTime ? sourceDate.start : a.start_at;
   const endAt = sourceDate?.hasTime && sourceDate.end && Date.parse(sourceDate.end) > Date.parse(sourceDate.start) ? sourceDate.end : a.end_at;
-  const keepPlace = Boolean(a.location_id) || !sourceDate || !(sourceDate.venue.name || sourceDate.venue.address);
-  const place = keepPlace
-    ? { venue_name: a.venue_name, address: a.address, city: a.city, state: a.state }
-    : { venue_name: sourceDate!.venue.name, address: sourceDate!.venue.address, city: sourceDate!.venue.city ?? a.city, state: sourceDate!.venue.state ?? a.state };
+  // Location privacy: when the source withholds the exact address until
+  // registration ("hidden") or only states broad geography ("broad"), the
+  // item's earlier venue / Findmi Location is NOT carried onto the Event —
+  // Findmi never exposes a precise place the organizer didn't publish, nor
+  // infers one from history. Only the public city/state are kept.
+  const visibility = recovered?.locationVisibility ?? null;
+  const withhold = visibility === "hidden" || visibility === "broad";
+  if (withhold && (a.location_id || a.venue_name || a.address)) {
+    warnings.push(
+      visibility === "hidden"
+        ? "The source shares the exact location only after registration, so the item's earlier venue and Findmi Location were not kept."
+        : "The source only states broad geography, so the item's earlier venue and Findmi Location were not kept."
+    );
+  }
+  const keepPlace = !withhold && (Boolean(a.location_id) || !sourceDate || !(sourceDate.venue.name || sourceDate.venue.address));
+  const place = withhold
+    ? { venue_name: null, address: null, city: sourceDate?.venue.city ?? a.city, state: sourceDate?.venue.state ?? a.state }
+    : keepPlace
+      ? { venue_name: a.venue_name, address: a.address, city: a.city, state: a.state }
+      : { venue_name: sourceDate!.venue.name, address: sourceDate!.venue.address, city: sourceDate!.venue.city ?? a.city, state: sourceDate!.venue.state ?? a.state };
+  const locationId = withhold ? null : a.location_id;
+  const coords = withhold ? { latitude: null, longitude: null } : { latitude: a.latitude, longitude: a.longitude };
+  // The source's evidenced attendance action (never AI-derived).
+  const attendance = normalizeReviewedAttendance(recovered?.attendance ?? null);
 
   const { data: created, error } = await admin
     .from("events")
@@ -239,8 +263,8 @@ export async function convertAppearanceToEvent(
       external_url: recovered?.sourceUrl || a.external_url,
       cover_image_url: cover,
       ...place,
-      latitude: a.latitude,
-      longitude: a.longitude,
+      ...coords,
+      ...attendanceEventColumns(attendance),
       market_id: a.market_id,
       market_area_id: a.market_area_id,
     })
@@ -248,6 +272,12 @@ export async function convertAppearanceToEvent(
     .single();
   if (error || !created) return { status: "error", error: "event_insert_failed" };
   const eventId = (created as { id: string }).id;
+  // Newer columns, best-effort (works before their migration is applied).
+  const extras = attendanceExtraColumns(attendance, visibility);
+  if (Object.keys(extras).length > 0) {
+    const { error: extrasError } = await admin.from("events").update(extras).eq("id", eventId);
+    if (extrasError) console.warn("[appearance-conversion] attendance/location extras not saved", { eventId, reason: extrasError.message });
+  }
   const undo = async (why: string): Promise<ConvertResult> => {
     await admin.from("events").update({ trashed_at: new Date().toISOString() }).eq("id", eventId);
     return { status: "error", error: why };
@@ -259,7 +289,7 @@ export async function convertAppearanceToEvent(
       event_id: eventId,
       start_at: startAt,
       end_at: endAt,
-      location_id: a.location_id,
+      location_id: locationId,
       ...place,
     })
     .select("id")
@@ -285,6 +315,8 @@ export async function convertAppearanceToEvent(
       event_id: eventId,
       event_occurrence_id: occurrenceId,
       source: "official_participation",
+      // A withheld/broad source place is not kept on the item either.
+      ...(withhold ? { location_id: null, venue_name: null, address: null, latitude: null, longitude: null } : {}),
       // Its date follows the Event's source date when that was recovered.
       ...(startAt !== a.start_at || endAt !== a.end_at ? { start_at: startAt, end_at: endAt } : {}),
     })

@@ -24,6 +24,7 @@ import {
   syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import { parseLocationVisibility, parseRsvpCta, type LocationVisibility, type RsvpCta } from "@/lib/event-attendance";
 
 /** Event review-decision notification — every CURRENT event_members
  * recipient. Best-effort: a Resend failure never affects the moderation
@@ -242,6 +243,17 @@ export async function saveEvent(id: string | null, formData: FormData) {
     const { data, error } = await supabase.from("events").insert(payload).select("id").single();
     if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create event."));
     eventId = data.id;
+  }
+
+  // Attendance label + location visibility — newer columns, written in a
+  // separate best-effort update so this save keeps working on a database
+  // where their migration isn't applied yet. Only when the form sent them.
+  if (eventId && (formData.has("rsvp_cta") || formData.has("location_visibility"))) {
+    const extras: { rsvp_cta?: RsvpCta | null; location_visibility?: LocationVisibility | null } = {};
+    if (formData.has("rsvp_cta")) extras.rsvp_cta = parseRsvpCta(str(formData, "rsvp_cta")) === "register" ? "register" : null;
+    if (formData.has("location_visibility")) extras.location_visibility = parseLocationVisibility(str(formData, "location_visibility"));
+    const { error: extrasError } = await supabase.from("events").update(extras).eq("id", eventId);
+    if (extrasError) console.warn("[admin events] attendance/location extras not saved", { eventId, reason: extrasError.message });
   }
 
   // Consumer Area Picker + Market Requests V1, extended by Market ->

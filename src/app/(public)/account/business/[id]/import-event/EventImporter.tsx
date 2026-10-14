@@ -6,7 +6,7 @@ import NavIcon from "@/components/NavIcon";
 import { analyzeEventImport, commitEventImport } from "./actions";
 import MultiEventImport from "./MultiEventImport";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
-import { Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { AttendanceEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 import {
   EVENT_IMPORT_FAILURE_COPY,
   type EventCandidate,
@@ -398,6 +398,9 @@ export default function EventImporter({
       ) : (
         <>
           <WhenWhereEditor key={reviewVersion} review={review} set={set} matches={matches} initialPast={initialPast} />
+          {/* Attendance is saved with a NEW Event (hosting, or a genuine
+              Event the Business takes part in) — never on a plain schedule item. */}
+          {(intent === "hosting" || review.asEvent) && <AttendanceEditor review={review} set={set} evidence={candidate.attendance} />}
         </>
       )}
 

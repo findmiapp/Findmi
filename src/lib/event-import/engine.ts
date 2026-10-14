@@ -13,7 +13,17 @@ import type { AppearanceDraft } from "../admin/appearance-import";
 import { findLikelyDuplicateLocations, findPossibleLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
 import { extractEventCandidate, needsAiAssist, isPastDate } from "./extract";
-import { classifySource } from "./sources";
+import { classifySource, pageEventRecord } from "./sources";
+import {
+  applyLocationVisibility,
+  combineEvidence,
+  decideAttendance,
+  decideLocationVisibility,
+  isLumaEventUrl,
+  pageAttendance,
+  pageRecordAttendance,
+  structuredAttendance,
+} from "./attendance";
 import { fetchFailureLogLine, safeFetchDiagnostics } from "./diagnostics";
 import { assistWithAi, defaultEventAiClient, type EventAiClient } from "./ai";
 import {
@@ -237,7 +247,25 @@ export async function analyzeEventUrl(
 
   const extracted = extractEventCandidate(page.html, page.url, now);
   let candidate = extracted.candidate;
+  // Attendance + location-privacy evidence — read BEFORE the AI step and
+  // only from the page's own structured data, platform record and controls.
+  const record = pageEventRecord(extracted.evidence.jsonState, page.url);
+  const evidence = combineEvidence(
+    structuredAttendance(extracted.evidence.primary, page.url),
+    pageRecordAttendance(record),
+    pageAttendance(extracted.evidence.controls, extracted.evidence.lines, page.url)
+  );
   if (needsAiAssist(candidate)) candidate = (await assistWithAi(candidate, extracted.excerpt, deps.ai, { now, yearHint: extracted.yearHint })).candidate;
+  if (evidence.onlineMode && !candidate.occurrences.some((o) => venueKey(o.venue))) candidate = { ...candidate, online: true };
+  // The source's privacy decision wins over anything read or filled in: a
+  // hidden address leaves no venue/street to show or to match a Location.
+  const locationVisibility = decideLocationVisibility(candidate, evidence.hiddenLocation);
+  candidate = applyLocationVisibility(candidate, locationVisibility);
+  // Platform rule: a VERIFIED individual Luma Event page (a single-Event
+  // classification, Event data for this page, an Event-slug URL) is where
+  // people register — its own link may be the attendance destination.
+  const lumaEventUrl = isLumaEventUrl(candidate.sourceUrl) && (candidate.sources.title === "structured" || record !== null) ? candidate.sourceUrl : null;
+  candidate = { ...candidate, locationVisibility, attendance: decideAttendance(evidence, { lumaEventUrl }) };
 
   const hasPlace = candidate.occurrences.some((o) => venueKey(o.venue) || o.venue.city);
   // Not an event page at all: nothing that identifies an event.
@@ -262,8 +290,9 @@ export async function analyzeEventUrl(
   if (extracted.truncated) warnings.push(`That page lists a lot of dates. The first ${total} are shown.`);
   if (candidate.occurrences.some((d) => !d.hasTime)) warnings.push("Some dates don't have a start time. Add it below.");
   if (extracted.assumedZone || candidate.sources.dates === "ai") warnings.push("The page didn't say which time zone it uses. Times are shown in Eastern Time. Please check them.");
-  if (!hasPlace && !candidate.online) warnings.push("We couldn't find where it's happening. Add the place below.");
+  if (!hasPlace && !candidate.online && locationVisibility !== "hidden") warnings.push("We couldn't find where it's happening. Add the place below.");
   if (candidate.online) warnings.push("This looks like an online event.");
+  if (locationVisibility === "hidden") warnings.push("The organizer shares the exact location only after registration. Findmi won't show or link an address.");
   if (Object.values(candidate.sources).includes("ai")) warnings.push("Some details were read from the page text. Please check them.");
 
   const matches = await matchCandidate(candidate, input.businessId, deps);

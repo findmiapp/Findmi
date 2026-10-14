@@ -582,6 +582,12 @@ export interface FindmiEvent {
   rsvp_url: string | null;
   tickets_enabled: boolean;
   tickets_url: string | null;
+  /** Label of the RSVP action — 'rsvp' → "RSVP", 'register' → "Register";
+   * null = RSVP. Optional: absent until its migration is applied. */
+  rsvp_cta?: "rsvp" | "register" | null;
+  /** What the source made public about the place (lib/event-attendance.ts);
+   * 'hidden' = address shared only after registration — never shown. */
+  location_visibility?: "exact" | "broad" | "hidden" | "none" | null;
   vendor_applications_enabled: boolean;
   vendor_application_url: string | null;
   vendor_application_deadline: string | null;

@@ -121,6 +121,10 @@ export function reviewDefaults(candidate: EventCandidate, matches: EventImportMa
     organizer,
     useEventId: useEvent,
     asEvent: candidate.persistAs === "event",
+    // Evidence-only defaults (never AI): the action the source supports,
+    // and what it made public about the place.
+    attendance: candidate.attendance?.cta && candidate.attendance.url ? { cta: candidate.attendance.cta, url: candidate.attendance.url } : null,
+    locationVisibility: candidate.locationVisibility ?? null,
   };
 }
 

@@ -8,6 +8,7 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
+import { isStaleAppearanceLink, loadedAppearanceLink, STALE_APPEARANCE_LINK_MESSAGE } from "@/lib/admin/appearance-stale-link";
 
 export async function saveAppearance(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/appearances/${id}` : "/admin/appearances/new";
@@ -243,6 +244,18 @@ export async function saveAppearance(id: string | null, formData: FormData) {
       .eq("id", id)
       .maybeSingle();
     priorState = priorRow;
+    // Refuse a save from a form rendered before the link last changed
+    // (see lib/admin/appearance-stale-link.ts) — never clear a fresh
+    // Convert To Event link with stale client state.
+    if (
+      priorState &&
+      isStaleAppearanceLink(loadedAppearanceLink(formData), {
+        eventId: priorState.event_id,
+        occurrenceId: priorState.event_occurrence_id,
+      })
+    ) {
+      redirect(errorRedirectUrl(editPath, STALE_APPEARANCE_LINK_MESSAGE));
+    }
   }
 
   let appearanceId = id;

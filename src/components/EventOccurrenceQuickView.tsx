@@ -39,6 +39,7 @@ export default function EventOccurrenceQuickView({
   ticketsEnabled,
   ticketsUrl,
   rsvpEnabled,
+  rsvpLabel,
   rsvp,
   vendorApplicationsEnabled,
   vendorApplication,
@@ -57,6 +58,8 @@ export default function EventOccurrenceQuickView({
   ticketsEnabled: boolean;
   ticketsUrl: string | null;
   rsvpEnabled: boolean;
+  /** "RSVP" (default) or "Register". */
+  rsvpLabel?: string;
   rsvp: ResolvedForm | null;
   vendorApplicationsEnabled: boolean;
   vendorApplication: ResolvedForm | null;
@@ -195,6 +198,7 @@ export default function EventOccurrenceQuickView({
             ticketsEnabled={ticketsEnabled}
             ticketsUrl={ticketsUrl}
             rsvpEnabled={rsvpEnabled}
+            rsvpLabel={rsvpLabel}
             rsvp={rsvp}
             vendorApplicationsEnabled={vendorApplicationsEnabled}
             vendorApplication={vendorApplication}

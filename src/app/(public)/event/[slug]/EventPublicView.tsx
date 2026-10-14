@@ -6,6 +6,7 @@ import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal
 import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";
 import { EndedStatus, FactsBand, WhenFact, WhereFact } from "@/components/event/KeyFacts";
+import { HIDDEN_LOCATION_COPY, isLocationHidden, rsvpActionLabel } from "@/lib/event-attendance";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import ChevronIcon from "@/components/ChevronIcon";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
@@ -173,6 +174,12 @@ export async function generateEventMetadata(slug: string): Promise<Metadata> {
 export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
+  // The organizer shares the exact address only after registration: no
+  // venue, address, Location link or directions are shown (none is stored
+  // for such an Event either) — only "Location shared after registration"
+  // and the public city/state.
+  const locationHidden = isLocationHidden(event.location_visibility);
+  const rsvpLabel = rsvpActionLabel(event.rsvp_cta);
 
   const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journal, canonicalHostBusiness] =
     await Promise.all([
@@ -193,7 +200,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // Location Relational Workflow pass — this stays only as the
       // fallback now; see canonicalLocation below, which prefers the real
       // occurrence-linked relationship whenever one exists.
-      event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
+      event.venue_name && !locationHidden ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
       // Event Page Visual Convergence pass — see resolveAppearanceHostBusiness's
       // own comment for why this second signal is needed alongside
       // event_businesses.featured below.
@@ -227,7 +234,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // text reconstruction. Only an event with zero occurrences, or whose
   // occurrence(s) have no linked Location, falls back to matchedLocation
   // (unchanged legacy behavior — never broken for existing events).
-  const canonicalLocation = upcomingOccurrences.find((o) => o.location)?.location ?? matchedLocation;
+  const canonicalLocation = locationHidden ? null : (upcomingOccurrences.find((o) => o.location)?.location ?? matchedLocation);
   // Public Event V2 Next Body pass — the Location feature strip's own
   // physical-context line ("Inside X"), same RPC LocationPublicView already
   // uses. Zero-cost (no query at all) for a Location with no parent place,
@@ -277,7 +284,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const location = cityStateZip(event.city, event.state, event.postal_code);
   const venueLine = [event.venue_name, event.address, location].filter(Boolean).join(" · ");
   const mapQuery = [event.venue_name, event.address, location].filter(Boolean).join(", ");
-  const directionsHref = mapQuery
+  const directionsHref = mapQuery && !locationHidden
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
     : null;
   // Action Row Consistency pass — Website/Call use the Event's already-
@@ -378,7 +385,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
     customCtas.push({ label: "Get Tickets", href: event.tickets_url, displayMode: "external", weight: "solid" });
   }
   if (rsvpForm) {
-    customCtas.push({ label: "RSVP", href: rsvpForm.url, displayMode: rsvpForm.displayMode, weight: "solid" });
+    customCtas.push({ label: rsvpLabel, href: rsvpForm.url, displayMode: rsvpForm.displayMode, weight: "solid" });
   }
   if (vendorAppForm) {
     customCtas.push({ label: "Apply to Vend", href: vendorAppForm.url, displayMode: vendorAppForm.displayMode, weight: "outline" });
@@ -449,7 +456,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
         dateLabel: formatHistoricalRange(first.start_at, last.end_at, tz, firstLabel, lastLabel),
         detail: uniformTime ? `${startTime} – ${endTime}` : null,
         count: past.length > 1 ? `${past.length} dates` : null,
-        where: lastLocation
+        where: locationHidden
+          ? { name: HIDDEN_LOCATION_COPY, href: null, line: cityState(last.city, last.state) || null }
+          : lastLocation
           ? {
               name: lastLocation.name,
               href: `/location/${lastLocation.slug}`,
@@ -485,6 +494,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const legacyTime = legacySameDay ? formatTimeRange(event.start_at, event.end_at) : formatTime(event.start_at);
   const keyFacts = hasOccurrences ? (
     <EventScheduleSummary
+      locationHidden={locationHidden}
       canonicalLocation={canonicalLocation}
       historical={historical}
       eventId={event.id}
@@ -502,7 +512,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
         />
       }
       where={
-        legacyWhereName || legacyHasWhereLines ? (
+        locationHidden ? (
+          <WhereFact name={HIDDEN_LOCATION_COPY} lines={[location]} />
+        ) : legacyWhereName || legacyHasWhereLines ? (
           <WhereFact
             name={legacyWhereName}
             href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
@@ -532,6 +544,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
     ticketsUrl: event.tickets_url,
     rsvpEnabled: event.rsvp_enabled,
     rsvp: rsvpForm,
+    rsvpLabel,
     vendorApplicationsEnabled: event.vendor_applications_enabled && !vendorDeadlinePassed,
     vendorApplication: vendorAppForm,
   };
@@ -667,6 +680,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           ticketsUrl={event.tickets_url}
           rsvpEnabled={event.rsvp_enabled}
           rsvp={rsvpForm}
+          rsvpLabel={rsvpLabel}
           vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
           vendorApplication={vendorAppForm}
           rostersByOccurrence={rostersByOccurrence}

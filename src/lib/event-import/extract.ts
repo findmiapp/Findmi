@@ -74,6 +74,10 @@ interface Collected {
   text: string[];
   /** Visible text grouped by block element (one schedule entry per line). */
   lines: string[];
+  /** Embedded page state (Next.js __NEXT_DATA__ / application/json). */
+  jsonState: string[];
+  /** Anchors and buttons (text + own link) — attendance wording evidence. */
+  controls: { text: string; href: string | null }[];
 }
 
 const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "svg", "head", "nav", "footer"]);
@@ -82,9 +86,19 @@ const BLOCK = new Set([
   "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "dd", "dt", "dl", "figure", "figcaption", "pre", "address",
 ]);
 const MAX_LINES = 800;
+const MAX_CONTROLS = 400;
+const JSON_STATE_MAX_CHARS = 2_500_000;
+
+/** All text inside a node (bounded), for a control's label. */
+function deepText(node: HtmlNode, budget = { n: 200 }): string {
+  if (budget.n-- <= 0) return "";
+  if (node.nodeName === "#text") return node.value ?? "";
+  if (node.tagName === "script" || node.tagName === "style" || node.tagName === "svg") return "";
+  return (node.childNodes ?? []).map((c) => deepText(c, budget)).join(" ");
+}
 
 function collect(html: string): Collected {
-  const out: Collected = { title: null, meta: new Map(), jsonLd: [], text: [], lines: [] };
+  const out: Collected = { title: null, meta: new Map(), jsonLd: [], text: [], lines: [], jsonState: [], controls: [] };
   const doc = parse(html) as unknown as HtmlNode;
   let textChars = 0;
   let line = "";
@@ -104,7 +118,15 @@ function collect(html: string): Collected {
     } else if (tag === "script") {
       const type = (attr(node, "type") ?? "").split(";")[0].trim().toLowerCase();
       if (type === "application/ld+json" && out.jsonLd.length < JSONLD_MAX_BLOCKS) out.jsonLd.push(textOf(node));
+      else if ((type === "application/json" || attr(node, "id") === "__NEXT_DATA__") && out.jsonState.length < JSONLD_MAX_BLOCKS) {
+        const text = textOf(node);
+        if (text.length <= JSON_STATE_MAX_CHARS) out.jsonState.push(text);
+      }
       return;
+    }
+    if ((tag === "a" || tag === "button") && out.controls.length < MAX_CONTROLS) {
+      const text = deepText(node).replace(/\s+/g, " ").trim();
+      if (text && text.length <= 60) out.controls.push({ text, href: tag === "a" ? attr(node, "href") : null });
     }
     if (node.nodeName === "#text" && !skip) {
       const t = (node.value ?? "").replace(/\s+/g, " ").trim();
@@ -352,6 +374,8 @@ export interface ExtractionResult {
   truncated: boolean;
   /** The single year the page mentions (for reading "9/26"-style dates). */
   yearHint: number | null;
+  /** Raw evidence for attendance / location visibility (./attendance.ts). */
+  evidence: { primary: JsonObject | null; controls: { text: string; href: string | null }[]; lines: string[]; jsonState: string[] };
 }
 
 /** One structured span covering several days (an umbrella "Sep 24 – Oct 31"
@@ -465,6 +489,7 @@ export function extractEventCandidate(html: string, pageUrl: URL, now: number = 
     unresolvedRanges: sources.dates === "structured" ? 0 : schedule.unresolvedRanges,
     truncated: all.length > unique.length || scheduleTruncated,
     yearHint,
+    evidence: { primary, controls: c.controls, lines: c.lines, jsonState: c.jsonState },
   };
 }
 

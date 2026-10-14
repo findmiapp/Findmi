@@ -38,6 +38,7 @@ import {
 } from "./extract";
 import { dedupeOccurrences, parseScheduleLines, yearHintFrom } from "./schedule";
 import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
+import { UNKNOWN_ATTENDANCE, applyLocationVisibility, decideLocationVisibility, pageRecordAttendance } from "./attendance";
 
 /** Events read from one source at a time. */
 export const SOURCE_MAX_EVENTS = 40;
@@ -258,16 +259,24 @@ function fromPageData(page: Page, pageUrl: URL, siteName: string | null): Source
         if (!existing.candidate.imageUrl) existing.candidate.imageUrl = imageFromRecord(o, pageUrl);
       } else if (found.size < SOURCE_MAX_EVENTS * 2) {
         const description = typeof o.description === "string" ? plainDescription(o.description) : null;
+        // The record's own attendance/privacy facts. A calendar listing is
+        // never a verified individual Event page, so no platform fallback
+        // link is used here — only what the record states.
+        const recordFacts = pageRecordAttendance(o);
+        const visibility = decideLocationVisibility({ occurrences: [occ], online }, recordFacts.hiddenLocation);
+        const placed = applyLocationVisibility({ occurrences: [occ], online }, visibility).occurrences[0];
         found.set(identity, {
           identity,
           candidate: baseCandidate(pageUrl, {
+            attendance: { ...UNKNOWN_ATTENDANCE, pricing: recordFacts.pricing, price: recordFacts.price, registration: recordFacts.registration },
+            locationVisibility: visibility,
             title: cleanEventTitle(title, siteName),
             description, // already cleanEventDescription'd by plainDescription
             imageUrl: imageFromRecord(o, pageUrl),
             sourceUrl: url ?? "",
-            occurrences: [occ],
+            occurrences: [placed],
             online,
-            sources: { title: "page", dates: "page", venue: venueKey(venue) || venue.city ? "page" : undefined },
+            sources: { title: "page", dates: "page", venue: venueKey(placed.venue) || placed.venue.city ? "page" : undefined },
           }),
         });
       }
@@ -286,6 +295,38 @@ function fromPageData(page: Page, pageUrl: URL, siteName: string | null): Source
     }
   }
   return [...found.values()];
+}
+
+/** The platform's own embedded record for THIS page's Event (its own URL /
+ * slug matches the page), or null. Used for attendance and location-privacy
+ * facts on a single Event page (e.g. Luma's geo_address_info.mode). */
+export function pageEventRecord(jsonState: string[], pageUrl: URL): JsonObject | null {
+  let found: JsonObject | null = null;
+  let budget = JSON_WALK_BUDGET;
+  const visit = (value: unknown, depth: number) => {
+    if (found || budget-- <= 0 || depth > 14 || !value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 400)) visit(item, depth + 1);
+      return;
+    }
+    const o = value as JsonObject;
+    if (cleanText(str(o.name ?? o.title), EVENT_TITLE_MAX) && isoOf(first(o, START_KEYS))) {
+      if (sameEventUrl(recordUrl(o, pageUrl), pageUrl)) found = o;
+      return;
+    }
+    for (const [k, child] of Object.entries(o).slice(0, 200)) {
+      if (child && typeof child === "object" && k !== "hosts" && k !== "ticket_types") visit(child, depth + 1);
+    }
+  };
+  for (const raw of jsonState) {
+    if (found) break;
+    try {
+      visit(JSON.parse(raw), 0);
+    } catch {
+      // ignore malformed / truncated blocks
+    }
+  }
+  return found;
 }
 
 // ── 3. repeated event cards ────────────────────────────────────────────

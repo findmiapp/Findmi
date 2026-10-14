@@ -3,7 +3,7 @@
 // compact rows, an existing-Location choice per place.
 import { useState } from "react";
 import ChevronIcon from "@/components/ChevronIcon";
-import type { EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
+import type { EventCandidate, EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
 import { decidePlaceFrom, emptyReviewOccurrence, occurrenceSummary } from "@/lib/event-import/review";
 
 export const MAX_DATES = 60;
@@ -343,5 +343,78 @@ export function LocationMatchCard({
         <Choice checked={decision === "reject"} onChange={() => onDecide("reject")} title="Not the Same Place" line="Keep the place as written." />
       </div>
     </fieldset>
+  );
+}
+
+const PRICING_NOTE: Record<"free" | "paid" | "unknown", string> = {
+  free: "The page says it's free.",
+  paid: "The page lists a price.",
+  unknown: "The page doesn't say whether it's free.",
+};
+
+/** Attendance + location privacy for a NEW Event. Starts from what the
+ * page evidenced (never guessed); the person can change the action, fix
+ * the link, or turn it off. "Register"/"RSVP" label the Event's RSVP
+ * action; "Get Tickets" its tickets action. */
+export function AttendanceEditor({
+  review,
+  set,
+  evidence,
+  idPrefix = "",
+}: {
+  review: EventImportReview;
+  set: (patch: Partial<EventImportReview>) => void;
+  evidence: EventCandidate["attendance"];
+  idPrefix?: string;
+}) {
+  const a = review.attendance ?? null;
+  const cta = a?.cta ?? "";
+  const setCta = (value: string) =>
+    set({ attendance: value === "" ? null : { cta: value as "tickets" | "rsvp" | "register", url: a?.url ?? evidence?.url ?? "" } });
+  const pricing = evidence?.pricing ?? "unknown";
+  return (
+    <section aria-labelledby={`${idPrefix}attendance`} className={`${sectionClass} flex flex-col gap-3`}>
+      <h2 id={`${idPrefix}attendance`} className="text-label font-bold uppercase text-subtle">
+        Attendance
+      </h2>
+      {review.locationVisibility === "hidden" && (
+        <p className="rounded-lg bg-findmi-50 px-3 py-2 text-metadata text-findmi-700">
+          Location shared after registration. The organizer hides the exact address, so Findmi won&rsquo;t show one.
+        </p>
+      )}
+      <div>
+        <label htmlFor={`${idPrefix}attendance-cta`} className={labelClass}>
+          Button
+        </label>
+        <select id={`${idPrefix}attendance-cta`} value={cta} onChange={(e) => setCta(e.target.value)} className={inputClass}>
+          <option value="">No button</option>
+          <option value="register">Register</option>
+          <option value="rsvp">RSVP</option>
+          <option value="tickets">Get Tickets</option>
+        </select>
+        <p className="mt-1 text-microcopy text-subtle">
+          {PRICING_NOTE[pricing]}
+          {evidence?.price ? ` ${evidence.price}.` : ""}
+          {evidence?.registration === "not_required" ? " It says no registration is needed." : ""}
+        </p>
+      </div>
+      {a && (
+        <div>
+          <label htmlFor={`${idPrefix}attendance-url`} className={labelClass}>
+            Link
+          </label>
+          <input
+            id={`${idPrefix}attendance-url`}
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            value={a.url ?? ""}
+            onChange={(e) => set({ attendance: { cta: a.cta, url: e.target.value } })}
+            placeholder="https://"
+            className={inputClass}
+          />
+        </div>
+      )}
+    </section>
   );
 }

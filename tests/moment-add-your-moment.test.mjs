@@ -110,5 +110,5 @@ test("unchanged: source resolution, gallery filtering, viewer, cover; no Bulleti
   assert.match(PAGE, /isCover: m\.id === cover\?\.id,/);
   assert.match(BULLETIN, /if \(stoppedRef\.current\) return;/, "Bulletin carousel interaction guard intact");
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.deepEqual(files.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql"]);
+  assert.deepEqual(files.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql", "20261014010000_event_attendance_cta_and_location_visibility.sql" /* Event attendance pass */]);
 });

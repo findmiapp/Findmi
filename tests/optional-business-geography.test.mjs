@@ -82,8 +82,10 @@ test("creation authorization, duplicate protection and the A2 redirect remain", 
 // ── The one migration ────────────────────────────────────────────────────
 test("one forward-only migration, after the BD foundation, replacing only create_owned_business", () => {
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), FILE);
-  assert.equal(files.at(-2), "20261013000000_bd_foundation.sql");
+  // Its own position: right after the BD foundation (a later pass — Event
+  // attendance — adds its own migration after it).
+  assert.equal(files[files.indexOf(FILE) - 1], "20261013000000_bd_foundation.sql");
+  assert.deepEqual(files.slice(files.indexOf(FILE) + 1), ["20261014010000_event_attendance_cta_and_location_visibility.sql"]);
   const statements = MIGRATION.split(/\$function\$;/)[1].trim();
   assert.equal(statements, "", "nothing but the function replacement");
   assert.equal((MIGRATION.match(/create or replace function/gi) ?? []).length, 1);

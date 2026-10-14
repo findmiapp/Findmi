@@ -51,9 +51,9 @@ export default async function EditAppearancePage({
       )}
       {converted && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Converted to an Event awaiting review.{" "}
+          Converted to an Event.{" "}
           <Link href={`/admin/events/${converted}`} className="font-semibold underline">
-            Review Event
+            View Event
           </Link>
           {convertNote === "image" ? " The Event image couldn’t be recovered; none was substituted." : ""}
         </p>
@@ -61,18 +61,25 @@ export default async function EditAppearancePage({
       {convertError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Not converted — {convertError}</p>}
       {/* Rich Appearance → Event conversion: only a standalone item with
           its own source link. Re-reads that link, checks it is the same
-          Event, then creates the Event (pending review) and links THIS
+          Event, then creates the (live) Event and links THIS
           item to it — Business stays a participant, never host. */}
       {!appearance.event_id && appearance.external_url && !converted && (
         <form action={convertAppearanceFromAdminPage.bind(null, appearance.id)} className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-4 py-3">
-          <p className="min-w-0 flex-1 text-sm text-ink/70">Re-read its source link and make this a Findmi Event (pending review), keeping this item.</p>
+          <p className="min-w-0 flex-1 text-sm text-ink/70">Re-read its source link and make this a Findmi Event, keeping this item.</p>
           <button type="submit" className="rounded-lg border border-black/15 px-3 py-1.5 text-sm font-semibold text-ink hover:border-findmi/50">
             Convert To Event
           </button>
         </form>
       )}
       <div className="mt-5">
+        {/* Keyed on the stored link: Convert To Event redirects back to
+            this same route, which Next.js treats as a soft navigation that
+            KEEPS client form state — so without a remount the Related Event
+            picker kept its pre-conversion "no event" value and the next
+            Save cleared the new link. A changed link now remounts the form
+            from the freshly read row. */}
         <AppearanceForm
+          key={`${appearance.event_id ?? ""}:${appearance.event_occurrence_id ?? ""}:${appearance.location_id ?? ""}`}
           appearance={appearance}
           initialBusiness={initialBusiness}
           initialEvent={initialEvent}

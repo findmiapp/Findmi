@@ -369,7 +369,31 @@ export default function EventForm({
                       defaultChecked={event?.rsvp_enabled}
                     />
                     <TextField label="RSVP Link" name="rsvp_url" type="url" defaultValue={event?.rsvp_url} placeholder="https://…" />
+                    <SelectField
+                      label="RSVP Button Label"
+                      name="rsvp_cta"
+                      defaultValue={event?.rsvp_cta === "register" ? "register" : ""}
+                      options={[
+                        { value: "", label: "RSVP" },
+                        { value: "register", label: "Register" },
+                      ]}
+                      hint="Same action and link — only the button wording changes."
+                    />
                   </div>
+
+                  <SelectField
+                    label="Location Visibility"
+                    name="location_visibility"
+                    defaultValue={event?.location_visibility ?? ""}
+                    options={[
+                      { value: "", label: "Not set (show venue as entered)" },
+                      { value: "exact", label: "Exact — public venue/address" },
+                      { value: "broad", label: "Broad — city/area only" },
+                      { value: "hidden", label: "Hidden — shared after registration" },
+                      { value: "none", label: "None" },
+                    ]}
+                    hint="Hidden never shows a venue, address, Location or directions publicly — only “Location shared after registration”."
+                  />
 
                   <div className="flex flex-col gap-2">
                     <CheckboxField

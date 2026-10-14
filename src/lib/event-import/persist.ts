@@ -33,6 +33,8 @@ import { cleanEventDescription } from "./description";
 import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPlace } from "./types";
 import type { EventApplicationResult } from "../event-participation";
 import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
+import { parseLocationVisibility, type LocationVisibility } from "../event-attendance";
+import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, type ReviewedAttendance } from "./attendance";
 
 export const REVIEW_MAX_DATES = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,6 +63,17 @@ export interface NormalizedImport {
   asEvent: boolean;
   /** Organizer named by the source (evidence-gated upstream); never a host link. */
   organizer: string | null;
+  /** Reviewed attendance action for a NEW Event (Get Tickets / RSVP / Register). */
+  attendance: ReviewedAttendance | null;
+  /** What the source made public about the place; "hidden" → no venue,
+   * street address or Findmi Location is saved for any date. */
+  locationVisibility: LocationVisibility | null;
+}
+
+/** Privacy: when the organizer withholds the address, a date keeps only its
+ * public city/state — never a venue, street, postal code or Location. */
+function withholdPlace(p: NormalizedPlace): NormalizedPlace {
+  return { name: null, address: null, postalCode: null, locationId: null, city: p.city, state: p.state };
 }
 
 function normalizePlace(p: ReviewPlace | null | undefined): NormalizedPlace {
@@ -115,6 +128,18 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
   }
   occurrences.sort((a, b) => a.start.localeCompare(b.start));
 
+  // The source's location decision. "hidden" is enforced on every date;
+  // "broad" never links a precise Location by itself, but a place the
+  // person typed in Review is their own precise information ("exact").
+  let locationVisibility = parseLocationVisibility(review.locationVisibility);
+  if (locationVisibility === "hidden") {
+    for (const o of occurrences) o.place = withholdPlace(o.place);
+  } else if (locationVisibility === "broad" || locationVisibility === "none") {
+    for (const o of occurrences) if (!o.place.name && !o.place.address) o.place = { ...o.place, locationId: null };
+    if (occurrences.some((o) => o.place.name || o.place.address || o.place.locationId)) locationVisibility = "exact";
+    else if (locationVisibility === "none" && occurrences.some((o) => o.place.city || o.place.state)) locationVisibility = "broad";
+  }
+
   let sourceUrl: string | null = null;
   if (review.sourceUrl?.trim()) {
     const r = validateCustomDestination(review.sourceUrl.trim());
@@ -145,8 +170,18 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       // schedule item.
       asEvent: review.intent === "participating" && review.asEvent === true && Boolean(sourceUrl),
       organizer: cleanText(review.organizer, 160),
+      attendance: normalizeReviewedAttendance(review.attendance),
+      locationVisibility,
     },
   };
+}
+
+/** The newer Event columns, best-effort (see attendanceExtraColumns). */
+async function writeEventExtras(admin: SupabaseClient, eventId: string, input: NormalizedImport): Promise<void> {
+  const extras = attendanceExtraColumns(input.attendance, input.locationVisibility);
+  if (Object.keys(extras).length === 0) return;
+  const { error } = await admin.from("events").update(extras).eq("id", eventId);
+  if (error) console.warn("[event-import] attendance/location extras not saved", { eventId, reason: error.message });
 }
 
 export interface PersistDeps {
@@ -341,11 +376,13 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
       market_id: geo?.marketId ?? null,
       market_area_id: geo?.areaId ?? null,
       ...eventPlace,
+      ...attendanceEventColumns(input.attendance),
     })
     .select("id")
     .single();
   if (error || !created) return { ok: false, error: "Couldn't add this Event. Please try again." };
   const eventId = (created as { id: string }).id;
+  await writeEventExtras(admin, eventId, input);
 
   // 4a. Participation first, so creating the dates realizes it per date.
   const { error: rosterError } = await admin
@@ -447,8 +484,10 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
       external_url: input.sourceUrl,
       ...(cover ? { cover_image_url: cover } : {}),
       ...(geo?.areaId ? { market_area_id: geo.areaId } : {}),
+      ...attendanceEventColumns(input.attendance),
     })
     .eq("id", eventId);
+  await writeEventExtras(admin, eventId, input);
 
   // Dates: one Event Occurrence per date — each linked to ITS OWN Location
   // (or carrying its own venue snapshot) — when there are several dates or

@@ -52,6 +52,8 @@ export interface EventCtaConfig {
   ticketsUrl: string | null;
   rsvpEnabled: boolean;
   rsvp: ResolvedAction | null;
+  /** "RSVP" (default) or "Register" — the Event's rsvp_cta label. */
+  rsvpLabel?: string;
   vendorApplicationsEnabled: boolean;
   vendorApplication: ResolvedAction | null;
 }
@@ -77,7 +79,7 @@ export function resolveEventCtas(
   const vendorAction = c.vendorApplicationsEnabled ? resolveAction(selected.vendor_apply_url_override, c.vendorApplication) : null;
   const actions: ResolvedEventCta[] = [];
   if (ticket) actions.push({ label: "Get Tickets", action: ticket, weight: "solid", eventName: "click_tickets" });
-  if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
+  if (rsvpAction) actions.push({ label: c.rsvpLabel ?? "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
   if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
   return actions;
 }
@@ -90,8 +92,10 @@ export default function EventScheduleCtas({
   rsvp,
   vendorApplicationsEnabled,
   vendorApplication,
+  rsvpLabel,
   bare = false,
 }: {
+  rsvpLabel?: string;
   /** Public Event V2 — render just the buttons (no wrapping row) so the
    * caller can place them in its own action row beside Follow. */
   bare?: boolean;
@@ -107,7 +111,7 @@ export default function EventScheduleCtas({
   const { selected, selectedState } = useEventOccurrence();
   if (!selected || selectedState === "cancelled") return null;
 
-  const actions = resolveEventCtas(selected, { ticketsEnabled, ticketsUrl, rsvpEnabled, rsvp, vendorApplicationsEnabled, vendorApplication });
+  const actions = resolveEventCtas(selected, { ticketsEnabled, ticketsUrl, rsvpEnabled, rsvp, rsvpLabel, vendorApplicationsEnabled, vendorApplication });
 
   if (actions.length === 0) return null;
 
