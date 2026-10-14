@@ -279,13 +279,20 @@ async function deriveOccurrenceFields(
  * 'event_self_added' row, since the reactivation lookup itself is scoped
  * to source='official_participation'. */
 export async function ensureEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
+  // ANY live Appearance this Business already has for this Event — Event-
+  // level OR occurrence-linked — means it's already on the schedule. An
+  // Event-level row beside occurrence-linked ones is only ever a
+  // superseded projection (withoutSupersededEventProjections drops it on
+  // every public surface), so creating one is a duplicate, never new
+  // participation. Production: Admin re-saving a converted Event's roster
+  // created a second Run Club Appearance beside the occurrence-linked one.
   const { data: existing } = await supabase
     .from("appearances")
     .select("id")
     .eq("business_id", businessId)
     .eq("event_id", eventId)
-    .is("event_occurrence_id", null)
     .neq("status", "canceled")
+    .limit(1)
     .maybeSingle();
   if (existing) return;
 

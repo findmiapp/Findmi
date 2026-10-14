@@ -15,6 +15,7 @@ import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
 import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
+import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
 import type {
   Appearance,
   Business,
@@ -1490,8 +1491,11 @@ export type ActivityEventRow = {
   address: string | null;
   city: string | null;
   state: string | null;
+  /** Findmi editorial Featured (never Business-selected, never hosting). */
+  is_featured?: boolean;
+  featured_sort_order?: number | null;
 };
-const ACTIVITY_EVENT_COLUMNS = "id, slug, name, cover_image_url, start_at, end_at, venue_name, address, city, state";
+const ACTIVITY_EVENT_COLUMNS = "id, slug, name, cover_image_url, start_at, end_at, venue_name, address, city, state, is_featured, featured_sort_order";
 
 /** The pure core of getBusinessFindmiHereActivity (rules 1–3 in its doc),
  * shared with the Business-card summaries (getUpcomingAppearanceSummaries)
@@ -1648,13 +1652,13 @@ export type BusinessActivityRow = AppearanceWithEventSlug & { derived?: boolean 
 export async function getBusinessFindmiHereActivity(
   businessId: string,
   { pastLimit = 24 }: { pastLimit?: number } = {}
-): Promise<{ upcoming: BusinessActivityRow[]; past: BusinessActivityRow[] }> {
+): Promise<{ upcoming: BusinessActivityRow[]; past: BusinessActivityRow[]; featuredEvents: EditorialFeaturedEvent[] }> {
   const supabase = getSupabase();
   const [upcoming, past] = await Promise.all([
     getUpcomingAppearancesForBusiness(businessId),
     getPastAppearancesForBusiness(businessId, pastLimit),
   ]);
-  if (!supabase) return { upcoming, past };
+  if (!supabase) return { upcoming, past, featuredEvents: [] };
 
   const [{ data: eventLinks }, { data: occurrenceLinks }] = await Promise.all([
     supabase.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved"),
@@ -1674,7 +1678,7 @@ export async function getBusinessFindmiHereActivity(
   for (const r of rows) if (r.event_id) eventIds.add(r.event_id);
   for (const l of (eventLinks ?? []) as { event_id: string }[]) eventIds.add(l.event_id);
   for (const o of occurrences) eventIds.add(o.event_id);
-  if (eventIds.size === 0) return { upcoming, past };
+  if (eventIds.size === 0) return { upcoming, past, featuredEvents: [] };
 
   const { data: eventData } = await supabase
     .from("events")
@@ -1691,9 +1695,21 @@ export async function getBusinessFindmiHereActivity(
     events,
   });
 
+  // Findmi editorial Featured Events (events.is_featured) this Business is
+  // an APPROVED participant in — Event-level or on any of its dates. The
+  // events map is public-only already (is_demo = false here; RLS hides
+  // archived/trashed). Used only as the Business hero's fallback after the
+  // Business's own pick (lib/business-hero.ts).
+  const approvedEventIds = new Set<string>([
+    ...((eventLinks ?? []) as { event_id: string }[]).map((l) => l.event_id),
+    ...occurrences.map((o) => o.event_id),
+  ]);
+  const featuredEvents: EditorialFeaturedEvent[] = editorialFeaturedEventsFor(events.values(), approvedEventIds);
+
   const now = Date.now();
   const isUpcoming = (r: BusinessActivityRow) => new Date(r.end_at ?? r.start_at).getTime() > now;
   return {
+    featuredEvents,
     upcoming: reconciled.filter(isUpcoming).sort((a, b) => a.start_at.localeCompare(b.start_at)),
     past: reconciled
       .filter((r) => !isUpcoming(r))
@@ -2129,6 +2145,9 @@ export interface EventDiscoveryParams {
   location?: string;
   limit?: number;
   offset?: number;
+  /** Findmi editorial Featured Events lead (Event discovery pages only —
+   * homepage rows, search and /find keep plain date order). */
+  featuredFirst?: boolean;
   /** Consumer Event Market Filtering V1 — see EffectiveUpcomingEventsOptions'
    * own doc comment. Separate from `location` (free-text city/state) —
    * the two intersect rather than one replacing the other. */
@@ -2154,6 +2173,21 @@ export interface EventDiscoveryParams {
  * combined, in JS rather than a single SQL ORDER BY/LIMIT — the
  * trade-off that lets one query surface both occurrence-driven and
  * legacy events without a database-side recurrence join. */
+/** Featured Events first (featured_sort_order, nulls last, then date);
+ * the rest keep their existing date order. Stable, in place. */
+export function sortFeaturedFirst<R extends { event: { is_featured?: boolean | null; featured_sort_order?: number | null }; effectiveStart: string }>(rows: R[]): R[] {
+  const rank = (r: R) => (r.event.is_featured ? 0 : 1);
+  return rows.sort((a, b) => {
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    if (rank(a) === 0) {
+      const ao = a.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
+      const bo = b.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
+      if (ao !== bo) return ao - bo;
+    }
+    return new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime();
+  });
+}
+
 export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Promise<FindmiEvent[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -2184,6 +2218,12 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
     marketSlug: params.marketSlug,
     areaSlug: params.areaSlug,
   });
+
+  // Findmi editorial Featured (events.is_featured): on the Event discovery
+  // pages that opt in, featured Events lead — ordered by the founder's
+  // featured_sort_order, then date — and every other Event keeps its
+  // normal date order. Applied before paging so pages stay consistent.
+  if (params.featuredFirst) sortFeaturedFirst(rows);
 
   const offset = params.offset ?? 0;
   const limit = params.limit ?? 50;

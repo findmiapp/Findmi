@@ -72,6 +72,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       marketSlug: params.market,
       areaSlug: params.market ? params.area : undefined,
       limit: limit + 1,
+      featuredFirst: true,
     }),
   ]);
   const hasMore = fetchedRaw.length > limit;

@@ -50,6 +50,7 @@ import { getSupabase } from "@/lib/supabase";
 import { isBusinessPro } from "@/lib/entitlements";
 import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { collapseEventDates } from "@/lib/findmi-here";
+import { resolveBusinessHero } from "@/lib/business-hero";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -62,29 +63,6 @@ import { collapseEventDates } from "@/lib/findmi-here";
 
 function isSafeExternalUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
-}
-
-/** Featured Appearance System — pure, synchronous, zero-query resolver.
- * `appearances` is the same already-fetched getUpcomingAppearancesForBusiness
- * result this page already needs for Findmi Here, which is itself already
- * ordered start_at ascending (a currently-live appearance's start_at is
- * always earlier than any not-yet-started one's, so [0] already means
- * "live if any, else nearest upcoming" with no extra sort — same reasoning
- * lib/featured-event.ts's own automatic path documents). A manual override
- * wins only when it's still present in that eligible list; once an
- * appearance is canceled, ends, is deleted, or otherwise drops out of
- * getUpcomingAppearancesForBusiness's own eligibility rules, it simply
- * stops matching here and this silently falls back to automatic — no
- * separate staleness check, no owner cleanup required. */
-function resolveFeaturedAppearance(
-  appearances: AppearanceWithEventSlug[],
-  overrideAppearanceId: string | null
-): AppearanceWithEventSlug | null {
-  if (overrideAppearanceId) {
-    const match = appearances.find((a) => a.id === overrideAppearanceId);
-    if (match) return match;
-  }
-  return appearances[0] ?? null;
 }
 
 /** FREE VS PRO GATING — resolved server-side via lib/entitlements.ts,
@@ -294,9 +272,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // card for whichever single Appearance resolves. Pure/synchronous, no
   // extra query: reuses the exact `appearances` array already fetched
   // above for Findmi Here. Null when this Business has nothing upcoming
-  // at all (see resolveFeaturedAppearance's own doc comment for the
+  // at all (see resolveBusinessHero in lib/business-hero.ts for the
   // manual-override/stale-selection rules).
-  const featuredAppearance = resolveFeaturedAppearance(appearances, featuredOverrideId);
+  // Hero precedence (lib/business-hero.ts): the Business's own pick →
+  // a Findmi editorially Featured Event it's an approved participant in →
+  // Happening Now → nearest upcoming.
+  const featuredAppearance = resolveBusinessHero(appearances, { overrideId: featuredOverrideId, featuredEvents: activity.featuredEvents })?.item ?? null;
   const featuredTemporal = featuredAppearance
     ? getTemporalLabel(featuredAppearance.start_at, featuredAppearance.end_at)
     : null;
@@ -734,7 +715,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           white "Next Up" card for a standalone one (two unrelated visual
           structures depending on provenance a visitor never sees).
           FeaturedAppearanceCard is now the ONE unified presentation for
-          whichever single Appearance resolveFeaturedAppearance above
+          whichever single Appearance resolveBusinessHero above
           resolves, event-backed or standalone alike.
           Featured Appearance Heading pass — "Featured Appearance" used to
           render as overlay text inside the card itself. It now sits
