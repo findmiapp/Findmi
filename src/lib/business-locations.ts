@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeLocationHours } from "./locationHours";
+import type { LocationHours } from "./types";
 
 /** /account V2 Pass 2 — Business Locations.
  *
@@ -36,6 +38,8 @@ export interface BusinessLocationItem {
   isPending: boolean;
   /** archived_at / trashed_at set — hidden from the public. */
   isArchived: boolean;
+  /** The Location's own weekly hours (open/closed status), when set. */
+  hours: LocationHours | null;
 }
 
 export interface LocationOperatorItem {
@@ -70,7 +74,7 @@ export function isMissingBusinessLocationsTable(error: { code?: string; message?
   );
 }
 
-const LOCATION_FIELDS = "id, name, slug, address, city, state, logo_url, cover_image_url, is_demo, archived_at, trashed_at";
+const LOCATION_FIELDS = "id, name, slug, address, city, state, logo_url, cover_image_url, hours, is_demo, archived_at, trashed_at";
 
 type LocationEmbed = {
   id: string;
@@ -84,6 +88,7 @@ type LocationEmbed = {
   is_demo: boolean | null;
   archived_at: string | null;
   trashed_at: string | null;
+  hours?: unknown;
 };
 
 function one<T>(embed: T | T[] | null): T | null {
@@ -132,6 +137,7 @@ export async function getLocationsForBusiness(
       coverImageUrl: l.cover_image_url,
       isPending: Boolean(l.is_demo),
       isArchived: Boolean(l.archived_at || l.trashed_at),
+      hours: normalizeLocationHours(l.hours),
     });
   }
   return { items: items.slice(0, limit), hasMore: items.length > limit };

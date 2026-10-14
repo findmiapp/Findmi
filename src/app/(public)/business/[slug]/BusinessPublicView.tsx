@@ -27,6 +27,12 @@ import { VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import BrandHeading from "@/components/BrandHeading";
+import OurLocations from "@/components/OurLocations";
+import { getLocationsForBusiness } from "@/lib/business-locations";
+
+/** Our Locations shown on the public page — bounded, so a large chain never
+ * becomes an endless list. */
+const OUR_LOCATIONS_LIMIT = 24;
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
@@ -238,7 +244,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, activity, people, galleryImages, journal] = await Promise.all([
+  const [products, activity, people, galleryImages, journal, ourLocations] = await Promise.all([
     getProductsForBusiness(business.id),
     // Upcoming activity reconciled with the Business's approved Event
     // participation and each Event's CURRENT schedule (read-only — see
@@ -252,6 +258,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     // Journal Distribution V1 — public, published experiences connected to
     // this Business; small preview set + exact count for "See all".
     getPublicJournalCollection({ subjectType: "business", subjectId: business.id, limit: 6, withCount: true }),
+    // Our Locations — public (anon) read: published, non-archived Locations
+    // explicitly connected to this Business. Fails safe to none.
+    getLocationsForBusiness(getSupabase(), business.id, { publicOnly: true, limit: OUR_LOCATIONS_LIMIT }),
   ]);
   // EVENT IDENTITY != SCHEDULE OCCURRENCES. The Featured Appearance card
   // shows a multi-date Event ONCE (its live date, else its next date — see
@@ -856,6 +865,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               />
             </section>
           )}
+
+          {/* Our Locations — permanent places this Business operates
+              (explicit business_locations links only; never Event or
+              Appearance venues). Physical presence sits beside Findmi
+              Here (temporary presence); nothing renders with none. */}
+          <OurLocations businessName={business.name} locations={ourLocations.items} first={scheduleAppearances.length === 0} />
 
           {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin.
               Free Tier Entitlement Reset V1 — both are core "distribute

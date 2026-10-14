@@ -74,3 +74,18 @@ export function LocationHoursStatus({ hours }: { hours: LocationHoursValue | nul
     </div>
   );
 }
+
+/** Our Locations — a compact "Open Now" / "Closed" line for a Location
+ * card, from the same stored hours and rule as LocationHoursStatus (the
+ * visitor's own clock, after mount). Nothing renders without real hours. */
+export function LocationOpenBadge({ hours }: { hours: LocationHoursValue | null | undefined }) {
+  const now = useClientNow();
+  const status = now ? getHoursStatus(hours, now) : null;
+  if (!status) return null;
+  return (
+    <p className="mt-0.5 truncate text-xs">
+      <span className={`font-bold uppercase tracking-wide ${status.open ? "text-findmi-700" : "text-ink/60"}`}>{status.open ? "Open Now" : "Closed"}</span>
+      {status.detail && <span className="text-ink/50"> · {status.detail}</span>}
+    </p>
+  );
+}

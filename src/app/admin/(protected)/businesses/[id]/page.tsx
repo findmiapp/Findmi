@@ -647,9 +647,10 @@ export default async function EditBusinessPage({
             Remove deletes only the connection, never the Location. */}
         {tab === "locations" && (
           <div className="rounded-2xl border border-black/10 bg-white p-4">
-            <p className="text-sm font-semibold text-ink">Locations</p>
+            <p className="text-sm font-semibold text-ink">Our Locations</p>
             <p className="mt-1 text-xs text-ink/45">
-              Connect the locations associated with this business. Events and pop-ups are managed separately.
+              Permanent places this business operates — shown on its public page as Our Locations. Never Event venues,
+              pop-ups or stockists; Events and pop-ups are managed separately.
             </p>
             {businessLocations.items.length > 0 ? (
               <ul className="mt-3 flex flex-col gap-2">

@@ -30,7 +30,7 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
   const items: { key: PresenceView; label: string }[] = [
     { key: "upcoming", label: "Happening" },
     { key: "past", label: "Past" },
-    { key: "locations", label: "Locations" },
+    { key: "locations", label: "Our Locations" },
   ];
   return (
     <div className="flex flex-col gap-3">
@@ -186,7 +186,7 @@ export function LocationsPresence({
             <NavIcon name="pin" className="h-6 w-6" />
           </span>
           <div>
-            <h2 className="font-display text-section-title font-bold text-primary">Locations</h2>
+            <h2 className="font-display text-section-title font-bold text-primary">Our Locations</h2>
             <p className="mt-1 max-w-md text-body text-muted">
               Add and manage locations for {businessName}.
             </p>
