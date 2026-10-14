@@ -3,6 +3,7 @@ import { getAdminUserCount } from "./user-queries";
 import { getDiscoveryWindowBounds } from "@/lib/format";
 import { dedupeAppearances, deriveEventIdsWithOccurrenceProjections, withoutSupersededEventProjections } from "@/lib/data";
 import { withoutRangeMirrors } from "@/lib/event-range-mirror";
+import { newEventsSinceIso } from "../event-publication";
 
 // Admin Dashboard Redesign — the /admin homepage's own data, kept
 // separate from lib/admin/queries.ts's getDashboardCounts() (still used
@@ -66,6 +67,10 @@ export interface DashboardNeedsAttention {
    * comment): getAdminEvents's own pending_review query already excludes
    * trashed rows. */
   pendingEventReviews: number;
+  /** Event Publication — Events created in the last NEW_EVENT_WINDOW_DAYS
+   * (not Trash). Oversight, not an approval queue: they're already live.
+   * Same set as /admin/events?new=1. */
+  newEvents: number;
   /** Admin Where I'll Be Review Inbox pass — appearances.admin_reviewed_at
    * IS NULL, for real (non-demo) businesses. Deliberately named
    * differently from the pendingXxxReviews fields above: this is NOT a
@@ -141,6 +146,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingMarketplaceReviews,
     pendingEventReviews,
     unreviewedAppearances,
+    newEvents,
   ] = await Promise.all([
     supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -182,6 +188,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .select("id, businesses!appearances_business_id_fkey!inner(is_demo)", { count: "exact", head: true })
       .is("admin_reviewed_at", null)
       .eq("businesses.is_demo", false),
+    supabase.from("events").select("id", { count: "exact", head: true }).gte("created_at", newEventsSinceIso()).is("trashed_at", null),
   ]);
 
   return {
@@ -193,6 +200,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingMarketplaceReviews: pendingMarketplaceReviews.count ?? 0,
     pendingEventReviews: pendingEventReviews.count ?? 0,
     unreviewedAppearances: unreviewedAppearances.count ?? 0,
+    newEvents: newEvents.count ?? 0,
   };
 }
 

@@ -85,7 +85,7 @@ test("A–H/O: legacy thin item + validated recovery → ONE rich Event + Occurr
   assert.equal(ev.description, RECOVERED.description, "C");
   assert.match(ev.cover_image_url, /^https:\/\/findmi\.supabase\.co\/storage\/.*findmi-media/, "D: re-hosted in Findmi storage, not the Luma URL");
   assert.equal(ev.external_url, RECOVERED.sourceUrl, "E");
-  assert.deepEqual([ev.host_business_id, ev.is_demo, ev.publication_status, ev.organizer_name], [null, true, "pending_review", "Corgi NYC"], "H/I: organizer is a name only");
+  assert.deepEqual([ev.host_business_id, ev.is_demo, ev.publication_status, ev.organizer_name], [null, false, "live", "Corgi NYC"], "H/I: organizer is a name only; live by default");
   assert.deepEqual([ev.start_at, ev.end_at], [RECOVERED.occurrences[0].start, RECOVERED.occurrences[0].end], "the source's own time");
   const occ = ops.find((o) => o.table === "event_occurrences").row;
   assert.deepEqual([occ.location_id, occ.venue_name, occ.address], [CORGI_NYC, "Corgi Cafe NYC", "121 East 27th Street"], "F/G: confirmed Location kept although the source says 'Corgi Cafe'");

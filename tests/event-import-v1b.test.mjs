@@ -294,7 +294,7 @@ function fakeAdmin({ existingAppearances = [], locations = {} } = {}) {
         const res = { error: null, data: null };
         return { ...res, select: async () => ({ data: rows.map((_, i) => ({ id: `occ-${i}` })) }), then: (r) => r(res) };
       },
-      update: (patch) => (ops.push({ op: "update", table, patch }), { eq: async () => ({ error: null }) }),
+      update: (patch) => { ops.push({ op: "update", table, patch }); const c = { eq: () => c, is: () => c, select: () => c, maybeSingle: async () => ({ data: { id: "published" }, error: null }), then: (r) => r({ error: null }) }; return c; },
     };
     return api;
   };
@@ -389,7 +389,8 @@ test("HOSTING: one Event → one occurrence per date, each linked to ITS OWN pla
   assert.equal(rpc.args.p_end_at, at("2026-10-17", "18:00"), "spans to the latest end");
   const occ = ops.find((o) => o.op === "insert" && o.table === "event_occurrences").rows;
   assert.deepEqual(occ.map((r) => [r.venue_name, r.location_id]), [["Grand Central Terminal", LOC_GC], ["MSG", null], ["Astoria Park", null]]);
-  const ev = ops.find((o) => o.op === "update" && o.table === "events").patch;
+  assert.deepEqual(ops.find((o) => o.op === "update" && o.table === "events").patch, { is_demo: false, publication_status: "live" }, "live by default");
+  const ev = ops.find((o) => o.op === "update" && o.table === "events" && !("is_demo" in o.patch)).patch;
   assert.equal(ev.venue_name, null, "a multi-place Event has no single Event-level venue");
   assert.equal(ev.city, "New York", "…but keeps the city every date shares");
 });

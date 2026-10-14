@@ -149,7 +149,7 @@ export function successMessage(kind: "scheduled" | "requested" | "already", titl
   if (kind === "already") return `${title} is already on ${businessName}'s Findmi schedule.`;
   if (kind === "requested") return `Request sent to join ${title}. It shows on ${businessName}'s schedule once the organizer confirms.`;
   return intent === "hosting" || newEvent
-    ? `${title} is now on ${businessName}'s Findmi schedule. Findmi reviews new Events before they're public.`
+    ? `${title} is live on Findmi and on ${businessName}'s schedule.`
     : `${title} is now on ${businessName}'s Findmi schedule.`;
 }
 

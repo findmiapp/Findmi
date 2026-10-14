@@ -78,10 +78,10 @@ function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
     },
     notifyNewEvent: async (eventId, title, startIso) => {
       await notifyAdmin({
-        subject: `Event awaiting review: ${title}`,
-        heading: "New Event awaiting review",
-        body: [`Event: ${title}`, `Host: ${business.name}`, `Starts: ${new Date(startIso).toLocaleString()}`, "Source: Event Import"],
-        actionLabel: "Review Event",
+        subject: `New Event on Findmi: ${title}`,
+        heading: "New Event published",
+        body: [`Event: ${title}`, `Added by: ${business.name}`, `Starts: ${new Date(startIso).toLocaleString()}`, "Source: Event Import"],
+        actionLabel: "View in Admin",
         actionUrl: `/admin/events/${eventId}`,
       });
     },

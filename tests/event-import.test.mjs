@@ -269,7 +269,8 @@ function fakeAdmin({ existingAppearances = [], events = {}, locations = {} } = {
       },
       update: (patch) => {
         ops.push({ op: "update", table, patch });
-        return { eq: async () => ({ error: null }) };
+        const c = { eq: () => c, is: () => c, select: () => c, maybeSingle: async () => ({ data: { id: "published" }, error: null }), then: (r) => r({ error: null }) };
+        return c;
       },
     };
     return api;
@@ -411,8 +412,10 @@ test("HOSTING → create_owned_event with this Business as host, Dates for each 
   const occ = ops.find((o) => o.op === "insert" && o.table === "event_occurrences");
   assert.equal(occ.rows.length, 2);
   assert.equal(calls.propagate.length, 1);
-  assert.deepEqual(calls.notify, ["new-event"], "Findmi reviews new Events");
-  const upd = ops.find((o) => o.op === "update" && o.table === "events");
+  assert.deepEqual(calls.notify, ["new-event"], "Findmi Admin is told about every new Event");
+  // Live by default: the RPC's review state is replaced right after creation.
+  assert.deepEqual(ops.find((o) => o.op === "update" && o.table === "events").patch, { is_demo: false, publication_status: "live" });
+  const upd = ops.find((o) => o.op === "update" && o.table === "events" && !("is_demo" in o.patch));
   assert.equal(upd.patch.external_url, "https://www.eventbrite.com/e/nyc-coffee-festival-123");
 });
 

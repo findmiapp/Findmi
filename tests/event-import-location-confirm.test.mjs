@@ -155,7 +155,7 @@ function fakeAdmin(locations = {}) {
         const res = { error: null, data: null };
         return { ...res, select: async () => ({ data: rows.map((_, i) => ({ id: `o${i}` })) }), then: (r) => r(res) };
       },
-      update: (patch) => (ops.push({ table, update: patch }), { eq: async () => ({ error: null }) }),
+      update: (patch) => { ops.push({ table, update: patch }); const c = { eq: () => c, is: () => c, select: () => c, maybeSingle: async () => ({ data: { id: "published" }, error: null }), then: (r) => r({ error: null }) }; return c; },
     };
     return api;
   };

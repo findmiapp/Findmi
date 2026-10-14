@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EventCandidate, ImportedOccurrence } from "./event-import/types";
+import { NEW_EVENT_PUBLICATION } from "./event-publication";
 
 /** Rich Event Persistence — the domain operation that upgrades ONE existing
  * standalone schedule item (an Appearance with no Event) into the canonical
@@ -230,8 +231,8 @@ export async function convertAppearanceToEvent(
       slug,
       start_at: startAt,
       end_at: endAt,
-      is_demo: true,
-      publication_status: "pending_review",
+      // Live by default, like every new Event (lib/event-publication.ts).
+      ...NEW_EVENT_PUBLICATION,
       host_business_id: null,
       organizer_name: recovered?.organizer ?? deps.organizerName ?? null,
       description: recovered?.description ?? a.description,

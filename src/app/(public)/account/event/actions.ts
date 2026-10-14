@@ -33,6 +33,7 @@ import { MAX_BULK_GENERATED_DATES, resolveEndDateForTimes } from "@/lib/schedule
 import type { EventParticipationScope, EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { storePublicImage } from "@/lib/image-variants-server";
+import { publishCreatedEvent } from "@/lib/event-publication";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -289,6 +290,9 @@ export async function createMemberEvent(formData: FormData) {
   }
 
   const eventId = (created as { id: string }).id;
+  // Live by default: create_owned_event() still writes the old review
+  // state; publish what it just created (lib/event-publication.ts).
+  const published = await publishCreatedEvent(admin, eventId);
 
   // create_owned_event() has no p_market_area_id parameter (Area wasn't
   // part of that RPC's original signature) — rather than widen the RPC,
@@ -379,17 +383,14 @@ export async function createMemberEvent(formData: FormData) {
     await admin.from("events").update(manualVenue).eq("id", eventId);
   }
 
-  // Admin Action Email Notifications V1 — create_owned_event() always
-  // creates a brand-new event (is_demo=true hardcoded, publication_status
-  // defaults to pending_review — see that RPC's own comment), never a
-  // draft an owner can silently keep unsubmitted, so this always fires
-  // exactly once per creation. Uses only fields already read above (name,
-  // startIso) — no extra query.
+  // Admin Action Email Notifications V1 — fires exactly once per
+  // creation. Oversight, not approval: the Event is already public (or,
+  // if publishing failed, still listed under Admin → Events → New Events).
   await notifyAdmin({
-    subject: `Event awaiting review: ${name}`,
-    heading: "New Event awaiting review",
-    body: [`Event: ${name}`, `Starts: ${new Date((created as { start_at: string }).start_at).toLocaleString()}`],
-    actionLabel: "Review Event",
+    subject: `New Event on Findmi: ${name}`,
+    heading: published ? "New Event published" : "New Event created (not yet public)",
+    body: [`Event: ${name}`, `Starts: ${new Date((created as { start_at: string }).start_at).toLocaleString()}`, "Source: Host an Event"],
+    actionLabel: "View in Admin",
     actionUrl: `/admin/events/${eventId}`,
   });
 

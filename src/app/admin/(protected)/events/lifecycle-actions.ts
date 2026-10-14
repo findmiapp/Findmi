@@ -215,3 +215,79 @@ export async function bulkQuickEditEvents(formData: FormData) {
   revalidateAfterLifecycleChange();
   redirect(resultRedirectUrl(EVENTS_LIST, results.length > 0 ? results.join(" ") : "No changes selected."));
 }
+
+// ── Event Publication — Admin oversight of one Event ────────────────────
+// Events go live as soon as they're created (lib/event-publication.ts);
+// these are Findmi Admin's authority over any one of them. Nothing here
+// deletes anything — every row (dates, participants, schedule items) is
+// kept and the change is reversible.
+//
+//   Hide        is_demo → true. The Event page, Event listings and its
+//               dates on Location pages stop showing it; participants'
+//               own schedule items stay, without a link to the Event.
+//   Publish     is_demo → false, publication_status → 'live' (also how a
+//               legacy pending-review / rejected Event is published).
+//   Shut Down   archived_at → now. Restrictive RLS then hides the Event,
+//               its dates and EVERY schedule item linked to it everywhere.
+//   Restore     archived_at → null (back to its Live/Hidden state).
+
+const EVENT_RETURN = /^\/admin\/events(?:[/?][\w\-/?=&%.]*)?$/;
+
+function backTo(returnTo: string | null | undefined, eventId: string): string {
+  return returnTo && EVENT_RETURN.test(returnTo) ? returnTo : `/admin/events/${eventId}`;
+}
+
+async function afterVisibilityChange(supabase: SupabaseClient, eventId: string) {
+  const { data } = await supabase.from("events").select("slug").eq("id", eventId).maybeSingle();
+  // Public Event, Location, Business and discovery pages all read it.
+  revalidatePath("/", "layout");
+  if (data?.slug) revalidatePath(`/event/${data.slug}`);
+  revalidatePath(EVENTS_LIST);
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath("/admin");
+}
+
+function withResult(path: string, message: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}result=${encodeURIComponent(message)}`;
+}
+
+export async function hideEvent(eventId: string, returnTo: string | null = null) {
+  const supabase = await requireAdminSupabase();
+  const { data } = await supabase.from("events").update({ is_demo: true }).eq("id", eventId).select("id").maybeSingle();
+  await afterVisibilityChange(supabase, eventId);
+  redirect(withResult(backTo(returnTo, eventId), data ? "Event hidden from the public." : "Event not found."));
+}
+
+export async function publishEvent(eventId: string, returnTo: string | null = null) {
+  const supabase = await requireAdminSupabase();
+  const { data } = await supabase
+    .from("events")
+    .update({ is_demo: false, publication_status: "live" })
+    .eq("id", eventId)
+    .is("trashed_at", null)
+    .select("id")
+    .maybeSingle();
+  await afterVisibilityChange(supabase, eventId);
+  redirect(withResult(backTo(returnTo, eventId), data ? "Event is live." : "Event not found (or in Trash)."));
+}
+
+export async function shutDownEvent(eventId: string, returnTo: string | null = null) {
+  const supabase = await requireAdminSupabase();
+  const { data } = await supabase
+    .from("events")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .is("archived_at", null)
+    .is("trashed_at", null)
+    .select("id")
+    .maybeSingle();
+  await afterVisibilityChange(supabase, eventId);
+  redirect(withResult(backTo(returnTo, eventId), data ? "Event shut down — hidden everywhere, record kept (Archived)." : "Event was already shut down."));
+}
+
+export async function restoreEvent(eventId: string, returnTo: string | null = null) {
+  const supabase = await requireAdminSupabase();
+  const { data } = await supabase.from("events").update({ archived_at: null }).eq("id", eventId).not("archived_at", "is", null).select("id").maybeSingle();
+  await afterVisibilityChange(supabase, eventId);
+  redirect(withResult(backTo(returnTo, eventId), data ? "Event restored from Archive." : "Event wasn't shut down."));
+}

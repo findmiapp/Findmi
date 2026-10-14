@@ -31,6 +31,7 @@ import { validateCustomDestination } from "../navigation";
 import { cleanText, usStateCode } from "../brand-website-extract";
 import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPlace } from "./types";
 import type { EventApplicationResult } from "../event-participation";
+import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
 
 export const REVIEW_MAX_DATES = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -280,10 +281,10 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
  *   1. same source link already on Findmi → that Event, through the shared
  *      join path (applyToEvent — the organizer/Findmi confirms);
  *   2. otherwise ONE new Event (no host, no owner membership — the
- *      importer doesn't manage someone else's Event), awaiting Findmi
- *      review exactly like every other new Event (is_demo + pending_review
- *      until approved), with the source's description, link, image and
- *      organizer name;
+ *      importer doesn't manage someone else's Event), public as soon as it
+ *      is saved like every other new Event (lib/event-publication.ts —
+ *      Findmi Admin oversees it under New Events), with the source's
+ *      description, link, image and organizer name;
  *   3. one Event Occurrence per date, each with its own confirmed Location
  *      (or venue text);
  *   4. the Business's participation: event_businesses approved for all
@@ -320,9 +321,9 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   const geo = geoText ? await deps.geography(geoText) : null;
   const cover = input.imageUrl ? await deps.storeImage(input.imageUrl) : null;
 
-  // 2. The Event — same review state create_owned_event gives every new
-  // Event (that RPC isn't used here: it always makes the caller the
-  // Event's owner, which is hosting, not participating).
+  // 2. The Event — published like every new Event (create_owned_event
+  // isn't used here: it always makes the caller the Event's owner, which
+  // is hosting, not participating).
   const { data: created, error } = await admin
     .from("events")
     .insert({
@@ -330,8 +331,7 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
       slug,
       start_at: first.start,
       end_at: lastEnd,
-      is_demo: true,
-      publication_status: "pending_review",
+      ...NEW_EVENT_PUBLICATION,
       host_business_id: null,
       organizer_name: input.organizer,
       description: input.description,
@@ -433,6 +433,8 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
   });
   if (error || !created) return { ok: false, error: "Couldn't create your Event. Please try again." };
   const eventId = (created as { id: string }).id;
+  // Live by default (the RPC still writes the old review state).
+  await publishCreatedEvent(admin, eventId);
 
   const cover = input.imageUrl ? await deps.storeImage(input.imageUrl) : null;
   // Best-effort detail fill — the Event already exists either way.

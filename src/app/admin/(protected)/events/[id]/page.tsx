@@ -11,9 +11,9 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
-import PendingReviewPanel from "@/components/admin/PendingReviewPanel";
 import EventForm from "../EventForm";
-import { approveEventListing, rejectEventListing } from "../actions";
+import { hideEvent, publishEvent, restoreEvent, shutDownEvent } from "../lifecycle-actions";
+import { EVENT_VISIBILITY_LABEL, eventVisibility } from "@/lib/event-publication";
 
 // User Identity + Follow Foundation pass — no organizer/member management
 // SURFACE exists for events yet (event_members is schema-only, populated
@@ -42,10 +42,10 @@ export default async function EditEventPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; result?: string }>;
 }) {
   const { id } = await params;
-  const { error, saved } = await searchParams;
+  const { error, saved, result: visibilityResult } = await searchParams;
   const marketsAdmin = getAdminSupabase();
   const [result, categories, selectedCategoryIds, locations, markets, marketsWithAreas] = await Promise.all([
     getAdminEventById(id),
@@ -69,17 +69,12 @@ export default async function EditEventPage({
           .then(({ data }) => (data as { id: string; name: string; logo_url: string | null } | null) ?? null)
       : Promise.resolve(null),
   ]);
-  const publicHref = !result.event.is_demo ? `/event/${result.event.slug}` : null;
+  // Event Publication — Events are live when created; Admin oversees with
+  // Hide / Publish / Shut Down / Restore (events/lifecycle-actions.ts).
+  const visibility = eventVisibility(result.event);
+  const publicHref = visibility === "live" ? `/event/${result.event.slug}` : null;
   const followerCount = await getEventFollowerCount(id);
-  // Event Rejection State pass — the EXACT SAME "needsReview" definition
-  // getAdminEvents({needsReview}) and getDashboardNeedsAttention already use
-  // (publication_status === "pending_review"), so this page's decision panel
-  // can never disagree with the Command Center count or the pending list
-  // about whether this event is actually pending.
-  const needsReview = result.event.publication_status === "pending_review";
-  const isRejected = result.event.publication_status === "rejected";
-  const approveAction = approveEventListing.bind(null, id);
-  const rejectAction = rejectEventListing.bind(null, id);
+  const legacyReview = result.event.publication_status === "pending_review" || result.event.publication_status === "rejected";
 
   return (
     <div>
@@ -98,33 +93,60 @@ export default async function EditEventPage({
       <p className="mt-1 text-xs text-ink/45">
         {followerCount} follower{followerCount === 1 ? "" : "s"} (email + Findmi accounts combined)
       </p>
-      {/* Admin Pending Review Decision UX pass — compact status context for
-          an already-decided event (task's own "do not clutter every normal
-          Edit screen with a giant moderation panel"); the big decision
-          panel below is reserved for a real pending review only. */}
-      {!needsReview && (
-        <span
-          className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-            !result.event.is_demo
-              ? "bg-findmi-50 text-findmi-700"
-              : isRejected
-                ? "bg-red-50 text-red-700"
-                : "bg-black/[0.06] text-ink/50"
-          }`}
-        >
-          {!result.event.is_demo ? "Approved" : isRejected ? "Rejected" : "Demo"}
-        </span>
-      )}
-      {/* Prominent, unmissable decision panel, placed above EventForm's own
-          long scrolling content so it's visible on first load — "near the
-          top, before the long editing form" per the pass's own instruction. */}
-      {needsReview && (
-        <PendingReviewPanel
-          entityLabel="Event"
-          approveAction={approveAction}
-          approveLabel="Approve Event"
-          rejectAction={rejectAction}
-        />
+      {/* Visibility — oversight, not approval: where this Event stands
+          publicly and Admin's authority over it. Nothing is deleted. */}
+      <div className="mt-3 flex flex-col gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {visibility === "live"
+              ? "Live on Findmi"
+              : visibility === "hidden"
+                ? legacyReview
+                  ? "Not public — created before Events went live by default"
+                  : "Hidden from the public"
+                : visibility === "archived"
+                  ? "Shut down — hidden everywhere, record kept"
+                  : "In Trash"}
+          </p>
+          <p className="text-xs text-ink/50">
+            Added {new Date(result.event.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
+            {" · "}
+            {EVENT_VISIBILITY_LABEL[visibility]}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {visibility === "hidden" && (
+            <form action={publishEvent.bind(null, id, null)}>
+              <button type="submit" className="rounded-lg bg-findmi px-3 py-1.5 text-sm font-semibold text-white hover:bg-findmi-600">
+                Publish
+              </button>
+            </form>
+          )}
+          {visibility === "live" && (
+            <form action={hideEvent.bind(null, id, null)}>
+              <button type="submit" className="rounded-lg border border-black/15 px-3 py-1.5 text-sm font-semibold text-ink hover:border-black/30">
+                Hide
+              </button>
+            </form>
+          )}
+          {(visibility === "live" || visibility === "hidden") && (
+            <form action={shutDownEvent.bind(null, id, null)}>
+              <button type="submit" className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 hover:border-red-300">
+                Shut Down
+              </button>
+            </form>
+          )}
+          {visibility === "archived" && (
+            <form action={restoreEvent.bind(null, id, null)}>
+              <button type="submit" className="rounded-lg border border-black/15 px-3 py-1.5 text-sm font-semibold text-ink hover:border-black/30">
+                Restore
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+      {visibilityResult && (
+        <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{visibilityResult}</p>
       )}
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">

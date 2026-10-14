@@ -65,7 +65,7 @@ function fakeAdmin({ appearance = null, eventsByUrl = [] } = {}) {
       update: (patch) => {
         const rec = { op: "update", table, patch, where: [] };
         ops.push(rec);
-        const chain = { eq: (k, v) => (rec.where.push([k, v]), chain), is: (k, v) => (rec.where.push([k, v]), chain), then: (r) => r({ error: null }) };
+        const chain = { eq: (k, v) => (rec.where.push([k, v]), chain), is: (k, v) => (rec.where.push([k, v]), chain), select: () => chain, maybeSingle: async () => ({ data: { id: "published" }, error: null }), then: (r) => r({ error: null }) };
         return chain;
       },
     };
@@ -126,7 +126,7 @@ test("review: Event vs schedule item is explained in Business words; the server 
   for (const r of [richReview(), richReview({ asEvent: false }), richReview({ intent: "hosting" })]) assert.doesNotMatch(JSON.stringify(R.persistNote(r, "Corgi")), /appearance|occurrence/i);
   assert.equal(norm(richReview({ sourceUrl: null })).asEvent, false, "no source link → schedule item");
   assert.equal(norm(richReview({ intent: "hosting" })).asEvent, false, "hosting keeps its own path");
-  assert.equal(R.successMessage("scheduled", "Founder GTM Mixer", "Corgi", "participating", true), "Founder GTM Mixer is now on Corgi's Findmi schedule. Findmi reviews new Events before they're public.");
+  assert.equal(R.successMessage("scheduled", "Founder GTM Mixer", "Corgi", "participating", true), "Founder GTM Mixer is live on Findmi and on Corgi's schedule.");
 });
 
 // ── persistence ───────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ test("A/B/C/E: Where I'll Be + rich Event → ONE Event (participant, not host) 
   const ev = ops.filter((o) => o.table === "events" && o.op === "insert");
   assert.equal(ev.length, 1);
   const row = ev[0].rows[0];
-  assert.deepEqual([row.name, row.host_business_id, row.is_demo, row.publication_status], ["Founder GTM Mixer", null, true, "pending_review"], "participant only; reviewed like every new Event");
+  assert.deepEqual([row.name, row.host_business_id, row.is_demo, row.publication_status], ["Founder GTM Mixer", null, false, "live"], "participant only; live by default like every new Event");
   assert.equal(row.cover_image_url, "stored:https://images.lumacdn.com/event-covers/nyc-gtm-mixer.jpg", "C: the Event's own image");
   assert.deepEqual([row.external_url, row.description, row.organizer_name], ["https://luma.com/nyc-gtm-mixer", "Meet founders shipping GTM.", "Corgi NYC"]);
   assert.equal(ops.filter((o) => o.op === "rpc").length, 0, "no create_owned_event → no owner membership for the importer");
@@ -224,7 +224,7 @@ test("O/P/Q: conversion keeps the same schedule item and links it to a new Event
   assert.equal(out.status, "converted");
   assert.equal(out.appearanceId, STANDALONE.id, "O: same identity");
   const ev = ops.find((o) => o.table === "events" && o.op === "insert").rows[0];
-  assert.deepEqual([ev.external_url, ev.cover_image_url, ev.host_business_id, ev.is_demo, ev.publication_status], [STANDALONE.external_url, STANDALONE.flyer_image_url, null, true, "pending_review"]);
+  assert.deepEqual([ev.external_url, ev.cover_image_url, ev.host_business_id, ev.is_demo, ev.publication_status], [STANDALONE.external_url, STANDALONE.flyer_image_url, null, false, "live"]);
   const occ = ops.find((o) => o.table === "event_occurrences").rows[0];
   assert.deepEqual([occ.start_at, occ.end_at, occ.location_id], [STANDALONE.start_at, STANDALONE.end_at, CORGI_NYC]);
   assert.deepEqual(ops.filter((o) => o.op === "upsert").map((o) => o.table), ["event_businesses", "event_occurrence_businesses"]);

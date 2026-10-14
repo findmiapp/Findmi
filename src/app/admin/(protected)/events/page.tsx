@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAdminEvents, getAllCategories } from "@/lib/admin/queries";
 import EventBulkListClient from "./EventBulkListClient";
+import { NEW_EVENT_WINDOW_DAYS } from "@/lib/event-publication";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +25,16 @@ export default async function AdminEventsPage({
     vendorApps?: string;
     pending?: string;
     needsReview?: string;
+    new?: string;
     decided?: string;
     lifecycle?: string;
     result?: string;
   }>;
 }) {
-  const { q, when, vendorApps, pending, needsReview, decided, lifecycle, result } = await searchParams;
+  const { q, when, vendorApps, pending, needsReview, new: newParam, decided, lifecycle, result } = await searchParams;
+  // Event Publication — Events go live when created; "New Events" is
+  // Admin's oversight of what was just added (not an approval queue).
+  const newEventsOnly = newParam === "1";
   const whenFilter = when === "upcoming" || when === "past" ? when : undefined;
   const needsReviewOnly = needsReview === "1";
   const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value;
@@ -37,7 +42,7 @@ export default async function AdminEventsPage({
   // query branch" rule as Businesses: the lifecycle tabs are ignored
   // while vendorApps/pending/needsReview drive a dedicated query branch,
   // otherwise default to "active".
-  const moderationFilterActive = vendorApps === "1" || pending === "1" || needsReviewOnly;
+  const moderationFilterActive = vendorApps === "1" || pending === "1" || needsReviewOnly || newEventsOnly;
   const effectiveLifecycle = moderationFilterActive ? undefined : (lifecycleTab ?? "active");
 
   const [events, categories] = await Promise.all([
@@ -47,12 +52,15 @@ export default async function AdminEventsPage({
       vendorAppsOpen: vendorApps === "1",
       pendingApplications: pending === "1",
       needsReview: needsReviewOnly,
+      newEvents: newEventsOnly,
       lifecycle: effectiveLifecycle,
     }),
     getAllCategories("event"),
   ]);
 
-  const barView: "active" | "archived" | "trashed" | "other" = moderationFilterActive
+  const barView: "active" | "archived" | "trashed" | "other" | "new" = newEventsOnly
+    ? "new"
+    : moderationFilterActive
     ? "other"
     : (effectiveLifecycle ?? "active");
 
@@ -93,6 +101,14 @@ export default async function AdminEventsPage({
           as plain, visible pill links (never an obscure query param a
           visitor has to guess) — same pattern as Products/Businesses. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Link
+          href={`/admin/events?new=1${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+            newEventsOnly ? "bg-findmi text-white" : "border border-findmi/40 text-findmi-700 hover:border-findmi"
+          }`}
+        >
+          New Events
+        </Link>
         {LIFECYCLE_TABS.map((tab) => {
           const active = (lifecycleTab ?? "active") === tab.value && !moderationFilterActive;
           const params = new URLSearchParams();
@@ -114,7 +130,15 @@ export default async function AdminEventsPage({
         })}
       </div>
 
+      {newEventsOnly && (
+        <p className="mt-3 text-xs text-ink/55">
+          Every Event created in the last {NEW_EVENT_WINDOW_DAYS} days, newest first. They&rsquo;re already public — Hide or Shut Down
+          any of them here.
+        </p>
+      )}
+
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        {newEventsOnly && <input type="hidden" name="new" value="1" />}
         {lifecycleTab && lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
         <input autoCapitalize="none"
           type="text"
@@ -136,16 +160,6 @@ export default async function AdminEventsPage({
           <label className="flex items-center gap-1.5 text-xs font-medium text-ink/70">
             <input type="checkbox" name="pending" value="1" defaultChecked={pending === "1"} className="h-4 w-4 accent-findmi" />
             Pending applications
-          </label>
-          <label className="flex items-center gap-1.5 text-xs font-medium text-ink/70">
-            <input
-              type="checkbox"
-              name="needsReview"
-              value="1"
-              defaultChecked={needsReviewOnly}
-              className="h-4 w-4 accent-findmi"
-            />
-            Needs review
           </label>
           <button
             type="submit"

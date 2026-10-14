@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminSupabase } from "./supabase-admin";
+import { newEventsSinceIso } from "../event-publication";
 import { getPeopleForBusinessAdmin, type BusinessPersonRow } from "./people-queries";
 import type {
   Appearance,
@@ -25,7 +26,7 @@ export type AdminBusiness = Business & { is_demo: boolean };
 // Event Rejection State pass — publication_status added alongside is_demo,
 // same "admin/owner-facing only" reasoning; see EventPublicationStatus's
 // own comment in lib/types.ts.
-export type AdminEvent = FindmiEvent & { is_demo: boolean; publication_status: EventPublicationStatus };
+export type AdminEvent = FindmiEvent & { is_demo: boolean; publication_status: EventPublicationStatus; created_at: string };
 export type AdminLocation = FindmiLocation & { is_demo: boolean };
 export type AdminAppearance = Appearance;
 export type AdminProduct = Product;
@@ -254,6 +255,10 @@ export interface EventListFilters {
    * 'pending_review' | 'live' | 'rejected' (see EventPublicationStatus in
    * lib/types.ts) — Events have no Pause concept to filter by. */
   lifecycle?: "active" | "archived" | "trashed";
+  /** Event Publication — Admin's "New Events" oversight view: every Event
+   * created in the last NEW_EVENT_WINDOW_DAYS (live, hidden or shut down —
+   * not Trash), newest first. Awareness, not an approval queue. */
+  newEvents?: boolean;
 }
 
 export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
@@ -278,6 +283,18 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
     if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
     const { data } = await query.order("start_at", { ascending: false });
     return ((data ?? []) as unknown as AdminEvent[]) ?? [];
+  }
+
+  if (filters.newEvents) {
+    let query = supabase.from("events").select("*").gte("created_at", newEventsSinceIso()).is("trashed_at", null);
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
+    }
+    if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
+    if (filters.when === "past") query = query.lt("start_at", nowIso);
+    const { data } = await query.order("created_at", { ascending: false }).limit(200);
+    return (data as AdminEvent[]) ?? [];
   }
 
   if (filters.needsReview) {

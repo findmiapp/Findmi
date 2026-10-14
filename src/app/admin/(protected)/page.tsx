@@ -15,6 +15,7 @@ import AdminGlobalSearch from "./AdminGlobalSearch";
 import { MetricCell, ModulePanel } from "./dashboard-ui";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 import NavIcon from "@/components/NavIcon";
+import { NEW_EVENT_WINDOW_DAYS } from "@/lib/event-publication";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,11 @@ export default async function AdminDashboardPage() {
   const attentionQueue: AttentionQueueItem[] = needsAttention
     ? [
         { label: "Business awaiting review", pluralLabel: "Businesses awaiting review", count: needsAttention.pendingBusinessReviews, href: "/admin/businesses?published=pending_review" },
-        { label: "Event awaiting review", pluralLabel: "Events awaiting review", count: needsAttention.pendingEventReviews, href: "/admin/events?needsReview=1" },
+        // Event Publication — Events are live when created; this is
+        // awareness of what was just added, not an approval queue.
+        { label: `New Event in the last ${NEW_EVENT_WINDOW_DAYS} days`, pluralLabel: `New Events in the last ${NEW_EVENT_WINDOW_DAYS} days`, count: needsAttention.newEvents, href: "/admin/events?new=1" },
+        // Only Events created before live-by-default can still be pending.
+        { label: "older Event not yet public", pluralLabel: "older Events not yet public", count: needsAttention.pendingEventReviews, href: "/admin/events?needsReview=1" },
         { label: "Product awaiting review", pluralLabel: "Products awaiting review", count: needsAttention.pendingProductReviews, href: "/admin/products?status=needs_review" },
         { label: "Marketplace submission awaiting review", pluralLabel: "Marketplace submissions awaiting review", count: needsAttention.pendingMarketplaceReviews, href: "/admin/products?status=marketplace_review" },
         { label: "Pending claim", pluralLabel: "Pending claims", count: needsAttention.pendingClaims, href: "/admin/claims?status=pending" },

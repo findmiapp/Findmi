@@ -69,7 +69,7 @@ const primaryButtonClass =
 /** Native Event creation entry point (Global + → Add An Event). Free
  * Event Creation: ANY signed-in Findmi member may create/submit an Event —
  * no Pro, Pro Invite, event_management entitlement or Business required.
- * New Events still start pending review (create_owned_event) and the
+ * New Events are public right away (lib/event-publication.ts) and the
  * creator becomes their owner; management stays scoped per Event.
  * The only remaining gate here is HOSTING: with ?business_id (Business →
  * Findmi Here → Host Something) the caller must be an Owner/Manager of
@@ -156,8 +156,8 @@ export default async function AddEventPage({
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext
-          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing. You’ll finish the details and dates in Event Manager; Findmi reviews it before it appears publicly."
-          : "Create your event, then finish the details in Event Manager. Findmi will review it before it appears publicly."}
+          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing. It’s public on Findmi right away — finish the details and dates in Event Manager."
+          : "Create your event — it’s public on Findmi right away. Finish the details in Event Manager."}
       </p>
 
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
