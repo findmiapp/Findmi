@@ -227,6 +227,17 @@ export async function saveEvent(id: string | null, formData: FormData) {
     bulletin_body: str(formData, "bulletin_body"),
   };
 
+  // Location privacy, defense in depth: choosing "Hidden — shared after
+  // registration" clears this Event's OWN public venue text/coordinates in
+  // the same save (city/state stay), so no surface that reads the Event row
+  // directly can show it. Its dates and linked Appearances are not
+  // rewritten — every public read withholds their place from the Event's
+  // visibility instead (lib/event-location-privacy) — and no Location
+  // record is touched.
+  if (str(formData, "location_visibility") === "hidden") {
+    Object.assign(payload, { venue_name: null, address: null, postal_code: null, latitude: null, longitude: null });
+  }
+
   let eventId = id;
   if (eventId) {
     const { error } = await supabase.from("events").update(payload).eq("id", eventId);

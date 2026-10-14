@@ -147,7 +147,7 @@ export function useOccurrenceDirections(
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : manualVenueLine || null;
   const href =
-    directionsEnabled && selected && selectedState !== "cancelled" && mapQuery
+    directionsEnabled && selected && selectedState !== "cancelled" && mapQuery && !selected.location_hidden
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
       : null;
   const placeName = location?.name ?? selected?.venue_name ?? null;
@@ -208,7 +208,7 @@ export default function EventUtilityActions({
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : manualVenueLine || null;
   const directionsHref =
-    directionsEnabled && selected && selectedState !== "cancelled" && mapQuery
+    directionsEnabled && selected && selectedState !== "cancelled" && mapQuery && !selected.location_hidden
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
       : null;
 

@@ -10,6 +10,7 @@ import LiveDot from "./LiveDot";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 
 // Appearances — Click Behavior pass: one deterministic primary click per
 // card, in this exact order —
@@ -38,12 +39,15 @@ export default function AppearanceCard({
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const location = cityState(appearance.city, appearance.state);
-  const mapsQuery = [appearance.venue_name, appearance.address, location].filter(Boolean).join(", ");
+  // Location privacy: its Event shares the address only after registration
+  // — no venue, Location link or Directions (lib/event-location-privacy).
+  const locationHidden = Boolean(appearance.location_hidden);
+  const mapsQuery = locationHidden ? "" : [appearance.venue_name, appearance.address, location].filter(Boolean).join(", ");
   const { live } = getTemporalLabel(appearance.start_at, appearance.end_at);
   // The real Location's own name outranks the possibly-stale venue_name
   // text snapshot for DISPLAY purposes only — never changes which text
   // fields are stored/edited elsewhere.
-  const venueLabel = appearance.location?.name ?? appearance.venue_name;
+  const venueLabel = locationHidden ? HIDDEN_LOCATION_COPY : (appearance.location?.name ?? appearance.venue_name);
 
   // Analytics Phase 2A — Appearance is a first-class analytical entity;
   // every relationship column it actually carries (never manufactured —

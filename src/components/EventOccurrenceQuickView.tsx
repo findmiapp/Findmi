@@ -11,6 +11,7 @@ import type { EventBusinessListing, EventOccurrenceWithLocation } from "@/lib/da
 import type { ResolvedForm } from "@/lib/forms";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import { cityState, cityStateZip, formatDateShortInZone, formatTimeInZone, resolveVenueLabel } from "@/lib/format";
+import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 
 /** Occurrence Quick View — a polished bottom sheet for one selected real
  * occurrence, reusing data this page already has in hand rather than a
@@ -93,8 +94,10 @@ export default function EventOccurrenceQuickView({
   // this occurrence's own linked Location wins, then the event's own
   // already-resolved canonicalLocation, then plain manual venue text —
   // never a second, independently-invented notion of "where."
-  const location = occurrence.location ?? canonicalLocation;
-  const venueLabel = resolveVenueLabel({
+  // Location privacy: a hidden-location Event's date carries no place.
+  const locationHidden = Boolean(occurrence.location_hidden);
+  const location = locationHidden ? null : (occurrence.location ?? canonicalLocation);
+  const venueLabel = locationHidden ? HIDDEN_LOCATION_COPY : resolveVenueLabel({
     location,
     venue_name: occurrence.venue_name,
     address: occurrence.address,
@@ -104,7 +107,10 @@ export default function EventOccurrenceQuickView({
   const fullAddress = location
     ? [location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : [occurrence.address, cityStateZip(occurrence.city, occurrence.state, occurrence.postal_code)].filter(Boolean).join(", ");
-  const mapsQuery = location
+  // No Directions for a hidden location (no maps query at all).
+  const mapsQuery = locationHidden
+    ? ""
+    : location
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : [venueLabel, occurrence.address, cityState(occurrence.city, occurrence.state)].filter(Boolean).join(", ");
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : null;

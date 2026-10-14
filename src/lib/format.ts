@@ -1,3 +1,4 @@
+import { HIDDEN_LOCATION_COPY } from "./event-attendance";
 // V1 renders every date/time in a single fixed timezone rather than the
 // visitor's own — Findmi's real listings are all NYC-area today, and this
 // avoids showing UTC (the server's default) to consumers. Revisit once
@@ -235,7 +236,10 @@ export function resolveVenueLabel(appearance: {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  /** Parent Event hides its address (lib/event-location-privacy). */
+  location_hidden?: boolean;
 }): string | null {
+  if (appearance.location_hidden) return HIDDEN_LOCATION_COPY;
   return (
     appearance.location?.name?.trim() ||
     appearance.venue_name?.trim() ||

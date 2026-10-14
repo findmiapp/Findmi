@@ -195,7 +195,7 @@ test("existing Admin RSVP / Get Tickets behavior unchanged; Register only relabe
   const admin = read("src/app/admin/(protected)/events/actions.ts");
   assert.match(admin, /rsvp_enabled: bool\(formData, "rsvp_enabled"\),\n\s+rsvp_url: str\(formData, "rsvp_url"\),\n\s+tickets_enabled: bool\(formData, "tickets_enabled"\),\n\s+tickets_url: str\(formData, "tickets_url"\),/);
   assert.match(admin, /formData\.has\("rsvp_cta"\) \|\| formData\.has\("location_visibility"\)/);
-  assert.doesNotMatch(admin.slice(admin.indexOf("const payload = {"), admin.indexOf("let eventId = id;")), /rsvp_cta|location_visibility/, "the main Admin payload is unchanged");
+  assert.doesNotMatch(admin.slice(admin.indexOf("const payload = {"), admin.indexOf("// Location privacy, defense in depth")), /rsvp_cta|location_visibility/, "the main Admin payload is unchanged");
   if (CTA) {
     const sel = { ticket_url_override: null, rsvp_url_override: null, vendor_apply_url_override: null };
     const cfg = { ticketsEnabled: true, ticketsUrl: "https://t.example/x", rsvpEnabled: true, rsvp: { url: "https://r.example/x", displayMode: "external" }, vendorApplicationsEnabled: false, vendorApplication: null };

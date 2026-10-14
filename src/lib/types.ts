@@ -628,6 +628,10 @@ export type EventOccurrenceStatus = "scheduled" | "cancelled";
  * date/time/location. Concrete rows only, never a recurrence rule — a
  * weekly market with 12 upcoming dates is 12 real rows. */
 export interface EventOccurrence {
+  /** Set only on PUBLIC reads when the parent Event hides its address
+   * (lib/event-location-privacy): venue/address/Location were withheld —
+   * show "Location shared after registration", never Directions. */
+  location_hidden?: boolean;
   id: string;
   event_id: string;
   start_at: string;
@@ -698,6 +702,10 @@ export type EventParticipationScope = "all_dates" | "selected_dates";
 export type AppearanceSource = "manual" | "event_self_added" | "official_participation";
 
 export interface Appearance {
+  /** Set only on PUBLIC reads when the parent Event hides its address
+   * (lib/event-location-privacy): venue/address/Location were withheld —
+   * show "Location shared after registration", never Directions. */
+  location_hidden?: boolean;
   id: string;
   business_id: string;
   event_id: string | null;

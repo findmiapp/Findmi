@@ -9,6 +9,7 @@ import { cityState, formatAppearanceTime, formatDateShort } from "@/lib/format";
 import { validateCustomDestination } from "@/lib/navigation";
 import { trackEvent } from "@/lib/analytics/track";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 
 /** Appearance Quick View — Pass 1: the reusable consumer detail surface for
  * an Appearance, opened from a card instead of defaulting straight to GPS/
@@ -40,6 +41,8 @@ export interface AppearanceQuickViewAppearance {
   event_id: string | null;
   location_id: string | null;
   location?: { name: string; slug: string } | null;
+  /** Parent Event hides its address (lib/event-location-privacy). */
+  location_hidden?: boolean;
   // Image Fallback Refinement pass — `cover_image_url` added (optional:
   // only callers that select it, e.g. getUpcomingAppearancesForBusiness,
   // populate it) so AppearanceCarousel's card artwork can use a real
@@ -117,13 +120,15 @@ export default function AppearanceQuickView({
     trackEvent({ event_name: "entity_click", ...analyticsFields, metadata: { action } });
   }
 
-  const venueLabel = appearance.location?.name ?? appearance.venue_name;
+  // Location privacy: its Event shares the address only after registration.
+  const locationHidden = Boolean(appearance.location_hidden);
+  const venueLabel = locationHidden ? HIDDEN_LOCATION_COPY : (appearance.location?.name ?? appearance.venue_name);
   const location = cityState(appearance.city, appearance.state);
   // Same Directions URL construction AppearanceCard already uses — no
   // dedicated helper function exists in the codebase (see this pass's
   // audit), so this follows that exact established inline convention
   // rather than inventing a new one.
-  const mapsQuery = [appearance.venue_name, appearance.address, location].filter(Boolean).join(", ");
+  const mapsQuery = locationHidden ? "" : [appearance.venue_name, appearance.address, location].filter(Boolean).join(", ");
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : null;
 
   const externalUrl = appearance.external_url && validateCustomDestination(appearance.external_url).ok ? appearance.external_url : null;

@@ -51,6 +51,7 @@ import { isBusinessPro } from "@/lib/entitlements";
 import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { collapseEventDates } from "@/lib/findmi-here";
 import { resolveBusinessHero } from "@/lib/business-hero";
+import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -312,7 +313,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   const featuredHref = featuredAppearance
     ? featuredIsEvent
       ? `/event/${featuredAppearance.event!.slug}`
-      : featuredAppearance.location?.slug
+      : featuredAppearance.location?.slug && !featuredAppearance.location_hidden
         ? `/location/${featuredAppearance.location.slug}`
         : "#findmi-here"
     : null;
@@ -320,7 +321,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // fallback uses (venue_name/address/city/state) — Directions is a
   // distinct physical-navigation intent from View Details, and null
   // whenever there isn't enough real location data for a maps query.
-  const featuredMapsQuery = featuredAppearance
+  const featuredMapsQuery = featuredAppearance && !featuredAppearance.location_hidden
     ? [featuredAppearance.venue_name, featuredAppearance.address, cityState(featuredAppearance.city, featuredAppearance.state)]
         .filter(Boolean)
         .join(", ")
@@ -340,7 +341,11 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // "Venue Name · City, ST" — the same combined-join pattern already
   // established for occurrence mini-cards (BusinessLogoCard), never just
   // one half when both are legitimately available.
-  const featuredVenueName = featuredAppearance?.location?.name ?? featuredAppearance?.venue_name ?? null;
+  // Location privacy (lib/event-location-privacy): no venue for an Event
+  // that shares its address only after registration.
+  const featuredVenueName = featuredAppearance?.location_hidden
+    ? HIDDEN_LOCATION_COPY
+    : (featuredAppearance?.location?.name ?? featuredAppearance?.venue_name ?? null);
   const featuredLocationLabel = featuredAppearance ? cityState(featuredAppearance.city, featuredAppearance.state) : "";
   const featuredVenueLine = featuredAppearance
     ? [featuredVenueName, featuredLocationLabel].filter(Boolean).join(" · ") || null

@@ -16,6 +16,12 @@ import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
+import {
+  applyEventLocationPrivacy,
+  excludeHiddenEventRows,
+  fetchHiddenEventIds,
+  withholdPreciseLocation,
+} from "./event-location-privacy";
 import type {
   Appearance,
   Business,
@@ -1424,7 +1430,9 @@ export async function getUpcomingAppearancesForBusiness(
     return { ...r, event, location };
   });
 
-  return dedupeAppearances(rows).slice(0, limit);
+  // Location privacy: an Appearance of an Event that hides its address
+  // shows no venue/address/Location (lib/event-location-privacy).
+  return applyEventLocationPrivacy(supabase, dedupeAppearances(rows).slice(0, limit), (r) => r.event_id);
 }
 
 /** Launch V2 Pass 1 — Schedule's PAST list. Same shape/dedup as
@@ -1464,7 +1472,9 @@ export async function getPastAppearancesForBusiness(
     return { ...r, event, location };
   });
 
-  return dedupeAppearances(rows).slice(0, limit);
+  // Location privacy: an Appearance of an Event that hides its address
+  // shows no venue/address/Location (lib/event-location-privacy).
+  return applyEventLocationPrivacy(supabase, dedupeAppearances(rows).slice(0, limit), (r) => r.event_id);
 }
 
 export interface ActivityOccurrence {
@@ -1708,10 +1718,14 @@ export async function getBusinessFindmiHereActivity(
 
   const now = Date.now();
   const isUpcoming = (r: BusinessActivityRow) => new Date(r.end_at ?? r.start_at).getTime() > now;
+  // Location privacy on every row, including rows derived from an Event's
+  // own dates during reconciliation (they carry the date's place).
+  const hidden = await fetchHiddenEventIds(supabase, [...eventIds]);
+  const visible = hidden.size ? reconciled.map((r) => (r.event_id && hidden.has(r.event_id) ? withholdPreciseLocation(r) : r)) : reconciled;
   return {
     featuredEvents,
-    upcoming: reconciled.filter(isUpcoming).sort((a, b) => a.start_at.localeCompare(b.start_at)),
-    past: reconciled
+    upcoming: visible.filter(isUpcoming).sort((a, b) => a.start_at.localeCompare(b.start_at)),
+    past: visible
       .filter((r) => !isUpcoming(r))
       .sort((a, b) => b.start_at.localeCompare(a.start_at))
       .slice(0, pastLimit),
@@ -2087,7 +2101,17 @@ export async function getEffectiveUpcomingEvents(
   }
 
   rows.sort((a, b) => new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime());
-  return rows;
+  // Location privacy: an Event that hides its address shows no venue,
+  // address or Location on any card (events are select("*"), so the
+  // Event's own location_visibility is on the row once migrated).
+  // A text search never finds a hidden-location Event by its venue alone.
+  const term = options.q?.trim().toLowerCase() ?? "";
+  const matchesWithoutVenue = (e: FindmiEvent) => !term || e.name.toLowerCase().includes(term) || (e.description ?? "").toLowerCase().includes(term);
+  return rows.filter((r) => r.event.location_visibility !== "hidden" || matchesWithoutVenue(r.event)).map((r) =>
+    r.event.location_visibility === "hidden"
+      ? { ...r, event: withholdPreciseLocation(r.event), occurrence: r.occurrence ? withholdPreciseLocation(r.occurrence) : null, occurrenceLocation: null }
+      : r
+  );
 }
 
 /** Homepage "What's Happening" rail ONLY — the one caller of
@@ -2299,7 +2323,8 @@ export async function getUpcomingOccurrencesForEvent(
     for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
   }
 
-  return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+  const withLocations = occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+  return applyEventLocationPrivacy(supabase, withLocations, () => eventId);
 }
 
 /** Journal V2 Pass 2B — every real occurrence for one event, past AND
@@ -2332,7 +2357,8 @@ export async function getAllOccurrencesForEvent(eventId: string, limit = 60): Pr
     for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
   }
 
-  return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+  const withLocations = occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+  return applyEventLocationPrivacy(supabase, withLocations, () => eventId);
 }
 
 // ── Multi-Date Business Participation Pass 2B — Primary Date Integrity ──
@@ -2583,7 +2609,7 @@ export async function getUpcomingAppearancesForEvent(eventId: string): Promise<A
     .select("*")
     .eq("event_id", eventId)
     .order("start_at", { ascending: true });
-  return data ?? [];
+  return applyEventLocationPrivacy(supabase, (data ?? []) as Appearance[], () => eventId);
 }
 
 export interface AppearanceFeedItem extends Appearance {
@@ -2620,7 +2646,7 @@ export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceF
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
   type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
-  return ((data ?? []) as never[])
+  const items: AppearanceFeedItem[] = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
@@ -2629,6 +2655,7 @@ export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceF
     .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
     .slice(0, limit)
     .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({ ...rest, business }));
+  return applyEventLocationPrivacy(supabase, items, (r) => r.event_id);
 }
 
 export type FindWindow = "live" | "today" | "weekend" | "anytime";
@@ -2889,7 +2916,17 @@ export async function getFindMiHereFeed(
     });
   }
 
-  return items
+  // Location privacy: an Appearance of an Event that hides its address
+  // shows no venue/Location, and a search never finds it by that hidden
+  // venue name (only by its title or Business).
+  const hiddenEvents = await fetchHiddenEventIds(supabase, items.map((i) => i.event_id));
+  const term = searchTerm?.toLowerCase() ?? null;
+  const privateItems = hiddenEvents.size
+    ? items
+        .filter((i) => !(i.event_id && hiddenEvents.has(i.event_id) && term && !i.title.toLowerCase().includes(term) && !searchBusinessIds.includes(i.business_id)))
+        .map((i) => (i.event_id && hiddenEvents.has(i.event_id) ? withholdPreciseLocation(i) : i))
+    : items;
+  return privateItems
     .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
     .slice(0, limit)
     .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, event: _event, ...rest }) => ({
@@ -3161,7 +3198,9 @@ export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulleti
     business: JoinedBusiness | JoinedBusiness[] | null;
     event: { slug: string } | { slug: string }[] | null;
   };
-  return ((data ?? []) as Row[])
+  // Location privacy: no hidden venue in the fallback line.
+  const rows = await applyEventLocationPrivacy(supabase, (data ?? []) as Row[], (r) => r.event_id);
+  return rows
     .map((row) => {
       const business = Array.isArray(row.business) ? row.business[0] : row.business;
       const event = Array.isArray(row.event) ? row.event[0] : row.event;
@@ -3559,14 +3598,19 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
   const events = new Map(eventData.map((e) => [e.id, e]));
 
   const now = Date.now();
+  const hiddenEvents = await fetchHiddenEventIds(supabase, [...eventIds]);
   for (const businessId of ids) {
-    const reconciled = reconcileBusinessActivity({
+    const reconciledRaw = reconcileBusinessActivity({
       businessId,
       rows: dedupeAppearances(rows.filter((r) => r.business_id === businessId)),
       eventLinkIds: eventLinks.filter((l) => l.business_id === businessId).map((l) => l.event_id),
       occurrences: occurrences.filter((o) => o.businessId === businessId).map((o) => o.occurrence),
       events,
     });
+    // Location privacy (lib/event-location-privacy).
+    const reconciled = hiddenEvents.size
+      ? reconciledRaw.map((r) => (r.event_id && hiddenEvents.has(r.event_id) ? withholdPreciseLocation(r) : r))
+      : reconciledRaw;
     const upcoming = reconciled
       .filter((r) => new Date(r.end_at ?? r.start_at).getTime() > now)
       .sort((a, b) => a.start_at.localeCompare(b.start_at));
@@ -4018,12 +4062,14 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }));
   if (locations.length === 0) return locations;
 
-  const { data: occurrenceRows } = await supabase
+  const { data: rawOccurrenceRows } = await supabase
     .from("event_occurrences")
-    .select("location_id")
+    .select("location_id, event_id")
     .in("location_id", locations.map((l) => l.id))
     .eq("status", "scheduled")
     .gt("end_at", new Date().toISOString());
+  // Hidden-location Events never count toward a precise place.
+  const occurrenceRows = await excludeHiddenEventRows(supabase, rawOccurrenceRows ?? [], (r) => r.event_id as string | null);
 
   const countByLocation = new Map<string, number>();
   for (const row of occurrenceRows ?? []) {
@@ -4086,14 +4132,14 @@ async function getLocationActivitySummaries(
   if (locationIds.length === 0) return result;
   const nowIso = new Date().toISOString();
 
-  const [{ data: occurrenceCountRows }, { data: appearanceCountRows }, { data: occurrencePreviewRows }, { data: appearancePreviewRows }] =
+  const [{ data: rawOccurrenceCountRows }, { data: appearanceCountRows }, { data: rawOccurrencePreviewRows }, { data: appearancePreviewRows }] =
     await Promise.all([
       // True counts — unbounded row fetch (location_id only), same shape
       // as the existing upcomingCount computation above; correctness over
       // a `.limit()` that could silently undercount a busy location.
       supabase
         .from("event_occurrences")
-        .select("location_id")
+        .select("location_id, event_id")
         .in("location_id", locationIds)
         .eq("status", "scheduled")
         .gt("end_at", nowIso),
@@ -4109,7 +4155,7 @@ async function getLocationActivitySummaries(
       // soonest per location in JS.
       supabase
         .from("event_occurrences")
-        .select("id, location_id, start_at, event:events(slug, name, cover_image_url, is_demo)")
+        .select("id, location_id, event_id, start_at, event:events(slug, name, cover_image_url, is_demo)")
         .in("location_id", locationIds)
         .eq("status", "scheduled")
         .gt("end_at", nowIso)
@@ -4125,6 +4171,10 @@ async function getLocationActivitySummaries(
         .order("start_at", { ascending: true })
         .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
     ]);
+
+  // Hidden-location Events never count toward / preview on a precise place.
+  const occurrenceCountRows = await excludeHiddenEventRows(supabase, rawOccurrenceCountRows ?? [], (r) => r.event_id as string | null);
+  const occurrencePreviewRows = await excludeHiddenEventRows(supabase, rawOccurrencePreviewRows ?? [], (r) => r.event_id as string | null);
 
   const countByLocation = new Map<string, number>();
   for (const row of [...(occurrenceCountRows ?? []), ...(appearanceCountRows ?? [])] as { location_id: string | null }[]) {
@@ -4418,10 +4468,10 @@ async function queryUpcomingHappenings(
   const APPEARANCE_COLUMNS =
     "id, location_id, title, start_at, end_at, description, flyer_image_url, business:businesses(slug, name, logo_url, cover_image_url, is_demo, publication_status)";
 
-  const [{ data: occurrenceRows }, { data: linkedAppearances }, galleryImages] = await Promise.all([
+  const [{ data: rawOccurrenceRows }, { data: linkedAppearances }, galleryImages] = await Promise.all([
     supabase
       .from("event_occurrences")
-      .select("location_id, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
+      .select("location_id, event_id, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
       .in("location_id", locationIds)
       .eq("status", "scheduled")
       .gt("end_at", nowIso)
@@ -4438,6 +4488,13 @@ async function queryUpcomingHappenings(
       .limit(limit),
     galleryImagesSource,
   ]);
+
+  // Location privacy: an Event that hides its address never appears on a
+  // precise place's own page — its date still pointing at this Location,
+  // or its history here, must not reveal where it is. Other Events and
+  // Appearances at this Location are unaffected (event-linked Appearances
+  // are already excluded below — their occurrence represents them).
+  const occurrenceRows = await excludeHiddenEventRows(supabase, rawOccurrenceRows ?? [], (row) => row.event_id as string | null);
 
   // Field QA UX Pass 2B — an Event's range-mirror occurrence (its whole
   // multi-day span, beside real per-day dates) must not become a permanent

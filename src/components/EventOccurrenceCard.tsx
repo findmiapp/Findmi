@@ -13,6 +13,7 @@ import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import LiveDot from "./LiveDot";
 import SupabaseImage from "./SupabaseImage";
+import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -36,7 +37,7 @@ function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
  * views describe a date identically (midnight handling included). */
 export function describeOccurrence(occurrence: EventOccurrenceWithLocation, canonicalLocation: EventLocationCardLocation | null) {
   const cancelled = occurrence.status === "cancelled";
-  const venueLabel = resolveVenueLabel({
+  const venueLabel = occurrence.location_hidden ? HIDDEN_LOCATION_COPY : resolveVenueLabel({
     location: occurrence.location ?? canonicalLocation,
     venue_name: occurrence.venue_name,
     address: occurrence.address,

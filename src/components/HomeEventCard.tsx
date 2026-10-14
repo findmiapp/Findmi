@@ -53,7 +53,7 @@ function resolvePrimaryCta(
  * precedent EventScheduleCtas itself already follows (see its own note)
  * for a component that needs to make its own self-contained decision. */
 function resolveDirectionsHref(event: FindmiEvent): string | null {
-  if (!event.directions_enabled) return null;
+  if (!event.directions_enabled || event.location_visibility === "hidden") return null;
   const mapQuery = [event.venue_name, event.address, cityState(event.city, event.state)].filter(Boolean).join(", ");
   return mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
 }

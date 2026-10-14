@@ -22,6 +22,7 @@
 import { getSupabase } from "./supabase";
 import { attachEventCategories, getEventBySlug, getUpcomingAppearancesForBusiness, getUpcomingAtLocation } from "./data";
 import { getTemporalLabel } from "./format";
+import { fetchHiddenEventIds } from "./event-location-privacy";
 import type { FindmiEvent } from "./types";
 
 export interface ResolvedFeaturedEvent {
@@ -103,6 +104,8 @@ async function isEventEligibleForBusiness(eventId: string, businessId: string): 
 async function isEventEligibleForLocation(eventId: string, locationId: string): Promise<boolean> {
   const supabase = getSupabase();
   if (!supabase) return false;
+  // An Event that hides its address is never featured on a precise place.
+  if ((await fetchHiddenEventIds(supabase, [eventId])).has(eventId)) return false;
   const { data } = await supabase
     .from("event_occurrences")
     .select("id")
