@@ -191,6 +191,18 @@ export function classifyPersistence(candidate: EventCandidate, opts: { ownPage: 
   return opts.ownPage && Boolean(candidate.sourceUrl) && Boolean(candidate.description) ? "event" : "schedule_item";
 }
 
+/** Rich Event Persistence for Paste Details / Upload — the same question
+ * as classifyPersistence, decided from the evidence alone (a source link is
+ * provenance, not a prerequisite): a name, at least one date, and something
+ * that makes it a real scheduled Event — where it happens (a place, a city,
+ * an organizer-withheld address, or online) or what it is (a description).
+ * A bare name + date stays the Business's own schedule item. */
+export function classifyEvidencePersistence(candidate: EventCandidate): "event" | "schedule_item" {
+  if (!candidate.title || candidate.occurrences.length === 0) return "schedule_item";
+  const placed = candidate.occurrences.some((o) => venueKey(o.venue) || o.venue.city) || candidate.online || candidate.locationVisibility === "hidden";
+  return placed || Boolean(candidate.description) ? "event" : "schedule_item";
+}
+
 /** NY calendar date for an imported date (date-only values pass through). */
 export function nyDateOf(d: ImportedDate): string {
   return d.hasTime ? new Date(d.start).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) : d.start;
@@ -399,7 +411,7 @@ async function finishEvidenceCandidate(
   if (Object.values(candidate.sources).includes("ai")) warnings.push(`Some details were read from your ${noun} by Findmi. Please check them.`);
 
   const matches = await matchCandidate(candidate, businessId, deps);
-  candidate = { ...candidate, persistAs: classifyPersistence(candidate, { ownPage: false }) };
+  candidate = { ...candidate, persistAs: classifyEvidencePersistence(candidate) };
   return { ok: true, kind: "single", candidate, matches, warnings };
 }
 

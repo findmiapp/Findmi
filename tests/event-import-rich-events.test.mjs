@@ -124,7 +124,8 @@ test("review: Event vs schedule item is explained in Business words; the server 
   assert.equal(R.persistNote(richReview({ asEvent: false }), "Corgi").label, "Schedule Item");
   assert.equal(R.persistNote(richReview({ useEventId: "11111111-2222-4333-8444-555555555555" }), "Corgi").label, "On Findmi");
   for (const r of [richReview(), richReview({ asEvent: false }), richReview({ intent: "hosting" })]) assert.doesNotMatch(JSON.stringify(R.persistNote(r, "Corgi")), /appearance|occurrence/i);
-  assert.equal(norm(richReview({ sourceUrl: null })).asEvent, false, "no source link → schedule item");
+  assert.equal(norm(richReview({ sourceUrl: null })).asEvent, true, "a source link is provenance, not a prerequisite (Unified Import)");
+  assert.equal(norm(richReview({ asEvent: false })).asEvent, false, "Analyze's evidence decision still governs");
   assert.equal(norm(richReview({ intent: "hosting" })).asEvent, false, "hosting keeps its own path");
   assert.equal(R.successMessage("scheduled", "Founder GTM Mixer", "Corgi", "participating", true), "Founder GTM Mixer is live on Findmi and on Corgi's schedule.");
 });

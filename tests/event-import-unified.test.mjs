@@ -27,6 +27,7 @@ const T = await import("../src/lib/event-import/text-source.ts");
 const R = await import("../src/lib/event-import/review.ts");
 const TY = await import("../src/lib/event-import/types.ts");
 const IMG = await import("../src/lib/event-import/image-source.ts");
+const P = await import("../src/lib/event-import/persist.ts");
 const read = (p) => readFileSync(p, "utf8");
 
 const NOW = Date.parse("2026-10-01T12:00:00Z");
@@ -371,12 +372,144 @@ test("shared: participating vs hosting semantics are the flow's, never inferred 
   const participating = R.reviewDefaults(r.candidate, r.matches, "participating", "Knix");
   assert.equal(participating.intent, "participating");
   assert.equal(participating.organizer, null);
-  // Without a source link, a participating import stays a schedule item
-  // (the existing save rule); hosting creates the Business's own Event.
-  assert.equal(r.candidate.persistAs, "schedule_item");
-  assert.equal(participating.asEvent, false);
+  // A source link is provenance, not a prerequisite: enough evidence makes
+  // it a real Event the Business takes part in (see the persistence tests).
+  assert.equal(r.candidate.persistAs, "event");
+  assert.equal(participating.asEvent, true);
   const hosting = R.reviewDefaults(r.candidate, r.matches, "hosting", "Knix");
   assert.equal(hosting.intent, "hosting");
   // A brand on a flyer never makes it the host: intent comes from the entry point only.
   assert.doesNotMatch(read("src/lib/event-import/text-source.ts"), /intent|host_business_id|hosting/);
+});
+
+// ── PERSISTENCE: input method never decides Event semantics ─────────────
+
+/** A minimal admin double recording every write (as in the rich-events tests). */
+function fakeAdmin() {
+  const ops = [];
+  let n = 0;
+  const builder = (table) => {
+    const api = {
+      select: () => api, neq: () => api, is: () => api, in: () => api, limit: () => api, order: () => api, eq: () => api,
+      maybeSingle: async () => ({ data: null }),
+      then: (resolve) => resolve({ data: [] }),
+      insert: (input) => {
+        const rows = Array.isArray(input) ? input : [input];
+        ops.push({ op: "insert", table, rows });
+        const ids = rows.map(() => `${table}-${++n}`);
+        return { select: () => ({ single: async () => ({ data: { id: ids[0] }, error: null }), then: (r) => r({ data: ids.map((id) => ({ id })) }) }), then: (r) => r({ error: null }) };
+      },
+      upsert: (row, opts) => (ops.push({ op: "upsert", table, row, opts }), Promise.resolve({ error: null })),
+      update: (patch) => {
+        const rec = { op: "update", table, patch };
+        ops.push(rec);
+        const chain = { eq: () => chain, is: () => chain, select: () => chain, maybeSingle: async () => ({ data: { id: "x" }, error: null }), then: (r) => r({ error: null }) };
+        return chain;
+      },
+    };
+    return api;
+  };
+  return { ops, client: { from: builder, rpc: async (name, args) => (ops.push({ op: "rpc", name, args }), { data: { id: "hosted-event" }, error: null }) } };
+}
+function persistDeps(admin) {
+  const calls = { apply: [], propagate: [], bySourceUrl: [] };
+  return {
+    calls,
+    deps: {
+      admin, userId: "u", businessId: "knix", businessName: "Knix",
+      applyToEvent: async (id) => (calls.apply.push(id), "applied"),
+      canHost: async () => true, storeImage: async (u) => `stored:${u}`, geography: async () => null,
+      uniqueEventSlug: async (t) => t.toLowerCase().replace(/\W+/g, "-"),
+      notifyNewEvent: async () => {},
+      propagateDates: async (id, ids) => calls.propagate.push([id, ids]),
+      findEventBySourceUrl: async (u) => (calls.bySourceUrl.push(u), null),
+    },
+  };
+}
+async function save(candidate, matches, intent) {
+  const review = R.reviewDefaults(candidate, matches, intent, "Knix");
+  const n = P.normalizeReview(review);
+  assert.equal(n.ok, true, JSON.stringify(n));
+  const { client, ops } = fakeAdmin();
+  const { deps: d, calls } = persistDeps(client);
+  const out = await P.persistEventImport(n.value, d);
+  return { review, normalized: n.value, out, ops, calls };
+}
+const flyerAi = () =>
+  fakeAi({ ...emptyAi, visible_text: FLYER_TEXT, schedule: [{ evidence: "OCT 15\n12–8", date: "2026-10-15", start_time: "12:00", end_time: "20:00", venue_name: null, street_address: null }] });
+
+function assertRichParticipation({ out, ops, calls, normalized }) {
+  assert.deepEqual([out.ok, out.kind, out.newEvent], [true, "scheduled", true]);
+  const events = ops.filter((o) => o.table === "events" && o.op === "insert");
+  assert.equal(events.length, 1, "ONE canonical Event");
+  assert.equal(events[0].rows[0].host_business_id, null, "the Business is a participant, never the host");
+  assert.equal(events[0].rows[0].external_url, null, "no fake source link");
+  assert.equal(ops.filter((o) => o.table === "event_occurrences" && o.op === "insert").length, 1, "its Event Occurrence");
+  const roster = ops.find((o) => o.table === "event_businesses");
+  assert.deepEqual([roster.row.business_id, roster.row.status], ["knix", "approved"], "participating");
+  assert.equal(calls.propagate.length, 1, "the shared sync creates the Event-linked participating schedule item");
+  assert.equal(ops.filter((o) => o.table === "appearances" && o.op === "insert").length, 0, "no standalone schedule item");
+  assert.equal(ops.filter((o) => o.op === "rpc").length, 0, "never the host path");
+  assert.equal(normalized.sourceUrl, null);
+  assert.deepEqual(calls.bySourceUrl, [], "no source-link lookup without a link");
+}
+
+test("persist 1/3/8: Where I'll Be + Paste Details, no source link → Event + Occurrence + participation (never host)", async () => {
+  const r = await E.analyzeEventText({ text: KNIX, businessId: "knix", rateKey: "u" }, deps());
+  assert.equal(r.candidate.persistAs, "event");
+  const saved = await save(r.candidate, r.matches, "participating");
+  assert.equal(saved.review.asEvent, true);
+  assertRichParticipation(saved);
+});
+
+test("persist 2/3/8: Where I'll Be + Upload, no source link → the same rich persistence", async () => {
+  const r = await E.analyzeEventImage({ image: { mediaType: "image/png", base64: png.toString("base64") }, businessId: "knix", rateKey: "u" }, deps({ ai: flyerAi() }));
+  assert.equal(r.candidate.persistAs, "event");
+  const saved = await save(r.candidate, r.matches, "participating");
+  assertRichParticipation(saved);
+  assert.equal(saved.ops.find((o) => o.table === "events").rows[0].cover_image_url, null, "the uploaded image is not the cover");
+});
+
+test("persist 4/8: Host an Event + pasted details, no source link → the existing hosted Event path; no participation", async () => {
+  const r = await E.analyzeEventText({ text: KNIX, businessId: "knix", rateKey: "u" }, deps());
+  const { out, ops } = await save(r.candidate, r.matches, "hosting");
+  assert.equal(out.ok, true);
+  const rpc = ops.find((o) => o.op === "rpc");
+  assert.deepEqual([rpc.name, rpc.args.p_host_business_id], ["create_owned_event", "knix"]);
+  assert.equal(ops.filter((o) => o.table === "event_businesses").length, 0, "no participation row for the host");
+  assert.equal(ops.filter((o) => o.table === "appearances").length, 0, "no participating schedule item for the host");
+  assert.doesNotMatch(JSON.stringify(ops), /https?:\/\/|data:image/, "no invented source link or data URL saved");
+});
+
+test("persist 5: a strong existing-Event match is reused without any source link", async () => {
+  const d = deps({
+    matchEvent: async () => ({ id: "11111111-2222-4333-8444-555555555555", name: "Knix x ACOTAR Pop-Up", venue_name: "LAVAN Chelsea", city: "New York", start_at: "2026-10-15T16:00:00Z", confidence: "strong" }),
+    getEvent: async () => ({ slug: "knix-acotar", host_business_id: "someone-else" }),
+  });
+  const r = await E.analyzeEventText({ text: KNIX, businessId: "knix", rateKey: "u" }, d);
+  assert.equal(r.matches.event.id, "11111111-2222-4333-8444-555555555555");
+  const { review, out, ops, calls } = await save(r.candidate, r.matches, "participating");
+  assert.equal(review.useEventId, "11111111-2222-4333-8444-555555555555");
+  assert.deepEqual(calls.apply, ["11111111-2222-4333-8444-555555555555"], "joins through the shared participation path");
+  assert.equal(out.kind, "requested");
+  assert.equal(ops.filter((o) => o.table === "events" && o.op === "insert").length, 0, "no second copy");
+});
+
+test("persist 6: thin evidence (a bare name + date) never becomes a fabricated canonical Event", async () => {
+  const r = await E.analyzeEventText({ text: "Knix Pop-Up\nOctober 15, 2026\n12 PM–8 PM", businessId: "knix", rateKey: "u" }, deps());
+  assert.equal(r.candidate.persistAs, "schedule_item");
+  const { out, ops } = await save(r.candidate, r.matches, "participating");
+  assert.equal(out.ok, true);
+  assert.equal(ops.filter((o) => o.table === "events").length, 0);
+  const item = ops.find((o) => o.table === "appearances" && o.op === "insert").rows[0];
+  assert.deepEqual([item.source, item.external_url], ["manual", null]);
+  assert.equal(E.classifyEvidencePersistence({ ...r.candidate, occurrences: [] }), "schedule_item", "no date → no Event");
+});
+
+test("persist 7: From Link's classification is unchanged", () => {
+  const engine = read("src/lib/event-import/engine.ts");
+  const url = engine.slice(engine.indexOf("export async function analyzeEventUrl"), engine.indexOf("// ── Paste Details / Upload"));
+  assert.match(url, /persistAs: classifyPersistence\(candidate, \{ ownPage: true \}\)/);
+  assert.match(engine, /persistAs: Boolean\(dated\.title && dated\.occurrences\.length > 0 && dated\.sourceUrl\) \? "event" : classifyPersistence\(dated, \{ ownPage: false \}\)/, "calendar Events unchanged");
+  assert.doesNotMatch(read("src/lib/event-import/persist.ts"), /review\.asEvent === true && Boolean\(sourceUrl\)/, "a link is no longer a save prerequisite");
 });

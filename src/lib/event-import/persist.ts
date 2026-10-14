@@ -165,10 +165,11 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       sourceUrl,
       occurrences,
       useEventId: review.useEventId && UUID.test(review.useEventId) ? review.useEventId : null,
-      // An Event needs its own link to the source (identity for matching,
-      // retries and the public "event page" link); without one it stays a
-      // schedule item.
-      asEvent: review.intent === "participating" && review.asEvent === true && Boolean(sourceUrl),
+      // Analyze decides from the EVIDENCE (persistAs); a source link is
+      // provenance, never a requirement — pasted text / an uploaded image
+      // can ground a real Event without one. A name and at least one full
+      // date are already required above.
+      asEvent: review.intent === "participating" && review.asEvent === true,
       organizer: cleanText(review.organizer, 160),
       attendance: normalizeReviewedAttendance(review.attendance),
       locationVisibility,
