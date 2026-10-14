@@ -5,6 +5,15 @@ import Link from "next/link";
 import { createInlinePlace } from "@/app/(public)/account/location/actions";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import PlaceFindOrCreate, { NotPublicBadge } from "@/components/places/PlaceFindOrCreate";
+import {
+  cancelManualVenue,
+  clearPlace,
+  initialWhereState,
+  openManualVenue,
+  selectPlace,
+  whereSubmission,
+  type WhereFieldState,
+} from "@/lib/event-location-field";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -30,8 +39,6 @@ export interface ManualVenueValues {
   state: string;
   postal_code: string;
 }
-
-const EMPTY_MANUAL: ManualVenueValues = { venue_name: "", address: "", city: "", state: "", postal_code: "" };
 
 function fullAddress(parts: { address: string | null; city: string | null; state: string | null; postal_code: string | null }): string {
   const cityState = [parts.city, parts.state].filter(Boolean).join(", ");
@@ -119,15 +126,16 @@ export default function EventLocationField({
   onLocationChange?: (value: { location: SelectedLocationDetail | null; manualVenue: ManualVenueValues | null }) => void;
   createLocationAction?: (formData: FormData) => Promise<CreateInlineLocationResult>;
 }) {
-  const hasManualSeed = Boolean(
-    initialManual && (initialManual.venue_name || initialManual.address || initialManual.city || initialManual.state || initialManual.postal_code)
-  );
-  const [selected, setSelected] = useState<SelectedLocationDetail | null>(initialLocation);
-  const [manualOpen, setManualOpen] = useState(!initialLocation && hasManualSeed);
-  const [manual, setManual] = useState<ManualVenueValues>(initialManual ?? EMPTY_MANUAL);
+  // Findmi Place first, manual venue second — every transition goes
+  // through lib/event-location-field so the submitted values can never
+  // carry a stale Location id or stale venue text.
+  const [where, setWhere] = useState<WhereFieldState<SelectedLocationDetail>>(() => initialWhereState(initialLocation, initialManual));
+  const { selected, manual, manualOpen } = where;
+  const setManual = (update: (m: ManualVenueValues) => ManualVenueValues) => setWhere((w) => ({ ...w, manual: update(w.manual) }));
+  const submitted = whereSubmission(where);
   const address = selected ? fullAddress(selected) : "";
-  const effectiveCity = selected ? (selected.city ?? "") : manual.city;
-  const effectiveState = selected ? (selected.state ?? "") : manual.state;
+  const effectiveCity = submitted.city;
+  const effectiveState = submitted.state;
 
   useEffect(() => {
     onGeographyChange?.({ city: effectiveCity, state: effectiveState, locationName: selected?.name ?? null });
@@ -139,20 +147,25 @@ export default function EventLocationField({
   }, [effectiveCity, effectiveState, selected]);
 
   useEffect(() => {
-    onLocationChange?.({ location: selected, manualVenue: selected ? null : manual });
+    onLocationChange?.({
+      location: selected,
+      manualVenue: selected
+        ? null
+        : { venue_name: submitted.venue_name, address: submitted.address, city: submitted.city, state: submitted.state, postal_code: submitted.postal_code },
+    });
     // Same stable-identity expectation as onGeographyChange above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, manual]);
+  }, [selected, manual, manualOpen]);
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="block text-sm font-medium text-ink">Location</span>
-      <input type="hidden" name="location_id" value={selected?.id ?? ""} />
-      <input type="hidden" name="venue_name" value={selected ? selected.name : manual.venue_name} />
-      <input type="hidden" name="address" value={selected ? (selected.address ?? "") : manual.address} />
-      <input type="hidden" name="city" value={effectiveCity} />
-      <input type="hidden" name="state" value={effectiveState} />
-      <input type="hidden" name="postal_code" value={selected ? (selected.postal_code ?? "") : manual.postal_code} />
+      <span className="block text-sm font-medium text-ink">Where</span>
+      <input type="hidden" name="location_id" value={submitted.location_id} />
+      <input type="hidden" name="venue_name" value={submitted.venue_name} />
+      <input type="hidden" name="address" value={submitted.address} />
+      <input type="hidden" name="city" value={submitted.city} />
+      <input type="hidden" name="state" value={submitted.state} />
+      <input type="hidden" name="postal_code" value={submitted.postal_code} />
 
       {selected ? (
         <div className="rounded-xl border border-black/10 bg-white p-3.5">
@@ -175,41 +188,49 @@ export default function EventLocationField({
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
             <button
               type="button"
-              onClick={() => setSelected(null)}
+              onClick={() => setWhere(clearPlace)}
               className="text-xs font-semibold text-ink/60 hover:text-ink"
             >
-              Change Location
+              Change Place
             </button>
             <button
               type="button"
-              onClick={() => {
-                setSelected(null);
-                setManualOpen(true);
-              }}
+              onClick={() => setWhere(openManualVenue)}
               className="text-xs font-semibold text-ink/60 hover:text-ink"
             >
-              Remove Location / Use manual venue
+              Add Venue Details Manually
             </button>
           </div>
         </div>
       ) : (
         <>
-          <PlaceFindOrCreate onSelect={setSelected} createAction={createLocationAction} />
+          {!manualOpen && <p className="text-xs text-ink/50">Search Findmi Places first. If the venue is already on Findmi, select it.</p>}
+          <PlaceFindOrCreate onSelect={(place) => setWhere((w) => selectPlace(w, place))} createAction={createLocationAction} />
 
           {!manualOpen && (
             <button
               type="button"
-              onClick={() => setManualOpen(true)}
+              onClick={() => setWhere(openManualVenue)}
               className="w-fit text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink"
             >
-              Enter venue text only (no Findmi place)
+              Add Venue Details Manually
             </button>
           )}
 
           {manualOpen && (
             <div className="flex flex-col gap-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-ink/70">Venue Details</span>
+                <button
+                  type="button"
+                  onClick={() => setWhere(cancelManualVenue)}
+                  className="text-xs font-semibold text-ink/50 hover:text-ink"
+                >
+                  Cancel
+                </button>
+              </div>
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Venue / location name</span>
+                <span className="mb-1.5 block text-xs font-medium text-ink/70">Venue Name</span>
                 <input autoCapitalize="words"
                   type="text"
                   value={manual.venue_name}
@@ -246,7 +267,7 @@ export default function EventLocationField({
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink/70">ZIP</span>
+                  <span className="mb-1.5 block text-xs font-medium text-ink/70">Postal Code</span>
                   <input autoCapitalize="none"
                     type="text"
                     value={manual.postal_code}

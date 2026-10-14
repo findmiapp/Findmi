@@ -34,6 +34,7 @@ import type { EventParticipationScope, EventParticipationStatus } from "@/lib/ty
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { publishCreatedEvent } from "@/lib/event-publication";
+import { fetchHiddenEventIds } from "@/lib/event-location-privacy";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -1072,6 +1073,14 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
         longitude: location.longitude,
       };
     }
+  }
+
+  // Location privacy: an Event whose organizer shares the address only
+  // after registration keeps no precise venue text on its own row — the
+  // selected Place stays on the date (masked on every public read), but
+  // saving this form never republishes the address.
+  if ((await fetchHiddenEventIds(admin, [eventId])).has(eventId)) {
+    payload = { ...payload, venue_name: null, address: null, postal_code: null, latitude: null, longitude: null };
   }
 
   const { data: event, error } = await admin

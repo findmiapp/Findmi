@@ -922,19 +922,18 @@ export async function EventPublicView({ slug }: { slug: string }) {
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
         {bulletinStrip && <div className="order-3 mt-3 lg:mt-0">{bulletinStrip}</div>}
         {/* Sections are separated by spacing and typography, not a rule
-            after every block. Public Event V2 Next Body pass — target
-            order: Upcoming Dates → Findmi Moments → Findmi Here →
+            after every block. Event UX pass — order: Upcoming Dates →
+            Findmi Moments → What's Happening → Findmi Here →
             Gallery/Photos → Location feature → Hosted By → remaining
-            secondary content (What's Happening → The Place → Products →
-            contact/Claim). */}
+            secondary content (The Place → Products → contact/Claim). */}
         <div className={`order-4 mt-8 flex flex-col gap-9 ${bulletinStrip ? "lg:mt-8" : "lg:mt-0"}`}>
           {datesSection}
           {momentsSection}
+          {overviewSection}
           {lineupSection}
           {mediaSection}
           {locationFeatureSection}
           {hostedBySection}
-          {overviewSection}
           {placeSection}
           {productsSection}
           {detailsSection}
