@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import MultiEventImport, { type OperatorBusiness, type OperatorImportMode } from "@/app/(public)/account/business/[id]/import-event/MultiEventImport";
 import { AttendanceEditor, inputClass, sectionClass } from "@/app/(public)/account/business/[id]/import-event/ReviewParts";
@@ -64,6 +64,14 @@ const hostOf = (url: string | null | undefined) => {
     return url ?? "";
   }
 };
+
+// ── What this Review actually created (for Import Complete) ──────────────
+// Recorded ONLY where a creation succeeded — choosing an existing Business
+// or Location ("Use This …", a website match) is never counted.
+type RecordKind = "business" | "location" | "event";
+const RecordContext = createContext<(kind: RecordKind, id: string) => void>(() => {});
+type CreatedRecords = Record<RecordKind, Record<string, true>>;
+const NO_RECORDS: CreatedRecords = { business: {}, location: {}, event: {} };
 
 // ── Image previews ─────────────────────────────────────────────────────────
 // The page's CSP only allows Findmi's own / data: images, so a third-party
@@ -143,6 +151,7 @@ function VerifiedEventImagePreview({ url, className, compact = false }: { url: s
 
 /** Missing-Business Quick Create without a website: the minimal record. */
 function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: string; evidence: string | null; onCreated: (b: OperatorBusiness) => void }) {
+  const record = useContext(RecordContext);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [website, setWebsite] = useState("");
@@ -161,6 +170,7 @@ function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: stri
       const result = await adminCreateImportBusiness(form);
       if (result.status === "created") {
         setOpen(false);
+        record("business", result.business.id);
         onCreated(result.business);
       } else if (result.status === "duplicates") setDuplicates(result.duplicates);
       else setError(result.error);
@@ -249,6 +259,7 @@ function BrandReviewCard({
   businessCategories: Category[];
   onCreated: (b: OperatorBusiness) => void;
 }) {
+  const record = useContext(RecordContext);
   const p = read.proposal;
   const [name, setName] = useState(p?.name ?? "");
   const [categoryId, setCategoryId] = useState(p?.cat ?? "");
@@ -295,7 +306,10 @@ function BrandReviewCard({
         useLogo,
         useCover,
       });
-      if (result.ok) onCreated(result.business);
+      if (result.ok) {
+        if (!result.existing) record("business", result.business.id);
+        onCreated(result.business);
+      }
       else setError(result.error);
     } catch {
       setError("Creation didn't finish. It's safe to try again — no duplicate will be created.");
@@ -442,6 +456,7 @@ function BusinessField({
 // ── Event details: source evidence + Review Existing Event ─────────────────
 
 function ExistingEventReview({ eventId, review, business }: { eventId: string; review: EventImportReview; business: OperatorBusiness | null }) {
+  const record = useContext(RecordContext);
   type Compare = Extract<Awaited<ReturnType<typeof adminCompareExistingEvent>>, { ok: true }>;
   const [data, setData] = useState<Compare | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -471,6 +486,7 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
       if (!result.ok) setError(result.error);
       else {
         setApplied(result.applied);
+        if (result.applied.length > 0) record("event", eventId);
         setData(null);
       }
     } catch {
@@ -641,6 +657,10 @@ export default function AdminEventImporter({ categories, formats, businessCatego
   const [result, setResult] = useState<Result | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
   const [reads, setReads] = useState<Record<string, BusinessReadView>>({});
+  const [created, setCreated] = useState<CreatedRecords>(NO_RECORDS);
+  const record = useCallback((kind: RecordKind, id: string) => {
+    setCreated((prev) => (prev[kind][id] ? prev : { ...prev, [kind]: { ...prev[kind], [id]: true } }));
+  }, []);
   const [analyzing, startAnalyze] = useTransition();
   const runRef = useRef(0);
 
@@ -734,6 +754,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
     }
     const run = (runRef.current += 1);
     setReads({});
+    setCreated(NO_RECORDS);
     const base: Result = { source: a.source, events: a.events, warnings: a.warnings, run };
     if (text) void enrich(base, text);
     else {
@@ -759,7 +780,16 @@ export default function AdminEventImporter({ categories, formats, businessCatego
 
   const operator: OperatorImportMode = {
     commit: adminCommitEventImportBatch,
-    createLocation: adminCreateImportLocation,
+    createLocation: async (form) => {
+      const result = await adminCreateImportLocation(form);
+      if (result.status === "created") record("location", result.location.id);
+      return result;
+    },
+    stats: {
+      businessesCreated: Object.keys(created.business).length,
+      locationsCreated: Object.keys(created.location).length,
+      existingEventsUpdated: Object.keys(created.event).length,
+    },
     renderBusinessPicker: ({ id, initial, evidence, website, onSelect, onCreated }) => (
       <BusinessField
         id={id}
@@ -809,6 +839,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
 
   if (result) {
     return (
+      <RecordContext.Provider value={record}>
       <MultiEventImport
         key={result.run}
         businessId=""
@@ -829,6 +860,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         formats={formats}
         operator={operator}
       />
+      </RecordContext.Provider>
     );
   }
 

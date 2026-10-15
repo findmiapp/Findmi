@@ -1419,7 +1419,7 @@ export async function getUpcomingAppearancesForBusiness(
   // distinct appearances exist just past that raw cutoff.
   const { data } = await supabase
     .from("appearances")
-    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug)")
+    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug, is_demo)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .gt("end_at", nowIso)
@@ -1464,7 +1464,7 @@ export async function getPastAppearancesForBusiness(
     // carries (name/cover for grouping by Event on the public Past list,
     // location for its link). Additive select; the owner Past list just
     // receives a few more fields.
-    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug)")
+    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug, is_demo)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .lte("end_at", nowIso)
@@ -1684,7 +1684,7 @@ export async function getBusinessFindmiHereActivity(
     supabase.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved"),
     supabase
       .from("event_occurrence_businesses")
-      .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug), venue_name, address, city, state)")
+      .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo), venue_name, address, city, state)")
       .eq("business_id", businessId)
       .eq("status", "approved"),
   ]);
@@ -2899,7 +2899,7 @@ export async function getFindMiHereFeed(
   let query = supabase
     .from("appearances")
     .select(
-      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id), location:locations(id, name, slug)"
+      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id), location:locations(id, name, slug, is_demo)"
     )
     .neq("status", "canceled");
 
@@ -3690,7 +3690,7 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
     fetchAllPages<{ business_id: string; occurrence: ActivityOccurrence | ActivityOccurrence[] | null }>((from, to) =>
       supabase
         .from("event_occurrence_businesses")
-        .select("business_id, occurrence:event_occurrences!inner(id, event_id, start_at, end_at, status, location:locations(id, name, slug), venue_name, address, city, state)")
+        .select("business_id, occurrence:event_occurrences!inner(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo), venue_name, address, city, state)")
         .in("business_id", ids)
         .eq("status", "approved")
         .gt("occurrence.end_at", nowIso)

@@ -1,6 +1,7 @@
 import Image from "@/components/SupabaseImage";
 import Link from "next/link";
 import { cityState } from "@/lib/format";
+import { publicLocationHref } from "@/lib/location-links";
 
 export interface EventLocationCardLocation {
   slug: string;
@@ -10,6 +11,7 @@ export interface EventLocationCardLocation {
   state: string | null;
   logo_url: string | null;
   cover_image_url: string | null;
+  is_demo?: boolean;
 }
 
 /** Event Page Visual Correction pass — "this is a real FindMi place you
@@ -23,28 +25,33 @@ export interface EventLocationCardLocation {
 export default function EventLocationCard({ location }: { location: EventLocationCardLocation }) {
   const imageUrl = location.logo_url ?? location.cover_image_url;
   const addressLine = [location.address, cityState(location.city, location.state)].filter(Boolean).join(", ");
-
-  return (
-    <Link
-      href={`/location/${location.slug}`}
-      className="flex items-center gap-3 rounded-xl border border-black/10 bg-white p-2.5 transition hover:border-findmi/40 hover:bg-findmi-50"
-    >
-      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-black/5">
-        {imageUrl ? (
-          <Image src={imageUrl} alt="" fill unoptimized sizes="44px" className="object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <PinGlyph className="h-4 w-4 text-findmi-700" />
-          </div>
-        )}
-      </div>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40">Location</span>
-        <span className="block truncate font-semibold text-findmi-700">{location.name}</span>
-        {addressLine && <span className="block truncate text-xs text-ink/55">{addressLine}</span>}
-      </span>
-      <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+  const href = publicLocationHref(location);
+  const inner = (
+    <>
+        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-black/5">
+          {imageUrl ? (
+            <Image src={imageUrl} alt="" fill unoptimized sizes="44px" className="object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <PinGlyph className="h-4 w-4 text-findmi-700" />
+            </div>
+          )}
+        </div>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40">Location</span>
+          <span className="block truncate font-semibold text-findmi-700">{location.name}</span>
+          {addressLine && <span className="block truncate text-xs text-ink/55">{addressLine}</span>}
+        </span>
+        {href && <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />}
+    </>
+  );
+  // Not publicly listed yet: the same card as plain text (never a dead link).
+  return href ? (
+    <Link href={href} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white p-2.5 transition hover:border-findmi/40 hover:bg-findmi-50">
+      {inner}
     </Link>
+  ) : (
+    <div className="flex items-center gap-3 rounded-xl border border-black/10 bg-white p-2.5">{inner}</div>
   );
 }
 

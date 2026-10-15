@@ -672,11 +672,15 @@ export async function getEventOptionById(id: string | null): Promise<SelectOptio
  * trashed. No "paused" value in this union at all, by design. */
 export async function getAdminLocations(
   q?: string,
-  lifecycle: "active" | "archived" | "trashed" = "active"
+  lifecycle: "active" | "archived" | "trashed" = "active",
+  /** Only Locations awaiting review: active and not publicly listed
+   * (is_demo = true) — the same set Admin Home counts. */
+  needsReview = false
 ): Promise<AdminLocation[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
   let query = supabase.from("locations").select("*").order("name");
+  if (needsReview) query = query.eq("is_demo", true);
   if (q) {
     const term = `%${q}%`;
     query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);

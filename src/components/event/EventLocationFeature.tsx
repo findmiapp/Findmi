@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { publicLocationHref } from "@/lib/location-links";
 import SupabaseImage from "@/components/SupabaseImage";
 import SectionHeading from "@/components/SectionHeading";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
@@ -68,12 +69,15 @@ export default function EventLocationFeature({
               }}
             />
           )}
-          <Link
-            href={`/location/${location.slug}`}
-            className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-full border border-black/10 bg-white px-4 text-sm font-bold text-ink transition hover:border-ink/30 active:scale-[0.98]"
-          >
-            View Location
-          </Link>
+          {/* Only a listed Location has a public page (never a dead link). */}
+          {publicLocationHref(location) && (
+            <Link
+              href={publicLocationHref(location)!}
+              className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-full border border-black/10 bg-white px-4 text-sm font-bold text-ink transition hover:border-ink/30 active:scale-[0.98]"
+            >
+              View Location
+            </Link>
+          )}
         </div>
       </div>
     </section>

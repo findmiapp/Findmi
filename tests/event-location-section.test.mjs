@@ -25,7 +25,7 @@ test("Get Directions (accent, same maps query + tracking) and View Location (can
   assert.match(card, /const mapsQuery = \[location\.name, location\.address, cityState\(location\.city, location\.state\)\]\.filter\(Boolean\)\.join\(", "\);/, "Directions destination unchanged");
   assert.match(card, /event_name: "click_directions",\n\s+subject_type: "location",/);
   assert.match(directions, /className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1\.5 rounded-full bg-findmi px-4 text-sm font-bold text-white[^"]*"\n\s+>\n\s+\{glyph\}\n\s+Get Directions/);
-  assert.match(card, /href=\{`\/location\/\$\{location\.slug\}`\}[\s\S]{0,260}View Location/);
+  assert.match(card, /href=\{publicLocationHref\(location\)!\}[\s\S]{0,260}View Location/, "canonical page — only when it exists (lib/location-links.ts)");
   assert.doesNotMatch(card, /View on Map|\/map\b/);
 });
 

@@ -105,3 +105,30 @@ export function segmentTextByKey(pasted: string): Map<string, string> {
   if (split.segments.length === 1) return new Map([["event-1", split.segments[0].text]]);
   return new Map(split.segments.map((s) => [`pasted-event-${s.number}`, s.text]));
 }
+
+/** What THIS Admin Review actually created or updated outside the batch
+ * save — recorded at the moment each creation succeeded (a picked existing
+ * Business / Location is never counted). */
+export interface OperatorSessionStats {
+  businessesCreated: number;
+  locationsCreated: number;
+  existingEventsUpdated: number;
+}
+
+/** Import Complete — counts only from real outcomes: the batch save's own
+ * results (a new Event only when that save created it), the existing-Event
+ * rows that were never sent to it, and the session's recorded creations. */
+export function operatorImportSummary(
+  results: { outcome: { ok: true; kind: string; newEvent?: boolean } | { ok: false; error: string } }[],
+  existingRowCount: number,
+  stats: OperatorSessionStats
+): { newEvents: number; existingEvents: number; existingEventsUpdated: number; businessesCreated: number; locationsCreated: number; failed: number } {
+  return {
+    newEvents: results.filter((r) => r.outcome.ok && r.outcome.kind === "scheduled" && r.outcome.newEvent === true).length,
+    existingEvents: existingRowCount + results.filter((r) => r.outcome.ok && r.outcome.kind === "already").length,
+    existingEventsUpdated: stats.existingEventsUpdated,
+    businessesCreated: stats.businessesCreated,
+    locationsCreated: stats.locationsCreated,
+    failed: results.filter((r) => !r.outcome.ok).length,
+  };
+}

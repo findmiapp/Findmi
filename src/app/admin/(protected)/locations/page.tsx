@@ -15,13 +15,15 @@ const LIFECYCLE_TABS = [
 export default async function AdminLocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string }>;
+  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string }>;
 }) {
-  const { q, lifecycle, result } = await searchParams;
+  const { q, lifecycle, result, review } = await searchParams;
   const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value ?? "active";
+  // "Needs Review": active Locations not publicly listed yet (Admin Home's queue).
+  const needsReview = review === "1" && lifecycleTab === "active";
 
   const [locations, categories] = await Promise.all([
-    getAdminLocations(q, lifecycleTab),
+    getAdminLocations(q, lifecycleTab, needsReview),
     getAllCategories("location"),
   ]);
 
@@ -47,7 +49,7 @@ export default async function AdminLocationsPage({
           Events, minus the Paused tab which doesn't apply here. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {LIFECYCLE_TABS.map((tab) => {
-          const active = lifecycleTab === tab.value;
+          const active = lifecycleTab === tab.value && !needsReview;
           const params = new URLSearchParams();
           if (tab.value !== "active") params.set("lifecycle", tab.value);
           if (q) params.set("q", q);
@@ -64,10 +66,25 @@ export default async function AdminLocationsPage({
             </Link>
           );
         })}
+        <Link
+          href={`/admin/locations?review=1${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+            needsReview ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+          }`}
+        >
+          Needs Review
+        </Link>
       </div>
+      {needsReview && (
+        <p className="mt-3 text-sm text-ink/60">
+          Not publicly listed yet — no public Location page, so Events show these by name and address only. Open one, check it, and turn on
+          &ldquo;Published&rdquo; to list it.
+        </p>
+      )}
 
       <form method="get" className="mt-4">
         {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
+        {needsReview && <input type="hidden" name="review" value="1" />}
         <input autoCapitalize="none"
           type="text"
           name="q"

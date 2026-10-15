@@ -1,5 +1,6 @@
 "use client";
 
+import { publicLocationHref } from "@/lib/location-links";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
@@ -180,8 +181,8 @@ export default function EventOccurrenceQuickView({
               </span>
             )}
             {venueLabel &&
-              (location ? (
-                <Link href={`/location/${location.slug}`} className="group mt-1 w-fit">
+              (publicLocationHref(location) ? (
+                <Link href={publicLocationHref(location)!} className="group mt-1 w-fit">
                   <span className="font-semibold text-ink transition group-hover:text-findmi-700">{venueLabel}</span>
                   {fullAddress && <span className="block text-xs text-ink/50">{fullAddress}</span>}
                 </Link>

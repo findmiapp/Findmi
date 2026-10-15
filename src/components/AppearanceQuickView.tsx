@@ -1,5 +1,6 @@
 "use client";
 
+import { publicLocationHref } from "@/lib/location-links";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
@@ -206,9 +207,9 @@ export default function AppearanceQuickView({
             <PinGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
             <div className="min-w-0">
               {venueLabel &&
-                (appearance.location ? (
+                (publicLocationHref(appearance.location) ? (
                   <Link
-                    href={`/location/${appearance.location.slug}`}
+                    href={publicLocationHref(appearance.location)!}
                     className="block text-sm font-semibold text-ink hover:text-findmi-700"
                   >
                     {venueLabel}

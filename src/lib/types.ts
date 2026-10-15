@@ -866,6 +866,9 @@ export interface FindmiLocation {
   // Admin Content Lifecycle V2 — Locations have no existing Pause/
   // publication concept; these are NOT one either. NULL = not archived/
   // not trashed.
+  /** Not publicly listed (no public Location page) — e.g. Quick Created,
+   * awaiting Admin review. See lib/location-links.ts. */
+  is_demo?: boolean;
   archived_at?: string | null;
   trashed_at?: string | null;
   // Featured Event System — an optional manual override of which Event

@@ -7,7 +7,7 @@ import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
 import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
 import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction } from "./ReviewParts";
-import { businessEvidenceKey, eventBusinessEvidence, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness } from "@/lib/event-import/operator";
+import { businessEvidenceKey, eventBusinessEvidence, operatorImportSummary, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness, type OperatorSessionStats } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
@@ -79,6 +79,8 @@ export interface OperatorImportMode {
    * a verified preview (never the remote URL; the page CSP blocks it). */
   renderThumbnail: (imageUrl: string) => React.ReactNode;
   doneHref: string;
+  /** Businesses / Locations created and existing Events updated in this Review. */
+  stats: OperatorSessionStats;
 }
 
 export default function MultiEventImport({
@@ -152,7 +154,7 @@ export default function MultiEventImport({
   const [initialPast, setInitialPast] = useState<Record<string, ReviewOccurrence[]>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<{ result: Extract<Result, { ok: true }>; skipped: number } | null>(null);
+  const [outcome, setOutcome] = useState<{ result: Extract<Result, { ok: true }>; skipped: number; existingRows: number } | null>(null);
   const [saving, startSave] = useTransition();
 
   const byKey = new Map(events.map((e) => [e.key, e]));
@@ -240,7 +242,7 @@ export default function MultiEventImport({
           setError(result.error);
           return;
         }
-        setOutcome({ result, skipped: incomplete });
+        setOutcome({ result, skipped: incomplete, existingRows: existingRows.length });
         setPhase("done");
       } catch {
         setError("Couldn’t save them. Please try again.");
@@ -266,6 +268,66 @@ export default function MultiEventImport({
           </ul>
         </div>
       );
+    if (operator) {
+      const s = operatorImportSummary(outcome.result.results, outcome.existingRows, operator.stats);
+      const rows: [string, number, string | null][] = [
+        ["New Events", s.newEvents, null],
+        ["Existing Events Reviewed / Skipped", s.existingEvents, null],
+        ["Existing Events Updated", s.existingEventsUpdated, null],
+        ["Businesses Created · Awaiting Review", s.businessesCreated, "/admin/businesses?published=pending_review"],
+        ["Locations Created · Awaiting Review", s.locationsCreated, "/admin/locations?review=1"],
+      ];
+      return (
+        <div className="flex flex-col gap-4">
+          {header}
+          <section role="status" className="flex flex-col gap-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
+            <p className="text-card-title font-semibold text-findmi-700">Import Complete</p>
+            <dl className="flex flex-col gap-1">
+              {rows.map(([label, count]) => (
+                <div key={label} className="flex items-baseline justify-between gap-3 text-metadata">
+                  <dt className="text-secondary">{label}</dt>
+                  <dd className="font-bold tabular-nums text-primary">{count}</dd>
+                </div>
+              ))}
+            </dl>
+            {group("New Events", summary.added)}
+            {summary.attention.length > 0 && (
+              <div>
+                <p className="text-label font-bold uppercase text-subtle">Not Saved · {summary.attention.length}</p>
+                <ul className="mt-1 flex flex-col gap-1">
+                  {summary.attention.map((a, i) => (
+                    <li key={`${a.title}-${i}`} className="text-metadata text-red-700">
+                      <span className="font-semibold">{a.title || "Untitled"}</span> — {a.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {summary.skipped > 0 && (
+              <p className="text-metadata text-muted">
+                {summary.skipped} {summary.skipped === 1 ? "Event was" : "Events were"} skipped because details were missing.
+              </p>
+            )}
+          </section>
+          <div className="flex flex-col gap-2">
+            <Link href={operator.doneHref} className={primaryButtonClass}>
+              View Events
+            </Link>
+            <div className="grid grid-cols-2 gap-2">
+              <Link href="/admin/businesses?published=pending_review" className={secondaryButtonClass}>
+                Review Businesses
+              </Link>
+              <Link href="/admin/locations?review=1" className={secondaryButtonClass}>
+                Review Locations
+              </Link>
+            </div>
+            <button type="button" onClick={onTryAnother} className={secondaryButtonClass}>
+              Import More
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-4">
         {header}
@@ -293,17 +355,15 @@ export default function MultiEventImport({
           )}
         </section>
         <div className="flex flex-col gap-2">
-          <Link href={operator ? operator.doneHref : `${businessHome}?tab=findmi-here`} className={primaryButtonClass}>
-            {operator ? "View Events" : "View Schedule"}
+          <Link href={`${businessHome}?tab=findmi-here`} className={primaryButtonClass}>
+            View Schedule
           </Link>
           <button type="button" onClick={onTryAnother} className={secondaryButtonClass}>
             Import More
           </button>
-          {!operator && (
-            <Link href={businessHome} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
-              Back To {businessName}
-            </Link>
-          )}
+          <Link href={businessHome} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
+            Back To {businessName}
+          </Link>
         </div>
       </div>
     );

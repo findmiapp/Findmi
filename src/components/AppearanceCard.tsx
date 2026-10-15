@@ -1,5 +1,6 @@
 "use client";
 
+import { publicLocationHref } from "@/lib/location-links";
 import { useState } from "react";
 import Link from "next/link";
 import type { Appearance } from "@/lib/types";
@@ -101,7 +102,7 @@ export default function AppearanceCard({
   // external_url/flyer) — see venueLabel above for how it still appears as
   // plain display text in those cases instead.
   const locationHref =
-    !hasEvent && !externalUrl && !flyerUrl && appearance.location ? `/location/${appearance.location.slug}` : null;
+    !hasEvent && !externalUrl && !flyerUrl ? publicLocationHref(appearance.location) : null;
   const directionsHref =
     !hasEvent && !externalUrl && !flyerUrl && !locationHref && mapsQuery
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`

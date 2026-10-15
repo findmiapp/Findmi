@@ -40,7 +40,7 @@ export default function LocationBulkListClient({
               l.is_demo ? "bg-black/[0.06] text-ink/50" : "bg-findmi-50 text-findmi-700"
             }`}
           >
-            {l.is_demo ? "Demo" : "Public"}
+            {l.is_demo ? "Not Listed" : "Public"}
           </span>
         </div>
       )}

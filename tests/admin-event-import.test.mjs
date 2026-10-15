@@ -306,7 +306,7 @@ test("H. existing Location matching still works per Event in the Admin flow", as
 test("I. Quick Create works through the Admin flow — same rules, Admin-session gate, Business auth not weakened", async () => {
   // Wiring: the Admin Review passes its own create action into the existing Quick Create.
   assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation \}\}/);
-  assert.match(CLIENT, /createLocation: adminCreateImportLocation,/);
+  assert.match(CLIENT, /createLocation: async \(form\) => \{\n\s+const result = await adminCreateImportLocation\(form\);/);
   assert.match(ACTIONS, /return insertInlinePlace\(admin, formData\);/);
   assert.match(LOC_ACTIONS, /return insertInlinePlace\(admin, formData\);/, "member path shares the same core");
   // Same rules: address required; likely duplicate offered (nothing inserted); unlisted on create.

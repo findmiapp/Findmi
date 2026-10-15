@@ -1,5 +1,6 @@
 "use client";
 
+import { publicLocationHref } from "@/lib/location-links";
 import {
   cityState,
   cityStateZip,
@@ -151,7 +152,7 @@ export default function EventScheduleSummary({
         locationHidden ? (
           <WhereFact name={HIDDEN_LOCATION_COPY} lines={[cityState(selected.city, selected.state)]} />
         ) : location ? (
-          <WhereFact name={location.name} href={`/location/${location.slug}`} lines={addressLines} />
+          <WhereFact name={location.name} href={publicLocationHref(location)} lines={addressLines} />
         ) : (
           <WhereFact name={manualVenueName} lines={manualAddressLines} />
         )

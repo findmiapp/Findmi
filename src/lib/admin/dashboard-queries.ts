@@ -334,13 +334,20 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
  * Locations have no members, so they aren't counted as "waiting"). Small
  * and bounded; each row links straight to its admin edit page, where
  * publishing happens. */
+/** Locations Awaiting Review — every active Location that is NOT publicly
+ * listed (is_demo = true: no public Location page yet), however it was
+ * created: a member's submission, or Missing-Location Quick Create (member
+ * or Admin Event Import), which never grants membership. Admin reviews it
+ * and lists it with the Location form's "Published" switch. Archived and
+ * trashed Locations are excluded. */
 export async function getLocationsAwaitingReview(limit = 5): Promise<{ items: { id: string; name: string }[]; total: number } | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
   const { data, count, error } = await supabase
     .from("locations")
-    .select("id, name, location_members!inner(id)", { count: "exact" })
+    .select("id, name", { count: "exact" })
     .eq("is_demo", true)
+    .is("archived_at", null)
     .is("trashed_at", null)
     // No created_at on locations in production — alphabetical, never a
     // fabricated recency order.

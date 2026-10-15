@@ -91,11 +91,13 @@ export default async function AdminDashboardPage() {
         // Acknowledging a Where I'll Be record is not an approval decision,
         // hence not phrased "awaiting review".
         { label: "unreviewed Where I’ll Be record", pluralLabel: "unreviewed Where I’ll Be records", count: needsAttention.unreviewedAppearances, href: "/admin/appearances?reviewed=unreviewed" },
+        // Not publicly listed yet (member submissions and Quick Created
+        // Locations, e.g. from Admin Event Import) — getLocationsAwaitingReview.
+        { label: "Location awaiting review", pluralLabel: "Locations awaiting review", count: locationsAwaiting?.total ?? 0, href: "/admin/locations?review=1" },
       ]
     : [];
   const activeAttentionItems = attentionQueue.filter((item) => item.count > 0);
-  const pendingLocations = locationsAwaiting?.items ?? [];
-  const attentionTotal = activeAttentionItems.length + pendingLocations.length;
+  const attentionTotal = activeAttentionItems.length;
   const now = Date.now();
   const todayItems = today ?? [];
 
@@ -170,19 +172,6 @@ export default async function AdminDashboardPage() {
                   {activeAttentionItems.map((item) => (
                     <AttentionRow key={item.label} count={item.count} label={item.count === 1 ? item.label : item.pluralLabel} href={item.href} />
                   ))}
-                  {pendingLocations.map((l) => (
-                    <Link key={l.id} href={`/admin/locations/${l.id}`} className="flex min-h-[48px] items-center gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">
-                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-label font-bold uppercase text-amber-800">Location</span>
-                      <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{l.name}</span>
-                      <span className="shrink-0 text-metadata text-muted">Awaiting review</span>
-                    </Link>
-                  ))}
-                  {(locationsAwaiting?.total ?? 0) > pendingLocations.length && (
-                    <Link href="/admin/locations" className="flex items-center gap-1 px-4 py-2.5 text-metadata font-semibold text-findmi-700 hover:underline">
-                      {locationsAwaiting!.total - pendingLocations.length} more locations awaiting review
-                      <ChevronRightGlyph className="h-3.5 w-3.5" />
-                    </Link>
-                  )}
                 </div>
               </ModulePanel>
             ))}

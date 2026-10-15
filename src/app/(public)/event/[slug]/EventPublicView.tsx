@@ -1,4 +1,5 @@
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "@/lib/event-range-mirror";
+import { publicLocationHref } from "@/lib/location-links";
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import Image from "@/components/SupabaseImage";
@@ -461,7 +462,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           : lastLocation
           ? {
               name: lastLocation.name,
-              href: `/location/${lastLocation.slug}`,
+              href: publicLocationHref(lastLocation),
               line: [lastLocation.address, cityState(lastLocation.city, lastLocation.state)].filter(Boolean).join(", ") || null,
             }
           : last.venue_name || last.address
@@ -517,7 +518,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         ) : legacyWhereName || legacyHasWhereLines ? (
           <WhereFact
             name={legacyWhereName}
-            href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
+            href={publicLocationHref(matchedLocation)}
             lines={legacyWhereLines}
           />
         ) : null
@@ -810,8 +811,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
       <section id="place" className="scroll-mt-24">
         <SectionHeading>The Place</SectionHeading>
         {placeName &&
-          (canonicalLocation ? (
-            <Link href={`/location/${canonicalLocation.slug}`} className="mt-0.5 inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline">
+          (publicLocationHref(canonicalLocation) ? (
+            <Link href={publicLocationHref(canonicalLocation)!} className="mt-0.5 inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline">
               {placeName}
               <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
