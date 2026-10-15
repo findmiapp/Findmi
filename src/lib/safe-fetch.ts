@@ -110,11 +110,18 @@ export type SafeFetchResult =
       status?: number;
       contentType?: string;
       host?: string;
+      /** Diagnostics only: which unsupported_content case it was. */
+      contentIssue?: SafeFetchContentIssue;
       /** Diagnostics only: a 429/503's Retry-After, in ms (when parseable). */
       retryAfterMs?: number;
       /** Event pages only: requests made (2 when the one transient retry ran). */
       attempts?: number;
     };
+
+/** Diagnostics only — the three distinct causes behind "unsupported_content":
+ * the response's media type isn't one this profile accepts; its
+ * Content-Encoding isn't supported; or decompression failed. */
+export type SafeFetchContentIssue = "media_type" | "encoding" | "decode";
 
 // ── Destination rules ─────────────────────────────────────────────────────
 
@@ -543,6 +550,7 @@ type ResourceResult =
       status?: number;
       contentType?: string;
       host?: string;
+      contentIssue?: SafeFetchContentIssue;
       retryAfterMs?: number;
     };
 
@@ -569,7 +577,7 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
   const visited = new Set<string>();
   let declaredBytes: number | null = null;
   // Diagnostics only (never used for decisions): the last response seen.
-  let seen: { status?: number; contentType?: string; host?: string; retryAfterMs?: number } = {};
+  let seen: { status?: number; contentType?: string; host?: string; retryAfterMs?: number; contentIssue?: SafeFetchContentIssue } = {};
   const fail = (code: SafeFetchFailure, limit?: SafeFetchSizeLimit): ResourceResult =>
     limit ? { ok: false, code, redirects, limit, declaredBytes, ...seen } : { ok: false, code, redirects, ...seen };
 
@@ -612,12 +620,18 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
         const contentType = header(res.headers, "content-type") ?? "";
         const mediaType = contentType.split(";")[0].trim().toLowerCase();
         seen = { ...seen, contentType: mediaType.slice(0, 80) };
-        if (!profile.mediaTypes.has(mediaType)) return fail("unsupported_content");
+        if (!profile.mediaTypes.has(mediaType)) {
+          seen = { ...seen, contentIssue: "media_type" };
+          return fail("unsupported_content");
+        }
         const declaredLength = Number(header(res.headers, "content-length") ?? NaN);
         declaredBytes = Number.isFinite(declaredLength) && declaredLength >= 0 ? declaredLength : null;
         if (profile.rejectDeclaredOverMax && declaredBytes !== null && declaredBytes > profile.maxBytes) return fail("too_large", "declared");
         const encoding = (header(res.headers, "content-encoding") ?? "identity").trim().toLowerCase();
-        if (!["identity", "", "gzip", "x-gzip", "deflate", "br"].includes(encoding)) return fail("unsupported_content");
+        if (!["identity", "", "gzip", "x-gzip", "deflate", "br"].includes(encoding)) {
+          seen = { ...seen, contentIssue: "encoding" };
+          return fail("unsupported_content");
+        }
         let read: { buffer: Buffer; truncated: boolean };
         // The deadline must hold even if a body stream never settles: the
         // response is destroyed on abort AND the read is raced against it.
@@ -630,7 +644,11 @@ async function safeFetchResource(input: string | URL, profile: FetchProfile, opt
         } catch (err) {
           if (err instanceof TooLarge) return fail("too_large", "streamed");
           if (controller.signal.aborted) return fail("timeout");
-          return fail((err as NodeJS.ErrnoException)?.code?.startsWith("Z_") ? "unsupported_content" : "network_error");
+          if ((err as NodeJS.ErrnoException)?.code?.startsWith("Z_")) {
+            seen = { ...seen, contentIssue: "decode" };
+            return fail("unsupported_content");
+          }
+          return fail("network_error");
         } finally {
           controller.signal.removeEventListener("abort", onAbort);
         }
@@ -801,9 +819,11 @@ export type SafeFetchImageResult =
       limit?: SafeFetchSizeLimit;
       declaredBytes?: number | null;
       /** Diagnostics only (already carried by every failure): the last
-       * HTTP status and host seen. */
+       * HTTP status, host, media type and unsupported_content case seen. */
       status?: number;
       host?: string;
+      contentType?: string;
+      contentIssue?: SafeFetchContentIssue;
     };
 
 /** Retrieves ONE raster image (PNG/JPEG/WebP/GIF, ≤ 5 MB) under exactly the

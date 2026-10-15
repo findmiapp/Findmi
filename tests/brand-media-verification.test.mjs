@@ -124,9 +124,9 @@ test("fetch: what used to collapse into fetch_failed now carries the safe-fetch 
     const r = await verify("https://media.marcbrand.com/i/hero.jpg?w=1600&token=secret", "cover", failing(fetched));
     assert.equal(r.ok, false);
     assert.equal(r.reason, "fetch_failed", "the reason itself is unchanged");
-    assert.deepEqual(r.fetch, detail);
+    assert.deepEqual(r.fetch, { ...detail, ext: "jpg" });
     const reason = IMG.brandImageFailureReason(r);
-    assert.equal(reason, label);
+    assert.equal(reason, `${label}:ext=jpg`);
     assert.doesNotMatch(reason, /https?:|marcbrand|token|secret|\?/, "never the URL, host or query");
   }
   const thrown = await verify("https://media.marcbrand.com/x.jpg", "cover", { fetchImage: async () => { throw new Error("boom"); } });
@@ -146,4 +146,66 @@ test("fetch: the Build diagnostic records the class; inline marks are labelled s
   assert.match(sf, /const IMAGE_PROFILE: FetchProfile = \{\n\s+accept: "image\/png,image\/jpeg,image\/webp,image\/gif;q=0\.8",\n\s+mediaTypes: SAFE_FETCH_IMAGE_TYPES,\n\s+maxBytes: SAFE_FETCH_IMAGE_MAX_BYTES,\n\s+rejectDeclaredOverMax: true,\n\};/, "image profile unchanged");
   // Event Import's image path keeps its own reasons (type-only widening).
   assert.match(read("src/lib/event-import/media.ts"), /if \(!fetched\.ok\) return \{ ok: false, reason: "fetch_failed" \};/);
+});
+
+// ── 3. Production follow-up: unsupported_content and the SVG measurements ─
+
+const F = await import("../src/lib/safe-fetch.ts");
+function respond(status, headers = {}, body = Buffer.alloc(0)) {
+  return { status, headers, body: (async function* () { yield Buffer.isBuffer(body) ? body : Buffer.from(body); })(), destroy: () => {} };
+}
+const IMG_URL = "https://media.marcbrand.com/i/hero.jpg";
+
+test("unsupported_content: the three causes are told apart (media type / encoding / decode), with the media type", async () => {
+  const avif = await F.safeFetchImage(IMG_URL, { transport: async () => respond(200, { "content-type": "image/avif" }, Buffer.from("....ftypavif")) });
+  assert.deepEqual([avif.ok, avif.code, avif.status, avif.contentIssue, avif.contentType], [false, "unsupported_content", 200, "media_type", "image/avif"]);
+  const html = await F.safeFetchImage(IMG_URL, { transport: async () => respond(200, { "content-type": "text/html; charset=utf-8" }, "<html>denied</html>") });
+  assert.deepEqual([html.ok, html.code, html.contentIssue, html.contentType], [false, "unsupported_content", "media_type", "text/html"], "an HTML 200 is still refused");
+  const zstd = await F.safeFetchImage(IMG_URL, { transport: async () => respond(200, { "content-type": "image/jpeg", "content-encoding": "zstd" }, Buffer.from([1, 2, 3])) });
+  assert.deepEqual([zstd.code, zstd.contentIssue], ["unsupported_content", "encoding"]);
+  const badGzip = await F.safeFetchImage(IMG_URL, { transport: async () => respond(200, { "content-type": "image/jpeg", "content-encoding": "gzip" }, Buffer.from("not gzip at all")) });
+  assert.deepEqual([badGzip.code, badGzip.contentIssue], ["unsupported_content", "decode"]);
+  // Event pages see the same code (semantics unchanged; the cause is extra).
+  const ev = await F.safeFetchEventPage("https://luma.com/x", { transport: async () => respond(200, { "content-type": "application/pdf" }, "%PDF") });
+  assert.deepEqual([ev.ok, ev.code], [false, "unsupported_content"]);
+});
+
+test("unsupported_content: the Brand diagnostic names the cause, media type and path extension — never the URL", async () => {
+  const r = await verify(`${IMG_URL}?w=1600&sig=secret`, "cover", { fetchImage: async () => ({ ok: false, code: "unsupported_content", redirects: 0, status: 200, contentType: "image/avif", contentIssue: "media_type" }) });
+  const reason = IMG.brandImageFailureReason(r);
+  assert.equal(reason, "fetch_failed:unsupported_content:200:media_type:image/avif:ext=jpg");
+  assert.doesNotMatch(reason, /marcbrand|sig|secret|https?:/);
+  // A hostile / malformed media type is never echoed.
+  const odd = await verify(IMG_URL, "cover", { fetchImage: async () => ({ ok: false, code: "unsupported_content", redirects: 0, status: 200, contentType: "text/html<script>", contentIssue: "media_type" }) });
+  assert.equal(IMG.brandImageFailureReason(odd), "fetch_failed:unsupported_content:200:media_type:ext=jpg");
+  assert.equal(IMG.candidateExtension("https://x.com/a/b"), "none");
+  assert.equal(IMG.candidateExtension("https://x.com/a/B.WEBP?x=1"), "webp");
+  // Validation itself is unchanged: the image profile's accepted types and
+  // byte checks are exactly as before.
+  assert.deepEqual([...F.SAFE_FETCH_IMAGE_TYPES].sort(), ["application/octet-stream", "binary/octet-stream", "image/gif", "image/jpeg", "image/jpg", "image/pjpeg", "image/png", "image/webp"]);
+});
+
+test("svg measurements: every SVG-derived rejection says which rule, at what size and ink", async () => {
+  const wide = await verify(inline(lettering(280, 20, 11)));
+  assert.equal(IMG.brandImageFailureReason(wide), "unsuitable:aspect_ratio:800x57:r14.0", "very widely tracked caps — ratio rule (12:1) unchanged");
+  const block = await verify(inline('<svg viewBox="0 0 200 50"><rect width="200" height="50"/></svg>'));
+  assert.equal(IMG.brandImageFailureReason(block), "unsuitable:solid_fill:800x200:r4.0:ink100");
+  const blank = await verify(inline('<svg viewBox="0 0 200 50"></svg>'));
+  assert.equal(IMG.brandImageFailureReason(blank), "blank:blank:800x200:r4.0:ink0");
+  const white = await verify(inline(lettering(300, 30, 11, "#ffffff")));
+  assert.match(IMG.brandImageFailureReason(white), /^blank:near_white:800x80:r10\.0:ink\d/);
+  assert.equal(IMG.brandImageSuitabilityFailure("logo", 100, 30), "too_small");
+  assert.equal(IMG.brandImageSuitabilityFailure("logo", 800, 80), "aspect_ratio", "raster logos keep 6:1");
+  assert.equal(IMG.brandImageSuitabilityFailure("logo", 800, 80, { vectorWordmark: true }), null);
+  assert.equal(IMG.brandImageSuitabilityFailure("cover", 500, 400), "too_small");
+});
+
+test("svg solid rule: a badge logo (lettering on a filled shape) passes; a featureless or same-colour block does not", async () => {
+  const strokes = (w, h, n, fill) => Array.from({ length: n }, (_, i) => `<rect fill="${fill}" x="${Math.round((i * w) / n)}" y="0" width="${Math.round(w / n / 2)}" height="${h}"/>`).join("");
+  const whiteOnBlack = await verify(inline(`<svg viewBox="0 0 300 60"><rect width="300" height="60" fill="#000"/>${strokes(300, 60, 11, "#fff")}</svg>`));
+  assert.equal(whiteOnBlack.ok, true, IMG.brandImageFailureReason(whiteOnBlack));
+  const navyOnGold = await verify(inline(`<svg viewBox="0 0 200 100"><rect width="200" height="100" fill="#d4af37"/>${strokes(200, 100, 8, "#001f5b")}</svg>`));
+  assert.equal(navyOnGold.ok, true, IMG.brandImageFailureReason(navyOnGold));
+  const sameColour = await verify(inline(`<svg viewBox="0 0 300 30"><rect width="300" height="30" fill="#000"/>${strokes(300, 30, 11, "#000")}</svg>`));
+  assert.equal(IMG.brandImageFailureReason(sameColour), "unsuitable:solid_fill:800x80:r10.0:ink100", "invisible lettering is still a block");
 });

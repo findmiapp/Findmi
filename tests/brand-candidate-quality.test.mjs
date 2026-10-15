@@ -158,7 +158,8 @@ test("images: no valid cover / no valid logo → none", async () => {
   );
   assert.equal(extract(weak).logoCandidateUrl, null);
   // A portrait image is not a cover.
-  assert.deepEqual(await IMG.fetchVerifiedBrandImage("https://cdn.acmebeauty.com/tall.jpg", "cover", fetchOf(await photo(600, 900), "image/jpeg")), { ok: false, reason: "unsuitable" });
+  const tall = await IMG.fetchVerifiedBrandImage("https://cdn.acmebeauty.com/tall.jpg", "cover", fetchOf(await photo(600, 900), "image/jpeg"));
+  assert.deepEqual({ ok: tall.ok, reason: tall.reason, rule: tall.measure?.code }, { ok: false, reason: "unsuitable", rule: "aspect_ratio" });
 });
 
 test("images: additional first-party logo sources, strongest first (SVG JSON-LD logo falls through)", () => {

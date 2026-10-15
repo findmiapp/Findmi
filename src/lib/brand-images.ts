@@ -1,7 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchFailure, type SafeFetchImageResult } from "./safe-fetch";
+import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchContentIssue, type SafeFetchFailure, type SafeFetchImageResult } from "./safe-fetch";
 import { inlineSvgMarkup, isInlineSvgCandidate, isSvgCandidateUrl } from "./brand-website-extract";
 import { validateImageFile, type ImageValidationResult } from "./imageUploadValidation";
 import { storePublicImage } from "./image-variants-server";
@@ -77,20 +77,89 @@ export type BrandImageRejection = "fetch_failed" | "invalid_file" | "type_mismat
 export interface BrandImageFetchDetail {
   code: SafeFetchFailure | "error";
   status?: number;
+  /** The response's media type (sanitized), when one arrived. */
+  type?: string;
+  /** Which unsupported_content case: media_type / encoding / decode. */
+  issue?: SafeFetchContentIssue;
+  /** The candidate path's file extension ("jpg", "webp", "none") — never the URL. */
+  ext?: string;
 }
+
+/** A candidate URL's path extension, lowercased letters/digits only (exported for tests). */
+export function candidateExtension(url: string): string {
+  try {
+    const m = /\.([a-z0-9]{1,5})$/i.exec(new URL(url).pathname);
+    return m ? m[1].toLowerCase() : "none";
+  } catch {
+    return "none";
+  }
+}
+
+/** Why an image that arrived was refused as a logo/cover — measurements
+ * only (never markup, bytes or URLs):
+ *   aspect_ratio / too_small / too_large / no_dimensions — the suitability
+ *     rule that failed;
+ *   blank / near_white / solid_fill — what an SVG mark actually draws.
+ * width/height are the checked (rendered) pixels; ink is drawn coverage %. */
+export type BrandImageMeasureCode = "aspect_ratio" | "too_small" | "too_large" | "no_dimensions" | "blank" | "near_white" | "solid_fill";
+export interface BrandImageMeasure {
+  code: BrandImageMeasureCode;
+  width?: number;
+  height?: number;
+  ink?: number;
+}
+
 /** Diagnostics label for a failed verification (exported for tests):
- * "fetch_failed:blocked_by_site:403", "fetch_failed:timeout", "blank", …
- * — the reason, the safe-fetch code and the HTTP status only. */
-export function brandImageFailureReason(r: { reason: BrandImageRejection; fetch?: BrandImageFetchDetail }): string {
-  if (!r.fetch) return r.reason;
-  return `${r.reason}:${r.fetch.code}${r.fetch.status !== undefined ? `:${r.fetch.status}` : ""}`;
+ * "fetch_failed:unsupported_content:200:media_type:image/avif",
+ * "unsuitable:aspect_ratio:800x53:r15.1", "blank:near_white:800x80:r10.0:ink31.2" —
+ * reason, safe-fetch code, status, media type and measurements only. */
+export function brandImageFailureReason(r: { reason: BrandImageRejection; fetch?: BrandImageFetchDetail; measure?: BrandImageMeasure }): string {
+  if (r.fetch) {
+    const f = r.fetch;
+    return `${r.reason}:${f.code}${f.status !== undefined ? `:${f.status}` : ""}${f.issue ? `:${f.issue}` : ""}${f.type ? `:${f.type}` : ""}${f.ext ? `:ext=${f.ext}` : ""}`;
+  }
+  if (r.measure) {
+    const m = r.measure;
+    const dims = m.width && m.height ? `:${m.width}x${m.height}:r${(Math.max(m.width, m.height) / Math.min(m.width, m.height)).toFixed(1)}` : "";
+    return `${r.reason}:${m.code}${dims}${m.ink !== undefined ? `:ink${m.ink}` : ""}`;
+  }
+  return r.reason;
 }
-type VerifyResult = { ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection; fetch?: BrandImageFetchDetail };
-const fetchFailure = (f: { code: SafeFetchFailure; status?: number }): VerifyResult => ({
-  ok: false,
-  reason: "fetch_failed",
-  fetch: { code: f.code, ...(typeof f.status === "number" ? { status: f.status } : {}) },
-});
+
+type VerifyResult = { ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection; fetch?: BrandImageFetchDetail; measure?: BrandImageMeasure };
+const safeType = (t: string | undefined) => {
+  const v = (t ?? "").toLowerCase().split(";")[0].trim();
+  return /^[a-z0-9.+-]{1,40}\/[a-z0-9.+-]{1,60}$/.test(v) ? v : undefined;
+};
+const fetchFailure = (f: { code: SafeFetchFailure; status?: number; contentType?: string; contentIssue?: SafeFetchContentIssue }): VerifyResult => {
+  const type = safeType(f.contentType);
+  return {
+    ok: false,
+    reason: "fetch_failed",
+    fetch: {
+      code: f.code,
+      ...(typeof f.status === "number" ? { status: f.status } : {}),
+      ...(f.contentIssue ? { issue: f.contentIssue } : {}),
+      ...(type ? { type } : {}),
+    },
+  };
+};
+
+/** Which suitability rule failed (exported for tests); null = suitable. */
+export function brandImageSuitabilityFailure(role: BrandImageRole, width: number, height: number, opts: { vectorWordmark?: boolean } = {}): BrandImageMeasureCode | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return "no_dimensions";
+  if (isSuitableBrandImage(role, width, height, opts)) return null;
+  const long = Math.max(width, height);
+  const short = Math.min(width, height);
+  if (role === "logo") {
+    if (long > 6000) return "too_large";
+    if (long < 120 || short < 40) return "too_small";
+    return "aspect_ratio";
+  }
+  if (long > 10000) return "too_large";
+  if (width < 600 || height < 300) return "too_small";
+  return "aspect_ratio";
+}
 
 /** Low-information graphic test for COVER candidates (exported for
  * tests): a 64px thumbnail (transparency flattened onto white), colours
@@ -276,8 +345,10 @@ async function verifySvgLogoBody(body: Buffer): Promise<VerifyResult> {
   if (!png || png.length === 0) return { ok: false, reason: "unreadable" };
   try {
     const ink = await svgLogoInk(png);
-    if (!ink.visible) return { ok: false, reason: "blank" };
-    if (ink.solid) return { ok: false, reason: "unsuitable" };
+    const meta = await sharp(png, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT }).metadata();
+    const at = { width: meta.width, height: meta.height, ink: Math.round(ink.coverage * 1000) / 10 };
+    if (!ink.visible) return { ok: false, reason: "blank", measure: { code: ink.coverage < SVG_INK_MIN ? "blank" : "near_white", ...at } };
+    if (ink.solid) return { ok: false, reason: "unsuitable", measure: { code: "solid_fill", ...at } };
   } catch {
     return { ok: false, reason: "unreadable" };
   }
@@ -289,7 +360,10 @@ async function verifySvgLogoBody(body: Buffer): Promise<VerifyResult> {
  *   visible — at least 1% ink, and that ink is not all near-white (a white
  *             mark on a transparent background is invisible on Findmi's
  *             white surfaces — empty beats an invisible logo);
- *   solid   — ≥ 97% ink: a filled block/background, not lettering. */
+ *   solid   — ≥ 97% ink AND ≥ 97% of it one colour: a featureless filled
+ *             block. A badge logo (lettering on a filled shape — white on
+ *             black, navy on gold) is fully opaque but two-tone, so it is
+ *             NOT solid. Colours are quantized to 3 bits per channel. */
 export const SVG_INK_MIN = 0.01;
 export const SVG_INK_SOLID = 0.97;
 export async function svgLogoInk(png: Buffer): Promise<{ coverage: number; visible: boolean; solid: boolean }> {
@@ -301,14 +375,18 @@ export async function svgLogoInk(png: Buffer): Promise<{ coverage: number; visib
   const pixels = info.width * info.height;
   let ink = 0;
   let dark = 0;
+  const colours = new Map<number, number>();
   for (let i = 0; i + 3 < data.length; i += info.channels) {
     if (data[i + 3] < 32) continue;
     ink += 1;
     // Rec. 601 luma; anything not near-white counts as visible ink.
     if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 235) dark += 1;
+    const key = ((data[i] >> 5) << 6) | ((data[i + 1] >> 5) << 3) | (data[i + 2] >> 5);
+    colours.set(key, (colours.get(key) ?? 0) + 1);
   }
   const coverage = pixels ? ink / pixels : 0;
-  return { coverage, visible: coverage >= SVG_INK_MIN && dark / pixels >= SVG_INK_MIN, solid: coverage >= SVG_INK_SOLID };
+  const dominant = ink ? Math.max(...colours.values()) / ink : 0;
+  return { coverage, visible: coverage >= SVG_INK_MIN && dark / pixels >= SVG_INK_MIN, solid: coverage >= SVG_INK_SOLID && dominant >= SVG_INK_SOLID };
 }
 
 /** Modern site extraction — the page's INLINE SVG brand mark (carried as an
@@ -350,7 +428,9 @@ export async function verifyRasterBytes(
   } catch {
     return { ok: false, reason: "unreadable" };
   }
-  if (!width || !height || !isSuitableBrandImage(role, width, height, opts)) return { ok: false, reason: "unsuitable" };
+  if (!width || !height || !isSuitableBrandImage(role, width, height, opts)) {
+    return { ok: false, reason: "unsuitable", measure: { code: brandImageSuitabilityFailure(role, width ?? 0, height ?? 0, opts) ?? "no_dimensions", ...(width && height ? { width, height } : {}) } };
+  }
   // A cover must be a picture, not a wordmark/logo share graphic. When
   // in doubt the cover is dropped (a human can add one at review).
   if (role === "cover") {
@@ -376,7 +456,10 @@ export async function fetchVerifiedBrandImage(
     // An inline brand mark is a logo only; as a cover it is refused.
     if (isInlineSvgCandidate(url)) return role === "logo" ? await verifyInlineSvgLogo(url) : { ok: false, reason: "type_mismatch" };
     const fetched = await deps.fetchImage(url);
-    if (!fetched.ok) return fetchFailure(fetched);
+    if (!fetched.ok) {
+      const failed = fetchFailure(fetched);
+      return !failed.ok && failed.fetch ? { ...failed, fetch: { ...failed.fetch, ext: candidateExtension(url) } } : failed;
+    }
     return await verifyRasterBytes(fetched.body, fetched.contentType.split(";")[0].trim().toLowerCase(), role);
   } catch {
     return { ok: false, reason: "fetch_failed", fetch: { code: "error" } };

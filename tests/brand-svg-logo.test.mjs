@@ -201,7 +201,9 @@ test("SVG verification rejects: wrong content type, unsafe content, raster failu
   assert.deepEqual(await check({ body: WORDMARK, type: "text/html" }), { ok: false, reason: "type_mismatch" });
   assert.deepEqual(await check(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><script/></svg>`), { ok: false, reason: "invalid_file" });
   assert.deepEqual(await check('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g></svg'), { ok: false, reason: "unreadable" });
-  assert.deepEqual(await check('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 50"><rect width="1000" height="50"/></svg>'), { ok: false, reason: "unsuitable" }, "20:1 sliver fails the normal logo rule");
+  const sliver = await check('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 50"><rect width="1000" height="50"/></svg>');
+  assert.deepEqual({ ok: sliver.ok, reason: sliver.reason }, { ok: false, reason: "unsuitable" }, "20:1 filled sliver is refused");
+  assert.equal(sliver.measure.code, "solid_fill", "(a one-colour block — refused before the ratio rule)");
   const f = fetchers({ svg: { [SVG_URL]: WORDMARK } });
   assert.equal((await IMG.fetchVerifiedBrandImage(SVG_URL, "cover", f.deps)).ok, false);
   assert.deepEqual(f.calls.svg, [], "a cover never takes the SVG path");
