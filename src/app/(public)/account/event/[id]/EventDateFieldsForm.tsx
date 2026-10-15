@@ -18,6 +18,8 @@ export interface EventDateFieldValues {
   end_time: string;
   location: SelectedLocationDetail | null;
   manualVenue: ManualVenueValues | null;
+  /** This date's own details (event_occurrences.details). */
+  details?: string;
 }
 
 /** Shared fields for both "Add a date" and "Edit date" on Event Manager's
@@ -96,6 +98,16 @@ export default function EventDateFieldsForm({
         )
       )}
       <EventLocationField initialLocation={defaultValues.location} initialManual={defaultValues.manualVenue} />
+      <textarea
+        name="details"
+        defaultValue={defaultValues.details ?? ""}
+        maxLength={2000}
+        rows={2}
+        autoCapitalize="sentences"
+        aria-label="Details for this date"
+        placeholder="Details for this date (optional) — who appears, what's happening"
+        className={`${inputClass} resize-y`}
+      />
       <button
         type="submit"
         className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"

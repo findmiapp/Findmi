@@ -28,6 +28,7 @@ import {
 } from "@/lib/appearance-event-sync";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
 import { parseLocationVisibility, parseRsvpCta, type LocationVisibility, type RsvpCta } from "@/lib/event-attendance";
+import { cleanOccurrenceDetails } from "@/lib/event-import/occurrence-details";
 
 /** Event review-decision notification — every CURRENT event_members
  * recipient. Best-effort: a Resend failure never affects the moderation
@@ -363,6 +364,22 @@ export async function saveEvent(id: string | null, formData: FormData) {
       .from("event_occurrences")
       .upsert(occurrencesToUpsert, { onConflict: "id" });
     if (occError) redirect(errorRedirectUrl(editPath, `Occurrences: ${occError.message}`));
+
+    // Each date's own details (event_occurrences.details) — a separate,
+    // best-effort write after the rows are saved, so this form keeps
+    // working on a database where that column's migration isn't applied.
+    for (const occ of occurrencesToUpsert) {
+      const key = `details_${occ.id}`;
+      if (!formData.has(key)) continue;
+      const { error: detailsError } = await supabase
+        .from("event_occurrences")
+        .update({ details: cleanOccurrenceDetails(formData.get(key)) })
+        .eq("id", occ.id);
+      if (detailsError) {
+        console.warn("[admin events] occurrence details not saved", { reason: detailsError.message });
+        break;
+      }
+    }
 
     // Schedule Integrity pass — one bounded step per submitted occurrence,
     // never platform-wide and never touching a sibling occurrence.

@@ -52,6 +52,9 @@ export interface ImportedVenue {
  * didn't say. */
 export interface ImportedOccurrence extends ImportedDate {
   venue: ImportedVenue;
+  /** This date's own details / programming (event_occurrences.details) —
+   * never the Event's description. Admin structured paste only, today. */
+  details?: string | null;
   /** The page line(s) this was read from, when it came from page text. */
   evidence: string | null;
   /** Set by Analyze: already over. Past dates are kept (not discarded) so
@@ -259,6 +262,8 @@ export interface ReviewOccurrence {
   startTime: string;
   endTime: string;
   place: ReviewPlace;
+  /** This date's own details / programming (event_occurrences.details). */
+  details?: string | null;
 }
 
 /** The reviewed values the Business confirms. Re-validated server-side. */

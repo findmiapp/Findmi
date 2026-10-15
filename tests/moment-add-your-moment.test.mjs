@@ -110,5 +110,5 @@ test("unchanged: source resolution, gallery filtering, viewer, cover; no Bulleti
   assert.match(PAGE, /isCover: m\.id === cover\?\.id,/);
   assert.match(BULLETIN, /if \(stoppedRef\.current\) return;/, "Bulletin carousel interaction guard intact");
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.deepEqual(files.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql", "20261014010000_event_attendance_cta_and_location_visibility.sql" /* Event attendance pass */, "20261015000000_business_location_availability.sql" /* Find Us At pass */, "20261016000000_event_taxonomy_v1.sql" /* Event Taxonomy V1 pass */, "20261017000000_event_formats_v1.sql" /* Event Formats V1 pass */]);
+  assert.deepEqual(files.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql", "20261014010000_event_attendance_cta_and_location_visibility.sql" /* Event attendance pass */, "20261015000000_business_location_availability.sql" /* Find Us At pass */, "20261016000000_event_taxonomy_v1.sql" /* Event Taxonomy V1 pass */, "20261017000000_event_formats_v1.sql" /* Event Formats V1 pass */, "20261018000000_event_occurrence_details.sql" /* Event Occurrence details pass */]);
 });

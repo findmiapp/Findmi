@@ -132,3 +132,24 @@ export function operatorImportSummary(
     failed: results.filter((r) => !r.outcome.ok).length,
   };
 }
+
+/** Retry Event Link: what a successful re-read may add to a row the
+ * operator may already have edited. ONLY gaps are filled — never an edited
+ * or explicit value: an empty description / organizer / RSVP-tickets, the
+ * image only when the earlier reading had none (an image the operator
+ * removed stays removed), and a missing time on the SAME date. Names,
+ * links, dates, places, details, Business, Category and Formats are
+ * untouched. */
+export function fillReviewGaps(review: EventImportReview, fresh: EventImportReview, opts: { hadImage: boolean }): EventImportReview {
+  const next: EventImportReview = { ...review };
+  if (!next.description?.trim() && fresh.description) next.description = fresh.description;
+  if (!next.organizer?.trim() && fresh.organizer) next.organizer = fresh.organizer;
+  if (!next.attendance && fresh.attendance) next.attendance = fresh.attendance;
+  if (!next.imageUrl && !opts.hadImage && fresh.imageUrl) next.imageUrl = fresh.imageUrl;
+  const freshByDate = new Map(fresh.occurrences.filter((o) => o.startTime && o.endTime).map((o) => [o.date, o]));
+  next.occurrences = review.occurrences.map((o) => {
+    const f = o.date ? freshByDate.get(o.date) : undefined;
+    return f && !o.startTime && !o.endTime ? { ...o, startTime: f.startTime, endTime: f.endTime } : o;
+  });
+  return next;
+}

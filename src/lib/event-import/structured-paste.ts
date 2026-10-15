@@ -18,6 +18,7 @@
 // a note — never guessed. Ordinary Paste Details never comes here.
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { cleanEventDescription } from "./description";
+import { cleanOccurrenceDetails } from "./occurrence-details";
 import { dedupeOccurrences, explicitDateList, occurrenceFor, parseTimes, placeFrom, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
 import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue, type StructuredEventHints } from "./types";
 import type { PageControl } from "./attendance";
@@ -96,6 +97,7 @@ const FIELDS: Record<string, Field> = {
   "tickets url": "tickets",
   "ticket link": "tickets",
   programming: "programming",
+  details: "programming",
 };
 /** Fields whose value may continue on the following unlabeled lines. */
 const MULTILINE = new Set<Field>(["description", "programming"]);
@@ -139,6 +141,12 @@ function websiteOrNull(value: string | null): string | null {
   if (!value || /\s/.test(value.trim()) || !/\.[a-z]{2,}/i.test(value)) return null;
   return httpsUrl(/^https?:\/\//i.test(value.trim()) ? value.trim().replace(/^http:/i, "https:") : `https://${value.trim()}`);
 }
+
+const PLACE_FIELDS: Field[] = ["location", "locationName", "street", "city", "state", "zip"];
+const blockHasPlace = (b: Block) => PLACE_FIELDS.some((f) => first(b, f));
+
+/** An Occurrence's details (shared cleaner — ./occurrence-details.ts). */
+const cleanDetails = (value: string | null) => cleanOccurrenceDetails(value);
 
 function venueFrom(b: Block): ImportedVenue {
   const venue: ImportedVenue = { ...EMPTY_VENUE };
@@ -234,10 +242,10 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
   // the blocks don't cover. Times: the block's own, else the Event's.
   const eventTimes = timesFrom(event, notes, "");
   const occurrences: ImportedOccurrence[] = [];
-  const add = (dates: string[], times: Times | null | "unreadable", evidence: string) => {
+  const add = (dates: string[], times: Times | null | "unreadable", evidence: string, place: ImportedVenue = venue, details: string | null = null) => {
     for (const d of dates) {
-      const o = occurrenceFor(d, times && times !== "unreadable" ? times : null, { ...venue }, evidence);
-      if (o) occurrences.push(o);
+      const o = occurrenceFor(d, times && times !== "unreadable" ? times : null, { ...place }, evidence);
+      if (o) occurrences.push(details ? { ...o, details } : o);
     }
   };
   const covered = new Set<string>();
@@ -249,7 +257,12 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
     else if (!dates) notes.push(`Occurrence ${number} date “${dateText}” couldn't be read. Add it in Review.`);
     if (!dates) continue;
     const own = timesFrom(block, notes, label);
-    add(dates, own ?? eventTimes, dateText!);
+    // Place precedence: this Occurrence's own explicit place, else the
+    // Event-level place. A block that names its place never takes the
+    // Event's (only a missing city / state is completed from it).
+    const ownPlace = blockHasPlace(block) ? venueFrom(block) : null;
+    const place = ownPlace ? (!ownPlace.city && !ownPlace.state ? { ...ownPlace, city: venue.city, state: venue.state } : ownPlace) : venue;
+    add(dates, own ?? eventTimes, dateText!, place, cleanDetails(all(block, "programming")));
     dates.forEach((d) => covered.add(d));
   }
   const eventDateText = first(event, "date");
@@ -275,18 +288,16 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
   if (tickets) controls.push({ text: "Get Tickets", href: tickets });
   if (rsvp) controls.push({ text: "RSVP", href: rsvp });
 
-  // Programming is kept as Review evidence (labelled "Not Currently Saved
-  // To Findmi") — event_occurrences has no details column yet. It never
-  // feeds a date, time, place or name.
+  // Programming: an Occurrence block's own Programming / Details is THAT
+  // date's details (event_occurrences.details, above). Event-level
+  // programming belongs to no single date, so it is kept as Review evidence
+  // only ("Not Currently Saved To Findmi"). Neither ever feeds a date,
+  // time, place, organizer or name.
   const programmingEvidence: StructuredEventHints["programming"] = [];
   const eventProgramming = all(event, "programming");
   if (eventProgramming) programmingEvidence.push({ label: "Event", text: eventProgramming });
-  for (const o of [...occurrenceBlocks].sort((a, b) => a.number - b.number)) {
-    const text = all(o.block, "programming");
-    if (text) programmingEvidence.push({ label: [`Occurrence ${o.number}`, first(o.block, "date")].filter(Boolean).join(" · "), text });
-  }
-  const programming = programmingEvidence.map((p) => p.text);
-  if (programming.length > 0) notes.push("Programming details aren't saved yet: Findmi has no per-date details field. They're shown in Review as Not Currently Saved To Findmi.");
+  const programming = [eventProgramming, ...occurrenceBlocks.map((o) => all(o.block, "programming"))].filter((t): t is string => Boolean(t));
+  if (eventProgramming) notes.push("Event-level Programming isn't saved — put it under each Occurrence (saved with that date), or in the Description.");
   if (unknown.size > 0) notes.push(`Not read: ${[...unknown].slice(0, 5).join(", ")}.`);
 
   const title = cleanText(first(event, "title"), 200);

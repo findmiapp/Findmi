@@ -30,6 +30,7 @@ import { localDateTimeToIso } from "../admin/form-helpers";
 import { validateCustomDestination } from "../navigation";
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { cleanEventDescription } from "./description";
+import { cleanOccurrenceDetails } from "./occurrence-details";
 import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPlace } from "./types";
 import type { EventApplicationResult } from "../event-participation";
 import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
@@ -60,7 +61,7 @@ export interface NormalizedImport {
   imageUrl: string | null;
   sourceUrl: string | null;
   /** Chronological; each date with its own place. */
-  occurrences: { start: string; end: string; place: NormalizedPlace }[];
+  occurrences: { start: string; end: string; place: NormalizedPlace; details: string | null }[];
   useEventId: string | null;
   /** Participating: create (or reuse) a canonical Event for this import. */
   asEvent: boolean;
@@ -132,7 +133,7 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
     const key = `${start}#${placeKey(place)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    occurrences.push({ start, end, place });
+    occurrences.push({ start, end, place, details: cleanOccurrenceDetails(d.details) });
   }
   occurrences.sort((a, b) => a.start.localeCompare(b.start));
 
@@ -185,6 +186,35 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       formatIds: cleanEventFormatIds(Array.isArray(review.formatIds) ? review.formatIds : []).slice(0, 32),
     },
   };
+}
+
+/** Each new date's own details (event_occurrences.details), best-effort AFTER
+ * the rows exist — so Event creation keeps working on a database where that
+ * column's migration hasn't been applied yet (the write then just fails
+ * quietly). Rows are matched by their own start time + place, never by
+ * position. */
+async function writeOccurrenceDetails(
+  admin: SupabaseClient,
+  rows: { id: string; start_at?: string; location_id?: string | null; venue_name?: string | null }[],
+  dates: NormalizedImport["occurrences"],
+  snaps: { location_id: string | null; venue_name: string | null }[]
+): Promise<void> {
+  const used = new Set<string>();
+  for (let i = 0; i < dates.length; i++) {
+    const details = dates[i].details;
+    if (!details) continue;
+    const at = Date.parse(dates[i].start);
+    const row = rows.find(
+      (r) => !used.has(r.id) && r.start_at !== undefined && Date.parse(r.start_at) === at && (r.location_id ?? null) === snaps[i].location_id && (r.venue_name ?? null) === snaps[i].venue_name
+    );
+    if (!row) continue;
+    used.add(row.id);
+    const { error } = await admin.from("event_occurrences").update({ details }).eq("id", row.id);
+    if (error) {
+      console.warn("[event-import] occurrence details not saved", { reason: error.message });
+      return;
+    }
+  }
 }
 
 /** The newer Event columns, best-effort (see attendanceExtraColumns). */
@@ -464,8 +494,10 @@ async function createSourceEvent(
         postal_code: snaps[i].postal_code,
       }))
     )
-    .select("id");
-  const ids = ((occs ?? []) as { id: string }[]).map((o) => o.id);
+    .select("id, start_at, location_id, venue_name");
+  const occRows = (occs ?? []) as { id: string; start_at?: string; location_id?: string | null; venue_name?: string | null }[];
+  const ids = occRows.map((o) => o.id);
+  if (ids.length > 0) await writeOccurrenceDetails(admin, occRows, input.occurrences, snaps);
   if (ids.length === 0) {
     // Never leave a dateless Event behind: soft-trash the row just created
     // (nothing is deleted) and report the failure.
@@ -579,7 +611,8 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
   // (or carrying its own venue snapshot) — when there are several dates or
   // any confirmed Location (the same seeded-occurrence shape Host an Event's
   // manual form uses for a Location).
-  if (input.occurrences.length > 1 || snaps.some((s) => s.location_id)) {
+  // (A date with its own details also gets its row — the details live there.)
+  if (input.occurrences.length > 1 || snaps.some((s) => s.location_id) || input.occurrences.some((d) => d.details)) {
     const { data: occs } = await admin
       .from("event_occurrences")
       .insert(
@@ -595,8 +628,10 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
           postal_code: snaps[i].postal_code,
         }))
       )
-      .select("id");
-    const ids = ((occs ?? []) as { id: string }[]).map((o) => o.id);
+      .select("id, start_at, location_id, venue_name");
+    const occRows = (occs ?? []) as { id: string; start_at?: string; location_id?: string | null; venue_name?: string | null }[];
+    const ids = occRows.map((o) => o.id);
+    if (ids.length) await writeOccurrenceDetails(admin, occRows, input.occurrences, snaps);
     if (ids.length) await deps.propagateDates(eventId, ids);
   }
 

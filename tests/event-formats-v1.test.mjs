@@ -79,7 +79,7 @@ test("migration: integrity — only kind='event_format' can be linked; Formats a
   // from its parent's, so no Format can be a parent either (a child would
   // have to be an event_format, which can't have a parent).
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261017000000_event_formats_v1.sql");
+  assert.equal(files.at(-1), "20261018000000_event_occurrence_details.sql" /* a later pass (Event Occurrence details) */);
 });
 
 // ── PERSISTENCE ───────────────────────────────────────────────────────────

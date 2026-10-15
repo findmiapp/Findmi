@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanOccurrenceDetails } from "@/lib/event-import/occurrence-details";
 import { decideEventCategoryWrite } from "@/lib/event-categories";
 import { existingEventCategoryIds } from "@/lib/event-categories-server";
 import { cleanEventFormatIds, decideEventFormatWrite } from "@/lib/event-formats";
@@ -653,6 +654,16 @@ export async function updateMemberEventPrimaryDate(eventId: string, formData: Fo
  * plainest possible owner-facing form (date + start/end time + optional
  * existing Location), no "repeat weekly" cloning or per-occurrence Market/
  * ticket-URL overrides (admin-only nuances, out of this pass's scope). */
+/** A date's own details (event_occurrences.details) — written best-effort
+ * after the row is saved, so the Dates tab keeps working on a database
+ * where that column's migration isn't applied yet. Only when the form sent
+ * the field. */
+async function writeMemberDateDetails(admin: SupabaseClient, occurrenceId: string, formData: FormData): Promise<void> {
+  if (!formData.has("details")) return;
+  const { error } = await admin.from("event_occurrences").update({ details: cleanOccurrenceDetails(formData.get("details")) }).eq("id", occurrenceId);
+  if (error) console.warn("[event dates] details not saved", { reason: error.message });
+}
+
 export async function addMemberEventDate(eventId: string, formData: FormData) {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
   const admin = await requireEventManager(eventId, redirectPath);
@@ -707,6 +718,8 @@ export async function addMemberEventDate(eventId: string, formData: FormData) {
     .single();
   if (error) fail("Couldn't add that date. Please try again.");
 
+  if (inserted) await writeMemberDateDetails(admin, inserted.id, formData);
+
   // Multi-Date Business Participation Pass 2B — durable all_dates intent
   // (see propagateAllDatesParticipation's own doc comment) auto-includes
   // this brand-new date, zero organizer follow-up required.
@@ -759,6 +772,7 @@ export async function updateMemberEventDate(eventId: string, occurrenceId: strin
     .eq("id", occurrenceId)
     .eq("event_id", eventId);
   if (error) redirect(appendQuery(redirectPath, { error: "Couldn't update that date. Please try again." }));
+  await writeMemberDateDetails(admin, occurrenceId, formData);
 
   // Schedule Integrity pass — this one Occurrence's own date/time/Location
   // just changed; refresh WHERE/WHEN (including location_id) on every

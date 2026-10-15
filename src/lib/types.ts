@@ -651,6 +651,9 @@ export interface EventOccurrence {
   /** RSVP override — Recurring Events V2. Null means "use the parent
    * event's own rsvp_url", same shape as the two overrides above. */
   rsvp_url_override: string | null;
+  /** This date's own details / programming (event_occurrences.details —
+   * optional column; absent on a database without that migration). */
+  details?: string | null;
   /** IANA timezone identifier (e.g. "America/Chicago") — Recurring
    * Events V2. This occurrence's own intended local timezone; never
    * derived from city/state text or the viewer's/server's timezone. See

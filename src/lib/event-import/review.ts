@@ -71,7 +71,7 @@ export function placeFromVenue(v: ImportedVenue, matches: EventImportMatches): R
 let rowSeq = 0;
 function toReviewOccurrence(o: ImportedOccurrence, matches: EventImportMatches): ReviewOccurrence {
   rowSeq += 1;
-  return { id: `d${rowSeq}`, ...reviewDateFor(o), place: placeFromVenue(o.venue, matches) };
+  return { id: `d${rowSeq}`, ...reviewDateFor(o), place: placeFromVenue(o.venue, matches), ...(o.details ? { details: o.details } : {}) };
 }
 
 export function emptyReviewOccurrence(place: ReviewPlace | null = null): ReviewOccurrence {

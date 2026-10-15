@@ -331,9 +331,10 @@ test("explicit date fields: ranges and lists expand exactly; anything else is re
 
 // ── PROGRAMMING + TAXONOMY ────────────────────────────────────────────────
 
-test("programming is reported as not saved (no per-date details column) and never becomes a date or a place", async () => {
+test("EVENT-level programming is reported as not saved (it belongs to no date) and never becomes a date or a place", async () => {
   const r = await adminAnalyze(block(1, GOOD_AMERICAN) + "\n\n" + block(2, GOOD_AMERICAN.replace("Good American NYC Pop-Up", "Second Pop-Up")));
-  assert.ok(r.warnings.some((w) => /^EVENT 1: Programming details aren't saved yet/.test(w)));
+  // Occurrence-level Programming is saved with its date (event_occurrences.details — see admin-occurrence-details.test.mjs).
+  assert.ok(r.warnings.some((w) => /^EVENT 1: Event-level Programming isn't saved/.test(w)));
   assert.ok(r.events.every((e) => e.candidate.occurrences.every((o) => !/DJ|Styling/.test(`${o.venue.name}`))));
 });
 

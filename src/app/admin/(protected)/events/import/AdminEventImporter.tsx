@@ -7,7 +7,7 @@ import { AttendanceEditor, inputClass, sectionClass } from "@/app/(public)/accou
 import { RelationField } from "@/components/admin/RelationPicker";
 import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type EventImportReview, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
-import { segmentTextByKey } from "@/lib/event-import/operator";
+import { fillReviewGaps, operatorReviewDefaults, segmentTextByKey } from "@/lib/event-import/operator";
 import { safePreviewSrc, type ImagePreviewState } from "@/lib/event-import/preview-src";
 import { ImagePreviewView } from "./preview-view";
 import { runWithConcurrency } from "@/lib/admin/brand-import-runner";
@@ -46,6 +46,8 @@ import {
 
 type Method = "text" | "link";
 const PASTE_MAX = 60000;
+/** This tab's in-progress paste (sessionStorage — cleared with the tab). */
+const PASTE_DRAFT_KEY = "findmi:admin-event-import:paste";
 /** Event Link reads in flight at once (each is its own bounded request). */
 const EVENT_SOURCE_CONCURRENCY = 3;
 /** Business website reads in flight (Brand Import's own runner setting). */
@@ -115,6 +117,7 @@ async function limitedPreview(url: string): Promise<ImagePreviewState> {
  * persistence input for recoverEventImage). */
 function VerifiedEventImagePreview({ url, className, compact = false }: { url: string; className: string; compact?: boolean }) {
   const [state, setState] = useState<ImagePreviewState>(() => eventPreviewCache.get(url) ?? { status: "loading" });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     const cached = eventPreviewCache.get(url);
@@ -131,9 +134,13 @@ function VerifiedEventImagePreview({ url, className, compact = false }: { url: s
     return () => {
       live = false;
     };
-  }, [url]);
+  }, [url, attempt]);
   return (
     <ImagePreviewView
+      onRetry={() => {
+        eventPreviewCache.delete(url);
+        setAttempt((n) => n + 1);
+      }}
       state={state}
       className={className}
       alt="Event image preview"
@@ -402,6 +409,7 @@ function BusinessField({
   businessCategories,
   onSelect,
   onCreated,
+  onRetryRead,
 }: {
   id: string;
   initial: OperatorBusiness | null;
@@ -411,7 +419,11 @@ function BusinessField({
   businessCategories: Category[];
   onSelect: (b: OperatorBusiness | null) => void;
   onCreated: (b: OperatorBusiness) => void;
+  /** Re-run Brand Import for THIS website only (same action, bounded attempts). */
+  onRetryRead?: (read: BusinessReadView) => Promise<string | null>;
 }) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
   // The website already belongs to a Business on Findmi (Brand Import's
   // match-first step): select it — never recreate it.
   const applied = useRef(false);
@@ -444,9 +456,29 @@ function BusinessField({
         <BrandReviewCard key={read.updatedAt} idPrefix={id} read={read} businessCategories={businessCategories} onCreated={onCreated} />
       )}
       {!initial && read?.status === "failed" && (
-        <p className="mt-1 text-microcopy text-amber-900">
-          Couldn&rsquo;t read {hostOf(website)} ({read.failureCode ?? "unavailable"}). Create the Business without it:
-        </p>
+        <div className="mt-1 flex flex-col gap-1">
+          <p className="text-microcopy text-amber-900">
+            Couldn&rsquo;t read {hostOf(website)} ({read.failureCode ?? "unavailable"}). Retry, or create the Business without it:
+          </p>
+          {onRetryRead && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={retrying}
+                onClick={async () => {
+                  setRetrying(true);
+                  setRetryNote(null);
+                  setRetryNote(await onRetryRead(read).catch(() => "Still couldn’t read the website."));
+                  setRetrying(false);
+                }}
+                className="w-fit text-metadata font-semibold text-accent hover:underline disabled:opacity-60"
+              >
+                {retrying ? "Reading the website…" : "Retry Business Website"}
+              </button>
+              {retryNote && <span className="text-microcopy text-muted">{retryNote}</span>}
+            </div>
+          )}
+        </div>
       )}
       {!initial && (!website || read?.status === "failed") && <QuickCreateBusiness idPrefix={id} evidence={evidence} onCreated={onCreated} />}
     </>
@@ -570,9 +602,13 @@ function EventDetails({
   set,
   existingEventId,
   business,
-}: Parameters<OperatorImportMode["renderEventDetails"]>[0]) {
+  onRetrySource,
+}: Parameters<OperatorImportMode["renderEventDetails"]>[0] & { onRetrySource?: () => Promise<string | null> }) {
   const s = candidate.structured;
   const source = s?.source;
+  const [retrying, setRetrying] = useState(false);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
+  const canRetry = Boolean(onRetrySource && candidate.sourceUrl && source && (source.status === "failed" || source.status === "not_read"));
   return (
     <div className="flex flex-col gap-3">
       {source && source.status !== "not_read" && (
@@ -583,6 +619,24 @@ function EventDetails({
               : "Event Link read — your values already covered everything it offered."
             : `Event Link not read: ${source.detail ?? "unavailable"}`}
         </p>
+      )}
+      {canRetry && (
+        <div className="-mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={async () => {
+              setRetrying(true);
+              setRetryNote(null);
+              setRetryNote(await onRetrySource!().catch(() => "The Event Link still couldn’t be read."));
+              setRetrying(false);
+            }}
+            className="text-metadata font-semibold text-accent hover:underline disabled:opacity-60"
+          >
+            {retrying ? "Reading the Event Link…" : "Retry Event Link"}
+          </button>
+          {retryNote && <span className="text-microcopy text-muted">{retryNote}</span>}
+        </div>
       )}
       {review.imageUrl && (
         <div className="flex items-center gap-3">
@@ -664,6 +718,38 @@ export default function AdminEventImporter({ categories, formats, businessCatego
   const [analyzing, startAnalyze] = useTransition();
   const runRef = useRef(0);
 
+  // Durability (phone sleep / accidental refresh): the pasted text is kept
+  // in this tab's sessionStorage, so a reload never loses the paste itself
+  // (Review choices live only in this page; created Businesses / Locations
+  // are already saved and are found again by matching on re-analysis).
+  useEffect(() => {
+    try {
+      const draft = window.sessionStorage.getItem(PASTE_DRAFT_KEY);
+      if (draft) setPasted((current) => current || draft);
+    } catch {
+      // storage unavailable (private mode) — nothing to restore
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      if (pasted) window.sessionStorage.setItem(PASTE_DRAFT_KEY, pasted);
+      else window.sessionStorage.removeItem(PASTE_DRAFT_KEY);
+    } catch {
+      // storage unavailable or full — the paste still works, just isn't kept
+    }
+  }, [pasted]);
+  // Leaving mid-batch (reading sources, or an unsaved Review) asks first.
+  const inProgress = Boolean(progress || result);
+  useEffect(() => {
+    if (!inProgress) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [inProgress]);
+
   /** Brand Import for every Business website whose Business isn't matched. */
   async function readBusinesses(events: SourceEventAnalysis[], run: number) {
     const websites = [...new Set(events.flatMap((e) => (!e.matches.organizerBusiness && e.candidate.structured?.businessWebsite ? [e.candidate.structured.businessWebsite] : [])))];
@@ -743,6 +829,48 @@ export default function AdminEventImporter({ categories, formats, businessCatego
     void readBusinesses(events, run);
   }
 
+  /** Retry Event Link — ONE Event, the same server action as the batch
+   * read. The row's reading is replaced, and the operator's Review values
+   * keep every edit: only gaps are filled (fillReviewGaps). */
+  async function retrySource(eventKey: string, review: EventImportReview, set: (patch: Partial<EventImportReview>) => void, hadImage: boolean): Promise<string | null> {
+    const text = segmentTextByKey(pasted).get(eventKey);
+    if (!text) return "This Event's pasted details are no longer on this page.";
+    const run = runRef.current;
+    const read = await adminEnrichPastedEvent(text);
+    if (runRef.current !== run) return null;
+    if (!read.ok || read.kind !== "single") return read.ok ? "The Event Link still couldn’t be read." : EVENT_IMPORT_FAILURE_COPY[read.code];
+    const status = read.candidate.structured?.source?.status;
+    setResult((prev) =>
+      prev && prev.run === run
+        ? {
+            ...prev,
+            events: prev.events.map((e) =>
+              e.key === eventKey ? { ...e, candidate: read.candidate, matches: read.matches, warnings: read.warnings, past: read.candidate.occurrences.length > 0 && read.candidate.occurrences.every((o) => o.past) } : e
+            ),
+          }
+        : prev
+    );
+    if (status !== "read") return `Still not read: ${read.candidate.structured?.source?.detail ?? "unavailable"}`;
+    const filled = fillReviewGaps(review, operatorReviewDefaults(read.candidate, read.matches, { categories, formats }), { hadImage });
+    set({ description: filled.description, organizer: filled.organizer, attendance: filled.attendance, imageUrl: filled.imageUrl, occurrences: filled.occurrences });
+    return "Event Link read. Only empty fields were filled — your edits were kept.";
+  }
+
+  /** Retry Business Website — the same Brand Import processing action for
+   * this ONE candidate (Brand Import's own attempt limit applies). */
+  async function retryRead(read: BusinessReadView): Promise<string | null> {
+    const run = runRef.current;
+    const outcome = await adminProcessBusinessRead(read.candidateId);
+    if (outcome.outcome === "busy") return "Findmi is reading other websites — try again in a moment.";
+    if (outcome.outcome === "not_eligible") return "This website has been retried too many times. Create the Business without it.";
+    const view = await adminLoadBusinessRead(read.batchId, read.candidateId);
+    if (!view || runRef.current !== run) return null;
+    const website = Object.keys(reads).find((w) => reads[w].candidateId === read.candidateId);
+    if (website) setReads((prev) => ({ ...prev, [website]: { ...view } }));
+    if (view.matchedBusiness && website) setResult((prev) => (prev && prev.run === run ? { ...prev, events: withWebsiteBusiness(prev.events, website, view.matchedBusiness!) } : prev));
+    return view.status === "failed" ? `Still couldn’t read it (${view.failureCode ?? "unavailable"}).` : null;
+  }
+
   function show(a: EventImportAnalysis, text: string | null) {
     if (!a.ok) {
       setError(a.detail ? `${EVENT_IMPORT_FAILURE_COPY[a.code]} ${a.detail}` : EVENT_IMPORT_FAILURE_COPY[a.code]);
@@ -799,6 +927,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         read={website ? reads[website] : undefined}
         businessCategories={businessCategories}
         onSelect={onSelect}
+        onRetryRead={retryRead}
         onCreated={(b) => {
           onCreated(b);
           // Every other Event with this Business Website gets the same Business.
@@ -806,7 +935,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         }}
       />
     ),
-    renderEventDetails: (props) => <EventDetails {...props} />,
+    renderEventDetails: (props) => <EventDetails {...props} onRetrySource={() => retrySource(props.eventKey, props.review, props.set, Boolean(props.candidate.imageUrl))} />,
     renderThumbnail: (url) => <VerifiedEventImagePreview url={url} compact className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />,
     doneHref: "/admin/events?new=1",
   };

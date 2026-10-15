@@ -145,7 +145,11 @@ export default function EventScheduleSummary({
   const mapQuery = location
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : [manualVenueName, manualVenueLine].filter(Boolean).join(", ");
+  // This date's own details (event_occurrences.details) — only the
+  // selected date's, never every date's at once.
+  const details = selected.details?.trim() || null;
   return (
+    <>
     <FactsBand
       when={<WhenFact dateLabel={dateRangeLabel} detail={timeLabel} count={countLabel} status={status} />}
       where={
@@ -158,5 +162,11 @@ export default function EventScheduleSummary({
         )
       }
     />
+    {details && (
+      <p className="mt-3 whitespace-pre-line text-body text-secondary" data-occurrence-details="">
+        {details}
+      </p>
+    )}
+    </>
   );
 }

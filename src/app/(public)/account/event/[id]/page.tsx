@@ -385,6 +385,7 @@ export default async function ManageEventPage({
       city: occ.city,
       state: occ.state,
       postal_code: occ.postal_code,
+      details: occ.details ?? null,
       ...display,
       weekday: weekdayIndexOf(display.dateLocal),
     };

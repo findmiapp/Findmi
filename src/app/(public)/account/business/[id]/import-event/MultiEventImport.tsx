@@ -69,6 +69,8 @@ export interface OperatorImportMode {
    * Event. */
   renderEventDetails: (props: {
     id: string;
+    /** The Review row's key (pasted-event-n / event-1) — for Retry. */
+    eventKey: string;
     candidate: SourceEventAnalysis["candidate"];
     review: EventImportReview;
     set: (patch: Partial<EventImportReview>) => void;
@@ -530,6 +532,7 @@ export default function MultiEventImport({
                       {(!joining || operator) && (review.intent === "hosting" || review.asEvent) && <EventFormatEditor formats={formats} review={review} set={set} />}
                       {operator?.renderEventDetails({
                         id: `batch-${e.key}`,
+                        eventKey: e.key,
                         candidate: e.candidate,
                         review,
                         set,

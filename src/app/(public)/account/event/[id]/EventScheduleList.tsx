@@ -36,6 +36,8 @@ export interface ScheduleOccurrence {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  /** This date's own details (event_occurrences.details). */
+  details: string | null;
   /** Every date/time value below is precomputed SERVER-SIDE (page.tsx),
    * via the exact same isoToLocalDateTime conversion the rest of Event
    * Manager already uses for this occurrence's own start_at/end_at — never
@@ -346,6 +348,7 @@ function dateFieldValuesFromOccurrence(occ: ScheduleOccurrence): EventDateFieldV
             postal_code: occ.location_postal_code,
           }
         : null,
+    details: occ.details ?? "",
     manualVenue: occ.location_id
       ? null
       : {

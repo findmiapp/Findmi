@@ -194,6 +194,9 @@ export default function EventOccurrenceQuickView({
               ))}
           </div>
 
+          {/* This date's own details (event_occurrences.details). */}
+          {occurrence.details?.trim() && <p className="mt-3 whitespace-pre-line text-sm text-ink/70">{occurrence.details.trim()}</p>}
+
           {/* Primary CTA — the EXACT same Tier A action resolver the main
               Event page uses (RSVP/Tickets/Apply to Vend), never a second
               independent resolution. Reads the shared occurrence context,

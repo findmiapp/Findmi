@@ -10,6 +10,7 @@ import type { EventCandidate, EventImportMatches, EventImportReview, ReviewOccur
 import { createInlinePlace } from "@/app/(public)/account/location/actions";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
+import { OCCURRENCE_DETAILS_MAX } from "@/lib/event-import/occurrence-details";
 import {
   canOfferLocationCreate,
   decidePlaceFrom,
@@ -238,6 +239,7 @@ export function OccurrenceRow({
             <span className="min-w-0 flex-1">
               <span className="block text-body font-semibold text-primary">{sum.day || <span className="text-amber-700">Add a date</span>}</span>
               <span className="block text-metadata text-secondary">{sum.time || <span className="text-amber-700">Add a time</span>}</span>
+              {d.details && <span className="block truncate text-microcopy text-muted">{d.details}</span>}
               {showPlace && (
                 <span className="flex min-w-0 items-center gap-1.5 text-metadata text-muted">
                   <span className="min-w-0 truncate">{where || <span className="text-amber-700">Add a place</span>}</span>
@@ -283,6 +285,21 @@ export function OccurrenceRow({
               <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} onDecide={onDecidePlace} quickCreate={quickCreate} />
             </div>
           )}
+          <div className="col-span-2">
+            <label htmlFor={`details-${id}`} className={labelClass}>
+              Details For This Date
+            </label>
+            <textarea
+              id={`details-${id}`}
+              value={d.details ?? ""}
+              onChange={(e) => onChange({ details: e.target.value })}
+              maxLength={OCCURRENCE_DETAILS_MAX}
+              rows={2}
+              autoCapitalize="sentences"
+              placeholder="Optional — who appears, what’s happening that day"
+              className={`${inputClass} resize-y`}
+            />
+          </div>
         </div>
       )}
     </li>

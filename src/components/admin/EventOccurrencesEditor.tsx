@@ -40,6 +40,8 @@ interface Row {
   cancelled: boolean;
   ticket_url_override: string;
   vendor_apply_url_override: string;
+  /** This date's own details / programming (event_occurrences.details). */
+  details: string;
 }
 
 function toRow(o: AdminEventOccurrence): Row {
@@ -59,6 +61,7 @@ function toRow(o: AdminEventOccurrence): Row {
     cancelled: o.status === "cancelled",
     ticket_url_override: o.ticket_url_override ?? "",
     vendor_apply_url_override: o.vendor_apply_url_override ?? "",
+    details: o.details ?? "",
   };
 }
 
@@ -81,6 +84,7 @@ function emptyRow(inheritTimezone?: string): Row {
     cancelled: false,
     ticket_url_override: "",
     vendor_apply_url_override: "",
+    details: "",
   };
 }
 
@@ -383,6 +387,20 @@ export default function EventOccurrencesEditor({
                   />
                 </label>
               </div>
+
+              <label className="mt-2 block">
+                <span className="mb-1 block text-xs font-medium text-ink/60">Details For This Date (optional)</span>
+                <textarea
+                  name={`details_${row.id}`}
+                  value={row.details}
+                  onChange={(e) => updateRow(row.id, { details: e.target.value })}
+                  maxLength={2000}
+                  rows={2}
+                  autoCapitalize="sentences"
+                  placeholder="Who appears, what's happening that day — shown with this date"
+                  className={`${inputClass} w-full resize-y`}
+                />
+              </label>
 
               <div className="mt-2">
                 <label className="block sm:max-w-xs">
