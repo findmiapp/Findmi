@@ -44,6 +44,9 @@ export function mergeSourceIntoStructured(explicit: EventCandidate, source: Even
     next.imageUrl = source.imageUrl;
     next.sources.image = source.sources.image ?? "page";
     filled.push("image");
+  } else if (!next.imageUrl && source.imageGuard) {
+    // The page's only image was its generic site / Brand image (dropped).
+    next.imageGuard = source.imageGuard;
   }
   if (!next.organizer && source.organizer) {
     next.organizer = source.organizer;

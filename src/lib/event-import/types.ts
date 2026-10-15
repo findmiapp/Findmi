@@ -95,6 +95,10 @@ export interface EventCandidate {
    * values that aren't Event columns — Business evidence, taxonomy names to
    * resolve against the canonical vocabulary, and notes for Review. */
   structured?: StructuredEventHints;
+  /** Set when the page's only image was a page-level social image proven to
+   * be generic site / Business imagery (./image-guard.ts) — dropped, so
+   * the candidate has no image. */
+  imageGuard?: { ignored: "generic_site_image"; provenance: "og:image:secure_url" | "og:image" | "twitter:image"; evidence: "page_logo" | "brand_import" | "homepage_image" };
 }
 
 export interface StructuredEventHints {

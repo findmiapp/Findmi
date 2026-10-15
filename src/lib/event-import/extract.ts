@@ -376,6 +376,54 @@ export interface ExtractionResult {
   yearHint: number | null;
   /** Raw evidence for attendance / location visibility (./attendance.ts). */
   evidence: { primary: JsonObject | null; controls: { text: string; href: string | null }[]; lines: string[]; jsonState: string[] };
+  /** Where candidate.imageUrl came from: the Event's own structured data,
+   * or ONE page-level social meta tag (the fallback the image quality
+   * guard checks — ./image-guard.ts). */
+  imageProvenance: ImageProvenance | null;
+  /** Organization / Brand / WebSite logos the page's own JSON-LD declares
+   * (identity imagery — never Event creative). */
+  siteLogos: string[];
+}
+
+export type ImageProvenance = "jsonld_event" | "og:image:secure_url" | "og:image" | "twitter:image";
+const META_IMAGE_KEYS = ["og:image:secure_url", "og:image", "twitter:image"] as const;
+
+/** Logos declared by non-Event JSON-LD nodes (Organization, Brand,
+ * WebSite, Store, LocalBusiness …): `logo`, and `publisher.logo`. */
+function jsonLdLogos(blocks: string[], pageUrl: URL): string[] {
+  const out = new Set<string>();
+  let budget = 400;
+  const visit = (value: unknown, depth: number) => {
+    if (budget <= 0 || depth > 6 || !value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 60)) visit(item, depth + 1);
+      return;
+    }
+    budget -= 1;
+    const node = value as JsonObject;
+    if (isEventType(typeList(node["@type"]))) return;
+    const logo = node.logo ? imageOf(node.logo, pageUrl) : null;
+    if (logo) out.add(logo);
+    for (const [key, child] of Object.entries(node).slice(0, 100)) {
+      if (key !== "@context" && key !== "logo" && child && typeof child === "object") visit(child, depth + 1);
+    }
+  };
+  for (const block of blocks) {
+    try {
+      visit(JSON.parse(block), 0);
+    } catch {
+      // not JSON — ignored
+    }
+  }
+  return [...out].slice(0, 10);
+}
+
+/** A site's own identity imagery from one page (used for a site's
+ * homepage): its social meta images and its JSON-LD logos. */
+export function siteIdentityImages(html: string, pageUrl: URL): string[] {
+  const c = collect(html);
+  const meta = META_IMAGE_KEYS.map((k) => absoluteHttps(c.meta.get(k), pageUrl)).filter((v): v is string => Boolean(v));
+  return [...new Set([...meta, ...jsonLdLogos(c.jsonLd, pageUrl)])];
 }
 
 /** One structured span covering several days (an umbrella "Sep 24 – Oct 31"
@@ -424,10 +472,16 @@ export function extractEventCandidate(html: string, pageUrl: URL, now: number = 
   }
 
   let imageUrl = primary ? imageOf(primary.image, pageUrl) : null;
+  let imageProvenance: ImageProvenance | null = imageUrl ? "jsonld_event" : null;
   if (imageUrl) sources.image = "structured";
   else {
-    imageUrl = absoluteHttps(c.meta.get("og:image:secure_url") ?? c.meta.get("og:image") ?? c.meta.get("twitter:image"), pageUrl);
-    if (imageUrl) sources.image = "page";
+    // Same order as before: og:image:secure_url → og:image → twitter:image.
+    const key = META_IMAGE_KEYS.find((k) => c.meta.get(k) != null) ?? null;
+    imageUrl = key ? absoluteHttps(c.meta.get(key), pageUrl) : null;
+    if (imageUrl) {
+      sources.image = "page";
+      imageProvenance = key;
+    }
   }
 
   if (structured.length > 0) sources.dates = "structured";
@@ -490,6 +544,8 @@ export function extractEventCandidate(html: string, pageUrl: URL, now: number = 
     truncated: all.length > unique.length || scheduleTruncated,
     yearHint,
     evidence: { primary, controls: c.controls, lines: c.lines, jsonState: c.jsonState },
+    imageProvenance,
+    siteLogos: jsonLdLogos(c.jsonLd, pageUrl),
   };
 }
 

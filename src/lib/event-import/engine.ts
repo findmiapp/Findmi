@@ -12,7 +12,8 @@ import { findEventMatches, findDuplicateMatches, type EventMatchCandidate, type 
 import type { AppearanceDraft } from "../admin/appearance-import";
 import { findLikelyDuplicateLocations, findPossibleLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
-import { extractEventCandidate, needsAiAssist, isPastDate } from "./extract";
+import { extractEventCandidate, needsAiAssist, isPastDate, siteIdentityImages, type ExtractionResult } from "./extract";
+import { genericImageEvidence, GENERIC_IMAGE_WARNING } from "./image-guard";
 import { classifySource, pageEventRecord } from "./sources";
 import {
   applyLocationVisibility,
@@ -75,6 +76,10 @@ export interface EventImportDeps {
   now: () => number;
   /** Server-side diagnostic for a failed source fetch (one concise line). */
   logFetchFailure?: (line: string) => void;
+  /** Event image guard: logo / cover candidates Brand Import already read
+   * from this site (read-only). Admin-only (Brand Import tables are Admin
+   * data — lib/admin/brand-import.ts); absent → that evidence isn't used. */
+  siteBrandImages?: (host: string) => Promise<string[]>;
 }
 
 // ── rate limit: 20 analyses per user per 10 minutes (in-memory, per instance) ──
@@ -274,6 +279,16 @@ export async function analyzeEventUrl(
 
   const extracted = extractEventCandidate(page.html, page.url, now);
   let candidate = extracted.candidate;
+  // Event image quality: a page-level fallback image proven to be the
+  // site's / Business's own identity imagery is dropped (no image at all
+  // rather than a Brand logo as Event art). The Event's structured image
+  // is never checked or dropped.
+  const imageGuard = await guardFallbackImage(extracted, page, deps);
+  if (imageGuard) {
+    const sources = { ...candidate.sources };
+    delete sources.image;
+    candidate = { ...candidate, imageUrl: null, sources, imageGuard };
+  }
   // Attendance + location-privacy evidence — read BEFORE the AI step and
   // only from the page's own structured data, platform record and controls.
   const record = pageEventRecord(extracted.evidence.jsonState, page.url);
@@ -321,11 +336,63 @@ export async function analyzeEventUrl(
   if (candidate.online) warnings.push("This looks like an online event.");
   if (locationVisibility === "hidden") warnings.push("The organizer shares the exact location only after registration. Findmi won't show or link an address.");
   if (Object.values(candidate.sources).includes("ai")) warnings.push("Some details were read from the page text. Please check them.");
+  if (candidate.imageGuard) warnings.push(GENERIC_IMAGE_WARNING);
 
   const matches = await matchCandidate(candidate, input.businessId, deps);
   candidate = { ...candidate, persistAs: classifyPersistence(candidate, { ownPage: true }) };
 
   return { ok: true, kind: "single", candidate, matches, warnings };
+}
+
+// ── Event image quality guard ──────────────────────────────────────────
+
+/** The site homepage's identity images, per host (one safe fetch, then
+ * reused for 10 minutes — a 25-Event paste from one site fetches it once). */
+const HOMEPAGE_TTL_MS = 10 * 60 * 1000;
+const HOMEPAGE_CACHE_MAX = 200;
+const homepageImageCache = new Map<string, { at: number; images: string[] | null }>();
+export function resetEventImageGuardCache(): void {
+  homepageImageCache.clear();
+}
+
+async function homepageIdentityImages(page: { url: URL; html: string }, deps: EventImportDeps): Promise<string[] | null> {
+  const home = new URL("/", page.url);
+  // The Event page IS the homepage: no independent evidence.
+  if (home.href === page.url.href) return null;
+  const now = deps.now();
+  const hit = homepageImageCache.get(home.host);
+  if (hit && now - hit.at < HOMEPAGE_TTL_MS) return hit.images;
+  let images: string[] | null = null;
+  try {
+    const res = await deps.fetchPage(home);
+    // The same document served for "/" proves nothing about genericness.
+    images = res.ok && res.html !== page.html ? siteIdentityImages(res.html, res.url) : null;
+  } catch {
+    images = null;
+  }
+  if (homepageImageCache.size >= HOMEPAGE_CACHE_MAX) homepageImageCache.clear();
+  homepageImageCache.set(home.host, { at: now, images });
+  return images;
+}
+
+/** A page-level social image (og:image:secure_url / og:image /
+ * twitter:image) that is provably the site's own identity imagery →
+ * why; otherwise null (kept). Cheapest evidence first; the homepage is
+ * fetched only when nothing cheaper decides. */
+async function guardFallbackImage(extracted: ExtractionResult, page: { url: URL; html: string }, deps: EventImportDeps): Promise<EventCandidate["imageGuard"] | null> {
+  const url = extracted.candidate.imageUrl;
+  const provenance = extracted.imageProvenance;
+  if (!url || !provenance || provenance === "jsonld_event") return null;
+  const found = (evidence: ReturnType<typeof genericImageEvidence>) => (evidence ? ({ ignored: "generic_site_image", provenance, evidence } as const) : null);
+  const onPage = found(genericImageEvidence(url, { pageLogos: extracted.siteLogos }));
+  if (onPage) return onPage;
+  if (deps.siteBrandImages) {
+    const brandImages = await deps.siteBrandImages(page.url.host).catch(() => [] as string[]);
+    const fromBrand = found(genericImageEvidence(url, { brandImages }));
+    if (fromBrand) return fromBrand;
+  }
+  const homepageImages = await homepageIdentityImages(page, deps);
+  return homepageImages ? found(genericImageEvidence(url, { homepageImages })) : null;
 }
 
 // ── Paste Details / Upload ─────────────────────────────────────────────

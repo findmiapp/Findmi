@@ -642,3 +642,14 @@ export async function listRecentBrandImportBatches(
   }
   return list.map((b) => ({ id: b.id, createdAt: b.created_at, submittedCount: b.submitted_count, counts: counts.get(b.id) ?? {} }));
 }
+
+/** Event image guard evidence (Admin Event Import only): the logo / cover
+ * candidates Brand Import already read from a site, by host. Read-only. */
+export async function brandImportSiteImages(admin: SupabaseClient, host: string): Promise<string[]> {
+  const bare = host.toLowerCase().replace(/^www\./, "");
+  const { data } = await admin.from("brand_import_candidates").select("proposal").in("normalized_host", [bare, `www.${bare}`]).not("proposal", "is", null).limit(10);
+  return ((data ?? []) as { proposal: unknown }[]).flatMap((r) => {
+    const p = parseBrandImportProposal(r.proposal);
+    return p ? [p.logo, p.cover].filter((v): v is string => Boolean(v)) : [];
+  });
+}

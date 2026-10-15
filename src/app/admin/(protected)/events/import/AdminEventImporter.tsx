@@ -576,6 +576,11 @@ function EventDetails({
           </button>
         </div>
       )}
+      {!review.imageUrl && !candidate.imageUrl && candidate.imageGuard && (
+        <p className="rounded-lg border border-black/[0.08] bg-black/[0.02] px-3 py-2 text-microcopy text-secondary" data-image-guard="generic">
+          <span className="font-semibold text-primary">No Event Image Found</span> · Generic Brand/Site Image Ignored. The Event Link&rsquo;s only image is the site&rsquo;s standard {candidate.imageGuard.evidence === "page_logo" ? "logo" : "image"}, not Event creative. Add an Event image later in the Event if you have one.
+        </p>
+      )}
       {!review.imageUrl && candidate.imageUrl && (
         <button type="button" onClick={() => set({ imageUrl: candidate.imageUrl })} className="w-fit text-metadata font-semibold text-accent hover:underline">
           Use the Event Link&rsquo;s Image

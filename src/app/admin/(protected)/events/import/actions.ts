@@ -13,6 +13,7 @@ import {
   planBrandImport,
   processBrandImportCandidate,
   supabaseBrandImportStore,
+  brandImportSiteImages,
   BRAND_IMPORT_MAX_INPUTS,
   type BrandImportProcessOutcome,
   type BrandImportProposal,
@@ -71,6 +72,9 @@ async function adminClient(): Promise<SupabaseClient | null> {
 function operatorDeps(admin: SupabaseClient): EventImportDeps {
   return {
     ...defaultEventImportDeps(admin),
+    // Event image guard: a page's fallback image that Brand Import already
+    // read as this site's logo / cover is generic site imagery.
+    siteBrandImages: (host) => brandImportSiteImages(admin, host),
     matchOrganizer: async (name, city, state) => {
       const exact = (await findBusinessMatches(admin, { name, city, state })).filter((m) => m.reasons.includes("name_location"));
       if (exact.length !== 1) return null;
