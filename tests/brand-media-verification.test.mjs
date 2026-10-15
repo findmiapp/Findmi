@@ -48,27 +48,36 @@ test("wordmark: a legitimate wide vector wordmark (~10:1, like a two-word fashio
   assert.equal((await verify(inline(lettering(300, 50, 6)))).ok, true, "6:1 (800×133 after rounding) passes too");
 });
 
-test("wordmark: the exact rule — raster logos keep 6:1; only vector wordmarks get up to 12:1; straps stay out", async () => {
-  assert.equal(IMG.isSuitableBrandImage("logo", 800, 80), false, "a 10:1 RASTER logo file is still refused");
+test("wordmark: aspect is a sanity bound (24:1) for every logo, not a design rule; raster keeps its resolution minimum", async () => {
+  assert.equal(IMG.LOGO_MAX_ASPECT, 24);
+  assert.equal(IMG.isSuitableBrandImage("logo", 800, 80), true, "a 10:1 raster wordmark file is legitimate");
   assert.equal(IMG.isSuitableBrandImage("logo", 800, 80, { vectorWordmark: true }), true);
-  assert.equal(IMG.isSuitableBrandImage("logo", 800, 50, { vectorWordmark: true }), false, "16:1 is a rule/strap, not a mark");
-  assert.equal(IMG.isSuitableBrandImage("logo", 800, 133), false, "6.015:1 raster — unchanged");
-  assert.equal(IMG.SVG_WORDMARK_MAX_RATIO, 12);
-  const strap = await verify(inline(lettering(320, 20, 12)));
-  assert.deepEqual([strap.ok, strap.reason], [false, "unsuitable"]);
-  // Covers are untouched by the allowance.
+  assert.equal(IMG.isSuitableBrandImage("logo", 960, 40), true, "24:1 raster at usable resolution");
+  assert.equal(IMG.isSuitableBrandImage("logo", 800, 30), false, "raster: 30px short side is unusably small");
+  assert.equal(IMG.isSuitableBrandImage("logo", 800, 34, { vectorWordmark: true }), true, "vector: rendered, so resolution is never the issue");
+  assert.equal(IMG.isSuitableBrandImage("logo", 800, 20, { vectorWordmark: true }), false, "40:1 is a rule/divider");
+  assert.equal(IMG.isSuitableBrandImage("logo", 100, 400), true, "tall stacked logo");
+  assert.equal(IMG.isSuitableBrandImage("logo", 8000, 2000), false, "resource bound");
+  const strap = await verify(inline(lettering(400, 10, 20)));
+  assert.deepEqual([strap.ok, strap.reason, strap.measure.code], [false, "unsuitable", "aspect_ratio"]);
+  // Covers keep their landscape window (fixed banner crop).
   assert.equal(IMG.isSuitableBrandImage("cover", 1200, 100, { vectorWordmark: true }), false);
 });
 
-test("wordmark: blank, white-only and solid-block SVGs still fail", async () => {
+test("wordmark: blank and solid-block SVGs fail; a white-only mark is KEPT on a dark plate", async () => {
   const blank = await verify(inline('<svg viewBox="0 0 200 50"></svg>'));
   assert.deepEqual([blank.ok, blank.reason], [false, "blank"], "nothing drawn");
-  const white = await verify(inline(lettering(300, 30, 11, "#ffffff")));
-  assert.deepEqual([white.ok, white.reason], [false, "blank"], "white on transparent is invisible on Findmi");
   const hairline = await verify(inline('<svg viewBox="0 0 400 100"><rect x="0" y="0" width="2" height="2"/></svg>'));
   assert.deepEqual([hairline.ok, hairline.reason], [false, "blank"], "near-blank");
   const solid = await verify(inline('<svg viewBox="0 0 200 50"><path d="M0 0h200v50H0z"/></svg>'));
   assert.deepEqual([solid.ok, solid.reason], [false, "unsuitable"], "a filled block is not lettering");
+  const white = await verify(inline(lettering(300, 30, 11, "#ffffff")));
+  assert.equal(white.ok, true, "content exists — it just needs a plate");
+  const plated = await sharp(white.image.body).raw().toBuffer({ resolveWithObject: true });
+  assert.equal(plated.info.channels, 3, "transparency flattened");
+  let plate = 0;
+  for (let i = 0; i < plated.data.length; i += 3) if (plated.data[i] === 17 && plated.data[i + 1] === 17 && plated.data[i + 2] === 17) plate += 1;
+  assert.ok(plate / (plated.data.length / 3) > 0.3, "the transparent background became the dark plate (#111)");
 });
 
 test("wordmark: tiny icons and decorative SVGs never become candidates; unsafe SVGs still fail", async () => {
@@ -98,12 +107,17 @@ test("wordmark: a FETCHED .svg logo gets the same allowance and the same ink che
   assert.equal((await verify(U, "logo", deps('<svg viewBox="0 0 200 50"></svg>'))).reason, "blank");
 });
 
-test("wordmark: raster logo files are unchanged (a real 180×180 PNG passes; a 12:1 raster is unsuitable)", async () => {
-  const png = (w, h) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).png().toBuffer();
-  const ok = await verify("https://www.marcbrand.com/logo.png", "logo", { fetchImage: async (u) => ({ ok: true, url: new URL(u), body: await png(180, 180), contentType: "image/png", bytes: 1, redirects: 0 }) });
-  assert.equal(ok.ok, true);
-  const wide = await verify("https://www.marcbrand.com/wide.png", "logo", { fetchImage: async (u) => ({ ok: true, url: new URL(u), body: await png(1200, 100), contentType: "image/png", bytes: 1, redirects: 0 }) });
-  assert.deepEqual([wide.ok, wide.reason], [false, "unsuitable"]);
+test("wordmark: raster logo files — a real 180×180 PNG passes, a 12:1 raster wordmark passes, a 30:1 strip does not", async () => {
+  const mark = (w, h) =>
+    sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: { create: { width: Math.round(w * 0.9), height: Math.round(h * 0.6), channels: 4, background: { r: 18, g: 52, b: 86, alpha: 1 } } }, left: Math.round(w * 0.05), top: Math.round(h * 0.2) }, { input: { create: { width: Math.round(w * 0.2), height: Math.round(h * 0.2), channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }, left: Math.round(w * 0.4), top: Math.round(h * 0.4) }])
+      .png()
+      .toBuffer();
+  const fetchOf = async (body) => ({ fetchImage: async (u) => ({ ok: true, url: new URL(u), body, contentType: "image/png", bytes: body.length, redirects: 0 }) });
+  assert.equal((await verify("https://www.marcbrand.com/logo.png", "logo", await fetchOf(await mark(180, 180)))).ok, true);
+  assert.equal((await verify("https://www.marcbrand.com/wide.png", "logo", await fetchOf(await mark(1200, 100)))).ok, true);
+  const strip = await verify("https://www.marcbrand.com/strip.png", "logo", await fetchOf(await mark(3000, 100)));
+  assert.deepEqual([strip.ok, strip.reason, strip.measure.code], [false, "unsuitable", "aspect_ratio"]);
 });
 
 // ── 2. fetch_failed → its real class ──────────────────────────────────────
@@ -187,15 +201,18 @@ test("unsupported_content: the Brand diagnostic names the cause, media type and 
 
 test("svg measurements: every SVG-derived rejection says which rule, at what size and ink", async () => {
   const wide = await verify(inline(lettering(280, 20, 11)));
-  assert.equal(IMG.brandImageFailureReason(wide), "unsuitable:aspect_ratio:800x57:r14.0", "very widely tracked caps — ratio rule (12:1) unchanged");
+  assert.equal(wide.ok, true, "14:1 widely tracked caps — a legitimate wordmark");
+  const rule = await verify(inline(lettering(600, 20, 24)));
+  assert.match(IMG.brandImageFailureReason(rule), /^unsuitable:aspect_ratio:800x27:r(29|30)\.\d$/, "a ~30:1 rule");
   const block = await verify(inline('<svg viewBox="0 0 200 50"><rect width="200" height="50"/></svg>'));
   assert.equal(IMG.brandImageFailureReason(block), "unsuitable:solid_fill:800x200:r4.0:ink100");
   const blank = await verify(inline('<svg viewBox="0 0 200 50"></svg>'));
   assert.equal(IMG.brandImageFailureReason(blank), "blank:blank:800x200:r4.0:ink0");
-  const white = await verify(inline(lettering(300, 30, 11, "#ffffff")));
-  assert.match(IMG.brandImageFailureReason(white), /^blank:near_white:800x80:r10\.0:ink\d/);
+  const whiteBlock = await verify(inline('<svg viewBox="0 0 200 50"><rect width="200" height="50" fill="#fff"/></svg>'));
+  assert.match(IMG.brandImageFailureReason(whiteBlock), /^unsuitable:solid_fill:800x200:r4\.0:ink100$/, "an opaque white block");
   assert.equal(IMG.brandImageSuitabilityFailure("logo", 100, 30), "too_small");
-  assert.equal(IMG.brandImageSuitabilityFailure("logo", 800, 80), "aspect_ratio", "raster logos keep 6:1");
+  assert.equal(IMG.brandImageSuitabilityFailure("logo", 800, 80), null, "10:1 raster wordmark is fine");
+  assert.equal(IMG.brandImageSuitabilityFailure("logo", 3000, 100), "aspect_ratio");
   assert.equal(IMG.brandImageSuitabilityFailure("logo", 800, 80, { vectorWordmark: true }), null);
   assert.equal(IMG.brandImageSuitabilityFailure("cover", 500, 400), "too_small");
 });

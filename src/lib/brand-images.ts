@@ -1,7 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchContentIssue, type SafeFetchFailure, type SafeFetchImageResult } from "./safe-fetch";
+import { safeFetchBrandImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchContentIssue, type SafeFetchFailure, type SafeFetchImageResult } from "./safe-fetch";
 import { inlineSvgMarkup, isInlineSvgCandidate, isSvgCandidateUrl } from "./brand-website-extract";
 import { validateImageFile, type ImageValidationResult } from "./imageUploadValidation";
 import { storePublicImage } from "./image-variants-server";
@@ -36,27 +36,43 @@ export const BRAND_IMAGE_DECLARED_TYPES: ReadonlySet<string> = new Set([
   "image/gif",
   "image/jpg",
   "image/pjpeg",
+  "image/avif",
+  "image/x-png",
   "application/octet-stream",
   "binary/octet-stream",
 ]);
 const UPLOAD_BUCKET = "findmi-media";
 const PREVIEW_MAX_BYTES = 120 * 1024;
 
-/** Logo: at least 120px on the long side and 40px on the short side, not
- * a sliver (≤ 6:1), ≤ 6000px. Cover: landscape ≥ 600×300, between 1.2:1
- * and 3.5:1 (anything wider is a wordmark/banner strip — never a cover;
- * empty beats a bad cover), ≤ 10000px. Exported for tests. */
-/** A VECTOR wordmark (an SVG brand mark, rasterized by Findmi): one line of
- * lettering is legitimately wider than a raster logo file — "MARC JACOBS"
- * is ~9–11:1. Up to 12:1 is allowed for those only; a raster logo keeps
- * the 6:1 limit, and anything wider is a rule/strap, not a mark. */
-export const SVG_WORDMARK_MAX_RATIO = 12;
-
+/** Brand media acceptance contract (Brand media pipeline):
+ *
+ *   SECURITY / INTEGRITY (hard): safe fetch, real image bytes (signature),
+ *   successful decode under BRAND_IMAGE_PIXEL_LIMIT, ≤ 6000px long side
+ *   (logos) / ≤ 10000px (covers), strict SVG inspection.
+ *   PROVENANCE: only identity-sourced URLs ever reach logo verification
+ *   (lib/brand-website-extract); covers only from share/hero evidence.
+ *   CONTENT (objective): not blank / near-blank, not a featureless
+ *   one-colour block (logoContent); covers not a low-information graphic.
+ *   SIZE: a RASTER logo must have usable resolution (≥ 120px long side,
+ *   ≥ 40px short side); a VECTOR logo is rendered at SVG_RASTER_LONG_SIDE,
+ *   so resolution is never the problem.
+ *   ASPECT: for logos only a SANITY bound (LOGO_MAX_ASPECT), not a design
+ *   preference — square, round, badge, tall and very wide wordmarks all
+ *   pass. Beyond 24:1 a mark is a line: even 800px wide it is ≤ 33px tall,
+ *   and such assets are rules, dividers and progress bars, not identity.
+ *   Covers keep their landscape window (they fill a fixed banner crop).
+ * Exported for tests. */
+export const LOGO_MAX_ASPECT = 24;
+/** @deprecated name kept for callers/tests: the one logo sanity bound. */
+export const SVG_WORDMARK_MAX_RATIO = LOGO_MAX_ASPECT;
 export function isSuitableBrandImage(role: BrandImageRole, width: number, height: number, opts: { vectorWordmark?: boolean } = {}): boolean {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
   const long = Math.max(width, height);
   const short = Math.min(width, height);
-  if (role === "logo") return long >= 120 && short >= 40 && long / short <= (opts.vectorWordmark ? SVG_WORDMARK_MAX_RATIO : 6) && long <= 6000;
+  if (role === "logo") {
+    if (long > 6000 || long < 120 || long / short > LOGO_MAX_ASPECT) return false;
+    return opts.vectorWordmark ? true : short >= 40;
+  }
   return width >= 600 && height >= 300 && width / height >= 1.2 && width / height <= 3.5 && long <= 10000;
 }
 
@@ -153,8 +169,8 @@ export function brandImageSuitabilityFailure(role: BrandImageRole, width: number
   const short = Math.min(width, height);
   if (role === "logo") {
     if (long > 6000) return "too_large";
-    if (long < 120 || short < 40) return "too_small";
-    return "aspect_ratio";
+    if (long / short > LOGO_MAX_ASPECT) return "aspect_ratio";
+    return "too_small";
   }
   if (long > 10000) return "too_large";
   if (width < 600 || height < 300) return "too_small";
@@ -199,7 +215,9 @@ export interface BrandImageDeps {
   fetchSvg?: (url: string) => Promise<SafeFetchImageResult>;
 }
 
-const defaultDeps: BrandImageDeps = { fetchImage: (url) => safeFetchImage(url), fetchSvg: (url) => safeFetchSvg(url) };
+// Brand media uses the Brand image capability (adds AVIF / image/x-png
+// labels); Event Import keeps the narrower shared safeFetchImage.
+const defaultDeps: BrandImageDeps = { fetchImage: (url) => safeFetchBrandImage(url), fetchSvg: (url) => safeFetchSvg(url) };
 
 // ── VCL A3c — SVG logo → raster ───────────────────────────────────────────
 //
@@ -343,15 +361,8 @@ async function verifySvgLogoBody(body: Buffer): Promise<VerifyResult> {
   if (!inspectSvg(body).ok) return { ok: false, reason: "invalid_file" };
   const png = await rasterizeSvgLogo(body);
   if (!png || png.length === 0) return { ok: false, reason: "unreadable" };
-  try {
-    const ink = await svgLogoInk(png);
-    const meta = await sharp(png, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT }).metadata();
-    const at = { width: meta.width, height: meta.height, ink: Math.round(ink.coverage * 1000) / 10 };
-    if (!ink.visible) return { ok: false, reason: "blank", measure: { code: ink.coverage < SVG_INK_MIN ? "blank" : "near_white", ...at } };
-    if (ink.solid) return { ok: false, reason: "unsuitable", measure: { code: "solid_fill", ...at } };
-  } catch {
-    return { ok: false, reason: "unreadable" };
-  }
+  // Content (blank / block / light-on-clear) is checked for EVERY logo in
+  // verifyRasterBytes — raster files and rendered SVGs alike.
   return verifyRasterBytes(png, "image/png", "logo", { vectorWordmark: true });
 }
 
@@ -366,7 +377,7 @@ async function verifySvgLogoBody(body: Buffer): Promise<VerifyResult> {
  *             NOT solid. Colours are quantized to 3 bits per channel. */
 export const SVG_INK_MIN = 0.01;
 export const SVG_INK_SOLID = 0.97;
-export async function svgLogoInk(png: Buffer): Promise<{ coverage: number; visible: boolean; solid: boolean }> {
+export async function svgLogoInk(png: Buffer): Promise<{ coverage: number; visible: boolean; solid: boolean; lightOnClear: boolean }> {
   const { data, info } = await sharp(png, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT })
     .ensureAlpha()
     .resize(200, 200, { fit: "inside" })
@@ -386,7 +397,43 @@ export async function svgLogoInk(png: Buffer): Promise<{ coverage: number; visib
   }
   const coverage = pixels ? ink / pixels : 0;
   const dominant = ink ? Math.max(...colours.values()) / ink : 0;
-  return { coverage, visible: coverage >= SVG_INK_MIN && dark / pixels >= SVG_INK_MIN, solid: coverage >= SVG_INK_SOLID && dominant >= SVG_INK_SOLID };
+  const visible = coverage >= SVG_INK_MIN && dark / pixels >= SVG_INK_MIN;
+  return {
+    coverage,
+    visible,
+    solid: coverage >= SVG_INK_SOLID && dominant >= SVG_INK_SOLID,
+    // A real mark drawn only in white/near-white on a transparent
+    // background (common for brands with dark headers): content exists,
+    // it just needs a dark plate to be visible on Findmi's light surfaces.
+    lightOnClear: !visible && coverage >= SVG_INK_MIN && coverage < SVG_INK_SOLID,
+  };
+}
+/** The same content measurement, for every logo (raster or rendered SVG). */
+export const logoContent = (png: Buffer) => svgLogoInk(png);
+/** Plate colour behind a light-only transparent logo (near-black). */
+export const LOGO_DARK_PLATE = "#111111";
+
+// ── AVIF: identified by its bytes, decoded, normalized ───────────────────
+/** True for an AVIF file by its ISO-BMFF signature (ftyp + an avif/avis
+ * brand). Exported for tests. HEIC (HEVC) is NOT AVIF and is refused. */
+export function isAvifBytes(b: Buffer): boolean {
+  if (b.length < 16 || b.toString("latin1", 4, 8) !== "ftyp") return false;
+  const brands = new Set<string>([b.toString("latin1", 8, 12)]);
+  const box = Math.min(b.readUInt32BE(0), 64, b.length);
+  for (let o = 16; o + 4 <= box; o += 4) brands.add(b.toString("latin1", o, o + 4));
+  return brands.has("avif") || brands.has("avis");
+}
+/** AVIF bytes → normalized WebP (first frame, EXIF orientation applied),
+ * decoded by the trusted image stack under the pixel limit and a timeout.
+ * Null when the bytes aren't a decodable AV1 image. */
+export async function normalizeAvif(body: Buffer): Promise<Buffer | null> {
+  try {
+    const meta = await sharp(body, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT }).metadata();
+    if (meta.format !== "heif" || meta.compression !== "av1" || !meta.width || !meta.height) return null;
+    return await sharp(body, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT, animated: false }).rotate().webp({ quality: 90 }).timeout({ seconds: 10 }).toBuffer();
+  } catch {
+    return null;
+  }
 }
 
 /** Modern site extraction — the page's INLINE SVG brand mark (carried as an
@@ -414,9 +461,16 @@ export async function verifyRasterBytes(
   // negotiated WebP under a JPEG label — none of which makes the bytes
   // unsafe. Never HEIC (converted) and never anything that isn't an image.
   if (!BRAND_IMAGE_DECLARED_TYPES.has(declared)) return { ok: false, reason: "type_mismatch" };
-  const sniffType = declared.startsWith("image/") && declared !== "image/jpg" && declared !== "image/pjpeg" ? declared : "image/png";
-  const file = new File([new Uint8Array(body)], "brand-candidate", { type: sniffType });
-  const validated = await validateImageFile(file);
+  // AVIF (whatever the label): identified by its bytes, decoded by the
+  // trusted stack and normalized to WebP — only the normalized bytes go on.
+  if (isAvifBytes(body)) {
+    const webp = await normalizeAvif(body);
+    if (!webp) return { ok: false, reason: "invalid_file" };
+    body = webp;
+    declared = "image/webp";
+  }
+  const sniffType = declared.startsWith("image/") && !["image/jpg", "image/pjpeg", "image/avif", "image/x-png"].includes(declared) ? declared : "image/png";
+  let validated = await validateImageFile(new File([new Uint8Array(body)], "brand-candidate", { type: sniffType }));
   if ("error" in validated) return { ok: false, reason: "invalid_file" };
   if (validated.converted) return { ok: false, reason: "type_mismatch" };
   let width: number | undefined;
@@ -430,6 +484,25 @@ export async function verifyRasterBytes(
   }
   if (!width || !height || !isSuitableBrandImage(role, width, height, opts)) {
     return { ok: false, reason: "unsuitable", measure: { code: brandImageSuitabilityFailure(role, width ?? 0, height ?? 0, opts) ?? "no_dimensions", ...(width && height ? { width, height } : {}) } };
+  }
+  // Every logo must actually show something: blank / near-blank and
+  // featureless one-colour blocks are refused; a light-only mark on a
+  // transparent background is kept on a dark plate so it stays visible.
+  if (role === "logo") {
+    try {
+      const ink = await logoContent(body);
+      const at = { width, height, ink: Math.round(ink.coverage * 1000) / 10 };
+      if (ink.solid) return { ok: false, reason: "unsuitable", measure: { code: "solid_fill", ...at } };
+      if (!ink.visible && !ink.lightOnClear) return { ok: false, reason: "blank", measure: { code: ink.coverage < SVG_INK_MIN ? "blank" : "near_white", ...at } };
+      if (ink.lightOnClear) {
+        body = await sharp(body, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT, animated: false }).flatten({ background: LOGO_DARK_PLATE }).png().toBuffer();
+        const plated = await validateImageFile(new File([new Uint8Array(body)], "brand-candidate", { type: "image/png" }));
+        if ("error" in plated) return { ok: false, reason: "unreadable" };
+        validated = plated;
+      }
+    } catch {
+      return { ok: false, reason: "unreadable" };
+    }
   }
   // A cover must be a picture, not a wordmark/logo share graphic. When
   // in doubt the cover is dropped (a human can add one at review).

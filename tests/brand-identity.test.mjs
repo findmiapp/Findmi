@@ -178,7 +178,12 @@ test("AI: errors, refusals, missing output and no client all → null result (de
 });
 
 // ── IMAGES ────────────────────────────────────────────────────────────────
-const png = (w, h) => sharp({ create: { width: w, height: h, channels: 3, background: "#14b0bc" } }).png().toBuffer();
+// A brand mark on a coloured field (a flat one-colour square is not a logo).
+const png = (w, h) =>
+  sharp({ create: { width: w, height: h, channels: 3, background: "#14b0bc" } })
+    .composite([{ input: { create: { width: Math.max(1, Math.round(w / 2)), height: Math.max(1, Math.round(h / 2)), channels: 3, background: "#ffffff" } }, left: Math.round(w / 4), top: Math.round(h / 4) }])
+    .png()
+    .toBuffer();
 const jpg = (w, h) => sharp({ create: { width: w, height: h, channels: 3, background: "#222" } }).jpeg().toBuffer();
 function imageTransport(routes) {
   return async (url) => {
@@ -203,7 +208,7 @@ test("logo: a real 180×180 PNG passes; tiny favicon, ICO, SVG, bad MIME, MIME/b
     [{ "content-type": "text/html" }, Buffer.from("<html></html>"), "fetch_failed"],
     [{ "content-type": "text/plain" }, await jpg(300, 300), "fetch_failed"],
     [{ "content-type": "image/png", "content-length": String(6 * 1024 * 1024) }, await png(200, 200), "fetch_failed"],
-    [{ "content-type": "image/png" }, await png(1200, 100), "unsuitable"],
+    [{ "content-type": "image/png" }, await png(3000, 100), "unsuitable"], // 30:1 sliver (a 12:1 wordmark now passes)
   ];
   for (const [headers, body, reason] of cases) {
     const r = await IMG.fetchVerifiedBrandImage(U, "logo", verifyWith({ [U]: { headers, body } }));

@@ -836,6 +836,20 @@ export async function safeFetchImage(input: string | URL, options: SafeFetchOpti
   return { ok: true, url: r.url, body: r.body, contentType: r.contentType, bytes: r.bytes, redirects: r.redirects };
 }
 
+/** Brand media — the same image fetch with a richer accepted-media list:
+ * AVIF (decoded and normalized by lib/brand-images before use) and the
+ * common legacy label image/x-png. The Accept header is unchanged (it still
+ * prefers WebP/JPEG/PNG, so negotiating CDNs keep sending those); AVIF is
+ * only accepted when a server sends it anyway. Labels are still only a
+ * first gate — the bytes decide. Event Import keeps safeFetchImage. */
+export const SAFE_FETCH_BRAND_IMAGE_TYPES: ReadonlySet<string> = new Set([...SAFE_FETCH_IMAGE_TYPES, "image/avif", "image/x-png"]);
+const BRAND_IMAGE_PROFILE: FetchProfile = { ...IMAGE_PROFILE, mediaTypes: SAFE_FETCH_BRAND_IMAGE_TYPES };
+export async function safeFetchBrandImage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchImageResult> {
+  const r = await safeFetchResource(input, BRAND_IMAGE_PROFILE, options);
+  if (!r.ok) return r;
+  return { ok: true, url: r.url, body: r.body, contentType: r.contentType, bytes: r.bytes, redirects: r.redirects };
+}
+
 /** VCL A3 — a site's web app manifest (`<link rel="manifest">`), read only
  * for its declared icons when no logo candidate on the page verified.
  * Small JSON document, same destination/DNS/redirect/TLS/timeout rules as

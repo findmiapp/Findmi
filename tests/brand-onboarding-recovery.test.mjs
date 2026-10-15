@@ -83,7 +83,12 @@ function fakeAdmin(files = {}) {
   };
   return { calls, files, admin: { storage: { from: () => bucket } } };
 }
-const png = (w, h) => sharp({ create: { width: w, height: h, channels: 4, background: { r: 20, g: 120, b: 200, alpha: 1 } } }).png().toBuffer();
+// A brand mark on a coloured field (a flat one-colour square is not a logo).
+const png = (w, h) =>
+  sharp({ create: { width: w, height: h, channels: 4, background: { r: 20, g: 120, b: 200, alpha: 1 } } })
+    .composite([{ input: { create: { width: Math.round(w / 2), height: Math.round(h / 2), channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }, left: Math.round(w / 4), top: Math.round(h / 4) }])
+    .png()
+    .toBuffer();
 
 test("staging: verified bytes go to this user's own path; load re-verifies; other users' paths are refused; clear is scoped", async () => {
   const v = await IMG.verifyRasterBytes(await png(400, 200), "image/png", "logo");

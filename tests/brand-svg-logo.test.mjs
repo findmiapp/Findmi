@@ -254,7 +254,12 @@ test("13/14/15/16. random, decorative, social, favicon/mask-icon, inline, http a
 // ── Ordering in the builder ──────────────────────────────────────────────
 const RASTER_LOGO = "https://cdn.acme-brand.com/brand/logo.png";
 const TOUCH = "https://www.acme-brand.com/touch.png";
-const square = (s) => sharp({ create: { width: s, height: s, channels: 3, background: "#123456" } }).png().toBuffer();
+// A brand mark on a coloured field (a flat one-colour square is not a logo).
+const square = (s) =>
+  sharp({ create: { width: s, height: s, channels: 3, background: "#123456" } })
+    .composite([{ input: { create: { width: Math.round(s / 2), height: Math.round(s / 2), channels: 3, background: "#ffffff" } }, left: Math.round(s / 4), top: Math.round(s / 4) }])
+    .png()
+    .toBuffer();
 const wordPng = () => sharp({ create: { width: 600, height: 150, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: { create: { width: 500, height: 100, channels: 4, background: { r: 9, g: 9, b: 9, alpha: 1 } } }, left: 50, top: 25 }]).png().toBuffer();
 async function photo() {
   let x = 7;

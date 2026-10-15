@@ -55,7 +55,12 @@ async function photo(w = 1200, h = 630) {
   }
   return sharp(data, { raw: { width: w, height: h, channels: 3 } }).jpeg().toBuffer();
 }
-const squareIcon = (s = 512) => sharp({ create: { width: s, height: s, channels: 3, background: "#1db954" } }).png().toBuffer();
+// A brand mark on a coloured field (a flat one-colour square is not a logo).
+const squareIcon = (s = 512) =>
+  sharp({ create: { width: s, height: s, channels: 3, background: "#1db954" } })
+    .composite([{ input: { create: { width: Math.round(s / 2), height: Math.round(s / 2), channels: 3, background: "#ffffff" } }, left: Math.round(s / 4), top: Math.round(s / 4) }])
+    .png()
+    .toBuffer();
 /** A legitimate horizontal wordmark: 4:1, transparent background. */
 const wordmarkLogo = () =>
   sharp({ create: { width: 800, height: 200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
@@ -123,7 +128,8 @@ test("4/6. og:image stays a COVER candidate; a wide promo graphic is never miscl
 test("7. a legitimate horizontal wordmark is accepted as a logo (not rejected for being wide); only slivers are", async () => {
   assert.equal(IMG.isSuitableBrandImage("logo", 800, 200), true, "4:1 wordmark");
   assert.equal(IMG.isSuitableBrandImage("logo", 1200, 240), true, "5:1 wordmark");
-  assert.equal(IMG.isSuitableBrandImage("logo", 1400, 200), false, "7:1 sliver");
+  assert.equal(IMG.isSuitableBrandImage("logo", 1400, 200), true, "7:1 wordmark (aspect is only a sanity bound since the media-acceptance pass)");
+  assert.equal(IMG.isSuitableBrandImage("logo", 3000, 100), false, "30:1 sliver — a rule, not a mark");
   const U = "https://cdn.northwind.example/brand/wordmark.png";
   const t = images({ [U]: { body: await wordmarkLogo(), type: "image/png" } });
   assert.equal((await IMG.fetchVerifiedBrandImage(U, "logo", t)).ok, true);
