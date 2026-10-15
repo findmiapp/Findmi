@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Category } from "@/lib/types";
+import { groupEventCategories } from "@/lib/event-categories";
 import LifecycleBulkActionBar from "@/components/admin/LifecycleBulkActionBar";
 import {
   bulkArchiveEvents,
@@ -40,11 +41,22 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
       </label>
       <select name="category_id" className="rounded-lg border border-black/10 px-2 py-1.5 text-xs">
         <option value="">— None —</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
+        {groupEventCategories(categories).map(({ category, children }) =>
+          children.length === 0 ? (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ) : (
+            <optgroup key={category.id} label={category.name}>
+              <option value={category.id}>{category.name}</option>
+              {children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          )
+        )}
       </select>
 
       <label className="flex items-center gap-1.5 text-xs font-semibold text-ink/70">

@@ -6,7 +6,8 @@ import NavIcon from "@/components/NavIcon";
 import { analyzeEventImport, analyzeEventImportImage, analyzeEventImportText, commitEventImport } from "./actions";
 import MultiEventImport from "./MultiEventImport";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
-import { AttendanceEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { AttendanceEditor, EventCategoryEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import type { Category } from "@/lib/types";
 import {
   EVENT_IMPORT_FAILURE_COPY,
   EVENT_IMPORT_IMAGE_ACCEPT,
@@ -74,12 +75,15 @@ export default function EventImporter({
   initialIntent,
   manualHrefs,
   businessHome,
+  categories,
 }: {
   businessId: string;
   businessName: string;
   initialIntent: EventImportIntent | null;
   manualHrefs: Record<EventImportIntent, string>;
   businessHome: string;
+  /** Event Taxonomy V1 — the kind='event' categories (parents + children). */
+  categories: Category[];
 }) {
   const [intent, setIntent] = useState<EventImportIntent | null>(initialIntent);
   const [url, setUrl] = useState("");
@@ -298,6 +302,7 @@ export default function EventImporter({
         warnings={step.warnings}
         header={header}
         manualHref={manualHrefs[intent]}
+        categories={categories}
         businessHome={businessHome}
         onTryAnother={addAnother}
       />
@@ -566,6 +571,9 @@ export default function EventImporter({
           {/* Attendance is saved with a NEW Event (hosting, or a genuine
               Event the Business takes part in) — never on a plain schedule item. */}
           {(intent === "hosting" || review.asEvent) && <AttendanceEditor review={review} set={set} evidence={candidate.attendance} />}
+          {/* Category is saved with a NEW Event only — an existing Event
+              this import joins keeps its own category. */}
+          {(intent === "hosting" || review.asEvent) && <EventCategoryEditor key={reviewVersion} categories={categories} review={review} set={set} />}
         </>
       )}
 

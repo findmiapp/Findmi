@@ -3,6 +3,8 @@
 // compact rows, an existing-Location choice per place.
 import { useState } from "react";
 import ChevronIcon from "@/components/ChevronIcon";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import type { Category } from "@/lib/types";
 import type { EventCandidate, EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
 import { decidePlaceFrom, emptyReviewOccurrence, occurrenceSummary } from "@/lib/event-import/review";
 
@@ -415,6 +417,31 @@ export function AttendanceEditor({
           />
         </div>
       )}
+    </section>
+  );
+}
+
+/** Event Taxonomy V1 — the NEW Event's one primary category (Category →
+ * optional Subcategory), via the same shared picker Event Create/Edit
+ * uses. Optional; nothing is inferred. */
+export function EventCategoryEditor({
+  categories,
+  review,
+  set,
+}: {
+  categories: Category[];
+  review: EventImportReview;
+  set: (patch: Partial<EventImportReview>) => void;
+}) {
+  if (categories.length === 0) return null;
+  return (
+    <section className={sectionClass}>
+      <CategorySubcategoryField
+        categories={categories}
+        defaultCategoryId={review.categoryId ?? null}
+        emptyText="No Event categories yet."
+        onChange={(id) => set({ categoryId: id || null })}
+      />
     </section>
   );
 }

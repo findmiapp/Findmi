@@ -7,6 +7,8 @@ import { getHostEventEligibility } from "@/lib/entitlements";
 import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import { getAllCategories } from "@/lib/admin/queries";
 import { createMemberEvent } from "../actions";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
@@ -86,6 +88,7 @@ export default async function AddEventPage({
     market_id?: string;
     requested_market_text?: string;
     business_id?: string;
+    category_id?: string;
   }>;
 }) {
   const {
@@ -97,6 +100,7 @@ export default async function AddEventPage({
     market_id: submittedMarketId,
     requested_market_text: submittedRequestedMarketText,
     business_id: businessIdParam,
+    category_id: submittedCategoryId,
   } = await searchParams;
   const locationHint = await getLocationHint(locationIdHint);
 
@@ -146,7 +150,7 @@ export default async function AddEventPage({
     );
   }
 
-  const markets = await getActiveMarkets();
+  const [markets, eventCategories] = await Promise.all([getActiveMarkets(), getAllCategories("event")]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -202,6 +206,8 @@ export default async function AddEventPage({
               className={inputClass}
             />
           </label>
+
+          <CategorySubcategoryField categories={eventCategories} defaultCategoryId={submittedCategoryId ?? null} emptyText="No Event categories yet." />
 
           <DateTimeRangeFields
             startName="start_at"

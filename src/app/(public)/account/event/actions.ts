@@ -1,5 +1,7 @@
 "use server";
 
+import { decideEventCategoryWrite } from "@/lib/event-categories";
+import { existingEventCategoryIds } from "@/lib/event-categories-server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -216,6 +218,8 @@ export async function createMemberEvent(formData: FormData) {
     market_id: marketId,
     requested_market_text: requestedMarketTextRaw,
     location_id: locationHintId,
+    // Event Taxonomy V1 — the picker's one primary category (optional).
+    category_id: str(formData, "category_id"),
   };
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_EVENT_PATH, message, preservedFields));
@@ -302,6 +306,15 @@ export async function createMemberEvent(formData: FormData) {
   // either way, this just avoids losing an Area the matcher already found.
   if (effectiveAreaId) {
     await admin.from("events").update({ market_area_id: effectiveAreaId }).eq("id", eventId);
+  }
+
+  // Event Taxonomy V1 — the optional primary category picked at creation
+  // (create_owned_event() has no category parameter; event_categories is a
+  // plain join row). Best-effort like the Area above, and only a real
+  // kind='event' category is ever linked.
+  const createCategoryIds = await existingEventCategoryIds(admin, preservedFields.category_id ? [preservedFields.category_id] : []);
+  if (createCategoryIds.length > 0) {
+    await admin.from("event_categories").insert(createCategoryIds.map((category_id) => ({ event_id: eventId, category_id })));
   }
 
   // Create Event From Venue — Stage 3, Step 9. Copies the chosen
@@ -434,14 +447,20 @@ export async function updateMemberEventDetails(eventId: string, formData: FormDa
   const { data: event, error } = await admin.from("events").update(payload).eq("id", eventId).select("slug, is_demo").maybeSingle();
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 
-  const categoryIds = formData.getAll("category_ids").map(String);
-  const { error: catDeleteError } = await admin.from("event_categories").delete().eq("event_id", eventId);
-  if (catDeleteError) redirect(appendQuery(redirectPath, { error: `Categories: ${catDeleteError.message}` }));
-  if (categoryIds.length > 0) {
-    const { error: catInsertError } = await admin
-      .from("event_categories")
-      .insert(categoryIds.map((category_id) => ({ event_id: eventId, category_id })));
-    if (catInsertError) redirect(appendQuery(redirectPath, { error: `Categories: ${catInsertError.message}` }));
+  // Event Taxonomy V1: one primary category, rewritten ONLY on an
+  // explicit change (see decideEventCategoryWrite) — saving the form with
+  // the picker untouched keeps a legacy Event's existing links as they are.
+  const categoryWrite = decideEventCategoryWrite(formData);
+  if (categoryWrite.kind === "replace") {
+    const { error: catDeleteError } = await admin.from("event_categories").delete().eq("event_id", eventId);
+    if (catDeleteError) redirect(appendQuery(redirectPath, { error: `Categories: ${catDeleteError.message}` }));
+    const categoryIds = await existingEventCategoryIds(admin, categoryWrite.ids);
+    if (categoryIds.length > 0) {
+      const { error: catInsertError } = await admin
+        .from("event_categories")
+        .insert(categoryIds.map((category_id) => ({ event_id: eventId, category_id })));
+      if (catInsertError) redirect(appendQuery(redirectPath, { error: `Categories: ${catInsertError.message}` }));
+    }
   }
 
   revalidatePath(redirectPath);

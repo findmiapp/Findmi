@@ -246,6 +246,10 @@ export interface EventImportReview {
   /** From Analyze; "hidden" means the organizer withholds the address — no
    * venue, street address or Findmi Location is saved. */
   locationVisibility?: LocationVisibility | null;
+  /** Event Taxonomy V1 — the one primary kind='event' category chosen in
+   * Review (a subcategory, or a top-level category). Saved only on a NEW
+   * Event; never applied to an existing Event this import joins. */
+  categoryId?: string | null;
 }
 
 export type EventImportOutcome =

@@ -21,9 +21,15 @@ import type { Category } from "@/lib/types";
 export default function CategorySubcategoryField({
   categories,
   defaultCategoryId,
+  emptyText = "No product categories yet. Add some in /admin/categories/products.",
+  onChange,
 }: {
   categories: Category[];
   defaultCategoryId?: string | null;
+  emptyText?: string;
+  /** For state-driven (non-form) screens such as Event Import Review:
+   * called with the most specific selected id ("" for none). */
+  onChange?: (categoryId: string) => void;
 }) {
   const parents = useMemo(
     () => categories.filter((c) => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name)),
@@ -53,7 +59,7 @@ export default function CategorySubcategoryField({
     <div className="flex flex-col gap-1.5">
       <span className="block text-sm font-medium text-ink">Category</span>
       {parents.length === 0 ? (
-        <p className="text-sm text-ink/45">No product categories yet. Add some in /admin/categories/products.</p>
+        <p className="text-sm text-ink/45">{emptyText}</p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           <select
@@ -61,6 +67,7 @@ export default function CategorySubcategoryField({
             onChange={(e) => {
               setParentId(e.target.value);
               setChildId("");
+              onChange?.(e.target.value);
             }}
             aria-label="Category"
             className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
@@ -76,7 +83,10 @@ export default function CategorySubcategoryField({
           {children.length > 0 && (
             <select
               value={childId}
-              onChange={(e) => setChildId(e.target.value)}
+              onChange={(e) => {
+                setChildId(e.target.value);
+                onChange?.(e.target.value || parentId);
+              }}
               aria-label="Subcategory"
               className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
             >
@@ -91,6 +101,10 @@ export default function CategorySubcategoryField({
         </div>
       )}
       <input type="hidden" name="category_id" value={submittedValue} />
+      {/* The value this form opened with, so a save can tell an explicit
+          category change from an untouched picker (Event Taxonomy V1:
+          an Event's legacy extra links are only rewritten on a change). */}
+      <input type="hidden" name="category_id_initial" value={defaultCategory?.id ?? ""} />
       <p className="text-xs text-ink/40">
         Pick the most specific subcategory that applies. Choosing just a category is fine if none fit.
       </p>

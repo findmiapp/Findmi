@@ -1,5 +1,6 @@
 "use server";
 
+import { decideEventCategoryWrite } from "@/lib/event-categories";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -621,14 +622,19 @@ export async function saveEvent(id: string | null, formData: FormData) {
   // however it happened to be, then redirected to a "saved" page anyway.
   // Now a real failure surfaces as the same visible error banner every
   // other field's save failure already uses, instead of vanishing.
-  const categoryIds = formData.getAll("category_ids").map(String);
-  const { error: catDeleteError } = await supabase.from("event_categories").delete().eq("event_id", eventId);
-  if (catDeleteError) redirect(errorRedirectUrl(editPath, `Categories: ${catDeleteError.message}`));
-  if (categoryIds.length > 0) {
-    const { error: catInsertError } = await supabase
-      .from("event_categories")
-      .insert(categoryIds.map((category_id) => ({ event_id: eventId, category_id })));
-    if (catInsertError) redirect(errorRedirectUrl(editPath, `Categories: ${catInsertError.message}`));
+  // Event Taxonomy V1: one primary category, rewritten ONLY on an
+  // explicit change (see decideEventCategoryWrite) — saving the form with
+  // the picker untouched keeps a legacy Event's existing links as they are.
+  const categoryWrite = decideEventCategoryWrite(formData);
+  if (categoryWrite.kind === "replace") {
+    const { error: catDeleteError } = await supabase.from("event_categories").delete().eq("event_id", eventId);
+    if (catDeleteError) redirect(errorRedirectUrl(editPath, `Categories: ${catDeleteError.message}`));
+    if (categoryWrite.ids.length > 0) {
+      const { error: catInsertError } = await supabase
+        .from("event_categories")
+        .insert(categoryWrite.ids.map((category_id) => ({ event_id: eventId, category_id })));
+      if (catInsertError) redirect(errorRedirectUrl(editPath, `Categories: ${catInsertError.message}`));
+    }
   }
 
   revalidatePath("/admin/events");

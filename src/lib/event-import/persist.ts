@@ -34,6 +34,7 @@ import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPl
 import type { EventApplicationResult } from "../event-participation";
 import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
 import { parseLocationVisibility, type LocationVisibility } from "../event-attendance";
+import { existingEventCategoryIds } from "../event-categories-server";
 import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, type ReviewedAttendance } from "./attendance";
 
 export const REVIEW_MAX_DATES = 60;
@@ -68,6 +69,9 @@ export interface NormalizedImport {
   /** What the source made public about the place; "hidden" → no venue,
    * street address or Findmi Location is saved for any date. */
   locationVisibility: LocationVisibility | null;
+  /** The reviewed primary Event category for a NEW Event (validated as a
+   * real kind='event' category when written). */
+  categoryId: string | null;
 }
 
 /** Privacy: when the organizer withholds the address, a date keeps only its
@@ -173,6 +177,7 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       organizer: cleanText(review.organizer, 160),
       attendance: normalizeReviewedAttendance(review.attendance),
       locationVisibility,
+      categoryId: review.categoryId && UUID.test(review.categoryId) ? review.categoryId : null,
     },
   };
 }
@@ -183,6 +188,17 @@ async function writeEventExtras(admin: SupabaseClient, eventId: string, input: N
   if (Object.keys(extras).length === 0) return;
   const { error } = await admin.from("events").update(extras).eq("id", eventId);
   if (error) console.warn("[event-import] attendance/location extras not saved", { eventId, reason: error.message });
+}
+
+/** Event Taxonomy V1 — links a NEW Event to its reviewed primary category
+ * (one event_categories row; only a real kind='event' category). Called
+ * only right after this import created the Event, so an existing Event an
+ * import joins never has its categories touched. Best-effort. */
+async function writeEventCategory(admin: SupabaseClient, eventId: string, input: NormalizedImport): Promise<void> {
+  const ids = await existingEventCategoryIds(admin, input.categoryId ? [input.categoryId] : []);
+  if (ids.length === 0) return;
+  const { error } = await admin.from("event_categories").insert(ids.map((category_id) => ({ event_id: eventId, category_id })));
+  if (error) console.warn("[event-import] category not saved", { eventId, reason: error.message });
 }
 
 export interface PersistDeps {
@@ -384,6 +400,7 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   if (error || !created) return { ok: false, error: "Couldn't add this Event. Please try again." };
   const eventId = (created as { id: string }).id;
   await writeEventExtras(admin, eventId, input);
+  await writeEventCategory(admin, eventId, input);
 
   // 4a. Participation first, so creating the dates realizes it per date.
   const { error: rosterError } = await admin
@@ -489,6 +506,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     })
     .eq("id", eventId);
   await writeEventExtras(admin, eventId, input);
+  await writeEventCategory(admin, eventId, input);
 
   // Dates: one Event Occurrence per date — each linked to ITS OWN Location
   // (or carrying its own venue snapshot) — when there are several dates or

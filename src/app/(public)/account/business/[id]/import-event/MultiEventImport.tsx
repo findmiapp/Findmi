@@ -6,7 +6,8 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
 import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
-import { Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { EventCategoryEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import type { Category } from "@/lib/types";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
  * calendar, a venue's events page). Step 1: choose Events (upcoming ones,
@@ -50,6 +51,7 @@ export default function MultiEventImport({
   manualHref,
   businessHome,
   onTryAnother,
+  categories,
 }: {
   businessId: string;
   businessName: string;
@@ -61,6 +63,8 @@ export default function MultiEventImport({
   manualHref: string;
   businessHome: string;
   onTryAnother: () => void;
+  /** Event Taxonomy V1 — the kind='event' categories (parents + children). */
+  categories: Category[];
 }) {
   const upcoming = events.filter((e) => !e.past);
   const pastEvents = events.filter((e) => e.past);
@@ -327,6 +331,7 @@ export default function MultiEventImport({
                         <input id={`batch-${e.key}-link`} type="url" inputMode="url" autoCapitalize="none" value={review.sourceUrl ?? ""} onChange={(ev) => set({ sourceUrl: ev.target.value })} className={inputClass} />
                       </div>
                       {!joining && <WhenWhereEditor review={review} set={set} matches={e.matches} initialPast={initialPast[e.key] ?? []} idPrefix={`batch-${e.key}-`} />}
+                      {!joining && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
                     </div>
                   )}
                 </li>

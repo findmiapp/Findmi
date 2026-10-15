@@ -31,9 +31,19 @@ export const MOMENT_CATEGORY_FILTERS: Record<Exclude<MomentFilterKey, "for-you" 
     "restaurant",
     "bar-lounge",
     "brewery-taproom",
+    // Event Taxonomy V1 — Food & Drink's Event subcategories (Food
+    // Festivals keeps its food-festival slug above).
+    "coffee-tea",
+    "tastings-drinks",
+    "dining-experiences",
+    "baking-sweets",
   ],
+  // markets-pop-ups is the Event "Markets & Fairs" subcategory now (same
+  // id and slug), so this filter is unchanged.
   "pop-ups": ["markets-pop-ups", "market"],
-  classes: ["workshops-classes", "classes-workshops"],
+  // workshops-classes is the top-level Event "Classes & Workshops" (same id
+  // and slug) — its subcategories count too.
+  classes: ["workshops-classes", "classes-workshops", "cooking-classes", "art-craft-classes", "professional-skill-building"],
   outdoors: ["park-outdoor-space"],
 };
 

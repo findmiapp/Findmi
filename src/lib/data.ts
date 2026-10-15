@@ -15,6 +15,7 @@ import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
 import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
+import { eventCategoryFilterIds, primaryEventCategoryId } from "./event-categories";
 import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
 import {
   applyEventLocationPrivacy,
@@ -401,13 +402,21 @@ export async function getEventCategories(): Promise<Category[]> {
 
   const { data } = await supabase
     .from("event_categories")
-    .select("event_id, categories!inner(id, name, slug)")
+    .select("event_id, categories!inner(id, name, slug, kind, parent_id)")
     .eq("categories.kind", "event");
   const seen = new Map<string, Category>();
   for (const row of (data ?? []) as { event_id: string; categories: Category | Category[] | null }[]) {
     if (!realEventIds.has(row.event_id)) continue;
     const cats = Array.isArray(row.categories) ? row.categories : row.categories ? [row.categories] : [];
     for (const c of cats) if (!seen.has(c.id)) seen.set(c.id, c);
+  }
+  // Event Taxonomy V1 — a used subcategory brings its top-level category
+  // along (selecting the parent includes it — see getEventsDiscovery), so
+  // the filter can show Category → Subcategory instead of one flat list.
+  const missingParentIds = [...new Set([...seen.values()].map((c) => c.parent_id).filter((id): id is string => Boolean(id) && !seen.has(id as string)))];
+  if (missingParentIds.length > 0) {
+    const { data: parents } = await supabase.from("categories").select("id, name, slug, kind, parent_id").eq("kind", "event").in("id", missingParentIds);
+    for (const p of (parents ?? []) as Category[]) seen.set(p.id, p);
   }
   return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -2220,16 +2229,25 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
   if (params.categorySlug) {
     const { data: cat } = await supabase
       .from("categories")
-      .select("id")
+      .select("id, parent_id")
       .eq("slug", params.categorySlug)
       .eq("kind", "event")
       .maybeSingle();
     if (!cat) return [];
+    // Event Taxonomy V1 — a top-level category includes Events assigned
+    // directly to it AND to any of its subcategories; a subcategory
+    // matches only itself (same parent-includes-children rule the Product
+    // category filter uses).
+    let children: { id: string }[] = [];
+    if (!cat.parent_id) {
+      const { data: kids } = await supabase.from("categories").select("id").eq("kind", "event").eq("parent_id", cat.id);
+      children = (kids ?? []) as { id: string }[];
+    }
     const { data: links } = await supabase
       .from("event_categories")
       .select("event_id")
-      .eq("category_id", cat.id);
-    categoryEventIds = (links ?? []).map((l) => l.event_id);
+      .in("category_id", eventCategoryFilterIds(cat as { id: string; parent_id: string | null }, children));
+    categoryEventIds = [...new Set((links ?? []).map((l) => l.event_id))];
     if (categoryEventIds.length === 0) return [];
   }
 
@@ -2266,7 +2284,7 @@ export async function attachEventCategories(events: FindmiEvent[]): Promise<Even
   const ids = events.map((e) => e.id);
   const { data } = await supabase
     .from("event_categories")
-    .select("event_id, categories!inner(id, name, slug)")
+    .select("event_id, categories!inner(id, name, slug, kind, parent_id)")
     .eq("categories.kind", "event")
     .in("event_id", ids);
 
@@ -2275,7 +2293,14 @@ export async function attachEventCategories(events: FindmiEvent[]): Promise<Even
     const cats = Array.isArray(row.categories) ? row.categories : row.categories ? [row.categories] : [];
     byEvent.set(row.event_id, [...(byEvent.get(row.event_id) ?? []), ...cats]);
   }
-  return events.map((e) => ({ ...e, categories: byEvent.get(e.id) ?? [] }));
+  // Event Taxonomy V1 — the primary category (a subcategory before a
+  // top-level one) leads, so every `categories[0]` badge shows the most
+  // specific name; a legacy Event's other links follow, unchanged.
+  return events.map((e) => {
+    const cats = byEvent.get(e.id) ?? [];
+    const primaryId = primaryEventCategoryId(cats.map((c) => c.id), cats);
+    return { ...e, categories: primaryId ? [...cats.filter((c) => c.id === primaryId), ...cats.filter((c) => c.id !== primaryId)] : cats };
+  });
 }
 
 export async function getEventBySlug(slug: string): Promise<FindmiEvent | null> {

@@ -1,6 +1,5 @@
 import {
   CheckboxField,
-  CheckboxList,
   DateTimeField,
   DateTimeRangeField,
   NumberField,
@@ -12,6 +11,7 @@ import ImageField from "@/components/admin/ImageField";
 import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
 import EventFormSections from "./EventFormSections";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import { RelationField } from "@/components/admin/RelationPicker";
@@ -34,6 +34,7 @@ import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { findCoveringOccurrenceId } from "@/lib/data";
+import { primaryEventCategoryId } from "@/lib/event-categories";
 import { saveEvent } from "./actions";
 import { createInlineAdminLocation } from "../locations/actions";
 
@@ -144,12 +145,10 @@ export default function EventForm({
 
                 <TextareaField label="Description" name="description" defaultValue={event?.description} />
 
-                <CheckboxList
-                  label="Categories / Experience"
-                  name="category_ids"
-                  defaultSelected={selectedCategoryIds}
-                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
-                  emptyText="No categories yet — add some in /admin/categories."
+                <CategorySubcategoryField
+                  categories={categories}
+                  defaultCategoryId={primaryEventCategoryId(selectedCategoryIds, categories)}
+                  emptyText="No Event categories yet. Add some in /admin/categories/events."
                 />
               </>
             ),

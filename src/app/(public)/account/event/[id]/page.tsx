@@ -21,6 +21,8 @@ import { QrCampaignContextualPanel } from "../../business/[id]/QrCampaignCreator
 import EntityManagerContextBar from "@/components/account/EntityManagerContextBar";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import EventLocationField from "@/components/account/EventLocationField";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import { primaryEventCategoryId } from "@/lib/event-categories";
 import MemberEventImageField from "./MemberEventImageField";
 import MemberEventGalleryField from "./MemberEventGalleryField";
 import BulkDatesComposer from "./BulkDatesComposer";
@@ -617,21 +619,11 @@ export default async function ManageEventPage({
                   <input autoCapitalize="words" type="text" name="name" required defaultValue={event.name} className={inputClass} />
                 </label>
                 <div className="mt-3">
-                  <span className="mb-1.5 block text-body font-medium text-primary">Categories</span>
-                  <div className="flex flex-col gap-1.5">
-                    {categories.map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-body text-secondary">
-                        <input
-                          type="checkbox"
-                          name="category_ids"
-                          value={c.id}
-                          defaultChecked={selectedCategoryIds.includes(c.id)}
-                          className="h-4 w-4 accent-findmi"
-                        />
-                        {c.name}
-                      </label>
-                    ))}
-                  </div>
+                  <CategorySubcategoryField
+                    categories={categories}
+                    defaultCategoryId={primaryEventCategoryId(selectedCategoryIds, categories)}
+                    emptyText="No Event categories yet."
+                  />
                 </div>
               </div>
 

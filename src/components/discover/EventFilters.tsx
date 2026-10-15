@@ -1,4 +1,5 @@
 import type { Category } from "@/lib/types";
+import { groupEventCategories } from "@/lib/event-categories";
 
 /**
  * Event archive filter fields (Discovery/Archive V2 Part 9/10/15) —
@@ -36,11 +37,22 @@ export default function EventFilters({
             className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
           >
             <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
+            {groupEventCategories(categories).map(({ category, children }) =>
+              children.length === 0 ? (
+                <option key={category.id} value={category.slug}>
+                  {category.name}
+                </option>
+              ) : (
+                <optgroup key={category.id} label={category.name}>
+                  <option value={category.slug}>All {category.name}</option>
+                  {children.map((c) => (
+                    <option key={c.id} value={c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )
+            )}
           </select>
         </label>
       )}

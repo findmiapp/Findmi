@@ -5,6 +5,7 @@ import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { parseEventImportIntent } from "@/lib/event-import/types";
 import ChevronIcon from "@/components/ChevronIcon";
+import { getAllCategories } from "@/lib/admin/queries";
 import EventImporter from "./EventImporter";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ export default async function ImportEventPage({
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
 
   const intent = parseEventImportIntent(intentParam);
+  const eventCategories = await getAllCategories("event");
   const businessHome = `/account/business/${id}`;
 
   return (
@@ -54,6 +56,7 @@ export default async function ImportEventPage({
           hosting: `/account/event/new?business_id=${encodeURIComponent(id)}`,
         }}
         businessHome={businessHome}
+        categories={eventCategories}
       />
     </div>
   );
