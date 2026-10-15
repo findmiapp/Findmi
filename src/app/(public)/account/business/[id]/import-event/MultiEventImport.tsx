@@ -75,6 +75,9 @@ export interface OperatorImportMode {
     existingEventId: string | null;
     business: OperatorBusiness | null;
   }) => React.ReactNode;
+  /** The Events Found thumbnail for a source image URL — Admin renders only
+   * a verified preview (never the remote URL; the page CSP blocks it). */
+  renderThumbnail: (imageUrl: string) => React.ReactNode;
   doneHref: string;
 }
 
@@ -575,10 +578,13 @@ export default function MultiEventImport({
                       </span>
                     )}
                   </span>
-                  {e.candidate.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element -- remote event-page image, preview only
-                    <img src={e.candidate.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />
-                  )}
+                  {e.candidate.imageUrl &&
+                    (operator ? (
+                      operator.renderThumbnail(e.candidate.imageUrl)
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element -- remote event-page image, preview only
+                      <img src={e.candidate.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />
+                    ))}
                 </label>
               </li>
             );

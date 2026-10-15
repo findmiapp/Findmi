@@ -71,7 +71,7 @@ test("an image the save path would reject gets no preview — with the same reas
   assert.deepEqual(await M.previewEventImage(CDN, blocked), { preview: null, reason: "fetch_failed" });
   const html = { fetchImage: fetchOk(Buffer.from("<html></html>"), "text/html") };
   assert.deepEqual(await M.previewEventImage(CDN, html), { preview: null, reason: "type_mismatch" });
-  assert.match(CLIENT, /Saving checks it again; if it fails then, no image is saved\./);
+  assert.match(read("src/app/admin/(protected)/events/import/preview-view.ts"), /Saving checks the image again; if it fails then, no image is saved\./);
   // Saving is unchanged: the Event image is still stored only through recoverEventImage.
   assert.match(read("src/app/admin/(protected)/events/import/actions.ts"), /const stored = await recoverEventImage\(admin, url\);/);
 });

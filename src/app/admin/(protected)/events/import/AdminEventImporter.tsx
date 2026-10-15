@@ -8,6 +8,8 @@ import { RelationField } from "@/components/admin/RelationPicker";
 import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type EventImportReview, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
 import { segmentTextByKey } from "@/lib/event-import/operator";
+import { safePreviewSrc, type ImagePreviewState } from "@/lib/event-import/preview-src";
+import { ImagePreviewView } from "./preview-view";
 import { runWithConcurrency } from "@/lib/admin/brand-import-runner";
 import type { Category } from "@/lib/types";
 import {
@@ -70,8 +72,7 @@ const hostOf = (url: string | null | undefined) => {
 // path uses. A preview is display only: nothing is stored until save, and
 // the save path verifies the image again.
 
-type PreviewState = { status: "loading" } | { status: "ok"; src: string } | { status: "failed"; reason: string };
-const eventPreviewCache = new Map<string, PreviewState>();
+const eventPreviewCache = new Map<string, ImagePreviewState>();
 const PREVIEW_REASON: Record<string, string> = {
   fetch_failed: "the image couldn’t be fetched",
   invalid_file: "it isn’t a valid image file",
@@ -81,8 +82,31 @@ const PREVIEW_REASON: Record<string, string> = {
   preview_failed: "the preview couldn’t be made",
 };
 
-function VerifiedEventImagePreview({ url, className }: { url: string; className: string }) {
-  const [state, setState] = useState<PreviewState>(() => eventPreviewCache.get(url) ?? { status: "loading" });
+/** At most this many preview requests at once (a 25-Event list asks for
+ * up to 25 thumbnails; each is a bounded server fetch + verification). */
+const PREVIEW_CONCURRENCY = 3;
+let previewsInFlight = 0;
+const previewQueue: (() => void)[] = [];
+async function limitedPreview(url: string): Promise<ImagePreviewState> {
+  if (previewsInFlight >= PREVIEW_CONCURRENCY) await new Promise<void>((resolve) => previewQueue.push(resolve));
+  previewsInFlight += 1;
+  try {
+    const r = await adminPreviewEventImage(url);
+    const src = safePreviewSrc(r.preview);
+    return src ? { status: "ok", src } : { status: "failed", reason: PREVIEW_REASON[r.reason ?? "preview_failed"] ?? "unavailable" };
+  } catch {
+    return { status: "failed", reason: PREVIEW_REASON.fetch_failed };
+  } finally {
+    previewsInFlight -= 1;
+    previewQueue.shift()?.();
+  }
+}
+
+/** A source Event image in Admin Review: ONLY the server-made, verified
+ * data-URI preview reaches the browser (never `url` itself — that stays
+ * persistence input for recoverEventImage). */
+function VerifiedEventImagePreview({ url, className, compact = false }: { url: string; className: string; compact?: boolean }) {
+  const [state, setState] = useState<ImagePreviewState>(() => eventPreviewCache.get(url) ?? { status: "loading" });
   useEffect(() => {
     let live = true;
     const cached = eventPreviewCache.get(url);
@@ -91,25 +115,27 @@ function VerifiedEventImagePreview({ url, className }: { url: string; className:
       return;
     }
     setState({ status: "loading" });
-    adminPreviewEventImage(url)
-      .then((r) => (r.preview ? ({ status: "ok", src: r.preview } as const) : ({ status: "failed", reason: PREVIEW_REASON[r.reason ?? "preview_failed"] ?? "unavailable" } as const)))
-      .catch(() => ({ status: "failed", reason: PREVIEW_REASON.fetch_failed }) as const)
-      .then((next) => {
-        eventPreviewCache.set(url, next);
-        if (live) setState(next);
-      });
+    eventPreviewCache.set(url, { status: "loading" });
+    limitedPreview(url).then((next) => {
+      eventPreviewCache.set(url, next);
+      if (live) setState(next);
+    });
     return () => {
       live = false;
     };
   }, [url]);
-  if (state.status === "ok") {
-    // eslint-disable-next-line @next/next/no-img-element -- verified, re-encoded data URI preview (not the remote URL)
-    return <img src={state.src} alt="Event image preview" className={className} />;
-  }
   return (
-    <span className={`${className} flex items-center justify-center p-2 text-center text-microcopy ${state.status === "failed" ? "text-amber-900" : "text-muted"}`}>
-      {state.status === "loading" ? "Checking image…" : `No preview: ${state.reason}. Saving checks it again; if it fails then, no image is saved.`}
-    </span>
+    <ImagePreviewView
+      state={state}
+      className={className}
+      alt="Event image preview"
+      compact={compact}
+      onError={() => {
+        const failed: ImagePreviewState = { status: "failed", reason: "the preview couldn’t be displayed" };
+        eventPreviewCache.set(url, failed);
+        setState(failed);
+      }}
+    />
   );
 }
 
@@ -242,8 +268,9 @@ function BrandReviewCard({
       .catch(() => null)
       .then((r) => {
         if (!live) return;
-        const logo = r?.logo.preview ?? null;
-        const cover = r?.cover.preview ?? null;
+        // Brand Import's own verified data-URI previews — nothing else is shown.
+        const logo = safePreviewSrc(r?.logo.preview);
+        const cover = safePreviewSrc(r?.cover.preview);
         setPreviews({ logo, cover, loaded: true });
         if (!logo) setUseLogo(false);
         if (!cover) setUseCover(false);
@@ -745,6 +772,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
       />
     ),
     renderEventDetails: (props) => <EventDetails {...props} />,
+    renderThumbnail: (url) => <VerifiedEventImagePreview url={url} compact className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />,
     doneHref: "/admin/events?new=1",
   };
 
