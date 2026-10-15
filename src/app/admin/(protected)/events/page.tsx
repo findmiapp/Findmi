@@ -68,12 +68,20 @@ export default async function AdminEventsPage({
     <div>
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Events</h1>
-        <Link
-          href="/admin/events/new"
-          className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
-        >
-          Add Event
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/events/import"
+            className="rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:border-findmi/40"
+          >
+            Import Events
+          </Link>
+          <Link
+            href="/admin/events/new"
+            className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
+          >
+            Add Event
+          </Link>
+        </div>
       </div>
 
       {/* Admin Pending Review Decision UX pass, extended by Event Rejection

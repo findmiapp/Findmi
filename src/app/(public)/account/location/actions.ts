@@ -17,6 +17,7 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
+import { insertInlinePlace } from "@/lib/places/inline-place";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { normalizeLocationHours } from "@/lib/locationHours";
 import type { LocationHours } from "@/lib/types";
@@ -311,54 +312,7 @@ export async function createInlinePlace(formData: FormData): Promise<CreateInlin
     return { status: "error", error: "Places can be added while managing a business or event." };
   }
 
-  const name = str(formData, "name");
-  const address = str(formData, "address");
-  const city = str(formData, "city");
-  const state = str(formData, "state");
-  const postalCode = str(formData, "postal_code");
-  const force = str(formData, "force") === "1";
-
-  if (!name) return { status: "error", error: "Place name is required." };
-  // Minimum physical identity for V1: a street address with its city and
-  // state (ZIP optional) — enough to tell one place from another.
-  if (!address || !city || !state) {
-    return { status: "error", error: "Add the street address, city and state so this place can be identified." };
-  }
-
-  if (!force) {
-    const duplicates = await findLikelyDuplicateLocations(admin, { name, address, city, state, postal_code: postalCode });
-    if (duplicates.length > 0) return { status: "duplicates", duplicates };
-  }
-
-  const baseSlug = resolveSlugInput(null, name);
-  if (!baseSlug) return { status: "error", error: "Place name is required to generate a URL." };
-  const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
-
-  const { data: created, error } = await admin
-    .from("locations")
-    .insert({ name, slug, address, city, state, postal_code: postalCode, is_demo: true })
-    .select("id, slug, name, address, city, state, postal_code")
-    .single();
-  if (error || !created) {
-    console.error("createInlinePlace failed:", error?.message);
-    return { status: "error", error: "Couldn't add this place. Please try again." };
-  }
-
-  const row = created as { id: string; slug: string; name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null };
-  return {
-    status: "created",
-    location: {
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      category: null,
-      address: row.address,
-      city: row.city,
-      state: row.state,
-      postal_code: row.postal_code,
-      is_public: false,
-    },
-  };
+  return insertInlinePlace(admin, formData);
 }
 
 // ── VENUE DETAILS ──────────────────────────────────────────────────────

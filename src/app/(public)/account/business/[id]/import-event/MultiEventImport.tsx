@@ -6,7 +6,8 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
 import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
-import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction } from "./ReviewParts";
+import { operatorReviewDefaults, suggestedEventBusiness } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
@@ -40,6 +41,20 @@ function firstSummary(e: SourceEventAnalysis): { when: string; where: string; mo
 
 type Result = Awaited<ReturnType<typeof commitEventImportBatch>>;
 
+export type OperatorBusiness = { id: string; name: string };
+
+/** Admin Event Import (operator context): no initiating Business. Each
+ * Event carries its OWN reviewed Business (or none), saved through the
+ * caller's admin-authorized actions. Omitted by the Business importer,
+ * whose behavior is unchanged. */
+export interface OperatorImportMode {
+  commit: (items: { review: EventImportReview; businessId: string | null }[]) => Promise<Result>;
+  createLocation: InlinePlaceAction;
+  /** Renders the searchable Business picker for one Event. */
+  renderBusinessPicker: (props: { id: string; initial: OperatorBusiness | null; onSelect: (b: OperatorBusiness | null) => void }) => React.ReactNode;
+  doneHref: string;
+}
+
 export default function MultiEventImport({
   businessId,
   businessName,
@@ -53,6 +68,7 @@ export default function MultiEventImport({
   onTryAnother,
   categories,
   formats,
+  operator,
 }: {
   businessId: string;
   businessName: string;
@@ -68,6 +84,8 @@ export default function MultiEventImport({
   categories: Category[];
   /** Event Formats V1 — the kind='event_format' vocabulary. */
   formats: Category[];
+  /** Admin Event Import only — see OperatorImportMode. */
+  operator?: OperatorImportMode;
 }) {
   const upcoming = events.filter((e) => !e.past);
   const pastEvents = events.filter((e) => e.past);
@@ -78,6 +96,8 @@ export default function MultiEventImport({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelection(events, intent)));
   const [showPast, setShowPast] = useState(false);
   const [reviews, setReviews] = useState<Record<string, EventImportReview>>({});
+  // Operator only: each Event's own Business (never one for the batch).
+  const [businessFor, setBusinessFor] = useState<Record<string, OperatorBusiness | null>>({});
   // Locations created (or chosen from duplicates) during this Review, by
   // place key — every Event at that same place resolves to the same one.
   const [createdLocations, setCreatedLocations] = useState<ReviewCreatedLocation[]>([]);
@@ -114,13 +134,16 @@ export default function MultiEventImport({
     // Business goes back to the list).
     const nextReviews = { ...reviews };
     const nextPast = { ...initialPast };
+    const nextBusiness = { ...businessFor };
     for (const e of chosen) {
       if (!nextReviews[e.key]) {
-        nextReviews[e.key] = reviewDefaults(e.candidate, e.matches, intent, businessName);
+        nextReviews[e.key] = operator ? operatorReviewDefaults(e.candidate, e.matches) : reviewDefaults(e.candidate, e.matches, intent, businessName);
         nextPast[e.key] = pastReviewOccurrences(e.candidate, e.matches);
+        if (operator) nextBusiness[e.key] = suggestedEventBusiness(e.matches);
       }
     }
     setReviews(nextReviews);
+    setBusinessFor(nextBusiness);
     setInitialPast(nextPast);
     setExpanded(null);
     setError(null);
@@ -164,10 +187,12 @@ export default function MultiEventImport({
     setError(null);
     startSave(async () => {
       try {
-        const result = await commitEventImportBatch(
-          businessId,
-          ready.map((e) => reviews[e.key])
-        );
+        const result = operator
+          ? await operator.commit(ready.map((e) => ({ review: reviews[e.key], businessId: businessFor[e.key]?.id ?? null })))
+          : await commitEventImportBatch(
+              businessId,
+              ready.map((e) => reviews[e.key])
+            );
         if (!result.ok) {
           setError(result.error);
           return;
@@ -182,7 +207,7 @@ export default function MultiEventImport({
 
   // ── Done ──
   if (phase === "done" && outcome) {
-    const summary = batchSummary(outcome.result.results, outcome.skipped, businessName);
+    const summary = batchSummary(outcome.result.results, outcome.skipped, operator ? "Findmi" : businessName);
     const group = (label: string, titles: string[]) =>
       titles.length > 0 && (
         <div>
@@ -205,7 +230,7 @@ export default function MultiEventImport({
           <p className="text-card-title font-semibold text-findmi-700">{summary.headline}</p>
           {group("Added", summary.added)}
           {group("Requests Sent", summary.connected)}
-          {group("Already on Your Schedule", summary.already)}
+          {group(operator ? "Already on Findmi" : "Already on Your Schedule", summary.already)}
           {summary.attention.length > 0 && (
             <div>
               <p className="text-label font-bold uppercase text-subtle">Needs Attention · {summary.attention.length}</p>
@@ -225,15 +250,17 @@ export default function MultiEventImport({
           )}
         </section>
         <div className="flex flex-col gap-2">
-          <Link href={`${businessHome}?tab=findmi-here`} className={primaryButtonClass}>
-            View Schedule
+          <Link href={operator ? operator.doneHref : `${businessHome}?tab=findmi-here`} className={primaryButtonClass}>
+            {operator ? "View Events" : "View Schedule"}
           </Link>
           <button type="button" onClick={onTryAnother} className={secondaryButtonClass}>
             Import More
           </button>
-          <Link href={businessHome} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
-            Back To {businessName}
-          </Link>
+          {!operator && (
+            <Link href={businessHome} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
+              Back To {businessName}
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -249,7 +276,11 @@ export default function MultiEventImport({
             <h2 id="batch-review" className="text-label font-bold uppercase text-subtle">
               Review {chosen.length} {chosen.length === 1 ? "Event" : "Events"}
             </h2>
-            <p className="mt-1 text-metadata text-muted">Tap an Event to check or edit it. Each is added to {businessName} on its own.</p>
+            <p className="mt-1 text-metadata text-muted">
+              {operator
+                ? "Tap an Event to check or edit it. Each is added to Findmi on its own, with its own Business. Findmi is never shown as the organizer."
+                : `Tap an Event to check or edit it. Each is added to ${businessName} on its own.`}
+            </p>
           </div>
           {placeGroups.length > 0 && (
             <div aria-labelledby="batch-places" className="flex flex-col gap-2">
@@ -299,7 +330,13 @@ export default function MultiEventImport({
                         </span>
                         <span className="mt-1 flex flex-wrap items-center gap-1">
                           <span className={`inline-flex rounded-full px-2 py-0.5 text-microcopy font-semibold ${STATUS_STYLE[status.kind]}`}>{BATCH_STATUS_LABEL[status.kind]}</span>
-                          <span className="inline-flex rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-secondary">{persistNote(review, businessName).label}</span>
+                          {operator ? (
+                            <span className="inline-flex max-w-full truncate rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-secondary">
+                              {joining ? "Already on Findmi" : businessFor[e.key] ? `Business: ${businessFor[e.key]!.name}` : "No Business Linked"}
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-secondary">{persistNote(review, businessName).label}</span>
+                          )}
                         </span>
                         {status.missing.length > 0 && <span className="mt-0.5 block text-microcopy text-red-700">Missing: {status.missing.join(", ")}</span>}
                       </span>
@@ -311,6 +348,23 @@ export default function MultiEventImport({
                   </div>
                   {isOpen && (
                     <div id={`batch-${e.key}`} className="flex flex-col gap-3 border-t border-black/[0.05] px-3 pb-3 pt-2.5">
+                      {operator ? (
+                        !joining && (
+                          <div>
+                            {operator.renderBusinessPicker({
+                              id: `batch-${e.key}-business`,
+                              initial: businessFor[e.key] ?? null,
+                              onSelect: (b) => setBusinessFor((prev) => ({ ...prev, [e.key]: b })),
+                            })}
+                            <p className="mt-1 text-microcopy text-muted">
+                              {businessFor[e.key]
+                                ? `${businessFor[e.key]!.name} is shown at this Event (Who You’ll Find Here). It isn’t made the host.`
+                                : `No Business is linked. ${review.organizer ? `The source’s organizer, “${review.organizer}”, is kept as text only.` : "Choose one only if the source names it."}`}
+                            </p>
+                          </div>
+                        )
+                      ) : (
+                      <>
                       <p className="text-metadata text-muted">{persistNote(review, businessName).line}</p>
                       <div>
                         <span className={labelClass}>{businessName} Is</span>
@@ -323,13 +377,15 @@ export default function MultiEventImport({
                           ))}
                         </div>
                       </div>
+                      </>
+                      )}
                       {match && (review.intent === "participating" || match.hostedByThisBusiness) && (
                         <fieldset className="flex flex-col gap-2">
                           <legend className="mb-1 text-metadata text-secondary">
                             {match.confidence === "strong" ? "Already on Findmi: " : "Possibly on Findmi: "}
                             <span className="font-semibold text-primary">{match.name}</span>
                           </legend>
-                          <Choice checked={review.useEventId === match.id} onChange={() => set({ useEventId: match.id })} title="Yes, It’s This Event" line={review.intent === "participating" ? "We’ll ask the organizer to confirm your Business." : "It’s already on your schedule."} />
+                          <Choice checked={review.useEventId === match.id} onChange={() => set({ useEventId: match.id })} title="Yes, It’s This Event" line={operator ? "Nothing new is added — it’s already on Findmi." : review.intent === "participating" ? "We’ll ask the organizer to confirm your Business." : "It’s already on your schedule."} />
                           <Choice checked={review.useEventId === null} onChange={() => set({ useEventId: null })} title="No, It’s Different" line="Add it with the details below." />
                         </fieldset>
                       )}
@@ -352,7 +408,7 @@ export default function MultiEventImport({
                           matches={matchesOf(e)}
                           initialPast={initialPast[e.key] ?? []}
                           idPrefix={`batch-${e.key}-`}
-                          quickCreate={{ online: Boolean(e.candidate.online), onCreated: onLocationCreated }}
+                          quickCreate={{ online: Boolean(e.candidate.online), onCreated: onLocationCreated, createAction: operator?.createLocation }}
                         />
                       )}
                       {!joining && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
@@ -468,7 +524,7 @@ export default function MultiEventImport({
           Review Selected ({selected.size})
         </button>
         <button type="button" onClick={onTryAnother} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
-          Try Another Link
+          {operator ? "Start Over" : "Try Another Link"}
         </button>
         <Link href={manualHref} className="py-1 text-center text-metadata font-semibold text-muted hover:text-secondary">
           {intent === "hosting" ? "Create Manually Instead" : "Add Manually Instead"}

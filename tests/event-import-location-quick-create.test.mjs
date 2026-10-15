@@ -29,6 +29,9 @@ const PARTS = read("src/app/(public)/account/business/[id]/import-event/ReviewPa
 const IMPORTER = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
 const MULTI = read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx");
 const LOC_ACTIONS = read("src/app/(public)/account/location/actions.ts");
+// The creation rules themselves live in one shared core (lib/places/inline-place.ts),
+// which createInlinePlace calls after its own member authorization.
+const INLINE_PLACE = read("src/lib/places/inline-place.ts");
 
 const place = (over = {}) => ({
   venueName: "The Glasshouse", address: "660 12th Avenue", city: "New York", state: "NY", postalCode: "10019",
@@ -73,7 +76,7 @@ test("8. hidden / broad / none / online Events can never Quick Create", () => {
   assert.match(PARTS, /eligible: canOfferLocationCreate\(place, \{ locationVisibility: review\.locationVisibility, online: quickCreate\.online \}\)/);
   assert.match(PARTS, /\{!place\.useLocationId && quickCreate\?\.eligible && <QuickCreateLocation /);
   assert.match(IMPORTER, /online: Boolean\(candidate\.online\)/);
-  assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated \}\}/);
+  assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation \}\}/);
 });
 
 // ── CREATE / SELECT ───────────────────────────────────────────────────────
@@ -105,19 +108,21 @@ test("9. a created Location becomes the place's selected canonical Location (a s
 });
 
 test("10–11. duplicates are offered (Use This Location) and Create Anyway is the explicit force path", () => {
-  assert.match(PARTS, /const result = await createInlinePlace\(form\);/, "the one existing creation action");
+  assert.match(PARTS, /createAction = createInlinePlace,/, "the one existing creation action by default");
+  assert.match(PARTS, /const result = await createAction\(form\);/);
   assert.match(PARTS, /if \(force\) form\.set\("force", "1"\);/);
   assert.match(PARTS, /\} else if \(result\.status === "duplicates"\) \{\n\s+setDuplicates\(result\.duplicates\);/, "nothing inserted on a likely duplicate");
   assert.match(PARTS, /onClick=\{\(\) => onSelected\(toCreated\(key, d\)\)\}[\s\S]{0,200}Use This Location/, "a duplicate is selected the same way as a created one");
   assert.match(PARTS, /onClick=\{\(\) => create\(true\)\}[\s\S]{0,200}Create Anyway/);
   // createInlinePlace itself still runs the server duplicate check unless forced.
-  assert.match(LOC_ACTIONS, /if \(!force\) \{\n\s+const duplicates = await findLikelyDuplicateLocations\(admin, \{ name, address, city, state, postal_code: postalCode \}\);\n\s+if \(duplicates\.length > 0\) return \{ status: "duplicates", duplicates \};/);
+  assert.match(LOC_ACTIONS, /return insertInlinePlace\(admin, formData\);\n\}/, "createInlinePlace delegates to the shared core");
+  assert.match(INLINE_PLACE, /if \(!force\) \{\n\s+const duplicates = await findLikelyDuplicateLocations\(admin, \{ name, address, city, state, postal_code: postalCode \}\);\n\s+if \(duplicates\.length > 0\) return \{ status: "duplicates", duplicates \};/);
 });
 
 test("12 & 20. creating a Location never creates the Event, and grants no ownership / membership / Business link", () => {
   const component = PARTS.slice(PARTS.indexOf("export function QuickCreateLocation"));
   assert.doesNotMatch(component, /commitEventImport|persistEventImport|from\("events"\)/);
-  const fn = LOC_ACTIONS.slice(LOC_ACTIONS.indexOf("export async function createInlinePlace"));
+  const fn = INLINE_PLACE.slice(INLINE_PLACE.indexOf("export async function insertInlinePlace"));
   const body = fn.slice(0, fn.indexOf("\n}\n"));
   assert.match(body, /\.insert\(\{ name, slug, address, city, state, postal_code: postalCode, is_demo: true \}\)/, "unlisted, never published");
   assert.doesNotMatch(body, /location_members"\)\.insert|business_locations|create_owned_location|from\("events"\)/);

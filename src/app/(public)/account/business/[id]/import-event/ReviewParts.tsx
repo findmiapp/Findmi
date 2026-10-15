@@ -9,6 +9,7 @@ import type { Category } from "@/lib/types";
 import type { EventCandidate, EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
 import { createInlinePlace } from "@/app/(public)/account/location/actions";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
+import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import {
   canOfferLocationCreate,
   decidePlaceFrom,
@@ -45,7 +46,7 @@ export function WhenWhereEditor({
   /** Missing-Location Quick Create: `online` feeds the eligibility check;
    * `onCreated` lets the parent show the new Location as a match and reuse
    * it for the same place elsewhere (other Events in a batch). */
-  quickCreate?: { online: boolean; onCreated: (location: ReviewCreatedLocation) => void };
+  quickCreate?: { online: boolean; onCreated: (location: ReviewCreatedLocation) => void; createAction?: InlinePlaceAction };
 }) {
   const [open, setOpen] = useState<Set<string>>(() => initiallyOpen(review.occurrences));
   const [pastDates, setPastDates] = useState<ReviewOccurrence[]>(initialPast);
@@ -84,6 +85,7 @@ export function WhenWhereEditor({
             set(selectCreatedLocation(review, target, location));
             quickCreate.onCreated(location);
           },
+          createAction: quickCreate.createAction,
         }
       : undefined;
 
@@ -341,14 +343,20 @@ export function PlaceFields({
           </div>
         </div>
       )}
-      {!place.useLocationId && quickCreate?.eligible && <QuickCreateLocation idPrefix={idPrefix} place={place} onSelected={quickCreate.onSelected} />}
+      {!place.useLocationId && quickCreate?.eligible && <QuickCreateLocation idPrefix={idPrefix} place={place} onSelected={quickCreate.onSelected} createAction={quickCreate.createAction} />}
     </>
   );
 }
 
+/** The server action that creates the Location — the member-facing
+ * createInlinePlace by default; Admin Event Import passes its admin-session
+ * counterpart (same shared rules, lib/places/inline-place.ts). */
+export type InlinePlaceAction = (formData: FormData) => Promise<CreateInlineLocationResult>;
+
 export interface PlaceQuickCreate {
   eligible: boolean;
   onSelected: (location: ReviewCreatedLocation) => void;
+  createAction?: InlinePlaceAction;
 }
 
 const toCreated = (key: string, l: SelectedLocationDetail): ReviewCreatedLocation => ({
@@ -371,10 +379,12 @@ export function QuickCreateLocation({
   idPrefix,
   place,
   onSelected,
+  createAction = createInlinePlace,
 }: {
   idPrefix: string;
   place: ReviewPlace;
   onSelected: (location: ReviewCreatedLocation) => void;
+  createAction?: InlinePlaceAction;
 }) {
   const key = placeKeyFor(place);
   const [open, setOpen] = useState(false);
@@ -397,7 +407,7 @@ export function QuickCreateLocation({
     for (const [k, v] of Object.entries(fields)) form.set(k, v);
     if (force) form.set("force", "1");
     try {
-      const result = await createInlinePlace(form);
+      const result = await createAction(form);
       if (result.status === "created") {
         setOpen(false);
         onSelected(toCreated(key, result.location));

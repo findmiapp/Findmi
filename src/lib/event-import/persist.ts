@@ -363,7 +363,7 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
  * No Appearance is invented for anyone else, and the Business never
  * becomes host_business_id. */
 async function persistParticipatingEvent(input: NormalizedImport, deps: PersistDeps): Promise<EventImportOutcome> {
-  const { admin, businessId } = deps;
+  const { businessId } = deps;
   const scheduleHref = `${businessHome(businessId)}?tab=findmi-here`;
 
   // 1. Retry / second Business: the same source Event is never created twice.
@@ -376,6 +376,30 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
     return { ok: true, kind: "requested", title: input.title, viewHref: scheduleHref };
   }
 
+  const created = await createSourceEvent(input, deps, businessId);
+  if (!created.ok) return created;
+  // 4b. The Business's Event-linked schedule item for every date.
+  await deps.propagateDates(created.eventId, created.occurrenceIds);
+
+  await deps.notifyNewEvent(created.eventId, input.title, input.occurrences[0].start);
+  return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true };
+}
+
+/** What creating a source Event needs — no initiating Business, no user. */
+export type SourceEventDeps = Pick<PersistDeps, "admin" | "storeImage" | "geography" | "uniqueEventSlug" | "propagateDates" | "findEventBySourceUrl">;
+
+/** Steps 2–4a of persistParticipatingEvent, shared with Admin Event Import:
+ * ONE new Event with no host and no owner (published like every new Event,
+ * the source's organizer name as text only), its reviewed category and
+ * Formats, the given Business's approved all-dates participation when one
+ * is given (written BEFORE the dates, so creating them realizes it per
+ * date), and one Event Occurrence per date at its own place. */
+async function createSourceEvent(
+  input: NormalizedImport,
+  deps: SourceEventDeps,
+  participantBusinessId: string | null
+): Promise<{ ok: true; eventId: string; occurrenceIds: string[] } | { ok: false; error: string; field?: string }> {
+  const { admin } = deps;
   const slug = await deps.uniqueEventSlug(input.title);
   if (!slug) return { ok: false, error: "Add the event's name.", field: "title" };
   const first = input.occurrences[0];
@@ -417,10 +441,12 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   await writeEventFormats(admin, eventId, input);
 
   // 4a. Participation first, so creating the dates realizes it per date.
-  const { error: rosterError } = await admin
-    .from("event_businesses")
-    .upsert({ event_id: eventId, business_id: businessId, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" });
-  if (rosterError) return { ok: false, error: "Couldn't add this Event. Please try again." };
+  if (participantBusinessId) {
+    const { error: rosterError } = await admin
+      .from("event_businesses")
+      .upsert({ event_id: eventId, business_id: participantBusinessId, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" });
+    if (rosterError) return { ok: false, error: "Couldn't add this Event. Please try again." };
+  }
 
   // 3. One Event Occurrence per date, each at its own place.
   const { data: occs } = await admin
@@ -446,11 +472,37 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
     await admin.from("events").update({ trashed_at: new Date().toISOString() }).eq("id", eventId);
     return { ok: false, error: "Couldn't add this Event's dates. Please try again." };
   }
-  // 4b. The Business's Event-linked schedule item for every date.
-  await deps.propagateDates(eventId, ids);
+  return { ok: true, eventId, occurrenceIds: ids };
+}
 
-  await deps.notifyNewEvent(eventId, input.title, first.start);
-  return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true };
+/** Admin Event Import — an OPERATOR discovery import of a public
+ * third-party Event. No initiating Business and no signed-in person:
+ *
+ *   - a confirmed existing Findmi Event, or one already carrying the same
+ *     source link → nothing is written (never a second copy, and an
+ *     existing Event's host / roster is never changed from here);
+ *   - otherwise ONE new Event through the same createSourceEvent path as a
+ *     Business's participating import: host_business_id null, no owner
+ *     membership, the source's organizer name as text only — never Findmi,
+ *     never the operator;
+ *   - `businessId` is THIS Event's own reviewed Business (the operator
+ *     confirmed it per Event in Review) or null. When given it gets the
+ *     existing participation relationship (event_businesses approved for
+ *     all dates — what Admin's own Event roster records for a Business
+ *     that is at an Event) and its Event-linked schedule item per date.
+ *     It never becomes the host. Null → the Event is saved unassociated.
+ *
+ * The caller validates `businessId` names a real Business. */
+export async function persistDiscoveryEvent(input: NormalizedImport, businessId: string | null, deps: SourceEventDeps): Promise<EventImportOutcome> {
+  const adminHref = (id: string) => `/admin/events/${id}`;
+  if (input.useEventId) return { ok: true, kind: "already", title: input.title, viewHref: adminHref(input.useEventId) };
+  const existing = input.sourceUrl && deps.findEventBySourceUrl ? await deps.findEventBySourceUrl(input.sourceUrl) : null;
+  if (existing) return { ok: true, kind: "already", title: input.title, viewHref: adminHref(existing.id) };
+
+  const created = await createSourceEvent(input, deps, businessId);
+  if (!created.ok) return created;
+  if (businessId) await deps.propagateDates(created.eventId, created.occurrenceIds);
+  return { ok: true, kind: "scheduled", title: input.title, viewHref: adminHref(created.eventId), newEvent: true };
 }
 
 /** Event-level place: the shared one, or — for a multi-place Event — only
