@@ -2,12 +2,12 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import MultiEventImport, { type OperatorImportMode } from "@/app/(public)/account/business/[id]/import-event/MultiEventImport";
+import MultiEventImport, { type OperatorBusiness, type OperatorImportMode } from "@/app/(public)/account/business/[id]/import-event/MultiEventImport";
 import { inputClass, sectionClass } from "@/app/(public)/account/business/[id]/import-event/ReviewParts";
 import { RelationField } from "@/components/admin/RelationPicker";
 import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
 import type { Category } from "@/lib/types";
-import { adminAnalyzeEventText, adminAnalyzeEventUrl, adminCommitEventImportBatch, adminCreateImportLocation } from "./actions";
+import { adminAnalyzeEventText, adminAnalyzeEventUrl, adminCommitEventImportBatch, adminCreateImportBusiness, adminCreateImportLocation } from "./actions";
 
 /** Admin Event Import — the operator entry to the existing importer:
  * Paste Details (one Event, or several marked EVENT 1 … === END EVENT 1 ===)
@@ -22,20 +22,122 @@ const primaryButtonClass =
 const OPERATOR: OperatorImportMode = {
   commit: adminCommitEventImportBatch,
   createLocation: adminCreateImportLocation,
-  renderBusinessPicker: ({ id, initial, onSelect }) => (
-    <RelationField
-      key={id}
-      label="Business at This Event"
-      name={id}
-      entity="businesses"
-      placeholder="Search Businesses…"
-      clearLabel="No Business"
-      initial={initial ? { value: initial.id, label: initial.name } : null}
-      onSelect={(r) => onSelect(r ? { id: r.value, name: r.label } : null)}
-    />
+  renderBusinessPicker: ({ id, initial, evidence, onSelect, onCreated }) => (
+    <>
+      <RelationField
+        // Remounts when the Business is set from elsewhere (batch reuse).
+        key={`${id}-${initial?.id ?? "none"}`}
+        label="Business at This Event"
+        name={id}
+        entity="businesses"
+        placeholder="Search Businesses…"
+        clearLabel="No Business"
+        initial={initial ? { value: initial.id, label: initial.name } : null}
+        onSelect={(r) => onSelect(r ? { id: r.value, name: r.label } : null)}
+      />
+      {!initial && <QuickCreateBusiness idPrefix={id} evidence={evidence} onCreated={onCreated} />}
+    </>
   ),
   doneHref: "/admin/events?new=1",
 };
+
+/** Missing-Business Quick Create — the Business counterpart of the Review's
+ * "+ Create New Location": prefilled from the Business the source names,
+ * created only when the Admin confirms (adminCreateImportBusiness: pending
+ * review, no owner or membership). A likely existing Business is offered
+ * instead; "Create Anyway" is the explicit override. */
+function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: string; evidence: string | null; onCreated: (b: OperatorBusiness) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [website, setWebsite] = useState("");
+  const [duplicates, setDuplicates] = useState<{ id: string; name: string; isPublic: boolean }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function create(force: boolean) {
+    setBusy(true);
+    setError(null);
+    const form = new FormData();
+    form.set("name", name);
+    form.set("website_url", website);
+    if (force) form.set("force", "1");
+    try {
+      const result = await adminCreateImportBusiness(form);
+      if (result.status === "created") {
+        setOpen(false);
+        onCreated(result.business);
+      } else if (result.status === "duplicates") setDuplicates(result.duplicates);
+      else setError(result.error);
+    } catch {
+      setError("Couldn't add this Business. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setName(evidence ?? "");
+          setWebsite("");
+          setDuplicates([]);
+          setError(null);
+          setOpen(true);
+        }}
+        className="mt-1 w-fit py-1 text-metadata font-semibold text-accent hover:underline"
+      >
+        + Create New Business
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-xl border border-black/[0.08] bg-black/[0.02] p-3">
+      <p className="text-microcopy text-muted">Adds the Business to Findmi for review (not public yet). No one is made its owner.</p>
+      <label htmlFor={`${idPrefix}-new-name`} className="text-metadata font-semibold text-secondary">
+        Business Name
+      </label>
+      <input id={`${idPrefix}-new-name`} value={name} onChange={(e) => setName(e.target.value)} autoCapitalize="words" maxLength={160} className={inputClass} />
+      <label htmlFor={`${idPrefix}-new-site`} className="text-metadata font-semibold text-secondary">
+        Website (Optional)
+      </label>
+      <input id={`${idPrefix}-new-site`} type="url" inputMode="url" autoCapitalize="none" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" className={inputClass} />
+      {duplicates.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-metadata text-amber-900">This Business may already be on Findmi:</p>
+          {duplicates.map((d) => (
+            <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
+              <span className="min-w-0 truncate text-metadata text-primary">
+                {d.name}
+                {!d.isPublic && <span className="text-muted"> · Not public</span>}
+              </span>
+              <button type="button" onClick={() => onCreated({ id: d.id, name: d.name })} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
+                Use This Business
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => create(true)} disabled={busy} className="w-fit text-metadata font-semibold text-muted hover:text-secondary">
+            Create Anyway
+          </button>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="text-metadata text-red-700">
+          {error}
+        </p>
+      )}
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => create(false)} disabled={busy || !name.trim()} className="rounded-lg bg-findmi px-3 py-2 text-metadata font-bold text-white disabled:opacity-60">
+          {busy ? "Adding…" : "Create Business"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="text-metadata font-semibold text-muted hover:text-secondary">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminEventImporter({ categories, formats }: { categories: Category[]; formats: Category[] }) {
   const [method, setMethod] = useState<Method>("text");

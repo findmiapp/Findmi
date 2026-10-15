@@ -197,6 +197,14 @@ export function batchItemStatus(review: EventImportReview, matches: EventImportM
   return { kind: "ready", missing };
 }
 
+/** Which reviewed dates are missing a start or end time ("Sat, Oct 17",
+ * or "Date 3" when the day itself is missing) — so "Missing: Start and end
+ * time" names the actual dates, never the first one. */
+export function datesMissingTime(review: EventImportReview): string[] {
+  if (review.useEventId) return [];
+  return review.occurrences.flatMap((o, i) => (o.startTime && o.endTime ? [] : [formatDay(o.date) || `Date ${i + 1}`]));
+}
+
 export const BATCH_STATUS_LABEL: Record<BatchStatusKind, string> = {
   ready: "Ready",
   needs_details: "Needs Details",

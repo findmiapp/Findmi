@@ -232,7 +232,7 @@ export function placeFrom(rest: string): ImportedVenue | null {
   return { ...EMPTY_VENUE, name, address };
 }
 
-function occurrenceFor(date: string, times: ReturnType<typeof parseTimes>, venue: ImportedVenue | null, evidence: string): ImportedOccurrence | null {
+export function occurrenceFor(date: string, times: ReturnType<typeof parseTimes>, venue: ImportedVenue | null, evidence: string): ImportedOccurrence | null {
   const place = venue ?? { ...EMPTY_VENUE };
   if (!times) return { start: date, end: null, hasTime: false, venue: place, evidence };
   const start = localDateTimeToIso(`${date}T${times.startTime}`);
@@ -344,6 +344,64 @@ export function dedupeOccurrences(list: ImportedOccurrence[]): ImportedOccurrenc
       return true;
     })
     .sort((a, b) => a.start.localeCompare(b.start) || venueKey(a.venue).localeCompare(venueKey(b.venue)));
+}
+
+/** Admin structured paste only — an explicit date FIELD ("Dates: October
+ * 15–18, 2026", "Oct 15, Oct 17", "2026-10-15", "10/15/2026–10/18/2026")
+ * → every date it names, chronological. Unlike free text, a range here is
+ * every day in it: the field itself states the dates. Null when any part
+ * can't be read (left for Review — never guessed), or a range is longer
+ * than `maxRangeDays`. */
+export function explicitDateList(text: string, ctx: ScheduleContext, maxRangeDays = 31): string[] | null {
+  const t = text
+    .replace(/\u00A0/g, " ")
+    .replace(/\b(20\d{2})-(\d{2})-(\d{2})\b/g, (_, y: string, m: string, d: string) => `${Number(m)}/${Number(d)}/${y}`)
+    .trim();
+  const tokens = dateTokens(t);
+  if (tokens.length === 0 || t.length > MAX_LINE_CHARS) return null;
+  const stated = /\b(20\d{2})\b/.exec(t);
+  const yearOf = (tk: DateToken) => tk.year ?? (stated ? Number(stated[1]) : resolveYear(tk.month, tk.day, ctx));
+  const dayOf = (tk: DateToken) => (validDay(yearOf(tk), tk.month, tk.day) ? ymd(yearOf(tk), tk.month, tk.day) : null);
+  const out = new Set<string>();
+  let leftover = t;
+  const span = (from: string, to: string) => {
+    const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+    if (days < 0 || days > maxRangeDays) return false;
+    for (let i = 0; i <= days; i++) out.add(addDays(from, i));
+    return true;
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    const tk = tokens[i];
+    const start = dayOf(tk);
+    if (!start) return null;
+    leftover = leftover.replace(t.slice(tk.index, tk.end), " ");
+    const next = tokens[i + 1];
+    const gap = next ? t.slice(tk.end, next.index) : "";
+    if (next && RANGE_JOIN.test(gap.replace(/,\s*(20\d{2})\s*/, " "))) {
+      const end = dayOf(next);
+      if (!end || !span(start, end)) return null;
+      leftover = leftover.replace(t.slice(next.index, next.end), " ");
+      i++;
+      continue;
+    }
+    const dayRange = DAY_ONLY_RANGE.exec(t.slice(tk.end));
+    if (dayRange && !(next && next.index === tk.end)) {
+      const endTok = { ...tk, day: Number(dayRange[1]) };
+      const end = dayOf(endTok);
+      if (!end || !span(start, end)) return null;
+      leftover = leftover.replace(dayRange[0], " ");
+      continue;
+    }
+    out.add(start);
+  }
+  // Nothing else may be written there (separators, years, weekdays only).
+  const rest = leftover
+    .replace(/\b20\d{2}\b/g, " ")
+    .replace(WEEKDAY_WORD, " ")
+    .replace(/\b(?:and|to|through|thru)\b/gi, " ")
+    .replace(/[\s,;&/–—\-.]+/g, "");
+  if (rest) return null;
+  return [...out].sort();
 }
 
 /** The one year a page's text mentions (2000–2099), if exactly one. */

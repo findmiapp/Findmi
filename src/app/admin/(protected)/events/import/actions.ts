@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
-import { analyzeEventText, analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
+import { analyzeEventText, analyzeEventUrl, defaultEventImportDeps, type EventImportDeps } from "@/lib/event-import/engine";
+import { findBusinessMatches } from "@/lib/business-matching";
+import { insertInlineBusiness, type InlineBusinessResult } from "@/lib/admin/inline-business";
 import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { asOperatorAnalysis } from "@/lib/event-import/operator";
 import { normalizeReview, persistDiscoveryEvent, type SourceEventDeps } from "@/lib/event-import/persist";
@@ -37,12 +39,31 @@ async function adminClient(): Promise<SupabaseClient | null> {
   }
 }
 
-/** Paste Details (one Event, or several explicitly marked Events). Writes nothing. */
+/** The engine's dependencies for an operator import: the shared ones, with
+ * Business matching widened to what Admin may see. The source's Business
+ * name is suggested only when exactly ONE real Business has that exact
+ * name (live or pending review — never demo, archived or trashed);
+ * anything ambiguous stays unresolved for the operator. */
+function operatorDeps(admin: SupabaseClient): EventImportDeps {
+  return {
+    ...defaultEventImportDeps(admin),
+    matchOrganizer: async (name, city, state) => {
+      const exact = (await findBusinessMatches(admin, { name, city, state })).filter((m) => m.reasons.includes("name_location"));
+      if (exact.length !== 1) return null;
+      const { data } = await admin.from("businesses").select("id, name, archived_at, trashed_at").eq("id", exact[0].id).maybeSingle();
+      const row = data as { id: string; name: string; archived_at: string | null; trashed_at: string | null } | null;
+      return row && !row.archived_at && !row.trashed_at ? { id: row.id, name: row.name } : null;
+    },
+  };
+}
+
+/** Paste Details (one Event, or several explicitly marked Events; blocks
+ * in the structured "Event Name: …" syntax are read field by field). Writes nothing. */
 export async function adminAnalyzeEventText(text: string): Promise<EventImportAnalysis> {
   const admin = await adminClient();
   if (!admin) return { ok: false, code: "server" };
   try {
-    const result = await analyzeEventText({ text: typeof text === "string" ? text : "", businessId: null, rateKey: ADMIN_RATE_KEY }, defaultEventImportDeps(admin));
+    const result = await analyzeEventText({ text: typeof text === "string" ? text : "", businessId: null, rateKey: ADMIN_RATE_KEY, structured: true }, operatorDeps(admin));
     return publicImportAnalysis(asOperatorAnalysis(result, { url: "", name: "Pasted Details", platform: null }));
   } catch {
     return { ok: false, code: "server" };
@@ -55,7 +76,7 @@ export async function adminAnalyzeEventUrl(url: string): Promise<EventImportAnal
   if (!admin) return { ok: false, code: "server" };
   try {
     const link = typeof url === "string" ? url.trim() : "";
-    const result = await analyzeEventUrl({ url: link, businessId: null, rateKey: ADMIN_RATE_KEY }, defaultEventImportDeps(admin));
+    const result = await analyzeEventUrl({ url: link, businessId: null, rateKey: ADMIN_RATE_KEY }, operatorDeps(admin));
     return publicImportAnalysis(asOperatorAnalysis(result, { url: link, name: null, platform: null }));
   } catch {
     return { ok: false, code: "server" };
@@ -70,6 +91,20 @@ export async function adminCreateImportLocation(formData: FormData): Promise<Cre
   const admin = await adminClient();
   if (!admin) return { status: "error", error: "Your Admin session has ended. Sign in again." };
   return insertInlinePlace(admin, formData);
+}
+
+/** Missing-Business Quick Create — only on the operator's explicit action
+ * in Review (never from text alone). See lib/admin/inline-business.ts:
+ * pending review, no owner / membership / claim / Pro / verification, and
+ * no Event link until that reviewed Event is saved. */
+export async function adminCreateImportBusiness(formData: FormData): Promise<InlineBusinessResult> {
+  const admin = await adminClient();
+  if (!admin) return { status: "error", error: "Your Admin session has ended. Sign in again." };
+  try {
+    return await insertInlineBusiness(admin, { name: formData.get("name"), websiteUrl: formData.get("website_url"), force: formData.get("force") === "1" });
+  } catch {
+    return { status: "error", error: "Couldn't add this Business. Please try again." };
+  }
 }
 
 function discoveryDeps(admin: SupabaseClient): SourceEventDeps {

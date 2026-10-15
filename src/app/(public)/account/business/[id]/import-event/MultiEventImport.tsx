@@ -5,9 +5,9 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
-import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
+import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
 import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction } from "./ReviewParts";
-import { operatorReviewDefaults, suggestedEventBusiness } from "@/lib/event-import/operator";
+import { businessEvidenceKey, eventBusinessEvidence, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
@@ -50,8 +50,17 @@ export type OperatorBusiness = { id: string; name: string };
 export interface OperatorImportMode {
   commit: (items: { review: EventImportReview; businessId: string | null }[]) => Promise<Result>;
   createLocation: InlinePlaceAction;
-  /** Renders the searchable Business picker for one Event. */
-  renderBusinessPicker: (props: { id: string; initial: OperatorBusiness | null; onSelect: (b: OperatorBusiness | null) => void }) => React.ReactNode;
+  /** Renders the searchable Business picker for one Event. `evidence` is
+   * the Business the source names (for Quick Create); `onCreated` reports a
+   * Business the operator just created there, offered to every other Event
+   * in this Review naming the same Business. */
+  renderBusinessPicker: (props: {
+    id: string;
+    initial: OperatorBusiness | null;
+    evidence: string | null;
+    onSelect: (b: OperatorBusiness | null) => void;
+    onCreated: (b: OperatorBusiness) => void;
+  }) => React.ReactNode;
   doneHref: string;
 }
 
@@ -98,6 +107,19 @@ export default function MultiEventImport({
   const [reviews, setReviews] = useState<Record<string, EventImportReview>>({});
   // Operator only: each Event's own Business (never one for the batch).
   const [businessFor, setBusinessFor] = useState<Record<string, OperatorBusiness | null>>({});
+  // Businesses created during this Review, by the source's Business name.
+  const [createdBusinesses, setCreatedBusinesses] = useState<Record<string, OperatorBusiness>>({});
+  const evidenceKeyOf = (e: SourceEventAnalysis) => businessEvidenceKey(eventBusinessEvidence(e.candidate));
+  function onBusinessCreated(fromKey: string, b: OperatorBusiness) {
+    const evKey = evidenceKeyOf(byKey.get(fromKey)!);
+    if (evKey) setCreatedBusinesses((prev) => ({ ...prev, [evKey]: b }));
+    setBusinessFor((prev) => {
+      const next = { ...prev, [fromKey]: b };
+      // Same Business named elsewhere in this batch, not yet linked → the same one.
+      if (evKey) for (const e of events) if (e.key !== fromKey && !next[e.key] && evidenceKeyOf(e) === evKey) next[e.key] = b;
+      return next;
+    });
+  }
   // Locations created (or chosen from duplicates) during this Review, by
   // place key — every Event at that same place resolves to the same one.
   const [createdLocations, setCreatedLocations] = useState<ReviewCreatedLocation[]>([]);
@@ -137,9 +159,9 @@ export default function MultiEventImport({
     const nextBusiness = { ...businessFor };
     for (const e of chosen) {
       if (!nextReviews[e.key]) {
-        nextReviews[e.key] = operator ? operatorReviewDefaults(e.candidate, e.matches) : reviewDefaults(e.candidate, e.matches, intent, businessName);
+        nextReviews[e.key] = operator ? operatorReviewDefaults(e.candidate, e.matches, { categories, formats }) : reviewDefaults(e.candidate, e.matches, intent, businessName);
         nextPast[e.key] = pastReviewOccurrences(e.candidate, e.matches);
-        if (operator) nextBusiness[e.key] = suggestedEventBusiness(e.matches);
+        if (operator) nextBusiness[e.key] = suggestedEventBusiness(e.matches) ?? createdBusinesses[evidenceKeyOf(e)] ?? null;
       }
     }
     setReviews(nextReviews);
@@ -338,7 +360,11 @@ export default function MultiEventImport({
                             <span className="inline-flex rounded-full bg-black/[0.05] px-2 py-0.5 text-microcopy font-semibold text-secondary">{persistNote(review, businessName).label}</span>
                           )}
                         </span>
-                        {status.missing.length > 0 && <span className="mt-0.5 block text-microcopy text-red-700">Missing: {status.missing.join(", ")}</span>}
+                        {status.missing.length > 0 && (
+                          <span className="mt-0.5 block text-microcopy text-red-700">
+                            Missing: {status.missing.map((m) => (m === "Start and end time" ? `Start and end time (${datesMissingTime(review).join(", ")})` : m)).join(", ")}
+                          </span>
+                        )}
                       </span>
                       <ChevronIcon direction={isOpen ? "up" : "down"} className="mt-1 h-4 w-4 shrink-0 text-subtle" />
                     </button>
@@ -354,13 +380,20 @@ export default function MultiEventImport({
                             {operator.renderBusinessPicker({
                               id: `batch-${e.key}-business`,
                               initial: businessFor[e.key] ?? null,
+                              evidence: eventBusinessEvidence(e.candidate),
                               onSelect: (b) => setBusinessFor((prev) => ({ ...prev, [e.key]: b })),
+                              onCreated: (b) => onBusinessCreated(e.key, b),
                             })}
                             <p className="mt-1 text-microcopy text-muted">
                               {businessFor[e.key]
                                 ? `${businessFor[e.key]!.name} is shown at this Event (Who You’ll Find Here). It isn’t made the host.`
                                 : `No Business is linked. ${review.organizer ? `The source’s organizer, “${review.organizer}”, is kept as text only.` : "Choose one only if the source names it."}`}
                             </p>
+                            {e.candidate.structured &&
+                              (() => {
+                                const open = resolveStructuredTaxonomy(e.candidate.structured, categories, formats).unresolved;
+                                return open.length > 0 ? <p className="mt-1 text-microcopy text-amber-900">Not a Findmi Category or Format: {open.join(", ")}. Choose one below.</p> : null;
+                              })()}
                           </div>
                         )
                       ) : (

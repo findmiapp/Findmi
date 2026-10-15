@@ -91,6 +91,20 @@ export interface EventCandidate {
   /** What the source made public about the place (exact / broad / hidden /
    * none). "hidden" occurrences carry no venue name or street address. */
   locationVisibility?: LocationVisibility;
+  /** Admin structured paste only (./structured-paste.ts): explicit field
+   * values that aren't Event columns — Business evidence, taxonomy names to
+   * resolve against the canonical vocabulary, and notes for Review. */
+  structured?: StructuredEventHints;
+}
+
+export interface StructuredEventHints {
+  /** "Primary Business:" / "Business:" — matched against the Business directory. */
+  business: string | null;
+  category: string | null;
+  subcategory: string | null;
+  formats: string[];
+  /** Plain-language notes for Review (unreadable values, fields not saved). */
+  notes: string[];
 }
 
 export const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };

@@ -35,6 +35,7 @@ import {
   type EventAiClient,
   type EventImportImageMediaType,
 } from "./ai";
+import { extractStructuredEvent } from "./structured-paste";
 import { splitPastedEvents, type PastedEventSegment } from "./paste-segments";
 import { extractTextEventCandidate, mergeTextAi, needsTextAssist, PASTE_MAX_CHARS, PASTE_MIN_CHARS, type TextExtraction } from "./text-source";
 import {
@@ -338,7 +339,17 @@ export async function analyzeEventUrl(
  * read, and nothing is ever resolved against this. */
 const TEXT_BASE = new URL("https://evidence.findmi.invalid/");
 
-export async function analyzeEventText(input: { text: string; businessId: string | null; rateKey: string }, deps: EventImportDeps): Promise<EventImportAnalysis> {
+export async function analyzeEventText(
+  input: {
+    text: string;
+    businessId: string | null;
+    rateKey: string;
+    /** Admin Event Import only: read blocks written in the structured field
+     * syntax ("Event Name: …") deterministically (./structured-paste.ts). */
+    structured?: boolean;
+  },
+  deps: EventImportDeps
+): Promise<EventImportAnalysis> {
   const text = typeof input.text === "string" ? input.text.trim() : "";
   if (text.length > PASTE_MAX_CHARS) return { ok: false, code: "text_too_long" };
   if (text.length < PASTE_MIN_CHARS) return { ok: false, code: "text_no_event" };
@@ -350,17 +361,22 @@ export async function analyzeEventText(input: { text: string; businessId: string
   // Several explicitly marked Events (EVENT n … === END EVENT n ===)?
   const split = splitPastedEvents(text, PASTE_MIN_CHARS);
   if (split.kind === "error") return { ok: false, code: split.code, detail: split.detail };
-  if (split.kind === "none") return analyzeOneTextEvent(text, input.businessId, now, deps);
+  const structured = input.structured === true;
+  if (split.kind === "none") return analyzeOneTextEvent(text, input.businessId, now, deps, true, structured);
   // A single marked Event is just one Event (its own details).
-  if (split.segments.length === 1) return analyzeOneTextEvent(split.segments[0].text, input.businessId, now, deps);
-  return analyzePastedEvents(split.segments, input.businessId, now, deps);
+  if (split.segments.length === 1) return analyzeOneTextEvent(split.segments[0].text, input.businessId, now, deps, true, structured);
+  return analyzePastedEvents(split.segments, input.businessId, now, deps, structured);
 }
 
 /** ONE Event's pasted details → a single candidate (the original Paste
  * Details path, unchanged): deterministic reading, AI assist only when the
  * reading is incomplete (and `allowAi`), the multiple-Events refusal,
  * attendance/privacy evidence, matching. */
-async function analyzeOneTextEvent(text: string, businessId: string | null, now: number, deps: EventImportDeps, allowAi = true): Promise<EventImportAnalysis> {
+async function analyzeOneTextEvent(text: string, businessId: string | null, now: number, deps: EventImportDeps, allowAi = true, structured = false): Promise<EventImportAnalysis> {
+  // Admin structured fields: explicit values, read deterministically — no
+  // AI rediscovery, no free-text guessing.
+  const fields = structured ? extractStructuredEvent(text, { now }) : null;
+  if (fields) return finishEvidenceCandidate(fields, fields.candidate, "text_no_event", businessId, now, deps);
   const extraction = extractTextEventCandidate(text, { now, origin: "text" });
   if (extraction.multipleEvents) return { ok: false, code: "multiple_events" };
   const hidden = pageAttendance(extraction.controls, extraction.lines, TEXT_BASE).hiddenLocation;
@@ -384,22 +400,24 @@ const PASTE_AI_WINDOW_MS = 40_000;
  * Event that can't be read is never dropped silently: the others still go
  * to Review and a warning names it; if none can be read, the whole paste
  * fails. */
-async function analyzePastedEvents(segments: PastedEventSegment[], businessId: string | null, now: number, deps: EventImportDeps): Promise<EventImportAnalysis> {
+async function analyzePastedEvents(segments: PastedEventSegment[], businessId: string | null, now: number, deps: EventImportDeps, structured = false): Promise<EventImportAnalysis> {
   const started = Date.now();
   const results: { number: number; analysis: EventImportAnalysis }[] = [];
   for (let i = 0; i < segments.length; i += PASTE_CONCURRENCY) {
     const allowAi = Date.now() - started + EVENT_AI_TIMEOUT_MS <= PASTE_AI_WINDOW_MS;
     const batch = await Promise.all(
-      segments.slice(i, i + PASTE_CONCURRENCY).map(async (seg) => ({ number: seg.number, analysis: await analyzeOneTextEvent(seg.text, businessId, now, deps, allowAi) }))
+      segments.slice(i, i + PASTE_CONCURRENCY).map(async (seg) => ({ number: seg.number, analysis: await analyzeOneTextEvent(seg.text, businessId, now, deps, allowAi, structured) }))
     );
     results.push(...batch);
   }
 
   const events: SourceEventAnalysis[] = [];
   const unread: string[] = [];
+  const notes: string[] = [];
   for (const { number, analysis } of results) {
     if (analysis.ok && analysis.kind === "single") {
       const candidate = analysis.candidate;
+      for (const note of candidate.structured?.notes ?? []) notes.push(`EVENT ${number}: ${note}`);
       const past = candidate.occurrences.length > 0 && candidate.occurrences.every((o) => o.past);
       events.push({ key: `pasted-event-${number}`, candidate, matches: analysis.matches, warnings: analysis.warnings, past, alreadyOnSchedule: null });
     } else {
@@ -409,7 +427,7 @@ async function analyzePastedEvents(segments: PastedEventSegment[], businessId: s
   }
   if (events.length === 0) return { ok: false, code: "paste_no_events", detail: unread.join(" ") };
 
-  const warnings = [...unread];
+  const warnings = [...unread, ...notes];
   if (events.every((e) => e.past)) warnings.push("All the pasted Events have already happened.");
   return { ok: true, kind: "multi", source: { url: "", name: "Pasted Details", platform: null }, events, warnings };
 }
@@ -472,6 +490,7 @@ async function finishEvidenceCandidate(
   if (!hasPlace && locationVisibility !== "hidden") warnings.push("We couldn't find where it's happening. Add the place below.");
   if (locationVisibility === "hidden") warnings.push("The organizer shares the exact location only after registration. Findmi won't show or link an address.");
   if (Object.values(candidate.sources).includes("ai")) warnings.push(`Some details were read from your ${noun} by Findmi. Please check them.`);
+  warnings.push(...(candidate.structured?.notes ?? []));
 
   const matches = await matchCandidate(candidate, businessId, deps);
   candidate = { ...candidate, persistAs: classifyEvidencePersistence(candidate) };
@@ -494,6 +513,7 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
   const placeKey = candidate.place ? venueKey(candidate.place) : "";
   if (candidate.place?.name && placeKey && !places.has(placeKey)) places.set(placeKey, candidate.place);
   const city = candidate.occurrences.find((o) => o.venue.city)?.venue ?? (candidate.place?.city ? candidate.place : null);
+  const businessEvidence = candidate.structured?.business ?? candidate.organizer;
   try {
     const [eventMatch, locationLists, organizer, existing] = await Promise.all([
       first ? deps.matchEvent(draftFor(candidate, first)) : Promise.resolve(null),
@@ -508,7 +528,9 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
           return { key, v, found, possible };
         })
       ),
-      candidate.organizer ? deps.matchOrganizer(candidate.organizer, city?.city ?? null, city?.state ?? null) : Promise.resolve(null),
+      // The Business named by the source: an Admin structured "Primary
+      // Business:" when given, else the organizer the text names.
+      businessEvidence ? deps.matchOrganizer(businessEvidence, city?.city ?? null, city?.state ?? null) : Promise.resolve(null),
       first && businessId ? deps.matchExistingAppearance(businessId, draftFor(candidate, first)) : Promise.resolve(null),
     ]);
     if (eventMatch) {

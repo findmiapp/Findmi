@@ -196,7 +196,7 @@ test("D. Admin can paste ONE Event → a one-row Review list (no Business lookup
   assert.equal(d.calls.rate, 1);
   // Failures pass through untouched (same copy as every importer).
   assert.deepEqual(O.asOperatorAnalysis({ ok: false, code: "text_no_event" }, PASTED), { ok: false, code: "text_no_event" });
-  assert.match(ACTIONS, /analyzeEventText\(\{ text: typeof text === "string" \? text : "", businessId: null, rateKey: ADMIN_RATE_KEY \}/);
+  assert.match(ACTIONS, /analyzeEventText\(\{ text: typeof text === "string" \? text : "", businessId: null, rateKey: ADMIN_RATE_KEY, structured: true \}/);
   assert.match(ACTIONS, /analyzeEventUrl\(\{ url: link, businessId: null, rateKey: ADMIN_RATE_KEY \}/);
 });
 
