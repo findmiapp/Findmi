@@ -24,6 +24,7 @@ import {
 } from "./brand-images";
 import {
   buildCandidateFromExtraction,
+  conventionalTouchIconUrl,
   fetchBrandWebsite,
   isDeliberateBlock,
   prepareBrandWebsite,
@@ -175,16 +176,39 @@ export interface BrandBuildDiagnostic {
   fetch: { status: number | null; contentType: string | null; finalHost: string | null; redirects: number | null; bytes: number | null; size: string | null; challenge?: boolean } | null;
   signals: BrandPageSignals | null;
   candidates: { logo: number; logoStrong: number; svgLogo: number; cover: number; manifestUrl: boolean } | null;
-  verifications: { role: BrandImageRole; kind: "raster" | "svg"; host: string; ok: boolean; reason: string | null }[];
+  /** In verification order (= rank order within each tier). `source` is the
+   * candidate's provenance tier — never its URL. */
+  verifications: { role: BrandImageRole; kind: "raster" | "svg"; source: BrandCandidateSource; host: string; ok: boolean; reason: string | null }[];
   manifest: { attempted: boolean; icons: number; failed: boolean } | null;
   result: {
     logo: "page_logo" | "icon" | "svg" | "manifest" | null;
     cover: boolean;
     instagram: "seed" | "page" | "search" | null;
     staged?: { logo: boolean; cover: boolean };
+    /** The logo that reached the draft: its provenance tier, verified size
+     * and normalization (dark plate / AVIF). Numbers only. */
+    logoDetail?: { source: BrandCandidateSource; width: number; height: number; normalized: string | null } | null;
+    /** Where the proposed category came from: schema.org type map, the
+     * grounded AI choice (existing categories only), or none. */
+    category?: "schema" | "ai" | "none";
   } | null;
   /** "disabled" = A3b flag off (search never runs); else the search status or "not_run". */
   instagramSearch: string;
+}
+
+/** A logo/cover candidate's provenance tier (diagnostics only). */
+export type BrandCandidateSource = "page_logo" | "icon" | "svg_logo" | "inline_svg" | "manifest" | "conventional_icon" | "cover";
+
+/** Classifies a candidate URL against the extraction it came from (exported for tests). */
+export function brandCandidateSource(url: string, role: BrandImageRole, profile: ExtractedBrandProfile | null, finalUrl: string | null): BrandCandidateSource {
+  if (role === "cover") return "cover";
+  if (url.startsWith("data:image/svg+xml")) return "inline_svg";
+  if (profile?.svgLogoCandidates?.includes(url)) return "svg_logo";
+  const logos = profile?.logoCandidates ?? [];
+  const i = logos.indexOf(url);
+  if (i >= 0) return i < (profile?.logoStrongCount ?? logos.length) ? "page_logo" : "icon";
+  if (finalUrl && url === conventionalTouchIconUrl(finalUrl)) return "conventional_icon";
+  return "manifest";
 }
 
 export interface WebsiteAnalysisDeps {
@@ -365,6 +389,9 @@ async function analyzeSource(
     }
     return finishOuter(href, outcome, extra, result);
   };
+  // Set once the extraction is known (before any image is verified).
+  let sourceProfile: ExtractedBrandProfile | null = null;
+  let sourceFinalUrl: string | null = null;
   const buildDeps: WebsiteAnalysisDeps = {
     ...deps,
     verifyImage: async (url, role) => {
@@ -379,7 +406,16 @@ async function analyzeSource(
       } catch {
         reason = "threw";
       }
-      if (diag.verifications.length < 20) diag.verifications.push({ role, kind: isSvgCandidateUrl(url) || url.startsWith("data:image/svg+xml") ? "svg" : "raster", host: hostOf(url), ok, reason: ok ? null : (reason ?? "rejected") });
+      if (diag.verifications.length < 20) {
+        diag.verifications.push({
+          role,
+          kind: isSvgCandidateUrl(url) || url.startsWith("data:image/svg+xml") ? "svg" : "raster",
+          source: brandCandidateSource(url, role, sourceProfile, sourceFinalUrl),
+          host: hostOf(url),
+          ok,
+          reason: ok ? null : (reason ?? "rejected"),
+        });
+      }
       return ok;
     },
     ...(deps.fetchManifestIcons
@@ -447,6 +483,8 @@ async function analyzeSource(
     manifestUrl: Boolean(entry.profile.manifestUrl),
   };
 
+  sourceProfile = entry.profile;
+  sourceFinalUrl = entry.finalUrl;
   const built = await buildCandidateFromExtraction(
     website,
     { profile: entry.profile, finalUrl: entry.finalUrl },
@@ -500,6 +538,17 @@ async function analyzeSource(
             : "manifest",
       cover: Boolean(p.coverUrl),
       instagram: seed.instagram ? "seed" : entry.profile.instagramHandle ? "page" : p.instagramHandle ? "search" : null,
+      logoDetail: (() => {
+        if (!p.logoUrl) return null;
+        const img = verifiedImages.get(`logo|${p.logoUrl}`);
+        return {
+          source: brandCandidateSource(p.logoUrl, "logo", entry.profile, entry.finalUrl),
+          width: img?.width ?? 0,
+          height: img?.height ?? 0,
+          normalized: img?.normalized ?? null,
+        };
+      })(),
+      category: !p.categoryId ? "none" : built.fields.category ? "schema" : "ai",
     };
     if (built.ai.instagramSearch) diag.instagramSearch = built.ai.instagramSearch.status;
     else if (built.ai.reused && deps.discoverInstagram) diag.instagramSearch = "cached";

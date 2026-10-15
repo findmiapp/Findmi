@@ -586,7 +586,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           <div className="flex items-start gap-2">
             {business.logo_url && (
               <div className="relative -mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
-                <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
+                <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="112px" className="object-contain" />
                 <ImageZoomTrigger images={[business.logo_url]} alt={business.name} label={`View larger logo for ${business.name}`} />
               </div>
             )}

@@ -82,6 +82,8 @@ export interface VerifiedBrandImage {
   validated: ImageValidationResult;
   width: number;
   height: number;
+  /** Diagnostics: how the verified bytes were normalized, if at all. */
+  normalized?: "avif" | "dark_plate";
 }
 
 export type BrandImageRejection = "fetch_failed" | "invalid_file" | "type_mismatch" | "unreadable" | "unsuitable" | "graphic" | "blank";
@@ -461,6 +463,7 @@ export async function verifyRasterBytes(
   // negotiated WebP under a JPEG label — none of which makes the bytes
   // unsafe. Never HEIC (converted) and never anything that isn't an image.
   if (!BRAND_IMAGE_DECLARED_TYPES.has(declared)) return { ok: false, reason: "type_mismatch" };
+  let normalized: VerifiedBrandImage["normalized"];
   // AVIF (whatever the label): identified by its bytes, decoded by the
   // trusted stack and normalized to WebP — only the normalized bytes go on.
   if (isAvifBytes(body)) {
@@ -468,6 +471,7 @@ export async function verifyRasterBytes(
     if (!webp) return { ok: false, reason: "invalid_file" };
     body = webp;
     declared = "image/webp";
+    normalized = "avif";
   }
   const sniffType = declared.startsWith("image/") && !["image/jpg", "image/pjpeg", "image/avif", "image/x-png"].includes(declared) ? declared : "image/png";
   let validated = await validateImageFile(new File([new Uint8Array(body)], "brand-candidate", { type: sniffType }));
@@ -499,6 +503,7 @@ export async function verifyRasterBytes(
         const plated = await validateImageFile(new File([new Uint8Array(body)], "brand-candidate", { type: "image/png" }));
         if ("error" in plated) return { ok: false, reason: "unreadable" };
         validated = plated;
+        normalized = "dark_plate";
       }
     } catch {
       return { ok: false, reason: "unreadable" };
@@ -513,7 +518,7 @@ export async function verifyRasterBytes(
       return { ok: false, reason: "unreadable" };
     }
   }
-  return { ok: true, image: { role, body, validated, width, height } };
+  return { ok: true, image: { role, body, validated, width, height, ...(normalized ? { normalized } : {}) } };
 }
 
 /** Fetches and fully verifies one candidate. Never throws. */

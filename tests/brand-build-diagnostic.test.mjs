@@ -86,7 +86,7 @@ test("real page whose images all fail verification: each candidate's role, kind,
   assert.deepEqual(d.candidates, { logo: 1, logoStrong: 0, svgLogo: 1, cover: 1, manifestUrl: true });
   const byKind = d.verifications.map((v) => `${v.role}:${v.kind}:${v.host}:${v.reason}`).sort();
   assert.deepEqual(byKind, ["cover:raster:img.brand-cdn.com:fetch_failed", "logo:raster:www.brand-site.com:unsuitable", "logo:raster:www.brand-site.com:unsuitable", "logo:svg:img.brand-cdn.com:invalid_file"], "declared touch icon, then the conventional /apple-touch-icon.png");
-  assert.deepEqual(d.result, { logo: null, cover: false, instagram: "page" });
+  assert.deepEqual(d.result, { logo: null, cover: false, instagram: "page", logoDetail: null, category: "none" });
   assert.equal(d.instagramSearch, "disabled", "A3b flag off → search never runs");
   assert.equal(d.imagesEnabled, true);
   noLeak(raw);
