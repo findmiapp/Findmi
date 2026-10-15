@@ -16,6 +16,7 @@ import {
 } from "./brand-instagram-discovery";
 import {
   clearStagedBrandImages,
+  brandImageFailureReason,
   fetchVerifiedBrandImage,
   stageBrandImage,
   type BrandImageRole,
@@ -378,7 +379,7 @@ async function analyzeSource(
       } catch {
         reason = "threw";
       }
-      if (diag.verifications.length < 20) diag.verifications.push({ role, kind: isSvgCandidateUrl(url) ? "svg" : "raster", host: hostOf(url), ok, reason: ok ? null : (reason ?? "rejected") });
+      if (diag.verifications.length < 20) diag.verifications.push({ role, kind: isSvgCandidateUrl(url) || url.startsWith("data:image/svg+xml") ? "svg" : "raster", host: hostOf(url), ok, reason: ok ? null : (reason ?? "rejected") });
       return ok;
     },
     ...(deps.fetchManifestIcons
@@ -576,7 +577,10 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
     verifyImage: async (url, role) => (await fetchVerifiedBrandImage(url, role)).ok,
     verifyImageDetailed: async (url, role) => {
       const r = await fetchVerifiedBrandImage(url, role);
-      return r.ok ? { ok: true, reason: null, image: r.image } : { ok: false, reason: r.reason };
+      if (r.ok) return { ok: true, reason: null, image: r.image };
+      // "fetch_failed:blocked_by_site:403", "fetch_failed:timeout", … — the
+      // safe-fetch code and status only (never the URL or response).
+      return { ok: false, reason: brandImageFailureReason(r) };
     },
     stageVerified: (userId, image) => stageBrandImage(admin, userId, image),
     clearStaged: (userId) => clearStagedBrandImages(admin, userId),

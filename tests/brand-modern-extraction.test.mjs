@@ -160,7 +160,8 @@ test("retry: 403 / other 4xx / a long Retry-After are never retried", async () =
 
 // ── LOGO: inline SVG brand marks ──────────────────────────────────────────
 
-const WORDMARK = '<svg viewBox="0 0 200 50" aria-label="Marc Brand"><title>Marc Brand</title><path d="M0 0h200v50H0z"/></svg>';
+// Letter-shaped strokes (a solid block is not a wordmark — see svgLogoInk).
+const WORDMARK = '<svg viewBox="0 0 200 50" aria-label="Marc Brand"><title>Marc Brand</title><path d="M0 0h12v50H0zM24 0h12v50H24zM48 0h12v50H48zM72 0h12v50H72zM96 0h12v50H96zM120 0h12v50h-12zM144 0h12v50h-12zM168 0h12v50h-12z"/></svg>';
 
 test("logo: an inline SVG home-link brand mark in the header is a candidate; UI icons and random SVGs are not", () => {
   const html = page(

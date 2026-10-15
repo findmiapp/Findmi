@@ -207,7 +207,10 @@ test("logo: a real 180×180 PNG passes; tiny favicon, ICO, SVG, bad MIME, MIME/b
   ];
   for (const [headers, body, reason] of cases) {
     const r = await IMG.fetchVerifiedBrandImage(U, "logo", verifyWith({ [U]: { headers, body } }));
-    assert.deepEqual(r, { ok: false, reason }, `${headers["content-type"]} → ${reason}`);
+    assert.deepEqual({ ok: r.ok, reason: r.reason }, { ok: false, reason }, `${headers["content-type"]} → ${reason}`);
+    // A fetch failure now says which safe-fetch class it was (never the URL).
+    if (reason === "fetch_failed") assert.ok(r.fetch && typeof r.fetch.code === "string", "fetch detail present");
+    else assert.equal(r.fetch, undefined);
   }
 });
 

@@ -794,7 +794,17 @@ export function isChallengePage(html: string): boolean {
 
 export type SafeFetchImageResult =
   | { ok: true; url: URL; body: Buffer; contentType: string; bytes: number; redirects: number }
-  | { ok: false; code: SafeFetchFailure; redirects: number; limit?: SafeFetchSizeLimit; declaredBytes?: number | null };
+  | {
+      ok: false;
+      code: SafeFetchFailure;
+      redirects: number;
+      limit?: SafeFetchSizeLimit;
+      declaredBytes?: number | null;
+      /** Diagnostics only (already carried by every failure): the last
+       * HTTP status and host seen. */
+      status?: number;
+      host?: string;
+    };
 
 /** Retrieves ONE raster image (PNG/JPEG/WebP/GIF, ≤ 5 MB) under exactly the
  * same destination/DNS/redirect/TLS/timeout rules as safeFetchHtml. The

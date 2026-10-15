@@ -1,7 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchImageResult } from "./safe-fetch";
+import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchFailure, type SafeFetchImageResult } from "./safe-fetch";
 import { inlineSvgMarkup, isInlineSvgCandidate, isSvgCandidateUrl } from "./brand-website-extract";
 import { validateImageFile, type ImageValidationResult } from "./imageUploadValidation";
 import { storePublicImage } from "./image-variants-server";
@@ -46,11 +46,17 @@ const PREVIEW_MAX_BYTES = 120 * 1024;
  * a sliver (≤ 6:1), ≤ 6000px. Cover: landscape ≥ 600×300, between 1.2:1
  * and 3.5:1 (anything wider is a wordmark/banner strip — never a cover;
  * empty beats a bad cover), ≤ 10000px. Exported for tests. */
-export function isSuitableBrandImage(role: BrandImageRole, width: number, height: number): boolean {
+/** A VECTOR wordmark (an SVG brand mark, rasterized by Findmi): one line of
+ * lettering is legitimately wider than a raster logo file — "MARC JACOBS"
+ * is ~9–11:1. Up to 12:1 is allowed for those only; a raster logo keeps
+ * the 6:1 limit, and anything wider is a rule/strap, not a mark. */
+export const SVG_WORDMARK_MAX_RATIO = 12;
+
+export function isSuitableBrandImage(role: BrandImageRole, width: number, height: number, opts: { vectorWordmark?: boolean } = {}): boolean {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
   const long = Math.max(width, height);
   const short = Math.min(width, height);
-  if (role === "logo") return long >= 120 && short >= 40 && long / short <= 6 && long <= 6000;
+  if (role === "logo") return long >= 120 && short >= 40 && long / short <= (opts.vectorWordmark ? SVG_WORDMARK_MAX_RATIO : 6) && long <= 6000;
   return width >= 600 && height >= 300 && width / height >= 1.2 && width / height <= 3.5 && long <= 10000;
 }
 
@@ -62,7 +68,29 @@ export interface VerifiedBrandImage {
   height: number;
 }
 
-export type BrandImageRejection = "fetch_failed" | "invalid_file" | "type_mismatch" | "unreadable" | "unsuitable" | "graphic";
+export type BrandImageRejection = "fetch_failed" | "invalid_file" | "type_mismatch" | "unreadable" | "unsuitable" | "graphic" | "blank";
+
+/** Why a candidate's fetch failed — the safe-fetch failure code and the
+ * last HTTP status, nothing else (no URL, query, body or headers). Lets
+ * diagnostics tell "the CDN refused (403)" from a timeout, a rejected
+ * redirect or a non-image response. */
+export interface BrandImageFetchDetail {
+  code: SafeFetchFailure | "error";
+  status?: number;
+}
+/** Diagnostics label for a failed verification (exported for tests):
+ * "fetch_failed:blocked_by_site:403", "fetch_failed:timeout", "blank", …
+ * — the reason, the safe-fetch code and the HTTP status only. */
+export function brandImageFailureReason(r: { reason: BrandImageRejection; fetch?: BrandImageFetchDetail }): string {
+  if (!r.fetch) return r.reason;
+  return `${r.reason}:${r.fetch.code}${r.fetch.status !== undefined ? `:${r.fetch.status}` : ""}`;
+}
+type VerifyResult = { ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection; fetch?: BrandImageFetchDetail };
+const fetchFailure = (f: { code: SafeFetchFailure; status?: number }): VerifyResult => ({
+  ok: false,
+  reason: "fetch_failed",
+  fetch: { code: f.code, ...(typeof f.status === "number" ? { status: f.status } : {}) },
+});
 
 /** Low-information graphic test for COVER candidates (exported for
  * tests): a 64px thumbnail (transparency flattened onto white), colours
@@ -232,28 +260,65 @@ export async function rasterizeSvgLogo(body: Buffer): Promise<Buffer | null> {
 async function fetchVerifiedSvgLogo(
   url: string,
   deps: BrandImageDeps
-): Promise<{ ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection }> {
+): Promise<VerifyResult> {
   const fetched = await (deps.fetchSvg ?? ((u: string) => safeFetchSvg(u)))(url);
-  if (!fetched.ok) return { ok: false, reason: "fetch_failed" };
+  if (!fetched.ok) return fetchFailure(fetched);
   if (fetched.contentType.split(";")[0].trim().toLowerCase() !== "image/svg+xml") return { ok: false, reason: "type_mismatch" };
-  if (!inspectSvg(fetched.body).ok) return { ok: false, reason: "invalid_file" };
-  const png = await rasterizeSvgLogo(fetched.body);
+  return verifySvgLogoBody(fetched.body);
+}
+
+/** One SVG logo body (fetched or inline) → verified PNG: strict inspection,
+ * rasterization, a visible-mark check, then the raster checks with the
+ * vector-wordmark aspect allowance. */
+async function verifySvgLogoBody(body: Buffer): Promise<VerifyResult> {
+  if (!inspectSvg(body).ok) return { ok: false, reason: "invalid_file" };
+  const png = await rasterizeSvgLogo(body);
   if (!png || png.length === 0) return { ok: false, reason: "unreadable" };
-  return verifyRasterBytes(png, "image/png", "logo");
+  try {
+    const ink = await svgLogoInk(png);
+    if (!ink.visible) return { ok: false, reason: "blank" };
+    if (ink.solid) return { ok: false, reason: "unsuitable" };
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  }
+  return verifyRasterBytes(png, "image/png", "logo", { vectorWordmark: true });
+}
+
+/** What a rasterized SVG mark actually draws (exported for tests), measured
+ * on a ≤ 200px thumbnail: "ink" = pixels with alpha ≥ 32.
+ *   visible — at least 1% ink, and that ink is not all near-white (a white
+ *             mark on a transparent background is invisible on Findmi's
+ *             white surfaces — empty beats an invisible logo);
+ *   solid   — ≥ 97% ink: a filled block/background, not lettering. */
+export const SVG_INK_MIN = 0.01;
+export const SVG_INK_SOLID = 0.97;
+export async function svgLogoInk(png: Buffer): Promise<{ coverage: number; visible: boolean; solid: boolean }> {
+  const { data, info } = await sharp(png, { limitInputPixels: BRAND_IMAGE_PIXEL_LIMIT })
+    .ensureAlpha()
+    .resize(200, 200, { fit: "inside" })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const pixels = info.width * info.height;
+  let ink = 0;
+  let dark = 0;
+  for (let i = 0; i + 3 < data.length; i += info.channels) {
+    if (data[i + 3] < 32) continue;
+    ink += 1;
+    // Rec. 601 luma; anything not near-white counts as visible ink.
+    if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 235) dark += 1;
+  }
+  const coverage = pixels ? ink / pixels : 0;
+  return { coverage, visible: coverage >= SVG_INK_MIN && dark / pixels >= SVG_INK_MIN, solid: coverage >= SVG_INK_SOLID };
 }
 
 /** Modern site extraction — the page's INLINE SVG brand mark (carried as an
  * untrusted data: candidate, never fetched): the same strict inspection,
  * rasterization and raster verification as a fetched SVG logo. Never
  * stored or served as SVG. */
-async function verifyInlineSvgLogo(url: string): Promise<{ ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection }> {
+async function verifyInlineSvgLogo(url: string): Promise<VerifyResult> {
   const markup = inlineSvgMarkup(url);
   if (!markup) return { ok: false, reason: "invalid_file" };
-  const body = Buffer.from(markup, "utf8");
-  if (!inspectSvg(body).ok) return { ok: false, reason: "invalid_file" };
-  const png = await rasterizeSvgLogo(body);
-  if (!png || png.length === 0) return { ok: false, reason: "unreadable" };
-  return verifyRasterBytes(png, "image/png", "logo");
+  return verifySvgLogoBody(Buffer.from(markup, "utf8"));
 }
 
 /** The raster verification shared by fetched rasters and rasterized SVGs:
@@ -262,8 +327,9 @@ async function verifyInlineSvgLogo(url: string): Promise<{ ok: true; image: Veri
 export async function verifyRasterBytes(
   body: Buffer,
   declared: string,
-  role: BrandImageRole
-): Promise<{ ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection }> {
+  role: BrandImageRole,
+  opts: { vectorWordmark?: boolean } = {}
+): Promise<VerifyResult> {
   // The ACTUAL bytes decide the format (validateImageFile sniffs them and
   // reports the real type, which is what gets stored). A CDN's label is
   // only a first gate: real CDNs say image/jpg, octet-stream, or serve a
@@ -284,7 +350,7 @@ export async function verifyRasterBytes(
   } catch {
     return { ok: false, reason: "unreadable" };
   }
-  if (!width || !height || !isSuitableBrandImage(role, width, height)) return { ok: false, reason: "unsuitable" };
+  if (!width || !height || !isSuitableBrandImage(role, width, height, opts)) return { ok: false, reason: "unsuitable" };
   // A cover must be a picture, not a wordmark/logo share graphic. When
   // in doubt the cover is dropped (a human can add one at review).
   if (role === "cover") {
@@ -302,7 +368,7 @@ export async function fetchVerifiedBrandImage(
   url: string,
   role: BrandImageRole,
   deps: BrandImageDeps = defaultDeps
-): Promise<{ ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection }> {
+): Promise<VerifyResult> {
   try {
     // VCL A3c — an SVG LOGO candidate takes the inspect → rasterize path;
     // covers never do (an SVG cover URL still fails the raster fetch).
@@ -310,10 +376,10 @@ export async function fetchVerifiedBrandImage(
     // An inline brand mark is a logo only; as a cover it is refused.
     if (isInlineSvgCandidate(url)) return role === "logo" ? await verifyInlineSvgLogo(url) : { ok: false, reason: "type_mismatch" };
     const fetched = await deps.fetchImage(url);
-    if (!fetched.ok) return { ok: false, reason: "fetch_failed" };
+    if (!fetched.ok) return fetchFailure(fetched);
     return await verifyRasterBytes(fetched.body, fetched.contentType.split(";")[0].trim().toLowerCase(), role);
   } catch {
-    return { ok: false, reason: "fetch_failed" };
+    return { ok: false, reason: "fetch_failed", fetch: { code: "error" } };
   }
 }
 
