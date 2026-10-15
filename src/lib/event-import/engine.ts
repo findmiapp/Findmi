@@ -27,6 +27,7 @@ import {
 import { fetchFailureLogLine, safeFetchDiagnostics } from "./diagnostics";
 import {
   assistWithAi,
+  EVENT_AI_TIMEOUT_MS,
   defaultEventAiClient,
   readEventImageWithAi,
   readEventTextWithAi,
@@ -34,6 +35,7 @@ import {
   type EventAiClient,
   type EventImportImageMediaType,
 } from "./ai";
+import { splitPastedEvents, type PastedEventSegment } from "./paste-segments";
 import { extractTextEventCandidate, mergeTextAi, needsTextAssist, PASTE_MAX_CHARS, PASTE_MIN_CHARS, type TextExtraction } from "./text-source";
 import {
   venueKey,
@@ -340,15 +342,76 @@ export async function analyzeEventText(input: { text: string; businessId: string
   const text = typeof input.text === "string" ? input.text.trim() : "";
   if (text.length > PASTE_MAX_CHARS) return { ok: false, code: "text_too_long" };
   if (text.length < PASTE_MIN_CHARS) return { ok: false, code: "text_no_event" };
+  // One paste = one request against the per-person limit, however many
+  // Events it marks.
   if (deps.isRateLimited(input.rateKey)) return { ok: false, code: "rate_limited" };
   const now = deps.now();
+
+  // Several explicitly marked Events (EVENT n … === END EVENT n ===)?
+  const split = splitPastedEvents(text, PASTE_MIN_CHARS);
+  if (split.kind === "error") return { ok: false, code: split.code, detail: split.detail };
+  if (split.kind === "none") return analyzeOneTextEvent(text, input.businessId, now, deps);
+  // A single marked Event is just one Event (its own details).
+  if (split.segments.length === 1) return analyzeOneTextEvent(split.segments[0].text, input.businessId, now, deps);
+  return analyzePastedEvents(split.segments, input.businessId, now, deps);
+}
+
+/** ONE Event's pasted details → a single candidate (the original Paste
+ * Details path, unchanged): deterministic reading, AI assist only when the
+ * reading is incomplete (and `allowAi`), the multiple-Events refusal,
+ * attendance/privacy evidence, matching. */
+async function analyzeOneTextEvent(text: string, businessId: string | null, now: number, deps: EventImportDeps, allowAi = true): Promise<EventImportAnalysis> {
   const extraction = extractTextEventCandidate(text, { now, origin: "text" });
   if (extraction.multipleEvents) return { ok: false, code: "multiple_events" };
   const hidden = pageAttendance(extraction.controls, extraction.lines, TEXT_BASE).hiddenLocation;
-  const ai = needsTextAssist(extraction.candidate, hidden) ? await readEventTextWithAi(text, deps.ai) : null;
+  const ai = allowAi && needsTextAssist(extraction.candidate, hidden) ? await readEventTextWithAi(text, deps.ai) : null;
   if (ai?.multiple_events) return { ok: false, code: "multiple_events" };
   const sanitized = ai ? sanitizeEventAiOutput(ai, text, { now, yearHint: extraction.yearHint }) : null;
-  return finishEvidenceCandidate(extraction, sanitized ? mergeTextAi(extraction.candidate, sanitized) : extraction.candidate, "text_no_event", input.businessId, now, deps);
+  return finishEvidenceCandidate(extraction, sanitized ? mergeTextAi(extraction.candidate, sanitized) : extraction.candidate, "text_no_event", businessId, now, deps);
+}
+
+/** Pasted Events read concurrently, a few at a time. */
+const PASTE_CONCURRENCY = 5;
+/** AI assist only STARTS while there is still room for one full AI call
+ * inside this window (the import page allows 60s in total); a segment
+ * reached later keeps its deterministic reading — still a Review row,
+ * marked as needing details where something is missing. */
+const PASTE_AI_WINDOW_MS = 40_000;
+
+/** Several explicitly marked Events → the existing several-Events Review
+ * (`kind: "multi"`). Each Event is read exactly like a one-Event paste and
+ * matched on its own (its own Event / Location / organizer matches). An
+ * Event that can't be read is never dropped silently: the others still go
+ * to Review and a warning names it; if none can be read, the whole paste
+ * fails. */
+async function analyzePastedEvents(segments: PastedEventSegment[], businessId: string | null, now: number, deps: EventImportDeps): Promise<EventImportAnalysis> {
+  const started = Date.now();
+  const results: { number: number; analysis: EventImportAnalysis }[] = [];
+  for (let i = 0; i < segments.length; i += PASTE_CONCURRENCY) {
+    const allowAi = Date.now() - started + EVENT_AI_TIMEOUT_MS <= PASTE_AI_WINDOW_MS;
+    const batch = await Promise.all(
+      segments.slice(i, i + PASTE_CONCURRENCY).map(async (seg) => ({ number: seg.number, analysis: await analyzeOneTextEvent(seg.text, businessId, now, deps, allowAi) }))
+    );
+    results.push(...batch);
+  }
+
+  const events: SourceEventAnalysis[] = [];
+  const unread: string[] = [];
+  for (const { number, analysis } of results) {
+    if (analysis.ok && analysis.kind === "single") {
+      const candidate = analysis.candidate;
+      const past = candidate.occurrences.length > 0 && candidate.occurrences.every((o) => o.past);
+      events.push({ key: `pasted-event-${number}`, candidate, matches: analysis.matches, warnings: analysis.warnings, past, alreadyOnSchedule: null });
+    } else {
+      const reason = !analysis.ok && analysis.code === "multiple_events" ? "it looks like more than one Event" : "its name, date or place couldn't be found";
+      unread.push(`EVENT ${number} couldn't be read (${reason}). Fix it and paste it again.`);
+    }
+  }
+  if (events.length === 0) return { ok: false, code: "paste_no_events", detail: unread.join(" ") };
+
+  const warnings = [...unread];
+  if (events.every((e) => e.past)) warnings.push("All the pasted Events have already happened.");
+  return { ok: true, kind: "multi", source: { url: "", name: "Pasted Details", platform: null }, events, warnings };
 }
 
 export async function analyzeEventImage(

@@ -21,7 +21,7 @@ import { EMPTY_VENUE, venueKey, type EventCandidate, type EventImportOrigin, typ
 import type { PageControl } from "./attendance";
 import type { SanitizedAi } from "./ai";
 
-export const PASTE_MAX_CHARS = 12_000;
+export const PASTE_MAX_CHARS = 60_000;
 export const PASTE_MIN_CHARS = 12;
 const MAX_LINES = 400;
 const TITLE_MAX = 200;

@@ -59,5 +59,5 @@ export function describeSourceFailure(code: EventImportFailure, d: EventImportFe
 /** What a consumer-facing caller may return: the plain failure code only. */
 export function publicImportAnalysis(a: EventImportAnalysis): EventImportAnalysis {
   if (a.ok) return a;
-  return { ok: false, code: a.code };
+  return { ok: false, code: a.code, ...(a.detail ? { detail: a.detail } : {}) };
 }

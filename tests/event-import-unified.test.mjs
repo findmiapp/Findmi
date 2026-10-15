@@ -168,7 +168,7 @@ test("paste: missing/ambiguous fields stay unresolved for Review; nothing usable
   assert.deepEqual([ambiguous.occurrences[0].start, ambiguous.occurrences[0].hasTime], ["2026-10-15", false]);
   assert.deepEqual(await E.analyzeEventText({ text: "Love this so much, can't wait!!", businessId: "b", rateKey: "u" }, deps()), { ok: false, code: "text_no_event" });
   assert.deepEqual(await E.analyzeEventText({ text: "hi", businessId: "b", rateKey: "u" }, deps()), { ok: false, code: "text_no_event" });
-  assert.deepEqual(await E.analyzeEventText({ text: "x".repeat(12001), businessId: "b", rateKey: "u" }, deps()), { ok: false, code: "text_too_long" });
+  assert.deepEqual(await E.analyzeEventText({ text: "x".repeat(60001), businessId: "b", rateKey: "u" }, deps()), { ok: false, code: "text_too_long" });
 });
 
 test("paste: multiple separate Events are never merged into one", async () => {

@@ -47,7 +47,7 @@ const METHODS: { key: ImportMethod; label: string }[] = [
   { key: "text", label: "Paste Details" },
   { key: "image", label: "Upload" },
 ];
-const PASTE_MAX = 12000;
+const PASTE_MAX = 60000;
 
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60";
@@ -163,7 +163,7 @@ export default function EventImporter({
   /** Every input method lands here: the same analysis → the same Review. */
   function showAnalysis(result: EventImportAnalysis) {
     if (!result.ok) {
-      setStep({ kind: "url", error: EVENT_IMPORT_FAILURE_COPY[result.code] });
+      setStep({ kind: "url", error: result.detail ? `${EVENT_IMPORT_FAILURE_COPY[result.code]} ${result.detail}` : EVENT_IMPORT_FAILURE_COPY[result.code] });
       return;
     }
     if (result.kind === "multi") {
