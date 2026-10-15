@@ -33,8 +33,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Banner flag for the create form — a fixed enum, never extracted data:
  *   website     — fields were suggested from the visitor's website;
  *   unavailable — the website couldn't be read; manual entry;
- *   limited     — analysis was rate limited; manual entry. */
-export const BRAND_PREFILL_STATUSES = ["website", "unavailable", "limited"] as const;
+ *   limited     — analysis was rate limited; manual entry;
+ *   blocked     — the site deliberately doesn't let Findmi read it (a
+ *                 refusal or a challenge page); manual entry. */
+export const BRAND_PREFILL_STATUSES = ["website", "unavailable", "limited", "blocked"] as const;
 export type BrandPrefillStatus = (typeof BRAND_PREFILL_STATUSES)[number];
 
 export const CREATE_BUSINESS_PATH = "/account/business/new";

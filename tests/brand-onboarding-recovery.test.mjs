@@ -125,6 +125,11 @@ function buildDeps(html, images, { finalUrl = "https://www.streamco.example/us/"
   const f = fakeAdmin();
   const fetches = [];
   const verifyDetailed = async (url, role) => {
+    // An inline <svg> brand mark is verified locally — never a network fetch.
+    if (url.startsWith("data:")) {
+      const r = await IMG.fetchVerifiedBrandImage(url, role);
+      return r.ok ? { ok: true, reason: null, image: r.image } : { ok: false, reason: r.reason };
+    }
     fetches.push(`${role}|${new URL(url).pathname}`);
     const hit = images[new URL(url).pathname];
     if (!hit) return { ok: false, reason: "fetch_failed" };

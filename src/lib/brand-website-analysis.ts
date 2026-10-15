@@ -5,7 +5,7 @@ import { findBusinessMatches, type BusinessMatch, type BusinessMatchInput } from
 import { brandBuildSignInHref, claimHref } from "./brand-lookup";
 import { brandCandidateHref, sanitizeBrandSeed, seedCandidate, type BrandPrefillStatus, type BrandSeed } from "./brand-candidate";
 import { isSvgCandidateUrl, manifestIconCandidates, type BrandPageSignals, type ExtractedBrandProfile } from "./brand-website-extract";
-import { safeFetchHtml, safeFetchManifest, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
+import { safeFetchBrandAboutPage, safeFetchBrandPage, safeFetchManifest, type SafeFetchFailure, type SafeFetchResult } from "./safe-fetch";
 import { enrichBrandWithAi, type BrandAiEnrichment, type BrandAiInput } from "./brand-ai-enrichment";
 import {
   discoverInstagram,
@@ -24,6 +24,7 @@ import {
 import {
   buildCandidateFromExtraction,
   fetchBrandWebsite,
+  isDeliberateBlock,
   prepareBrandWebsite,
   withDefaultScheme,
   type BrandEnrichment,
@@ -170,7 +171,7 @@ export interface BrandBuildDiagnostic {
   cached: boolean;
   /** Images are only verified (and offered) when signed drafts are enabled. */
   imagesEnabled: boolean;
-  fetch: { status: number | null; contentType: string | null; finalHost: string | null; redirects: number | null; bytes: number | null; size: string | null } | null;
+  fetch: { status: number | null; contentType: string | null; finalHost: string | null; redirects: number | null; bytes: number | null; size: string | null; challenge?: boolean } | null;
   signals: BrandPageSignals | null;
   candidates: { logo: number; logoStrong: number; svgLogo: number; cover: number; manifestUrl: boolean } | null;
   verifications: { role: BrandImageRole; kind: "raster" | "svg"; host: string; ok: boolean; reason: string | null }[];
@@ -187,6 +188,9 @@ export interface BrandBuildDiagnostic {
 
 export interface WebsiteAnalysisDeps {
   fetchHtml: (url: URL) => Promise<SafeFetchResult>;
+  /** Modern site extraction — the ONE same-site About page (shorter
+   * timeout). Absent → no About page is ever read. */
+  fetchAboutPage?: (url: URL) => Promise<SafeFetchResult>;
   /** V1.1C — one bounded AI enrichment (null result = keep deterministic). */
   enrich: (input: BrandAiInput) => Promise<BrandAiEnrichment>;
   /** V1.1C — fetch + fully verify a logo/cover candidate. */
@@ -344,6 +348,7 @@ async function analyzeSource(
     instagramSearch: deps.discoverInstagram ? "not_run" : "disabled",
   };
   const hostOf = (url: string) => {
+    if (url.startsWith("data:")) return "inline";
     try {
       return new URL(url).hostname;
     } catch {
@@ -422,8 +427,11 @@ async function analyzeSource(
       redirects: fetched.fetch.redirects,
       bytes: fetched.fetch.bytes,
       size: fetched.fetch.size,
+      ...(fetched.fetch.challenge ? { challenge: true } : {}),
     };
-    if (!fetched.ok) return finish(manual("unavailable"), fetched.code);
+    // A deliberate refusal is told apart from "couldn't read it" (plain
+    // words on Review; name + website still carried, Add It Myself as ever).
+    if (!fetched.ok) return finish(manual(isDeliberateBlock(fetched.code, fetched.fetch) ? "blocked" : "unavailable"), fetched.code);
     cached = { profile: fetched.extraction.profile, finalUrl: fetched.extraction.finalUrl };
     deps.cache.set(cacheKey, cached, deps.now());
   }
@@ -558,7 +566,10 @@ export function defaultWebsiteAnalysisDeps(): WebsiteAnalysisDeps | null {
   const admin = getAdminSupabase();
   if (!admin) return null;
   return {
-    fetchHtml: (url) => safeFetchHtml(url),
+    // The homepage: safeFetchHtml + the shared one-time 429/503 retry.
+    fetchHtml: (url) => safeFetchBrandPage(url),
+    // At most ONE About page, no retry, a shorter deadline (Build budget).
+    fetchAboutPage: (url) => safeFetchBrandAboutPage(url),
     findMatches: (matchInput) => findBusinessMatches(admin, matchInput),
     listCategories: async () => (await getCategories()).map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
     enrich: (input) => enrichBrandWithAi(input),

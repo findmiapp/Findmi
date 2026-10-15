@@ -138,7 +138,11 @@ test("5/26. cover-only site (wide share image, no identity evidence): cover popu
   const t = images({ "https://cdn.northwind.example/share/hero.jpg": { body: await photo(), type: "image/jpeg" } });
   const built = await build(html, baseDeps(t));
   assert.equal(built.proposal.coverUrl, "https://cdn.northwind.example/share/hero.jpg");
-  assert.equal(built.proposal.logoUrl, null, "the cover is never promoted to identity");
+  // The cover is never promoted to identity. (Since the modern-site
+  // extraction pass the header's inline home-link brand mark IS identity
+  // evidence — it is verified on its own, never derived from the cover.)
+  assert.notEqual(built.proposal.logoUrl, built.proposal.coverUrl, "the cover is never promoted to identity");
+  assert.ok(built.proposal.logoUrl === null || built.proposal.logoUrl.startsWith("data:image/svg+xml;base64,"), "identity only from the page's own brand mark");
 });
 
 test("a promo share graphic that fails the cover check is dropped — never turned into a logo", async () => {

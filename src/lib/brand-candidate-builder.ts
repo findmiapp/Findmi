@@ -1,8 +1,8 @@
 import "server-only";
 import { normalizeWebsiteHost, type BusinessMatch, type BusinessMatchInput } from "./business-matching";
 import { classifyBrandInput } from "./brand-lookup";
-import { extractBrandProfile, sameImageSource, type ExtractedBrandProfile } from "./brand-website-extract";
-import { SAFE_FETCH_MAX_BYTES, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
+import { extractAboutEvidence, extractBrandProfile, isSameSite, sameImageSource, type BrandPageExcerpt, type ExtractedBrandProfile } from "./brand-website-extract";
+import { isChallengePage, SAFE_FETCH_MAX_BYTES, type SafeFetchFailure, type SafeFetchResult, type SafeFetchSizeLimit } from "./safe-fetch";
 import type { BrandAiEnrichment, BrandAiInput, BrandAiResult, BrandAiUsage } from "./brand-ai-enrichment";
 import type { BrandImageRole } from "./brand-images";
 import type { InstagramDiscovery, InstagramDiscoveryInput, InstagramDiscoveryResult, InstagramDiscoveryStatus, InstagramDiscoveryUsage } from "./brand-instagram-discovery";
@@ -88,6 +88,8 @@ export interface BrandFetchMeta {
   declaredSizeExceededOldLimit: boolean | null;
   /** Diagnostics only: last HTTP status, media type and host seen. */
   status?: number | null;
+  /** A 200 response that was a bot-challenge / access-denied interstitial. */
+  challenge?: boolean;
   contentType?: string | null;
   finalHost?: string | null;
 }
@@ -111,6 +113,13 @@ export type BrandWebsiteFetchResult =
 
 function hasAnyField(p: ExtractedBrandProfile): boolean {
   return Boolean(p.name || p.shortDescription || p.instagramHandle || p.city || p.state || p.categorySlug);
+}
+
+/** The site refused Findmi deliberately (a refusal status or a challenge
+ * page) — as opposed to "couldn't read it" (timeouts, errors, temporary
+ * 429/503 after the one retry). Drives the plain-language Review notice. */
+export function isDeliberateBlock(code: string, fetch: Pick<BrandFetchMeta, "status" | "challenge">): boolean {
+  return code === "blocked_by_site" && (fetch.challenge === true || [401, 403, 407, 451].includes(fetch.status ?? 0));
 }
 
 /** One safe fetch, then deterministic extraction. A thrown fetchHtml
@@ -140,6 +149,13 @@ export async function fetchBrandWebsite(
   fetch.bytes = fetched.bytes;
   fetch.truncated = fetched.truncated;
   fetch.size = fetched.truncated ? "successful_truncated_html" : "complete_html";
+  // A "checking your browser" / "access denied" interstitial is the site
+  // refusing an automated reader — not its content. Never parsed as the
+  // brand, never bypassed.
+  if (isChallengePage(fetched.html)) {
+    fetch.challenge = true;
+    return { ok: false, code: "blocked_by_site", fetch };
+  }
   let profile: ExtractedBrandProfile;
   try {
     profile = extractBrandProfile(fetched.html, fetched.url);
@@ -198,6 +214,9 @@ export interface BrandEnrichment {
   /** VCL A3b — the search-fallback Instagram verdict (memoized so a site is
    * never searched twice within the cache lifetime). Absent → no search ran. */
   instagram?: InstagramDiscoveryResult | null;
+  /** Modern site extraction — what the ONE About page read yielded
+   * (memoized with the rest). Absent → no About page was read. */
+  aboutPage?: { shortDescription: string | null; about: string | null } | null;
 }
 
 export interface BrandCandidateDeps {
@@ -213,6 +232,10 @@ export interface BrandCandidateDeps {
   /** VCL A3b — one bounded, verified Instagram search. Provided only when
    * paid search is explicitly enabled; absent → never searched. */
   discoverInstagram?: (input: InstagramDiscoveryInput) => Promise<InstagramDiscovery>;
+  /** Modern site extraction — ONE safe fetch of the page's same-site About
+   * link, used only when the page has no usable description. Absent →
+   * never fetched. */
+  fetchAboutPage?: (url: URL) => Promise<SafeFetchResult>;
 }
 
 export interface BrandCandidateOptions {
@@ -271,6 +294,48 @@ export type BrandCandidateBuild =
       /** Memoizable by the caller (see BrandCandidateOptions.reuseEnrichment). */
       enrichment: BrandEnrichment;
     };
+
+/** Reads the page's ONE About link (same site, https, one request, never a
+ * second candidate). A failed / blocked / challenge / off-site response →
+ * null; nothing is guessed. Exported for tests. */
+export async function readAboutPage(
+  aboutUrl: string | null | undefined,
+  finalUrl: string,
+  name: string | null,
+  fetchAboutPage: BrandCandidateDeps["fetchAboutPage"]
+): Promise<ReturnType<typeof extractAboutEvidence> | null> {
+  if (!aboutUrl || !fetchAboutPage) return null;
+  let target: URL;
+  let base: URL;
+  try {
+    target = new URL(aboutUrl);
+    base = new URL(finalUrl);
+  } catch {
+    return null;
+  }
+  if (target.protocol !== "https:" || !isSameSite(target, base)) return null;
+  try {
+    const page = await fetchAboutPage(target);
+    // Redirects are re-validated by safe-fetch; the About page must still
+    // be on the brand's own site after them.
+    if (!page.ok || !isSameSite(page.url, base) || isChallengePage(page.html)) return null;
+    return extractAboutEvidence(page.html, name);
+  } catch {
+    return null;
+  }
+}
+
+/** Homepage excerpt + the About page's own text (both retrieved evidence),
+ * bounded like the homepage excerpt. */
+function withAboutExcerpt(home: BrandPageExcerpt, about: BrandPageExcerpt | null): BrandPageExcerpt {
+  if (!about) return home;
+  return {
+    ...home,
+    descriptions: [...new Set([...home.descriptions, ...about.descriptions])].slice(0, 6),
+    headings: [...home.headings, ...about.headings].slice(0, 6),
+    paragraphs: [...home.paragraphs, ...about.paragraphs].slice(0, 6),
+  };
+}
 
 /** At most this many ranked candidates per role are fetched + verified
  * (in parallel); the highest-ranked one that passes is used. */
@@ -419,7 +484,6 @@ export async function buildCandidateFromExtraction(
   if (enrichment) {
     ai = { status: enrichment.aiStatus, reused: true, called: false, usage: null };
   } else {
-    const needsAi = brandAiNeed({ deterministicCategoryId, shortDescription: profile.shortDescription });
     // Ranked pools (an older extraction without pools → its single pick).
     const pool = (list: string[] | undefined, single: string | null) => (list && list.length ? list : single ? [single] : []);
     const logoPool = pool(profile.logoCandidates, profile.logoCandidateUrl);
@@ -440,10 +504,17 @@ export async function buildCandidateFromExtraction(
           (): InstagramDiscovery => ({ result: { handle: null, confidence: "none", status: "failed" }, called: true, usage: null })
         )
       : Promise.resolve<InstagramDiscovery | null>(null);
+    // Modern site extraction — the homepage had no usable description: read
+    // its ONE same-site About page (in parallel with the image checks), and
+    // let the grounded AI fill see that page's text too.
+    const aboutRead = !profile.shortDescription ? await readAboutPage(profile.aboutLinkUrl, finalUrl, name, deps.fetchAboutPage) : null;
+    const shortDescription = profile.shortDescription ?? aboutRead?.shortDescription ?? null;
+    const needsAi = brandAiNeed({ deterministicCategoryId, shortDescription });
+    const excerpt = withAboutExcerpt(profile.excerpt, aboutRead?.excerpt ?? null);
     const [enriched, verifiedImages, discovered] = await Promise.all([
       needsAi
         ? deps
-            .enrich({ brandName: name, website: websiteUrl, excerpt: profile.excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
+            .enrich({ brandName: name, website: websiteUrl, excerpt, categories: categories.map((c) => ({ id: c.id, name: c.name })) })
             // enrichBrandWithAi never throws; an unexpected throw is
             // counted as a call with unknown usage, never as zero tokens.
             .catch((): BrandAiEnrichment => ({ result: null, called: true, usage: null }))
@@ -457,7 +528,14 @@ export async function buildCandidateFromExtraction(
     const cover = sameImageSource(logo, verifiedCover) ? null : verifiedCover;
     const result = enriched?.result ?? null;
     const aiStatus = !needsAi ? "skipped" : result ? "used" : "failed";
-    enrichment = { ai: result, aiStatus, logo, cover, ...(discovered ? { instagram: discovered.result } : {}) };
+    enrichment = {
+      ai: result,
+      aiStatus,
+      logo,
+      cover,
+      ...(discovered ? { instagram: discovered.result } : {}),
+      ...(aboutRead ? { aboutPage: { shortDescription: aboutRead.shortDescription, about: aboutRead.about } } : {}),
+    };
     ai = {
       status: aiStatus,
       reused: false,
@@ -478,8 +556,8 @@ export async function buildCandidateFromExtraction(
     instagramHandle: proposedInstagram,
     instagramUrl: instagramUrlOf(proposedInstagram),
     categoryId: deterministicCategoryId ?? aiResult?.categoryId ?? null,
-    shortDescription: profile.shortDescription ?? aiResult?.shortDescription ?? null,
-    about: profile.aboutDescription ?? aiResult?.about ?? null,
+    shortDescription: profile.shortDescription ?? enrichment.aboutPage?.shortDescription ?? aiResult?.shortDescription ?? null,
+    about: profile.aboutDescription ?? enrichment.aboutPage?.about ?? aiResult?.about ?? null,
     city: profile.city,
     state: profile.state,
     logoUrl: enrichment.logo,

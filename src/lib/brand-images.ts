@@ -2,7 +2,7 @@ import "server-only";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { safeFetchImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchImageResult } from "./safe-fetch";
-import { isSvgCandidateUrl } from "./brand-website-extract";
+import { inlineSvgMarkup, isInlineSvgCandidate, isSvgCandidateUrl } from "./brand-website-extract";
 import { validateImageFile, type ImageValidationResult } from "./imageUploadValidation";
 import { storePublicImage } from "./image-variants-server";
 import { randomUUID } from "node:crypto";
@@ -242,6 +242,20 @@ async function fetchVerifiedSvgLogo(
   return verifyRasterBytes(png, "image/png", "logo");
 }
 
+/** Modern site extraction — the page's INLINE SVG brand mark (carried as an
+ * untrusted data: candidate, never fetched): the same strict inspection,
+ * rasterization and raster verification as a fetched SVG logo. Never
+ * stored or served as SVG. */
+async function verifyInlineSvgLogo(url: string): Promise<{ ok: true; image: VerifiedBrandImage } | { ok: false; reason: BrandImageRejection }> {
+  const markup = inlineSvgMarkup(url);
+  if (!markup) return { ok: false, reason: "invalid_file" };
+  const body = Buffer.from(markup, "utf8");
+  if (!inspectSvg(body).ok) return { ok: false, reason: "invalid_file" };
+  const png = await rasterizeSvgLogo(body);
+  if (!png || png.length === 0) return { ok: false, reason: "unreadable" };
+  return verifyRasterBytes(png, "image/png", "logo");
+}
+
 /** The raster verification shared by fetched rasters and rasterized SVGs:
  * actual bytes decide the format, declared type must match, dimension /
  * suitability rules, and (covers) the low-information-graphic test. */
@@ -293,6 +307,8 @@ export async function fetchVerifiedBrandImage(
     // VCL A3c — an SVG LOGO candidate takes the inspect → rasterize path;
     // covers never do (an SVG cover URL still fails the raster fetch).
     if (role === "logo" && isSvgCandidateUrl(url)) return await fetchVerifiedSvgLogo(url, deps);
+    // An inline brand mark is a logo only; as a cover it is refused.
+    if (isInlineSvgCandidate(url)) return role === "logo" ? await verifyInlineSvgLogo(url) : { ok: false, reason: "type_mismatch" };
     const fetched = await deps.fetchImage(url);
     if (!fetched.ok) return { ok: false, reason: "fetch_failed" };
     return await verifyRasterBytes(fetched.body, fetched.contentType.split(";")[0].trim().toLowerCase(), role);

@@ -218,7 +218,9 @@ export default async function AddBusinessPage({
         ? `We couldn't read ${prefillHost ?? "that website"}, so add your details below.`
         : prefillStatus === "limited"
           ? "You've built several profiles recently. Add your details below, or try again in a few minutes."
-          : null;
+          : prefillStatus === "blocked"
+            ? `${prefillHost ?? "This website"} doesn't let Findmi read it automatically. You can still add the brand details yourself.`
+            : null;
 
   const geography = (
     <BusinessGeographyFields

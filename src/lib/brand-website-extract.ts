@@ -1,4 +1,4 @@
-import { parse } from "parse5";
+import { parse, serializeOuter } from "parse5";
 import { normalizeBusinessName, normalizeInstagramHandle, normalizeWebsiteHost } from "./business-matching";
 
 /** Brand Onboarding V1.1B — deterministic, single-page brand metadata
@@ -149,6 +149,10 @@ export interface ExtractedBrandProfile {
   /** VCL A3c — how many leading logoCandidates come from strong logo
    * evidence (the rest are touch/site icons). */
   logoStrongCount?: number;
+  /** Modern site extraction — the ONE same-site About / Our Story page
+   * linked from this page (https), read only when the page itself has no
+   * usable description. Untrusted; requested only by the candidate core. */
+  aboutLinkUrl?: string | null;
   /** Diagnostics only: what the fetched page actually contained (counts
    * and yes/no — never URLs or text). */
   signals?: BrandPageSignals;
@@ -173,6 +177,8 @@ export interface BrandPageSignals {
   headerImages: number;
   headings: number;
   paragraphs: number;
+  inlineSvgLogos?: number;
+  aboutLink?: boolean;
 }
 
 // ── Text normalization ────────────────────────────────────────────────────
@@ -269,6 +275,26 @@ interface Collected {
   headings: string[];
   paragraphs: string[];
   images: ImageEvidence[];
+  /** Inline <svg>s in brand-mark placement (header / home link / logo
+   * container) — serialized markup, never rendered here. */
+  inlineSvgs: InlineSvgEvidence[];
+  /** Links whose text or path says About / Our Story (raw href, text). */
+  aboutLinks: { href: string; text: string }[];
+}
+
+/** One inline <svg> worth considering as the brand mark. */
+interface InlineSvgEvidence {
+  /** Serialized standalone SVG (xmlns ensured), ≤ INLINE_SVG_MAX_CHARS. */
+  markup: string;
+  /** Lowercased class/id/aria-label/<title> of the svg and its nearest
+   * ancestors — hint text only. */
+  hints: string;
+  /** aria-label / <title> of the svg (or its link), raw-ish. */
+  label: string;
+  inHeader: boolean;
+  linkHref: string | null;
+  width: number;
+  height: number;
 }
 
 /** One <img> worth considering as a logo or cover — attributes only (it
@@ -362,6 +388,16 @@ function parseSrcset(value: string | null): { url: string; w: number }[] {
 function imageEvidence(node: HtmlNode): ImageEvidence | null {
   const src = [attr(node, "src"), attr(node, "data-src")].find((v) => v && !/^data:/i.test(v.trim())) ?? null;
   const srcset = parseSrcset(attr(node, "srcset") ?? attr(node, "data-srcset"));
+  // Responsive <picture>: its <source srcset|data-srcset> variants belong
+  // to this image (raster formats Findmi can verify only; AVIF/SVG never).
+  if (node.parentNode?.tagName === "picture") {
+    for (const source of (node.parentNode.childNodes ?? []).slice(0, 12)) {
+      if (source.tagName !== "source") continue;
+      const type = lowerAttr(source, "type");
+      if (type && !/^image\/(webp|jpeg|jpg|png)$/.test(type)) continue;
+      srcset.push(...parseSrcset(attr(source, "srcset") ?? attr(source, "data-srcset")).filter((c) => !/^data:/i.test(c.url)));
+    }
+  }
   if (!src && srcset.length === 0) return null;
   const width = parseInt(attr(node, "width") ?? "", 10) || 0;
   const height = parseInt(attr(node, "height") ?? "", 10) || 0;
@@ -394,7 +430,7 @@ function imageEvidence(node: HtmlNode): ImageEvidence | null {
 }
 
 function collect(html: string): Collected {
-  const out: Collected = { title: null, meta: new Map(), links: [], jsonLd: [], instagramHrefs: [], headings: [], paragraphs: [], images: [] };
+  const out: Collected = { title: null, meta: new Map(), links: [], jsonLd: [], instagramHrefs: [], headings: [], paragraphs: [], images: [], inlineSvgs: [], aboutLinks: [] };
   let imagesScanned = 0;
   const doc = parse(html) as unknown as HtmlNode;
   const stack: HtmlNode[] = [doc];
@@ -422,9 +458,13 @@ function collect(html: string): Collected {
         imagesScanned += 1;
         const evidence = imageEvidence(node);
         if (evidence && out.images.length < MAX_IMAGE_EVIDENCE) out.images.push(evidence);
-      } else if (tag === "a" && out.instagramHrefs.length < MAX_ANCHORS) {
+      } else if (tag === "a") {
         const href = attr(node, "href");
-        if (href && /instagr(\.am|am\.com)/i.test(href)) out.instagramHrefs.push(href);
+        if (href && /instagr(\.am|am\.com)/i.test(href) && out.instagramHrefs.length < MAX_ANCHORS) out.instagramHrefs.push(href);
+        else if (href && out.aboutLinks.length < MAX_ABOUT_LINKS) {
+          const text = (cleanText(deepText(node, 80), 80) ?? "").toLowerCase();
+          if (ABOUT_TEXT.test(text) || ABOUT_PATH.test(href.split(/[?#]/)[0])) out.aboutLinks.push({ href, text });
+        }
       } else if ((tag === "h1" || tag === "h2") && out.headings.length < MAX_HEADINGS && !insideChrome(node)) {
         const text = cleanText(deepText(node, EXCERPT_TEXT_MAX), 160);
         if (text && text.length >= 3) out.headings.push(text);
@@ -433,10 +473,190 @@ function collect(html: string): Collected {
         if (text && text.length >= 40 && !BOILERPLATE.test(text)) out.paragraphs.push(text);
       }
     }
+    if (tag === "svg" && node.namespaceURI === SVG_NS && node.parentNode?.namespaceURI !== SVG_NS && out.inlineSvgs.length < MAX_INLINE_SVGS) {
+      const evidence = inlineSvgEvidence(node);
+      if (evidence) out.inlineSvgs.push(evidence);
+    }
     const children = node.childNodes ?? [];
     for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
   }
   return out;
+}
+
+// ── Inline SVG brand marks ────────────────────────────────────────────────
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const MAX_INLINE_SVGS = 12;
+/** Serialized inline SVG cap (well under the fetched-SVG cap; markup is
+ * base64-carried as an untrusted candidate and re-inspected before use). */
+export const INLINE_SVG_MAX_CHARS = 32 * 1024;
+/** Interface glyphs that live in headers next to the logo — never a brand mark. */
+const UI_ICON_HINT =
+  /(?<![a-z])(cart|bag|basket|search|menu|hamburger|burger|account|user|profile|login|sign-?in|wishlist|favou?rites?|heart|close|arrow|chevron|caret|globe|flag|location|locator|play|pause|social|instagram|facebook|twitter|tiktok|youtube|pinterest|share|mail|email|phone|chat|help|spinner|loader)(?![a-z])/;
+
+/** <svg> → evidence when it sits in brand-mark placement (header, a link,
+ * or a logo-named container); markup serialized once, bounded. */
+function inlineSvgEvidence(node: HtmlNode): InlineSvgEvidence | null {
+  const own = [lowerAttr(node, "class"), lowerAttr(node, "id"), lowerAttr(node, "aria-label"), lowerAttr(node, "role")];
+  const titleNode = (node.childNodes ?? []).find((c) => c.tagName === "title");
+  const title = titleNode ? cleanText(deepTextAll(titleNode), 120) ?? "" : "";
+  let inHeader = false;
+  let linkHref: string | null = null;
+  let linkLabel = "";
+  const near: string[] = [];
+  let n = node.parentNode;
+  for (let depth = 0; n && depth < 15; depth++, n = n.parentNode) {
+    if (!n.tagName) continue;
+    const context = `${lowerAttr(n, "class")} ${lowerAttr(n, "id")}`;
+    if (depth < 4) near.push(`${context} ${lowerAttr(n, "aria-label")} ${lowerAttr(n, "title")}`);
+    if (n.tagName === "header" || n.tagName === "nav" || HEADER_CONTEXT.test(context)) inHeader = true;
+    if (n.tagName === "a" && linkHref === null) {
+      linkHref = attr(n, "href");
+      linkLabel = (attr(n, "aria-label") ?? attr(n, "title") ?? "").slice(0, 120);
+    }
+  }
+  const hints = `${own.join(" ")} ${title.toLowerCase()} ${near.join(" ")}`.toLowerCase();
+  // Only placements a brand mark uses are serialized at all.
+  if (!inHeader && linkHref === null && !LOGO_HINT.test(hints)) return null;
+  // Interface glyphs (cart, search, menu …) are skipped before any work.
+  if (!LOGO_HINT.test(hints) && UI_ICON_HINT.test(hints)) return null;
+  let markup: string;
+  try {
+    markup = serializeOuter(node as never);
+  } catch {
+    return null;
+  }
+  if (!markup || markup.length > INLINE_SVG_MAX_CHARS || /<\s*use\b/i.test(markup)) return null; // <use> points outside this element
+  if (!/^<svg\b[^>]*\sxmlns=/i.test(markup)) markup = markup.replace(/^<svg\b/i, `<svg xmlns="${SVG_NS}"`);
+  return {
+    markup,
+    hints,
+    label: `${attr(node, "aria-label") ?? ""} ${title} ${linkLabel}`.trim().slice(0, 200),
+    inHeader,
+    linkHref,
+    width: parseInt(attr(node, "width") ?? "", 10) || 0,
+    height: parseInt(attr(node, "height") ?? "", 10) || 0,
+  };
+}
+
+/** All descendant text (including inside SVG), bounded. */
+function deepTextAll(node: HtmlNode): string {
+  let out = "";
+  const stack: HtmlNode[] = [...(node.childNodes ?? [])];
+  while (stack.length && out.length < 400) {
+    const c = stack.pop()!;
+    if (c.nodeName === "#text") out += c.value ?? "";
+    else stack.push(...(c.childNodes ?? []));
+  }
+  return out;
+}
+
+/** Inline-SVG logo candidates carry their markup as a data: URL. */
+const INLINE_SVG_PREFIX = "data:image/svg+xml;base64,";
+export function isInlineSvgCandidate(url: string | null | undefined): boolean {
+  return typeof url === "string" && url.startsWith(INLINE_SVG_PREFIX);
+}
+export function inlineSvgMarkup(url: string): string | null {
+  if (!isInlineSvgCandidate(url) || url.length > INLINE_SVG_MAX_CHARS * 2) return null;
+  try {
+    return Buffer.from(url.slice(INLINE_SVG_PREFIX.length), "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** The page's inline SVG brand mark(s) — strong placement only (exported
+ * for tests): a home link in the header (or labelled as the brand / logo),
+ * or a logo-named container in the header. Interface icons, badges and
+ * anything declared icon-sized never qualify. Each is still inspected,
+ * rasterized and verified by lib/brand-images before it is used. */
+export const INLINE_SVG_LOGO_MAX = 1;
+export function inlineSvgLogoCandidates(svgs: InlineSvgEvidence[], brandKeys: string[], base: URL): string[] {
+  const out: string[] = [];
+  for (const svg of svgs) {
+    if (out.length >= INLINE_SVG_LOGO_MAX) break;
+    const logoHint = LOGO_HINT.test(svg.hints);
+    if (NOT_BRAND_IMAGE.test(svg.hints) && !logoHint) continue;
+    if (UI_ICON_HINT.test(svg.hints) && !logoHint) continue;
+    if (/(?<![a-z])icons?(?![a-z])/.test(svg.hints) && !logoHint) continue;
+    if (svg.width > 0 && svg.height > 0 && Math.max(svg.width, svg.height) < 40) continue;
+    const labelKey = compact(svg.label);
+    const namesBrand = labelKey.length >= 3 && brandKeys.some((k) => k.length >= 3 && labelKey.includes(k));
+    const home = isHomeLink(svg.linkHref, base);
+    const credible = (home && (svg.inHeader || logoHint || namesBrand)) || (logoHint && svg.inHeader && (svg.linkHref === null || home));
+    if (!credible) continue;
+    out.push(`${INLINE_SVG_PREFIX}${Buffer.from(svg.markup, "utf8").toString("base64")}`);
+  }
+  return out;
+}
+
+// ── About / Our Story ─────────────────────────────────────────────────────
+
+const MAX_ABOUT_LINKS = 6;
+const ABOUT_TEXT = /^(about|about us|about the brand|our story|our brand|the brand|who we are|brand story|our heritage|heritage|story)$/;
+const ABOUT_PATH = /\/(about|about-us|aboutus|our-story|ourstory|our-brand|who-we-are|brand-story|the-brand|heritage)(\.html?)?\/?$/i;
+
+/** Same registrable site: the same host (ignoring "www."), or one is a
+ * subdomain of the other. Never another site. Exported for tests. */
+export function isSameSite(a: URL, b: URL): boolean {
+  const h = (u: URL) => u.hostname.toLowerCase().replace(/^www\./, "");
+  const x = h(a);
+  const y = h(b);
+  return x === y || x.endsWith(`.${y}`) || y.endsWith(`.${x}`);
+}
+
+/** The ONE About page to try: the first same-site https link labelled /
+ * pathed as About, never this page itself. */
+function aboutLinkFrom(links: Collected["aboutLinks"], base: URL): string | null {
+  for (const l of links) {
+    const url = absoluteHttps(l.href, base);
+    if (!url) continue;
+    const u = new URL(url);
+    if (!isSameSite(u, base) || (u.pathname.replace(/\/+$/, "") === base.pathname.replace(/\/+$/, "") && u.hostname === base.hostname)) continue;
+    u.hash = "";
+    return u.href;
+  }
+  return null;
+}
+
+/** Store policy / legal / account copy is never About text. */
+const NOT_ABOUT_TEXT = /(privacy|terms (of|and)|cookie|all rights reserved|©|copyright|shipping|returns?\b|refund|sign up|newsletter|subscribe|log ?in|password|cart|checkout|gift card)/i;
+
+export interface AboutPageEvidence {
+  /** ≤160 — a useful description stated on the About page, or null. */
+  shortDescription: string | null;
+  /** ≤600 — the About page's own useful paragraphs, or null. */
+  about: string | null;
+  /** Bounded About-page text for the grounded AI fill. */
+  excerpt: BrandPageExcerpt;
+}
+
+/** Reads a fetched About page (pure). Descriptions and main-content
+ * paragraphs only (navigation, header, footer, forms and legal/store-policy
+ * text excluded), each through the same quality filter as the homepage.
+ * Nothing useful → nulls (the field stays blank). */
+export function extractAboutEvidence(html: string, name: string | null): AboutPageEvidence {
+  const c = collect(html);
+  const meta = (key: string) => c.meta.get(key) ?? null;
+  const descriptions = [meta("description"), meta("og:description")]
+    .map((d) => cleanText(d, 2000))
+    .filter((d): d is string => Boolean(d) && !NOT_ABOUT_TEXT.test(d!) && isUsefulDescription(d, name));
+  const paragraphs = c.paragraphs.filter((p) => !NOT_ABOUT_TEXT.test(p));
+  const useful = paragraphs.filter((p) => isUsefulDescription(p, name));
+  const shortSource = descriptions[0] ?? useful[0] ?? null;
+  const aboutText = useful.length ? cleanText(useful.join(" "), EXTRACT_ABOUT_MAX) : null;
+  return {
+    shortDescription: shortSource ? toShortDescription(shortSource) : null,
+    about: aboutText && aboutText.length > EXTRACT_DESCRIPTION_MAX ? aboutText : null,
+    excerpt: {
+      title: cleanText(c.title, 200),
+      descriptions: [...new Set([meta("description"), meta("og:description")].map((d) => cleanText(d, 400)).filter((d): d is string => Boolean(d) && !NOT_ABOUT_TEXT.test(d!)))].slice(0, 2),
+      jsonLdName: null,
+      jsonLdTypes: [],
+      headings: c.headings,
+      paragraphs,
+    },
+  };
 }
 
 // ── JSON-LD ───────────────────────────────────────────────────────────────
@@ -957,7 +1177,10 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
   // Strong candidates are the ones that don't depend on icon <link>s.
   const strongLogos = logoCandidatesFrom(entity, meta, [], c.images, pageUrl, brandKeys);
   const logoStrongCount = logoCandidates.filter((u) => strongLogos.includes(u)).length;
-  const svgLogoCandidates = svgLogoCandidatesFrom(entity, meta, c.images, pageUrl, brandKeys);
+  // URL SVGs first, then the page's inline brand mark (inspected +
+  // rasterized like any SVG before it is ever used).
+  const inlineLogos = inlineSvgLogoCandidates(c.inlineSvgs, brandKeys, pageUrl);
+  const svgLogoCandidates = [...svgLogoCandidatesFrom(entity, meta, c.images, pageUrl, brandKeys), ...inlineLogos];
   // Never the same image as any logo candidate (a share image that IS the logo).
   const coverCandidates = coverCandidatesFrom(entity, meta, c.images, pageUrl, logoCandidates);
 
@@ -989,6 +1212,7 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
     manifestUrl: absoluteHttps(c.links.find((l) => l.rel.includes("manifest"))?.href, pageUrl),
     svgLogoCandidates,
     logoStrongCount,
+    aboutLinkUrl: aboutLinkFrom(c.aboutLinks, pageUrl),
     signals: {
       title: Boolean(c.title),
       ogTitle: Boolean(meta("og:title")),
@@ -1007,6 +1231,8 @@ export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandP
       headerImages: c.images.filter((i) => i.inHeader).length,
       headings: c.headings.length,
       paragraphs: c.paragraphs.length,
+      inlineSvgLogos: inlineLogos.length,
+      aboutLink: c.aboutLinks.length > 0,
     },
     excerpt,
   };

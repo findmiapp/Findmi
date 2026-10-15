@@ -695,10 +695,13 @@ export const SAFE_FETCH_RETRY_DEFAULT_WAIT_MS = 500;
 export const SAFE_FETCH_RETRY_MIN_ATTEMPT_MS = 3000;
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export async function safeFetchEventPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+/** The ONE transient retry (shared by every HTML page profile that opts in):
+ * at most one more complete safeFetchResource call, only for 429/503, only
+ * when the wait and the remaining budget allow it (see above). */
+async function fetchWithTransientRetry(input: string | URL, profile: FetchProfile, options: SafeFetchOptions): Promise<{ r: ResourceResult; attempts: number }> {
   const now = options.now ?? Date.now;
   const started = now();
-  let r = await safeFetchResource(input, EVENT_HTML_PROFILE, options);
+  let r = await safeFetchResource(input, profile, options);
   let attempts = 1;
   if (!r.ok && r.code === "blocked_by_site" && r.status !== undefined && TRANSIENT_STATUSES.has(r.status)) {
     const wait = r.retryAfterMs ?? SAFE_FETCH_RETRY_DEFAULT_WAIT_MS;
@@ -706,10 +709,13 @@ export async function safeFetchEventPage(input: string | URL, options: SafeFetch
     if (wait <= SAFE_FETCH_RETRY_MAX_WAIT_MS && remaining >= SAFE_FETCH_RETRY_MIN_ATTEMPT_MS) {
       await (options.sleep ?? defaultSleep)(wait);
       attempts = 2;
-      r = await safeFetchResource(input, EVENT_HTML_PROFILE, { ...options, timeoutMs: Math.min(options.timeoutMs ?? SAFE_FETCH_TIMEOUT_MS, remaining) });
+      r = await safeFetchResource(input, profile, { ...options, timeoutMs: Math.min(options.timeoutMs ?? SAFE_FETCH_TIMEOUT_MS, remaining) });
     }
   }
-  if (!r.ok) return { ...r, attempts };
+  return { r, attempts };
+}
+
+function htmlResult(r: Extract<ResourceResult, { ok: true }>): SafeFetchResult {
   return {
     ok: true,
     url: r.url,
@@ -720,6 +726,70 @@ export async function safeFetchEventPage(input: string | URL, options: SafeFetch
     declaredBytes: r.declaredBytes,
     contentType: r.contentType.split(";")[0].trim().toLowerCase().slice(0, 80),
   };
+}
+
+export async function safeFetchEventPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  const { r, attempts } = await fetchWithTransientRetry(input, EVENT_HTML_PROFILE, options);
+  if (!r.ok) return { ...r, attempts };
+  return htmlResult(r);
+}
+
+/** Brand website analysis — exactly safeFetchHtml (same profile and every
+ * rule), plus the same ONE transient 429/503 retry as Event pages. A 403,
+ * any other status, a challenge page or a parsing problem is never retried. */
+export async function safeFetchBrandPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  const { r, attempts } = await fetchWithTransientRetry(input, HTML_PROFILE, options);
+  if (!r.ok) return { ...r, attempts };
+  return htmlResult(r);
+}
+
+/** Brand website analysis — the ONE same-site About page read when the
+ * homepage had no usable description: exactly safeFetchHtml, no retry, a
+ * shorter deadline so the whole Build stays inside its time budget. */
+export const SAFE_FETCH_ABOUT_TIMEOUT_MS = 5000;
+export async function safeFetchBrandAboutPage(input: string | URL, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  return safeFetchHtml(input, { ...options, timeoutMs: Math.min(options.timeoutMs ?? SAFE_FETCH_ABOUT_TIMEOUT_MS, SAFE_FETCH_ABOUT_TIMEOUT_MS) });
+}
+
+// ── Challenge / interstitial pages ────────────────────────────────────────
+// Some sites answer an automated reader with HTTP 200 and a "checking your
+// browser" / "access denied" interstitial instead of their page. That is a
+// refusal, not website content. Recognized CONSERVATIVELY: a provider's own
+// challenge markup, or an interstitial-only <title> on a page with almost
+// no other content. A normal page that merely mentions security, access,
+// cookies, verification or privacy is never matched. Never bypassed.
+// Markup that appears ONLY on a provider's block/challenge page (never the
+// scripts the same providers inject into ordinary pages).
+const CHALLENGE_MARKERS = [
+  /\bwindow\._cf_chl_opt\b/,
+  /\bcf-browser-verification\b/i,
+  /\bIncapsula incident ID\b/i,
+  /<div[^>]+id=["']px-captcha["']/i,
+  /geo\.captcha-delivery\.com\/captcha/i,
+];
+const CHALLENGE_TITLE =
+  /^\s*(just a moment\W*|attention required\W*(\|\s*\w+)?|access denied|please wait\W*|checking your browser.*|security check|are you a robot\W*|pardon our interruption|one more step|verify(ing)? you are (a )?human.*|human verification|bot verification|request unsuccessful.*)\s*$/i;
+const CHALLENGE_BODY = /(you don['’]t have permission to access|reference\s*#\s*[0-9a-f]+\.|enable javascript and cookies to continue|checking (if the site connection is secure|your browser before accessing)|verify you are (a )?human|press (&amp; |and |& )?hold)/i;
+
+/** True only for a bot-challenge / access-denied interstitial (exported for tests). */
+export function isChallengePage(html: string): boolean {
+  if (typeof html !== "string" || html.length === 0) return false;
+  const head = html.slice(0, 200_000);
+  const text = () =>
+    head
+      .replace(/<(script|style|noscript)\b[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  // A block page is small; a real page that happens to embed such markup
+  // still has its own content.
+  if (CHALLENGE_MARKERS.some((re) => re.test(head))) return text().length < 3000;
+  const title = /<title[^>]*>([\s\S]{0,200}?)<\/title>/i.exec(head)?.[1]?.replace(/&amp;/g, "&").replace(/\s+/g, " ").trim() ?? "";
+  if (!CHALLENGE_TITLE.test(title)) return false;
+  // An interstitial title alone is not enough: the page must also be an
+  // interstitial — its own wording, or (almost) nothing else on it.
+  const visible = text();
+  return CHALLENGE_BODY.test(visible) || visible.length < 600;
 }
 
 export type SafeFetchImageResult =

@@ -284,7 +284,9 @@ test("static: the retry goes through safeFetchResource (full validation), only f
   const src = read("src/lib/safe-fetch.ts");
   assert.match(src, /const TRANSIENT_STATUSES = new Set\(\[429, 503\]\);/);
   assert.match(src, /const SITE_REFUSAL_STATUSES = new Set\(\[401, 403, 407, 429, 451, 503\]\);/);
-  assert.match(src, /r = await safeFetchResource\(input, EVENT_HTML_PROFILE, \{ \.\.\.options, timeoutMs: /);
+  // One shared retry helper (Event pages + Brand pages); Event pages use it unchanged.
+  assert.match(src, /r = await safeFetchResource\(input, profile, \{ \.\.\.options, timeoutMs: /);
+  assert.match(src, /await fetchWithTransientRetry\(input, EVENT_HTML_PROFILE, options\);/);
   assert.ok(F.SAFE_FETCH_RETRY_MAX_WAIT_MS <= 2000);
   assert.ok(F.SAFE_FETCH_EVENT_BUDGET_MS <= 10_000);
 });
