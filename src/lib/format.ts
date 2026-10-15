@@ -319,7 +319,11 @@ function getLocalDayBounds(dayOffset = 0): { start: Date; end: Date } {
   return { start: new Date(startUTC), end: new Date(endUTC) };
 }
 
-export type DiscoveryWindow = "now" | "next" | "week" | "weekend" | "month" | "anytime";
+/** "now" is TODAY (the local calendar day — a historical name). "live" is
+ * the instant itself (Happening Now — see getTemporalLabel().live) and
+ * "tomorrow" the next local calendar day; both added by the shared Event
+ * filter foundation (lib/event-filter.ts). */
+export type DiscoveryWindow = "now" | "live" | "tomorrow" | "next" | "week" | "weekend" | "month" | "anytime";
 
 /** Standardize Upcoming Event Time Filters pass — the ONE canonical
  * time-filter definition (keys, labels, order, and the window each key
@@ -364,6 +368,14 @@ export function getDiscoveryWindowBounds(
 ): { start: Date; end: Date } | null {
   if (when === "anytime") return null;
   if (when === "now") return getLocalDayBounds(0);
+  if (when === "tomorrow") return getLocalDayBounds(1);
+  // Happening Now: the overlap test every caller applies (start < end-bound
+  // AND end > start-bound) against [now - 1ms, now + 1ms] is exactly
+  // start <= now <= end — getTemporalLabel()'s own "live" rule.
+  if (when === "live") {
+    const now = Date.now();
+    return { start: new Date(now - 1), end: new Date(now + 1) };
+  }
   if (when === "next") {
     return { start: getLocalDayBounds(1).start, end: getLocalDayBounds(7).end };
   }

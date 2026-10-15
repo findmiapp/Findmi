@@ -15,6 +15,7 @@ import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
 import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
+import { eventMatchesAccess, isEventHappeningNow, type EventAccess } from "./event-filter";
 import { eventCategoryFilterIds, primaryEventCategoryId } from "./event-categories";
 import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
 import {
@@ -1846,6 +1847,18 @@ interface EffectiveUpcomingEventsOptions {
    * Homepage Row system — only getUpcomingEvents (the homepage "What's
    * Happening" rail) passes this. */
   requireShowOnHomepage?: boolean;
+  /** Shared Event filter — scope to ONE Location: Events with a scheduled
+   * date at exactly this Location (event_occurrences.location_id). An
+   * Event without dates has no Location relationship, so it never
+   * matches; an Event that hides its address never matches either (the
+   * scope itself would reveal where it is). */
+  locationId?: string;
+  /** Shared Event filter — scope to ONE Business, from its authoritative
+   * Event relationships: Events it hosts (host_business_id) or takes part
+   * in (approved event_businesses — every date unless its scope is
+   * 'selected_dates'), plus the specific dates it was approved for
+   * (approved event_occurrence_businesses). */
+  businessId?: string;
 }
 
 function applyEventTextFilters<
@@ -1935,6 +1948,24 @@ export async function getEffectiveUpcomingEvents(
     areaId = areaRow.id;
   }
 
+  // Business scope (shared Event filter): every date of a hosted /
+  // all-dates Event, or just the dates the Business was approved for.
+  let businessAllDates: Set<string> | null = null;
+  let businessOccurrenceIds: Set<string> | null = null;
+  if (options.businessId) {
+    const [{ data: hosted }, { data: links }, { data: occLinks }] = await Promise.all([
+      supabase.from("events").select("id").eq("host_business_id", options.businessId),
+      supabase.from("event_businesses").select("event_id, participation_scope").eq("business_id", options.businessId).eq("status", "approved"),
+      supabase.from("event_occurrence_businesses").select("occurrence_id").eq("business_id", options.businessId).eq("status", "approved"),
+    ]);
+    businessAllDates = new Set([
+      ...((hosted ?? []) as { id: string }[]).map((r) => r.id),
+      ...((links ?? []) as { event_id: string; participation_scope: string | null }[]).filter((r) => r.participation_scope !== "selected_dates").map((r) => r.event_id),
+    ]);
+    businessOccurrenceIds = new Set(((occLinks ?? []) as { occurrence_id: string }[]).map((r) => r.occurrence_id));
+    if (businessAllDates.size === 0 && businessOccurrenceIds.size === 0) return [];
+  }
+
   // Which events have ANY occurrence rows at all (any status) — these are
   // judged purely by their occurrences; everything else falls back to its
   // own start_at/end_at.
@@ -1959,6 +1990,7 @@ export async function getEffectiveUpcomingEvents(
   // it still needs to return cancelled-but-not-yet-past occurrences so the
   // page can badge them, and is untouched by this change.
   let occQuery = supabase.from("event_occurrences").select("*").eq("status", "scheduled");
+  if (options.locationId) occQuery = occQuery.eq("location_id", options.locationId);
   occQuery = bounds
     ? occQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
     : occQuery.gt("end_at", new Date().toISOString());
@@ -2003,6 +2035,12 @@ export async function getEffectiveUpcomingEvents(
       });
       return effective.marketId === marketId;
     });
+  }
+
+  if (businessAllDates && businessOccurrenceIds) {
+    const allDates = businessAllDates;
+    const dates = businessOccurrenceIds;
+    eligibleOccRows = eligibleOccRows.filter((o) => allDates.has(o.event_id) || dates.has(o.id));
   }
 
   let occurrenceEventIds = Array.from(new Set(eligibleOccRows.map((o) => o.event_id)));
@@ -2069,7 +2107,12 @@ export async function getEffectiveUpcomingEvents(
     ? legacyQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
     : legacyQuery.gt("end_at", new Date().toISOString());
   legacyQuery = applyEventTextFilters(legacyQuery, options);
-  const { data: legacyRows } = await legacyQuery;
+  if (businessAllDates) legacyQuery = legacyQuery.in("id", [...businessAllDates]);
+  // A dateless (legacy) Event has no Location relationship and can only
+  // belong to a Business through Event-level links — so a Location scope,
+  // or a Business with no Event-level links, never reads this branch.
+  const skipLegacy = Boolean(options.locationId) || (businessAllDates !== null && businessAllDates.size === 0);
+  const { data: legacyRows } = skipLegacy ? { data: [] } : await legacyQuery;
   const legacyEvents = ((legacyRows ?? []) as FindmiEvent[]).filter((e) => !eventsWithOccurrences.has(e.id));
 
   // Locations for the chosen occurrences' display.
@@ -2116,7 +2159,7 @@ export async function getEffectiveUpcomingEvents(
   // A text search never finds a hidden-location Event by its venue alone.
   const term = options.q?.trim().toLowerCase() ?? "";
   const matchesWithoutVenue = (e: FindmiEvent) => !term || e.name.toLowerCase().includes(term) || (e.description ?? "").toLowerCase().includes(term);
-  return rows.filter((r) => r.event.location_visibility !== "hidden" || matchesWithoutVenue(r.event)).map((r) =>
+  return rows.filter((r) => r.event.location_visibility !== "hidden" || (!options.locationId && matchesWithoutVenue(r.event))).map((r) =>
     r.event.location_visibility === "hidden"
       ? { ...r, event: withholdPreciseLocation(r.event), occurrence: r.occurrence ? withholdPreciseLocation(r.occurrence) : null, occurrenceLocation: null }
       : r
@@ -2189,6 +2232,12 @@ export interface EventDiscoveryParams {
    * EffectiveUpcomingEventsOptions' own doc comment. Only meaningful
    * alongside `marketSlug`. */
   areaSlug?: string;
+  /** Shared Event filter (lib/event-filter.ts) — ANY of these attendance
+   * actions, from the Event's own action fields. */
+  access?: EventAccess[];
+  /** Shared Event filter scoping — see EffectiveUpcomingEventsOptions. */
+  locationId?: string;
+  businessId?: string;
 }
 
 /** Shared events query — backs /events' "All" browse state and
@@ -2252,14 +2301,26 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
   }
 
   const bounds = params.date ? getExactDateBounds(params.date) : getDiscoveryWindowBounds(params.when ?? "anytime");
-  const rows = await getEffectiveUpcomingEvents(bounds, {
+  const effectiveRows = await getEffectiveUpcomingEvents(bounds, {
     eventIds: categoryEventIds,
     q: params.q,
     city: params.city,
     location: params.location,
     marketSlug: params.marketSlug,
     areaSlug: params.areaSlug,
+    locationId: params.locationId,
+    businessId: params.businessId,
   });
+
+  // Shared Event filter: Happening Now is exactly getTemporalLabel().live
+  // on the date each Event is shown by; access is the Event's own action
+  // fields (the same truthiness every card uses to show the button).
+  // Applied before paging so pages stay consistent.
+  const rows = effectiveRows.filter(
+    (r) =>
+      (params.date || params.when !== "live" || isEventHappeningNow(r.effectiveStart, r.effectiveEnd)) &&
+      eventMatchesAccess(r.event, params.access)
+  );
 
   // Findmi editorial Featured (events.is_featured): on the Event discovery
   // pages that opt in, featured Events lead — ordered by the founder's

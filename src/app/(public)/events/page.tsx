@@ -14,7 +14,16 @@ import {
   getEventsDiscovery,
   getMarketAreaLabel,
 } from "@/lib/data";
-import { DISCOVERY_TIME_TABS, WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
+import {
+  EVENT_ACCESS_LABELS,
+  EVENT_TIME_KEYS,
+  EVENT_TIME_LABELS,
+  eventDiscoveryParams,
+  eventFilterToSearchParams,
+  parseEventFilter,
+  type EventFilter,
+  type EventTimeKey,
+} from "@/lib/event-filter";
 
 export const metadata: Metadata = {
   title: "Events",
@@ -23,13 +32,17 @@ export const metadata: Metadata = {
 export const revalidate = 60;
 
 const PAGE_SIZE = 24;
-// Standardize Upcoming Event Time Filters pass — TIME_TABS is now the
-// one shared DISCOVERY_TIME_TABS (lib/format.ts), also used by the
-// homepage's HomeEventDiscovery, instead of a local copy.
-const TIME_TABS = DISCOVERY_TIME_TABS;
+// Shared Event filter foundation — /events reads and writes its URL state
+// through lib/event-filter.ts (the one Event filter contract), so every
+// window here is the same window the homepage rows, /discover and /find
+// use (lib/format.ts getDiscoveryWindowBounds). Happening Now and Tomorrow
+// are /events-only tabs for now; the homepage keeps DISCOVERY_TIME_TABS.
+const TIME_TABS = EVENT_TIME_KEYS.map((key) => ({ key, label: EVENT_TIME_LABELS[key] }));
 
 interface Params {
   when?: string;
+  date?: string;
+  access?: string | string[];
   q?: string;
   category?: string;
   location?: string;
@@ -49,12 +62,11 @@ interface Params {
 }
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const params = await searchParams;
-  const timeKey: DiscoveryTimeKey = TIME_TABS.some((t) => t.key === params.when) ? (params.when as DiscoveryTimeKey) : "next";
-  // Reuses the exact same time-window mapping/logic the homepage's
-  // HomeEventDiscovery already proved out (WINDOW_BY_TIME_KEY ->
-  // getDiscoveryWindowBounds) — not a second interpretation of "weekend."
-  const when = WINDOW_BY_TIME_KEY[timeKey];
+  const rawParams = await searchParams;
+  // Defensive parse: unknown values, malformed dates and slugs are dropped.
+  const filter: EventFilter = parseEventFilter(rawParams as Record<string, string | string[] | undefined>);
+  const params = { ...filter, limit: typeof rawParams.limit === "string" ? rawParams.limit : undefined };
+  const timeKey: EventTimeKey = filter.when ?? "next";
   const limit = Math.min(Math.max(Number(params.limit) || PAGE_SIZE, PAGE_SIZE), 240);
 
   // Event category options are EVENT taxonomy only (event_categories via
@@ -64,27 +76,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const [eventCategories, markets, fetchedRaw] = await Promise.all([
     getEventCategories(),
     getConsumerVisibleMarketsWithAreas(),
-    getEventsDiscovery({
-      when,
-      q: params.q,
-      categorySlug: params.category,
-      location: params.location,
-      marketSlug: params.market,
-      areaSlug: params.market ? params.area : undefined,
-      limit: limit + 1,
-      featuredFirst: true,
-    }),
+    getEventsDiscovery(eventDiscoveryParams(filter, { limit: limit + 1, featuredFirst: true })),
   ]);
   const hasMore = fetchedRaw.length > limit;
   const events = await attachEventCategories(fetchedRaw.slice(0, limit));
 
-  const baseParams = new URLSearchParams();
-  if (timeKey !== "next") baseParams.set("when", timeKey);
-  if (params.q) baseParams.set("q", params.q);
-  if (params.category) baseParams.set("category", params.category);
-  if (params.location) baseParams.set("location", params.location);
-  if (params.market) baseParams.set("market", params.market);
-  if (params.market && params.area) baseParams.set("area", params.area);
+  const baseParams = eventFilterToSearchParams(filter);
 
   const categoryName = eventCategories.find((c) => c.slug === params.category)?.name;
   const selectedMarket = markets.find((m) => m.slug === params.market);
@@ -107,8 +104,18 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
+  for (const a of filter.access ?? []) {
+    chips.push({
+      label: EVENT_ACCESS_LABELS[a],
+      href: `/events${(() => {
+        const p = eventFilterToSearchParams({ ...filter, access: (filter.access ?? []).filter((x) => x !== a) });
+        return p.toString() ? `?${p.toString()}` : "";
+      })()}`,
+    });
+  }
+  if (filter.date) chips.push({ label: filter.date, href: withoutParam("date") });
 
-  const sheetFilterCount = [params.category, params.location].filter(Boolean).length;
+  const sheetFilterCount = [params.category, params.location].filter(Boolean).length + (filter.access?.length ?? 0);
   const filtering = chips.length > 0 || timeKey !== "next" || Boolean(params.q);
 
   const loadMoreHref = (() => {
@@ -117,18 +124,20 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     return `/events?${p.toString()}`;
   })();
 
-  const timeHref = (key: DiscoveryTimeKey) => {
-    const p = new URLSearchParams(baseParams);
-    if (key === "next") p.delete("when");
-    else p.set("when", key);
-    p.delete("limit");
+  const timeHref = (key: EventTimeKey) => {
+    // A time tab replaces an exact date (date overrides when).
+    const p = eventFilterToSearchParams({ ...filter, when: key, date: undefined });
     return `/events${p.toString() ? `?${p.toString()}` : ""}`;
   };
 
   const emptyLabel =
-    params.q || params.category || params.location || params.market
+    params.q || params.category || params.location || params.market || filter.access?.length
       ? `No events matched${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
-      : timeKey === "today"
+      : timeKey === "live"
+        ? "Nothing is happening right now. Try Today or This Week."
+        : timeKey === "tomorrow"
+          ? "Nothing tomorrow yet. Try This Week or This Weekend."
+          : timeKey === "today"
         ? "Nothing today. Try This Week or This Weekend."
         : timeKey === "week"
           ? "Nothing this week yet. Try This Weekend or All."
@@ -138,7 +147,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <SearchFilterAnalytics pageType="events" filterParams={["category", "market", "area", "when"]} />
+      <SearchFilterAnalytics pageType="events" filterParams={["category", "market", "area", "when", "access"]} />
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Events</h1>
       {/* Events Discovery V4, item 1 — same mobile-header compression as
           Businesses Discovery V4: this subtitle adds little a consumer
@@ -150,6 +159,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       </p>
 
       <form method="get" className="mt-4 flex flex-col gap-3">
+        {/* Submitting search or the filter sheet keeps the chosen time and
+            Area (they're set by links/the Area picker, not form fields). */}
+        {filter.when && <input type="hidden" name="when" value={filter.when} />}
+        {filter.date && <input type="hidden" name="date" value={filter.date} />}
+        {filter.market && <input type="hidden" name="market" value={filter.market} />}
+        {filter.market && filter.area && <input type="hidden" name="area" value={filter.area} />}
         <ArchiveSearchField defaultValue={params.q} placeholder="Search events" />
 
         {/* Time is the primary axis for event discovery — same tabs, same
@@ -182,6 +197,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
               categories={eventCategories}
               defaultCategory={params.category}
               defaultLocation={params.location}
+              defaultAccess={filter.access}
             />
           </FilterSheet>
         </div>
@@ -193,7 +209,19 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           any surrounding control text, never a headline. */}
       <p className="mt-3 text-xs font-medium text-ink/45">
         {events.length === 0 && !hasMore ? 0 : `${events.length}${hasMore ? "+" : ""}`} event{events.length === 1 && !hasMore ? "" : "s"}
-        {timeKey === "weekend" ? " this weekend" : timeKey === "today" ? " today" : timeKey === "week" ? " this week" : ""}
+        {filter.date
+          ? ` on ${filter.date}`
+          : timeKey === "weekend"
+            ? " this weekend"
+            : timeKey === "today"
+              ? " today"
+              : timeKey === "tomorrow"
+                ? " tomorrow"
+                : timeKey === "live"
+                  ? " happening now"
+                  : timeKey === "week"
+                    ? " this week"
+                    : ""}
       </p>
 
       {events.length === 0 ? (

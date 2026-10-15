@@ -159,7 +159,7 @@ test("every public read that can expose a place applies the parent Event's visib
   assert.match(data, /const reconciled = hiddenEvents\.size/, "Business card previews/counts");
   assert.equal((data.match(/return applyEventLocationPrivacy\(supabase, withLocations, \(\) => eventId\);/g) ?? []).length, 2, "Event dates (upcoming + all)");
   assert.match(data, /r\.event\.location_visibility === "hidden"\n\s+\? \{ \.\.\.r, event: withholdPreciseLocation\(r\.event\)/, "Event cards / discovery / search");
-  assert.match(data, /rows\.filter\(\(r\) => r\.event\.location_visibility !== "hidden" \|\| matchesWithoutVenue/, "no search hit by a hidden venue");
+  assert.match(data, /rows\.filter\(\(r\) => r\.event\.location_visibility !== "hidden" \|\| \(!options\.locationId && matchesWithoutVenue/, "no search hit by a hidden venue");
   assert.match(data, /return applyEventLocationPrivacy\(supabase, items, \(r\) => r\.event_id\);/, "homepage appearance feed");
   assert.match(data, /const hiddenEvents = await fetchHiddenEventIds\(supabase, items\.map\(\(i\) => i\.event_id\)\);/, "/find feed");
   assert.match(data, /const rows = await applyEventLocationPrivacy\(supabase, \(data \?\? \[\]\) as Row\[\], \(r\) => r\.event_id\);/, "homepage bulletins");

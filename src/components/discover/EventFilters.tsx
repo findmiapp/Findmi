@@ -1,5 +1,6 @@
 import type { Category } from "@/lib/types";
 import { groupEventCategories } from "@/lib/event-categories";
+import { EVENT_ACCESS_KINDS, EVENT_ACCESS_LABELS, type EventAccess } from "@/lib/event-filter";
 
 /**
  * Event archive filter fields (Discovery/Archive V2 Part 9/10/15) —
@@ -21,10 +22,13 @@ export default function EventFilters({
   categories,
   defaultCategory,
   defaultLocation,
+  defaultAccess,
 }: {
   categories: Category[];
   defaultCategory?: string;
   defaultLocation?: string;
+  /** Shared Event filter — attendance actions (RSVP / Register, Tickets). */
+  defaultAccess?: EventAccess[];
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -67,6 +71,18 @@ export default function EventFilters({
           className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
         />
       </label>
+
+      <fieldset className="block">
+        <legend className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Attendance</legend>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {EVENT_ACCESS_KINDS.map((kind) => (
+            <label key={kind} className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" name="access" value={kind} defaultChecked={defaultAccess?.includes(kind)} className="h-4 w-4 accent-findmi" />
+              {EVENT_ACCESS_LABELS[kind]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <button
         type="submit"
