@@ -276,7 +276,7 @@ test("import: an EXISTING matched Event never has its Formats written", async ()
   assert.equal(formatWrites(c.ops).length, 0, "hosting an Event already on Findmi");
   // The Review shows the picker only where a NEW Event is created.
   assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /\{\(intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor key=\{`f\$\{reviewVersion\}`\} formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
-  assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /\{!joining && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /\{\(!joining \|\| operator\) && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
 });
 
 // ── FILTER CONTRACT ───────────────────────────────────────────────────────

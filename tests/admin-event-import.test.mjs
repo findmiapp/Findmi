@@ -142,7 +142,7 @@ const reviewsOf = (analysis) => analysis.events.map((e) => ({ key: e.key, review
 test("A. /admin/events/import exists under the protected Admin shell, reachable from Admin → Events", () => {
   assert.ok(existsSync(`${DIR}/page.tsx`), "route: src/app/admin/(protected)/events/import");
   assert.match(PAGE, /if \(!\(await isAdminSession\(\)\)\) redirect\("\/admin\/login"\);/, "an Admin session renders the importer");
-  assert.match(PAGE, /<AdminEventImporter categories=\{categories\} formats=\{formats\} \/>/);
+  assert.match(PAGE, /<AdminEventImporter categories=\{categories\} formats=\{formats\} businessCategories=\{businessCategories\} \/>/);
   assert.match(PAGE, /export const maxDuration = 60;/);
   assert.match(read("src/app/admin/(protected)/events/page.tsx"), /href="\/admin\/events\/import"[\s\S]{0,200}Import Events/, "entry on the Admin Events list");
 });
@@ -330,15 +330,15 @@ test("J. Category and Format Review stay available (every Admin Event is a genui
   const review = O.operatorReviewDefaults(r.events[0].candidate, r.events[0].matches);
   assert.equal(review.asEvent, true);
   assert.equal(review.intent, "participating");
-  assert.match(MULTI, /\{!joining && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
-  assert.match(MULTI, /\{!joining && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
+  assert.match(MULTI, /\{\(!joining \|\| operator\) && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
+  assert.match(MULTI, /\{\(!joining \|\| operator\) && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
   // The reviewed category goes through the same new-Event save path (writeEventCategory).
   const cat = "cccccccc-0000-4000-8000-000000000001";
   globalThis.__ADMIN = fakeClient();
   await A.adminCommitEventImportBatch([{ review: { ...review, categoryId: cat }, businessId: null }]);
   assert.ok(globalThis.__ADMIN.ops.some((o) => o.table === "events" && o.kind === "insert"));
   globalThis.__ADMIN = undefined;
-  assert.match(CLIENT, /categories=\{categories\}\n\s+formats=\{formats\}\n\s+operator=\{OPERATOR\}/);
+  assert.match(CLIENT, /categories=\{categories\}\n\s+formats=\{formats\}\n\s+operator=\{operator\}/);
 });
 
 test("Review shows each Event's Business before saving; the Business picker is per Event", () => {
@@ -346,7 +346,7 @@ test("Review shows each Event's Business before saving; the Business picker is p
   assert.match(MULTI, /businessId: businessFor\[e\.key\]\?\.id \?\? null/);
   assert.match(CLIENT, /<RelationField[\s\S]{0,200}entity="businesses"/);
   // The Business importer still never shows the picker (operator-only).
-  assert.match(MULTI, /\{operator \? \(\n\s+!joining && \(/);
+  assert.match(MULTI, /\{operator \? \(\n\s+\(\n\s+<div>\n\s+\{operator\.renderBusinessPicker\(/);
 });
 
 test("Business importer persistence is unchanged by the shared createSourceEvent refactor", async () => {

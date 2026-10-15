@@ -105,6 +105,18 @@ export interface StructuredEventHints {
   formats: string[];
   /** Plain-language notes for Review (unreadable values, fields not saved). */
   notes: string[];
+  /** "Business Website:" — the Primary Business's site, for the inline
+   * Brand Import (never the Event Link). */
+  businessWebsite?: string | null;
+  /** "Featured Brand:" / "Participating Businesses:" — additional Business
+   * evidence shown in Review; never linked automatically. */
+  otherBusinesses?: string[];
+  /** Programming text, kept as Review evidence only ("Not Currently Saved
+   * To Findmi": event_occurrences has no details column). */
+  programming?: { label: string; text: string }[];
+  /** Event Link enrichment (Admin only): whether the source page was read
+   * and which fields it filled. */
+  source?: { status: "read" | "failed" | "several_events" | "not_read"; filled: string[]; detail?: string };
 }
 
 export const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };

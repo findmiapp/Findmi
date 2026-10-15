@@ -278,7 +278,7 @@ test("import: an EXISTING matched Event is joined without touching its categorie
   assert.equal(categoryInserts(c.ops).length, 0);
   // The Review only offers the picker when a NEW Event will be created.
   assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /\{\(intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor key=\{reviewVersion\} categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
-  assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /\{!joining && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /\{\(!joining \|\| operator\) && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
 });
 
 // ── DISCOVERY + DISPLAY ───────────────────────────────────────────────────

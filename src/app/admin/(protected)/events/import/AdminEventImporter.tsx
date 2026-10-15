@@ -1,51 +1,69 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import MultiEventImport, { type OperatorBusiness, type OperatorImportMode } from "@/app/(public)/account/business/[id]/import-event/MultiEventImport";
-import { inputClass, sectionClass } from "@/app/(public)/account/business/[id]/import-event/ReviewParts";
+import { AttendanceEditor, inputClass, sectionClass } from "@/app/(public)/account/business/[id]/import-event/ReviewParts";
 import { RelationField } from "@/components/admin/RelationPicker";
-import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
+import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type EventImportReview, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
+import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
+import { segmentTextByKey } from "@/lib/event-import/operator";
+import { runWithConcurrency } from "@/lib/admin/brand-import-runner";
 import type { Category } from "@/lib/types";
-import { adminAnalyzeEventText, adminAnalyzeEventUrl, adminCommitEventImportBatch, adminCreateImportBusiness, adminCreateImportLocation } from "./actions";
+import {
+  adminAnalyzeEventText,
+  adminAnalyzeEventUrl,
+  adminApplyExistingEvent,
+  adminCommitEventImportBatch,
+  adminCompareExistingEvent,
+  adminCreateBusinessFromRead,
+  adminCreateImportBusiness,
+  adminCreateImportLocation,
+  adminEnrichPastedEvent,
+  adminLoadBusinessRead,
+  adminProcessBusinessRead,
+  adminStartBusinessReads,
+  type BusinessReadView,
+} from "./actions";
 
-/** Admin Event Import — the operator entry to the existing importer:
- * Paste Details (one Event, or several marked EVENT 1 … === END EVENT 1 ===)
- * or From Link → the existing several-Events Review (MultiEventImport, in
- * its operator mode) → each Event saved with its own Business, or none. */
+/** Admin Event Import — the operator orchestration over Findmi's existing
+ * import systems:
+ *   paste (one Event, or up to 25 marked EVENT n … === END EVENT n ===)
+ *   → structured reading (instant, no network)
+ *   → each Event's own Event Link read by the existing Event URL importer,
+ *     one request per Event, a few at a time (explicit values win)
+ *   → each missing Business's website read by the existing Brand Import
+ *     (match first; name, description, logo, cover, category), two at a time
+ *   → the existing several-Events Review (operator mode): Business per
+ *     Event (match, Create & Review Business, or minimal Quick Create),
+ *     Location matching + Quick Create, Category / Formats, and Review
+ *     Existing Event for Events already on Findmi.
+ * Nothing is created before Admin confirms it in Review. */
 
 type Method = "text" | "link";
 const PASTE_MAX = 60000;
+/** Event Link reads in flight at once (each is its own bounded request). */
+const EVENT_SOURCE_CONCURRENCY = 3;
+/** Business website reads in flight (Brand Import's own runner setting). */
+const BUSINESS_READ_CONCURRENCY = 2;
+const PENDING_READ = new Set(["queued", "processing"]);
+
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60";
+const smallPrimary = "rounded-lg bg-findmi px-3 py-2 text-metadata font-bold text-white disabled:opacity-60";
+const labelText = "text-metadata font-semibold text-secondary";
 
-const OPERATOR: OperatorImportMode = {
-  commit: adminCommitEventImportBatch,
-  createLocation: adminCreateImportLocation,
-  renderBusinessPicker: ({ id, initial, evidence, onSelect, onCreated }) => (
-    <>
-      <RelationField
-        // Remounts when the Business is set from elsewhere (batch reuse).
-        key={`${id}-${initial?.id ?? "none"}`}
-        label="Business at This Event"
-        name={id}
-        entity="businesses"
-        placeholder="Search Businesses…"
-        clearLabel="No Business"
-        initial={initial ? { value: initial.id, label: initial.name } : null}
-        onSelect={(r) => onSelect(r ? { id: r.value, name: r.label } : null)}
-      />
-      {!initial && <QuickCreateBusiness idPrefix={id} evidence={evidence} onCreated={onCreated} />}
-    </>
-  ),
-  doneHref: "/admin/events?new=1",
+const hostOf = (url: string | null | undefined) => {
+  try {
+    return url ? new URL(url).host.replace(/^www\./, "") : "";
+  } catch {
+    return url ?? "";
+  }
 };
 
-/** Missing-Business Quick Create — the Business counterpart of the Review's
- * "+ Create New Location": prefilled from the Business the source names,
- * created only when the Admin confirms (adminCreateImportBusiness: pending
- * review, no owner or membership). A likely existing Business is offered
- * instead; "Create Anyway" is the explicit override. */
+// ── Business ───────────────────────────────────────────────────────────────
+
+/** Missing-Business Quick Create without a website: the minimal record. */
 function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: string; evidence: string | null; onCreated: (b: OperatorBusiness) => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -95,11 +113,11 @@ function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: stri
   return (
     <div className="mt-2 flex flex-col gap-2 rounded-xl border border-black/[0.08] bg-black/[0.02] p-3">
       <p className="text-microcopy text-muted">Adds the Business to Findmi for review (not public yet). No one is made its owner.</p>
-      <label htmlFor={`${idPrefix}-new-name`} className="text-metadata font-semibold text-secondary">
+      <label htmlFor={`${idPrefix}-new-name`} className={labelText}>
         Business Name
       </label>
       <input id={`${idPrefix}-new-name`} value={name} onChange={(e) => setName(e.target.value)} autoCapitalize="words" maxLength={160} className={inputClass} />
-      <label htmlFor={`${idPrefix}-new-site`} className="text-metadata font-semibold text-secondary">
+      <label htmlFor={`${idPrefix}-new-site`} className={labelText}>
         Website (Optional)
       </label>
       <input id={`${idPrefix}-new-site`} type="url" inputMode="url" autoCapitalize="none" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" className={inputClass} />
@@ -128,7 +146,7 @@ function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: stri
         </p>
       )}
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => create(false)} disabled={busy || !name.trim()} className="rounded-lg bg-findmi px-3 py-2 text-metadata font-bold text-white disabled:opacity-60">
+        <button type="button" onClick={() => create(false)} disabled={busy || !name.trim()} className={smallPrimary}>
           {busy ? "Adding…" : "Create Business"}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="text-metadata font-semibold text-muted hover:text-secondary">
@@ -139,15 +157,461 @@ function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: stri
   );
 }
 
-export default function AdminEventImporter({ categories, formats }: { categories: Category[]; formats: Category[] }) {
+/** Create & Review Business — the existing Brand Import candidate for this
+ * Business's website (name, description, logo, cover, category), reviewed
+ * here and created through Brand Import's own Create Business path. */
+function BrandReviewCard({
+  idPrefix,
+  read,
+  businessCategories,
+  onCreated,
+}: {
+  idPrefix: string;
+  read: BusinessReadView;
+  businessCategories: Category[];
+  onCreated: (b: OperatorBusiness) => void;
+}) {
+  const p = read.proposal;
+  const [name, setName] = useState(p?.name ?? "");
+  const [categoryId, setCategoryId] = useState(p?.cat ?? "");
+  const [shortDescription, setShortDescription] = useState(p?.sd ?? "");
+  const [about, setAbout] = useState(p?.about ?? "");
+  const [useLogo, setUseLogo] = useState(p?.useLogo !== false && Boolean(p?.logo));
+  const [useCover, setUseCover] = useState(p?.useCover !== false && Boolean(p?.cover));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!p) return null;
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await adminCreateBusinessFromRead(read.batchId, read.candidateId, read.updatedAt, {
+        name,
+        categoryId,
+        website: p!.site,
+        instagram: p!.ig ?? "",
+        shortDescription,
+        about,
+        useLogo,
+        useCover,
+      });
+      if (result.ok) onCreated(result.business);
+      else setError(result.error);
+    } catch {
+      setError("Creation didn't finish. It's safe to try again — no duplicate will be created.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const parents = businessCategories.filter((c) => !c.parent_id);
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-xl border border-findmi/30 bg-findmi-50/40 p-3">
+      <p className="text-label font-bold uppercase text-subtle">Create &amp; Review Business</p>
+      <p className="-mt-1 text-microcopy text-muted">Read from {hostOf(p.finalUrl || p.site)} by Brand Import. Created for review (not public yet); no owner, claim or Pro.</p>
+      {(p.logo || p.cover) && (
+        <div className="flex flex-wrap gap-3">
+          {p.logo && (
+            <label className="flex items-center gap-2 text-metadata text-secondary">
+              {/* eslint-disable-next-line @next/next/no-img-element -- candidate preview (re-verified on create) */}
+              <img src={p.logo} alt="Logo candidate" referrerPolicy="no-referrer" className="h-12 w-12 rounded-lg bg-white object-contain" />
+              <input type="checkbox" checked={useLogo} onChange={(e) => setUseLogo(e.target.checked)} className="accent-findmi" />
+              Use Logo
+            </label>
+          )}
+          {p.cover && (
+            <label className="flex items-center gap-2 text-metadata text-secondary">
+              {/* eslint-disable-next-line @next/next/no-img-element -- candidate preview (re-verified on create) */}
+              <img src={p.cover} alt="Cover candidate" referrerPolicy="no-referrer" className="h-12 w-20 rounded-lg bg-white object-cover" />
+              <input type="checkbox" checked={useCover} onChange={(e) => setUseCover(e.target.checked)} className="accent-findmi" />
+              Use Cover
+            </label>
+          )}
+        </div>
+      )}
+      <label htmlFor={`${idPrefix}-brand-name`} className={labelText}>
+        Business Name
+      </label>
+      <input id={`${idPrefix}-brand-name`} value={name} onChange={(e) => setName(e.target.value)} autoCapitalize="words" maxLength={200} className={inputClass} />
+      <label htmlFor={`${idPrefix}-brand-cat`} className={labelText}>
+        Category
+      </label>
+      <select id={`${idPrefix}-brand-cat`} value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+        <option value="">Choose a category</option>
+        {parents.map((parent) => (
+          <optgroup key={parent.id} label={parent.name}>
+            <option value={parent.id}>{parent.name}</option>
+            {businessCategories
+              .filter((c) => c.parent_id === parent.id)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+      <label htmlFor={`${idPrefix}-brand-sd`} className={labelText}>
+        Short Description
+      </label>
+      <input id={`${idPrefix}-brand-sd`} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} autoCapitalize="sentences" maxLength={160} className={inputClass} />
+      <label htmlFor={`${idPrefix}-brand-about`} className={labelText}>
+        About
+      </label>
+      <textarea id={`${idPrefix}-brand-about`} value={about} onChange={(e) => setAbout(e.target.value)} autoCapitalize="sentences" maxLength={600} rows={3} className={inputClass} />
+      {error && (
+        <p role="alert" className="text-metadata text-red-700">
+          {error}
+        </p>
+      )}
+      <button type="button" onClick={create} disabled={busy || !name.trim() || !categoryId} className={`${smallPrimary} w-fit`}>
+        {busy ? "Creating…" : "Create Business"}
+      </button>
+    </div>
+  );
+}
+
+function BusinessField({
+  id,
+  initial,
+  evidence,
+  website,
+  read,
+  businessCategories,
+  onSelect,
+  onCreated,
+}: {
+  id: string;
+  initial: OperatorBusiness | null;
+  evidence: string | null;
+  website: string | null;
+  read: BusinessReadView | undefined;
+  businessCategories: Category[];
+  onSelect: (b: OperatorBusiness | null) => void;
+  onCreated: (b: OperatorBusiness) => void;
+}) {
+  // The website already belongs to a Business on Findmi (Brand Import's
+  // match-first step): select it — never recreate it.
+  const applied = useRef(false);
+  const existing = read?.matchedBusiness ?? read?.createdBusiness ?? null;
+  useEffect(() => {
+    if (!initial && existing && !applied.current) {
+      applied.current = true;
+      onCreated(existing);
+    }
+  }, [initial, existing, onCreated]);
+
+  return (
+    <>
+      <RelationField
+        // Remounts when the Business is set from elsewhere (batch reuse).
+        key={`${id}-${initial?.id ?? "none"}`}
+        label="Business at This Event"
+        name={id}
+        entity="businesses"
+        placeholder="Search Businesses…"
+        clearLabel="No Business"
+        initial={initial ? { value: initial.id, label: initial.name } : null}
+        onSelect={(r) => onSelect(r ? { id: r.value, name: r.label } : null)}
+      />
+      {!initial && website && !existing && read && PENDING_READ.has(read.status) && (
+        <p className="mt-1 text-microcopy text-muted">Reading {hostOf(website)} with Brand Import…</p>
+      )}
+      {!initial && website && !existing && !read && <p className="mt-1 text-microcopy text-muted">Waiting to read {hostOf(website)}…</p>}
+      {!initial && read?.status === "ready" && !existing && (
+        <BrandReviewCard key={read.updatedAt} idPrefix={id} read={read} businessCategories={businessCategories} onCreated={onCreated} />
+      )}
+      {!initial && read?.status === "failed" && (
+        <p className="mt-1 text-microcopy text-amber-900">
+          Couldn&rsquo;t read {hostOf(website)} ({read.failureCode ?? "unavailable"}). Create the Business without it:
+        </p>
+      )}
+      {!initial && (!website || read?.status === "failed") && <QuickCreateBusiness idPrefix={id} evidence={evidence} onCreated={onCreated} />}
+    </>
+  );
+}
+
+// ── Event details: source evidence + Review Existing Event ─────────────────
+
+function ExistingEventReview({ eventId, review, business }: { eventId: string; review: EventImportReview; business: OperatorBusiness | null }) {
+  type Compare = Extract<Awaited<ReturnType<typeof adminCompareExistingEvent>>, { ok: true }>;
+  const [data, setData] = useState<Compare | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [choices, setChoices] = useState<Record<string, "fill" | "replace" | "keep">>({});
+  const [applied, setApplied] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setError(null);
+    setApplied(null);
+    try {
+      const result = await adminCompareExistingEvent(eventId, review, business);
+      if (!result.ok) return setError(result.error);
+      setData(result);
+      setChoices(Object.fromEntries(result.comparisons.map((c) => [c.field, c.kind === "fill" ? "fill" : "keep"])));
+    } catch {
+      setError("Couldn't load the Event on Findmi.");
+    }
+  }
+
+  async function apply() {
+    setBusy(true);
+    setError(null);
+    try {
+      const chosen = Object.fromEntries(Object.entries(choices).filter(([, v]) => v !== "keep")) as Record<string, "fill" | "replace">;
+      const result = await adminApplyExistingEvent(eventId, review, business, chosen);
+      if (!result.ok) setError(result.error);
+      else {
+        setApplied(result.applied);
+        setData(null);
+      }
+    } catch {
+      setError("Couldn't update the Event. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const LABEL: Record<string, string> = { image: "Image", description: "Description", link: "Event Link", attendance: "RSVP / Tickets", organizer: "Organizer", category: "Category", formats: "Formats", business: "Business" };
+  const REPLACEABLE = new Set(["image", "description", "link", "attendance", "organizer"]);
+  return (
+    <section className="flex flex-col gap-2 rounded-xl border border-black/[0.08] bg-black/[0.02] p-3">
+      <p className="text-label font-bold uppercase text-subtle">Review Existing Event</p>
+      <p className="-mt-1 text-microcopy text-muted">
+        No duplicate is created. Empty fields can be filled from this import; a populated field changes only if you choose to replace it.{" "}
+        <Link href={`/admin/events/${eventId}`} className="font-semibold text-accent hover:underline">
+          Open Event
+        </Link>
+      </p>
+      {applied && <p className="text-metadata text-findmi-700">{applied.length > 0 ? `Updated: ${applied.map((f) => LABEL[f] ?? f).join(", ")}.` : "Nothing was changed."}</p>}
+      {!data ? (
+        <button type="button" onClick={load} className="w-fit text-metadata font-semibold text-accent hover:underline">
+          {applied ? "Compare Again" : "Compare With Findmi"}
+        </button>
+      ) : (
+        <>
+          <p className="text-microcopy text-muted">
+            On Findmi: {data.snapshot.occurrenceCount} {data.snapshot.occurrenceCount === 1 ? "date" : "dates"}
+            {data.snapshot.occurrencesWithoutLocation > 0 ? ` (${data.snapshot.occurrencesWithoutLocation} without a Findmi Location — edit those in the Event)` : ""}. Dates and places aren&rsquo;t changed from here.
+          </p>
+          {data.comparisons.length === 0 && <p className="text-metadata text-muted">This import has nothing to add.</p>}
+          <ul className="flex flex-col gap-2">
+            {data.comparisons.map((c) => (
+              <li key={c.field} className="rounded-lg bg-white px-3 py-2">
+                <p className="text-metadata font-semibold text-primary">{LABEL[c.field]}</p>
+                {c.kind === "same" && <p className="text-microcopy text-muted">Already the same.</p>}
+                {c.kind === "fill" && (
+                  <label className="mt-1 flex items-start gap-2 text-microcopy text-secondary">
+                    <input type="checkbox" className="mt-0.5 accent-findmi" checked={choices[c.field] === "fill"} onChange={(e) => setChoices((prev) => ({ ...prev, [c.field]: e.target.checked ? "fill" : "keep" }))} />
+                    <span className="min-w-0 break-words">Empty on Findmi — add: {c.field === "category" || c.field === "formats" ? "the reviewed value" : c.proposed.slice(0, 160)}</span>
+                  </label>
+                )}
+                {c.kind === "conflict" &&
+                  (REPLACEABLE.has(c.field) ? (
+                    <div className="mt-1 flex flex-col gap-1 text-microcopy text-secondary">
+                      <label className="flex items-start gap-2">
+                        <input type="radio" className="mt-0.5 accent-findmi" checked={choices[c.field] !== "replace"} onChange={() => setChoices((prev) => ({ ...prev, [c.field]: "keep" }))} />
+                        <span className="min-w-0 break-words">Keep: {(c.existing ?? "").slice(0, 160)}</span>
+                      </label>
+                      <label className="flex items-start gap-2">
+                        <input type="radio" className="mt-0.5 accent-findmi" checked={choices[c.field] === "replace"} onChange={() => setChoices((prev) => ({ ...prev, [c.field]: "replace" }))} />
+                        <span className="min-w-0 break-words">Replace with: {c.proposed.slice(0, 160)}</span>
+                      </label>
+                    </div>
+                  ) : (
+                    <p className="text-microcopy text-muted">Already set on Findmi ({c.existing}). Change it in the Event if needed.</p>
+                  ))}
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={apply} disabled={busy || !Object.values(choices).some((v) => v !== "keep")} className={`${smallPrimary} w-fit`}>
+            {busy ? "Updating…" : "Apply To Existing Event"}
+          </button>
+        </>
+      )}
+      {error && (
+        <p role="alert" className="text-metadata text-red-700">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function EventDetails({
+  id,
+  candidate,
+  review,
+  set,
+  existingEventId,
+  business,
+}: Parameters<OperatorImportMode["renderEventDetails"]>[0]) {
+  const s = candidate.structured;
+  const source = s?.source;
+  return (
+    <div className="flex flex-col gap-3">
+      {source && source.status !== "not_read" && (
+        <p className={`text-microcopy ${source.status === "read" ? "text-findmi-700" : "text-amber-900"}`}>
+          {source.status === "read"
+            ? source.filled.length > 0
+              ? `From the Event Link: ${source.filled.join(", ")}.`
+              : "Event Link read — your values already covered everything it offered."
+            : `Event Link not read: ${source.detail ?? "unavailable"}`}
+        </p>
+      )}
+      {review.imageUrl && (
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- remote event image preview; stored by Findmi only on save */}
+          <img src={review.imageUrl} alt="Event image" referrerPolicy="no-referrer" className="h-20 w-28 rounded-lg bg-black/[0.04] object-cover" />
+          <button type="button" onClick={() => set({ imageUrl: null })} className="text-metadata font-semibold text-muted hover:text-red-600">
+            Don&rsquo;t Use Image
+          </button>
+        </div>
+      )}
+      {!review.imageUrl && candidate.imageUrl && (
+        <button type="button" onClick={() => set({ imageUrl: candidate.imageUrl })} className="w-fit text-metadata font-semibold text-accent hover:underline">
+          Use the Event Link&rsquo;s Image
+        </button>
+      )}
+      <div>
+        <label htmlFor={`${id}-description`} className="mb-1 block text-label font-bold uppercase text-subtle">
+          Description
+        </label>
+        <textarea
+          id={`${id}-description`}
+          value={review.description ?? ""}
+          onChange={(e) => set({ description: e.target.value })}
+          maxLength={EVENT_DESCRIPTION_MAX}
+          rows={4}
+          autoCapitalize="sentences"
+          className={`${inputClass} resize-y`}
+        />
+      </div>
+      <AttendanceEditor review={review} set={set} evidence={candidate.attendance} idPrefix={`${id}-`} />
+      {(s?.otherBusinesses?.length ?? 0) > 0 && (
+        <p className="text-microcopy text-muted">Also named (Featured / Participating): {s!.otherBusinesses!.join(", ")}. Not linked — add them to the Event afterwards if they take part.</p>
+      )}
+      {(s?.programming?.length ?? 0) > 0 && (
+        <section className="rounded-xl border border-dashed border-black/15 p-3">
+          <p className="text-label font-bold uppercase text-subtle">Programming · Not Currently Saved To Findmi</p>
+          {s!.programming!.map((p, i) => (
+            <div key={i} className="mt-1.5">
+              <p className="text-microcopy font-semibold text-secondary">{p.label}</p>
+              <p className="whitespace-pre-line text-microcopy text-muted">{p.text}</p>
+            </div>
+          ))}
+        </section>
+      )}
+      {existingEventId && <ExistingEventReview eventId={existingEventId} review={review} business={business} />}
+    </div>
+  );
+}
+
+/** A website Brand Import matched to an existing Business → that Business
+ * is the suggestion for every Event with that Business Website (unless
+ * the Event already has one). */
+function withWebsiteBusiness(events: SourceEventAnalysis[], website: string, business: OperatorBusiness): SourceEventAnalysis[] {
+  return events.map((e) =>
+    e.candidate.structured?.businessWebsite === website && !e.matches.organizerBusiness ? { ...e, matches: { ...e.matches, organizerBusiness: business } } : e
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────
+
+type Result = { source: ImportSource; events: SourceEventAnalysis[]; warnings: string[]; run: number };
+
+export default function AdminEventImporter({ categories, formats, businessCategories }: { categories: Category[]; formats: Category[]; businessCategories: Category[] }) {
   const [method, setMethod] = useState<Method>("text");
   const [pasted, setPasted] = useState("");
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ source: ImportSource; events: SourceEventAnalysis[]; warnings: string[]; run: number } | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [reads, setReads] = useState<Record<string, BusinessReadView>>({});
   const [analyzing, startAnalyze] = useTransition();
+  const runRef = useRef(0);
 
-  function show(a: EventImportAnalysis) {
+  /** Brand Import for every Business website whose Business isn't matched. */
+  async function readBusinesses(events: SourceEventAnalysis[], run: number) {
+    const websites = [...new Set(events.flatMap((e) => (!e.matches.organizerBusiness && e.candidate.structured?.businessWebsite ? [e.candidate.structured.businessWebsite] : [])))];
+    if (websites.length === 0) return;
+    const started = await adminStartBusinessReads(websites).catch(() => null);
+    if (!started?.ok || runRef.current !== run) return;
+    setReads(Object.fromEntries(started.reads.map((r) => [r.website, r])));
+    const byCandidate = new Map(started.reads.map((r) => [r.candidateId, r]));
+    await runWithConcurrency(
+      started.reads.filter((r) => r.status === "queued").map((r) => r.candidateId),
+      BUSINESS_READ_CONCURRENCY,
+      async (candidateId) => {
+        const outcome = await adminProcessBusinessRead(candidateId);
+        if (outcome.outcome === "busy") return "retry_later";
+        const r = byCandidate.get(candidateId)!;
+        const view = await adminLoadBusinessRead(r.batchId, candidateId);
+        if (view && runRef.current === run) {
+          setReads((prev) => ({ ...prev, [r.website]: { ...view } }));
+          // The website already belongs to a Business on Findmi: it becomes
+          // the suggestion for every Event naming that website.
+          if (view.matchedBusiness) setResult((prev) => (prev && prev.run === run ? { ...prev, events: withWebsiteBusiness(prev.events, r.website, view.matchedBusiness!) } : prev));
+        }
+        return "done";
+      },
+      { shouldStop: () => runRef.current !== run }
+    );
+  }
+
+  /** Each Event with an Event Link: read through the existing Event URL
+   * importer, one request per Event, a few at a time. A failure keeps the
+   * Event (explicit reading) with the reason — never drops it. */
+  async function enrich(base: Result, text: string) {
+    const run = base.run;
+    const segments = segmentTextByKey(text);
+    const todo = base.events.filter((e) => e.candidate.structured && e.candidate.sourceUrl && segments.has(e.key));
+    let events = base.events;
+    if (todo.length > 0) {
+      setProgress({ done: 0, total: todo.length, failed: 0 });
+      let done = 0;
+      let failed = 0;
+      await runWithConcurrency(
+        todo.map((e) => e.key),
+        EVENT_SOURCE_CONCURRENCY,
+        async (key) => {
+          let read: EventImportAnalysis;
+          try {
+            read = await adminEnrichPastedEvent(segments.get(key)!);
+          } catch {
+            read = { ok: false, code: "server" };
+          }
+          events = events.map((e) => {
+            if (e.key !== key) return e;
+            if (read.ok && read.kind === "single") {
+              const past = read.candidate.occurrences.length > 0 && read.candidate.occurrences.every((o) => o.past);
+              if (read.candidate.structured?.source?.status === "failed") failed += 1;
+              return { ...e, candidate: read.candidate, matches: read.matches, warnings: read.warnings, past };
+            }
+            failed += 1;
+            const detail = read.ok ? "unexpected result" : EVENT_IMPORT_FAILURE_COPY[read.code];
+            return { ...e, candidate: { ...e.candidate, structured: { ...e.candidate.structured!, source: { status: "failed", filled: [], detail } } } };
+          });
+          done += 1;
+          if (runRef.current === run) setProgress({ done, total: todo.length, failed });
+          return "done";
+        },
+        { shouldStop: () => runRef.current !== run }
+      );
+    }
+    if (runRef.current !== run) return;
+    const sourceWarnings = events.flatMap((e, i) =>
+      e.candidate.structured?.source?.status === "failed" || e.candidate.structured?.source?.status === "several_events"
+        ? [`${e.key.startsWith("pasted-event-") ? `EVENT ${e.key.slice(13)}` : `Event ${i + 1}`}: Event Link not read — ${e.candidate.structured.source.detail ?? "unavailable"}`]
+        : []
+    );
+    setProgress(null);
+    setResult({ ...base, events, warnings: [...base.warnings, ...sourceWarnings] });
+    void readBusinesses(events, run);
+  }
+
+  function show(a: EventImportAnalysis, text: string | null) {
     if (!a.ok) {
       setError(a.detail ? `${EVENT_IMPORT_FAILURE_COPY[a.code]} ${a.detail}` : EVENT_IMPORT_FAILURE_COPY[a.code]);
       return;
@@ -156,7 +620,14 @@ export default function AdminEventImporter({ categories, formats }: { categories
       setError(EVENT_IMPORT_FAILURE_COPY.server);
       return;
     }
-    setResult((prev) => ({ source: a.source, events: a.events, warnings: a.warnings, run: (prev?.run ?? 0) + 1 }));
+    const run = (runRef.current += 1);
+    setReads({});
+    const base: Result = { source: a.source, events: a.events, warnings: a.warnings, run };
+    if (text) void enrich(base, text);
+    else {
+      setResult(base);
+      void readBusinesses(base.events, run);
+    }
   }
 
   function analyze(e: React.FormEvent) {
@@ -166,12 +637,36 @@ export default function AdminEventImporter({ categories, formats }: { categories
     if (method === "link" && !url.trim()) return setError(EVENT_IMPORT_FAILURE_COPY.invalid_url);
     startAnalyze(async () => {
       try {
-        show(method === "text" ? await adminAnalyzeEventText(pasted) : await adminAnalyzeEventUrl(url));
+        if (method === "text") show(await adminAnalyzeEventText(pasted), pasted);
+        else show(await adminAnalyzeEventUrl(url), null);
       } catch {
         setError(EVENT_IMPORT_FAILURE_COPY.server);
       }
     });
   }
+
+  const operator: OperatorImportMode = {
+    commit: adminCommitEventImportBatch,
+    createLocation: adminCreateImportLocation,
+    renderBusinessPicker: ({ id, initial, evidence, website, onSelect, onCreated }) => (
+      <BusinessField
+        id={id}
+        initial={initial}
+        evidence={evidence}
+        website={website}
+        read={website ? reads[website] : undefined}
+        businessCategories={businessCategories}
+        onSelect={onSelect}
+        onCreated={(b) => {
+          onCreated(b);
+          // Every other Event with this Business Website gets the same Business.
+          if (website) setReads((prev) => (prev[website] ? { ...prev, [website]: { ...prev[website], createdBusiness: b } } : prev));
+        }}
+      />
+    ),
+    renderEventDetails: (props) => <EventDetails {...props} />,
+    doneHref: "/admin/events?new=1",
+  };
 
   const header = (
     <header>
@@ -179,6 +674,25 @@ export default function AdminEventImporter({ categories, formats }: { categories
       <p className="mt-1 text-sm text-ink/55">Add public Events from other sources for discovery. Each Event keeps its own Business. Findmi is never shown as the organizer.</p>
     </header>
   );
+
+  if (progress) {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <section role="status" className={`${sectionClass} flex flex-col gap-2`}>
+          <p className="text-card-title font-semibold text-primary">
+            Reading Event Links · {progress.done} of {progress.total}
+          </p>
+          <div className="h-2 overflow-hidden rounded-full bg-black/[0.06]">
+            <div className="h-full bg-findmi transition-all" style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }} />
+          </div>
+          <p className="text-metadata text-muted">
+            Each Event&rsquo;s page is read on its own ({EVENT_SOURCE_CONCURRENCY} at a time). {progress.failed > 0 ? `${progress.failed} couldn’t be read so far — they stay in Review with your details.` : "Keep this page open."}
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   if (result) {
     return (
@@ -193,10 +707,14 @@ export default function AdminEventImporter({ categories, formats }: { categories
         header={header}
         manualHref="/admin/events/new"
         businessHome="/admin/events"
-        onTryAnother={() => setResult(null)}
+        onTryAnother={() => {
+          runRef.current += 1;
+          setResult(null);
+          setReads({});
+        }}
         categories={categories}
         formats={formats}
-        operator={OPERATOR}
+        operator={operator}
       />
     );
   }
@@ -232,7 +750,7 @@ export default function AdminEventImporter({ categories, formats }: { categories
           <>
             <label htmlFor="admin-event-details" className="text-metadata text-muted">
               Paste one Event&rsquo;s details, or up to 25 Events with each one between <span className="font-semibold text-secondary">EVENT 1</span> and{" "}
-              <span className="font-semibold text-secondary">=== END EVENT 1 ===</span> (numbering each Event).
+              <span className="font-semibold text-secondary">=== END EVENT 1 ===</span> (numbering each Event). Each Event Link and Business Website is read automatically.
             </label>
             <textarea
               id="admin-event-details"
@@ -241,7 +759,7 @@ export default function AdminEventImporter({ categories, formats }: { categories
               onChange={(e) => setPasted(e.target.value)}
               autoCapitalize="sentences"
               maxLength={PASTE_MAX}
-              placeholder={"EVENT 1\nEvent name\nDate and time\nVenue and address\n=== END EVENT 1 ===\n\nEVENT 2\n…\n=== END EVENT 2 ==="}
+              placeholder={"EVENT 1\nEvent Name: …\nPrimary Business: …\nBusiness Website: https://…\nEvent Link: https://…\nDates: …\nStart Time: …\nEnd Time: …\nLocation Name: …\nStreet Address: …\n=== END EVENT 1 ==="}
               className={`${inputClass} min-h-[14rem] resize-y`}
               aria-invalid={Boolean(error)}
               aria-describedby={error ? errorId : undefined}

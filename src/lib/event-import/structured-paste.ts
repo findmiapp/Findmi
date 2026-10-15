@@ -26,6 +26,9 @@ import type { TextExtraction } from "./text-source";
 type Field =
   | "title"
   | "business"
+  | "businessWebsite"
+  | "featured"
+  | "participating"
   | "organizer"
   | "eventLink"
   | "sourceUrl"
@@ -52,6 +55,12 @@ const FIELDS: Record<string, Field> = {
   "event title": "title",
   "primary business": "business",
   business: "business",
+  "business website": "businessWebsite",
+  "brand website": "businessWebsite",
+  "featured brand": "featured",
+  "featured brands": "featured",
+  "participating businesses": "participating",
+  "participating business": "participating",
   organizer: "organizer",
   organiser: "organizer",
   "event link": "eventLink",
@@ -123,6 +132,12 @@ function httpsUrl(value: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** "knix.com" → "https://knix.com/" (a Business website may be written bare). */
+function websiteOrNull(value: string | null): string | null {
+  if (!value || /\s/.test(value.trim()) || !/\.[a-z]{2,}/i.test(value)) return null;
+  return httpsUrl(/^https?:\/\//i.test(value.trim()) ? value.trim().replace(/^http:/i, "https:") : `https://${value.trim()}`);
 }
 
 function venueFrom(b: Block): ImportedVenue {
@@ -260,8 +275,18 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
   if (tickets) controls.push({ text: "Get Tickets", href: tickets });
   if (rsvp) controls.push({ text: "RSVP", href: rsvp });
 
-  const programming = [all(event, "programming"), ...occurrenceBlocks.map((o) => all(o.block, "programming"))].filter(Boolean);
-  if (programming.length > 0) notes.push("Programming details aren't saved yet: Findmi has no per-date details field. Add anything important to the description.");
+  // Programming is kept as Review evidence (labelled "Not Currently Saved
+  // To Findmi") — event_occurrences has no details column yet. It never
+  // feeds a date, time, place or name.
+  const programmingEvidence: StructuredEventHints["programming"] = [];
+  const eventProgramming = all(event, "programming");
+  if (eventProgramming) programmingEvidence.push({ label: "Event", text: eventProgramming });
+  for (const o of [...occurrenceBlocks].sort((a, b) => a.number - b.number)) {
+    const text = all(o.block, "programming");
+    if (text) programmingEvidence.push({ label: [`Occurrence ${o.number}`, first(o.block, "date")].filter(Boolean).join(" · "), text });
+  }
+  const programming = programmingEvidence.map((p) => p.text);
+  if (programming.length > 0) notes.push("Programming details aren't saved yet: Findmi has no per-date details field. They're shown in Review as Not Currently Saved To Findmi.");
   if (unknown.size > 0) notes.push(`Not read: ${[...unknown].slice(0, 5).join(", ")}.`);
 
   const title = cleanText(first(event, "title"), 200);
@@ -294,6 +319,13 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
       sources,
       structured: {
         business: cleanText(first(event, "business"), 160),
+        businessWebsite: httpsUrl(first(event, "businessWebsite")) ?? websiteOrNull(first(event, "businessWebsite")),
+        otherBusinesses: [...(event.values.featured ?? []), ...(event.values.participating ?? [])]
+          .flatMap((v) => v.split(/[,;|]/))
+          .map((v) => cleanText(v.trim(), 160))
+          .filter((v): v is string => Boolean(v))
+          .slice(0, 12),
+        programming: programmingEvidence,
         category: cleanText(first(event, "category"), 80),
         subcategory: cleanText(first(event, "subcategory"), 80),
         formats,

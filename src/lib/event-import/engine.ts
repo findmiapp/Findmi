@@ -38,7 +38,9 @@ import {
 import { extractStructuredEvent } from "./structured-paste";
 import { splitPastedEvents, type PastedEventSegment } from "./paste-segments";
 import { extractTextEventCandidate, mergeTextAi, needsTextAssist, PASTE_MAX_CHARS, PASTE_MIN_CHARS, type TextExtraction } from "./text-source";
+import { mergeSourceIntoStructured } from "./structured-merge";
 import {
+  EVENT_IMPORT_FAILURE_COPY,
   venueKey,
   type EventCandidate,
   type EventImportAnalysis,
@@ -430,6 +432,75 @@ async function analyzePastedEvents(segments: PastedEventSegment[], businessId: s
   const warnings = [...unread, ...notes];
   if (events.every((e) => e.past)) warnings.push("All the pasted Events have already happened.");
   return { ok: true, kind: "multi", source: { url: "", name: "Pasted Details", platform: null }, events, warnings };
+}
+
+/** Admin Event Import — ONE pasted Event (structured block) enriched from
+ * its own Event Link through the existing Event URL importer
+ * (analyzeEventUrl: safe fetch, SSRF protection, extraction, bounded AI
+ * assist). Explicit structured values win; the page only fills what the
+ * block left empty (./structured-merge.ts). A source that can't be read
+ * never loses the Event: it keeps its explicit reading with the reason.
+ * An Event already on Findmi with the same link is offered as the match.
+ * One call = one Event, so a 25-Event paste is 25 bounded requests (the
+ * caller runs them a few at a time) — never one long request. */
+export async function analyzeAdminSourceEvent(input: { text: string; rateKey: string }, deps: EventImportDeps): Promise<EventImportAnalysis> {
+  const now = deps.now();
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  const fields = extractStructuredEvent(text, { now });
+  if (!fields) return { ok: false, code: "text_no_event" };
+  let candidate: EventCandidate = fields.candidate;
+  const link = candidate.sourceUrl;
+  let source: NonNullable<NonNullable<EventCandidate["structured"]>["source"]> = { status: "not_read", filled: [] };
+  let sourceAttendance: EventCandidate["attendance"] | undefined;
+  const differences: string[] = [];
+  if (link) {
+    let read: EventImportAnalysis;
+    try {
+      read = await analyzeEventUrl({ url: link, businessId: null, rateKey: input.rateKey }, deps);
+    } catch {
+      read = { ok: false, code: "server" };
+    }
+    if (read.ok && read.kind === "single") {
+      const merged = mergeSourceIntoStructured(candidate, read.candidate);
+      candidate = merged.candidate;
+      differences.push(...merged.differences);
+      sourceAttendance = read.candidate.attendance;
+      if (sourceAttendance?.cta && sourceAttendance.url && !fields.controls.length) merged.filled.push("RSVP / tickets");
+      source = { status: "read", filled: merged.filled };
+    } else if (read.ok) {
+      source = { status: "several_events", filled: [], detail: "The Event Link lists several Events, so nothing was taken from it." };
+    } else {
+      source = { status: "failed", filled: [], detail: EVENT_IMPORT_FAILURE_COPY[read.code] };
+    }
+  }
+  candidate = { ...candidate, structured: { ...candidate.structured!, source, notes: [...(candidate.structured?.notes ?? []), ...differences] } };
+
+  const result = await finishEvidenceCandidate(fields, candidate, "text_no_event", null, now, deps);
+  if (!result.ok || result.kind !== "single") return result;
+  let finished = result.candidate;
+  // RSVP / tickets: an explicit structured link wins; else the page's own.
+  if (!fields.controls.length && sourceAttendance?.cta && sourceAttendance.url) finished = { ...finished, attendance: sourceAttendance };
+  const matches = { ...result.matches };
+  if (link && !matches.event) {
+    const existing = await deps.findEventBySourceUrl(link).catch(() => null);
+    const ev = existing ? await deps.getEvent(existing.id).catch(() => null) : null;
+    if (existing && ev) {
+      matches.event = {
+        id: existing.id,
+        name: existing.name,
+        slug: ev.slug,
+        startAt: existing.startAt,
+        venueName: existing.venueName,
+        city: existing.city,
+        confidence: "strong",
+        hostBusinessId: ev.host_business_id,
+        hostedByThisBusiness: false,
+      };
+    }
+  }
+  const warnings = [...result.warnings];
+  if (source.status === "failed" || source.status === "several_events") warnings.push(`Event Link not read: ${source.detail}`);
+  return { ok: true, kind: "single", candidate: finished, matches, warnings };
 }
 
 export async function analyzeEventImage(

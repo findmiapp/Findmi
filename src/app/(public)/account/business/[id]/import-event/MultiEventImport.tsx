@@ -58,8 +58,22 @@ export interface OperatorImportMode {
     id: string;
     initial: OperatorBusiness | null;
     evidence: string | null;
+    /** "Business Website:" — read by the existing Brand Import. */
+    website: string | null;
     onSelect: (b: OperatorBusiness | null) => void;
     onCreated: (b: OperatorBusiness) => void;
+  }) => React.ReactNode;
+  /** Renders the import's own evidence for one Event (Event Link status,
+   * image, description, RSVP / tickets, other named Businesses,
+   * programming) and — for an Event already on Findmi — Review Existing
+   * Event. */
+  renderEventDetails: (props: {
+    id: string;
+    candidate: SourceEventAnalysis["candidate"];
+    review: EventImportReview;
+    set: (patch: Partial<EventImportReview>) => void;
+    existingEventId: string | null;
+    business: OperatorBusiness | null;
   }) => React.ReactNode;
   doneHref: string;
 }
@@ -375,12 +389,13 @@ export default function MultiEventImport({
                   {isOpen && (
                     <div id={`batch-${e.key}`} className="flex flex-col gap-3 border-t border-black/[0.05] px-3 pb-3 pt-2.5">
                       {operator ? (
-                        !joining && (
+                        (
                           <div>
                             {operator.renderBusinessPicker({
                               id: `batch-${e.key}-business`,
                               initial: businessFor[e.key] ?? null,
                               evidence: eventBusinessEvidence(e.candidate),
+                              website: e.candidate.structured?.businessWebsite ?? null,
                               onSelect: (b) => setBusinessFor((prev) => ({ ...prev, [e.key]: b })),
                               onCreated: (b) => onBusinessCreated(e.key, b),
                             })}
@@ -418,7 +433,7 @@ export default function MultiEventImport({
                             {match.confidence === "strong" ? "Already on Findmi: " : "Possibly on Findmi: "}
                             <span className="font-semibold text-primary">{match.name}</span>
                           </legend>
-                          <Choice checked={review.useEventId === match.id} onChange={() => set({ useEventId: match.id })} title="Yes, It’s This Event" line={operator ? "Nothing new is added — it’s already on Findmi." : review.intent === "participating" ? "We’ll ask the organizer to confirm your Business." : "It’s already on your schedule."} />
+                          <Choice checked={review.useEventId === match.id} onChange={() => set({ useEventId: match.id })} title="Yes, It’s This Event" line={operator ? "No copy is added. Review what this import can add to it below." : review.intent === "participating" ? "We’ll ask the organizer to confirm your Business." : "It’s already on your schedule."} />
                           <Choice checked={review.useEventId === null} onChange={() => set({ useEventId: null })} title="No, It’s Different" line="Add it with the details below." />
                         </fieldset>
                       )}
@@ -444,8 +459,16 @@ export default function MultiEventImport({
                           quickCreate={{ online: Boolean(e.candidate.online), onCreated: onLocationCreated, createAction: operator?.createLocation }}
                         />
                       )}
-                      {!joining && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
-                      {!joining && (review.intent === "hosting" || review.asEvent) && <EventFormatEditor formats={formats} review={review} set={set} />}
+                      {(!joining || operator) && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
+                      {(!joining || operator) && (review.intent === "hosting" || review.asEvent) && <EventFormatEditor formats={formats} review={review} set={set} />}
+                      {operator?.renderEventDetails({
+                        id: `batch-${e.key}`,
+                        candidate: e.candidate,
+                        review,
+                        set,
+                        existingEventId: joining ? review.useEventId : null,
+                        business: businessFor[e.key] ?? null,
+                      })}
                     </div>
                   )}
                 </li>

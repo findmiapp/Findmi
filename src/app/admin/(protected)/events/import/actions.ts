@@ -3,7 +3,30 @@
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
-import { analyzeEventText, analyzeEventUrl, defaultEventImportDeps, type EventImportDeps } from "@/lib/event-import/engine";
+import { analyzeAdminSourceEvent, analyzeEventText, analyzeEventUrl, defaultEventImportDeps, type EventImportDeps } from "@/lib/event-import/engine";
+import { PASTE_MAX_CHARS } from "@/lib/event-import/text-source";
+import { getAllCategories } from "@/lib/admin/queries";
+import {
+  defaultBrandImportEngine,
+  loadBrandImportBatch,
+  loadBrandImportCandidate,
+  planBrandImport,
+  processBrandImportCandidate,
+  supabaseBrandImportStore,
+  BRAND_IMPORT_MAX_INPUTS,
+  type BrandImportProcessOutcome,
+  type BrandImportProposal,
+} from "@/lib/admin/brand-import";
+import { createBusinessFromCandidate, defaultCreateBusinessDeps, saveBrandReview, supabaseBrandReviewStore, type BrandReviewInput } from "@/lib/admin/brand-import-review";
+import {
+  applyExistingEventEnrichment,
+  compareExistingEvent,
+  loadExistingEventSnapshot,
+  proposalFromReview,
+  type ExistingEventSnapshot,
+  type ExistingField,
+  type FieldComparison,
+} from "@/lib/event-import/existing-event";
 import { findBusinessMatches } from "@/lib/business-matching";
 import { insertInlineBusiness, type InlineBusinessResult } from "@/lib/admin/inline-business";
 import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
@@ -180,5 +203,204 @@ async function commitOne(admin: SupabaseClient, deps: SourceEventDeps, review: E
     return await persistDiscoveryEvent(normalized.value, business, deps);
   } catch {
     return { ok: false, error: "Couldn't save it. Please try again." };
+  }
+}
+
+// ── Event Link enrichment (one Event per request) ─────────────────────────
+
+/** Admin source reads have their own bound (a 25-Event paste reads up to 25
+ * pages), separate from the per-person Paste/Link analysis limit. */
+const ENRICH_WINDOW_MS = 10 * 60 * 1000;
+const ENRICH_MAX_PER_WINDOW = 150;
+let enrichHits: number[] = [];
+function enrichRateLimited(now = Date.now()): boolean {
+  enrichHits = enrichHits.filter((t) => now - t < ENRICH_WINDOW_MS);
+  if (enrichHits.length >= ENRICH_MAX_PER_WINDOW) return true;
+  enrichHits.push(now);
+  return false;
+}
+
+/** ONE pasted structured Event, enriched from its own Event Link through
+ * the existing Event URL importer (lib/event-import/engine.ts
+ * analyzeAdminSourceEvent). The Review page runs these a few at a time, so
+ * every Event gets its own bounded request. Writes nothing. */
+export async function adminEnrichPastedEvent(text: string): Promise<EventImportAnalysis> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, code: "server" };
+  try {
+    const deps: EventImportDeps = { ...operatorDeps(admin), isRateLimited: () => enrichRateLimited() };
+    return publicImportAnalysis(await analyzeAdminSourceEvent({ text: typeof text === "string" ? text.slice(0, PASTE_MAX_CHARS) : "", rateKey: ADMIN_RATE_KEY }, deps));
+  } catch {
+    return { ok: false, code: "server" };
+  }
+}
+
+// ── Business: the existing website-assisted Brand Import, inline ──────────
+
+export interface BusinessReadView {
+  batchId: string;
+  candidateId: string;
+  status: string;
+  failureCode: string | null;
+  proposal: BrandImportProposal | null;
+  matchedBusiness: { id: string; name: string } | null;
+  createdBusiness: { id: string; name: string } | null;
+  updatedAt: string;
+}
+
+/** Starts the existing Brand Import for the Business websites named in
+ * this paste (import tables only — brand_import_batches/candidates; no
+ * Business is written). Same planning as Admin → Businesses → Import
+ * (normalization, one candidate per host, at most 20 per batch). */
+export async function adminStartBusinessReads(
+  websites: string[]
+): Promise<{ ok: true; reads: (BusinessReadView & { website: string })[] } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const list = [...new Set((Array.isArray(websites) ? websites : []).filter((w): w is string => typeof w === "string" && w.length <= 300))].slice(0, 50);
+  const reads: (BusinessReadView & { website: string })[] = [];
+  try {
+    for (let i = 0; i < list.length; i += BRAND_IMPORT_MAX_INPUTS) {
+      const chunk = list.slice(i, i + BRAND_IMPORT_MAX_INPUTS);
+      const plan = planBrandImport(chunk.join("\n"));
+      if (!plan.ok) continue;
+      const batchId = await supabaseBrandImportStore(admin).createBatch(plan.candidates);
+      const batch = await loadBrandImportBatch(admin, batchId);
+      for (const c of batch?.candidates ?? []) reads.push({ website: c.submittedInput, ...readView(batchId, c) });
+    }
+  } catch {
+    return { ok: false, error: "Couldn't start reading the Business websites. Please try again." };
+  }
+  return { ok: true, reads };
+}
+
+function readView(batchId: string, c: NonNullable<Awaited<ReturnType<typeof loadBrandImportCandidate>>>): BusinessReadView {
+  return {
+    batchId,
+    candidateId: c.id,
+    status: c.status,
+    failureCode: c.failureCode,
+    proposal: c.proposal,
+    matchedBusiness: c.matchedBusiness,
+    createdBusiness: c.createdBusiness,
+    updatedAt: c.updatedAt,
+  };
+}
+
+/** Processes ONE Business website — exactly Admin Brand Import's
+ * processBrandImportCandidateAction (match first → website reading → AI →
+ * logo / cover candidates); "busy" means retry shortly. */
+export async function adminProcessBusinessRead(candidateId: string): Promise<BrandImportProcessOutcome | { outcome: "error" }> {
+  if (typeof candidateId !== "string" || !UUID.test(candidateId)) return { outcome: "not_found" };
+  const admin = await adminClient();
+  if (!admin) return { outcome: "error" };
+  try {
+    const engine = defaultBrandImportEngine(admin, async () => (await getAllCategories("business")).map((c) => ({ id: c.id, slug: c.slug, name: c.name })));
+    return await processBrandImportCandidate(candidateId, { store: supabaseBrandImportStore(admin), engine, now: Date.now, log: (entry) => console.info(JSON.stringify(entry)) });
+  } catch {
+    return { outcome: "error" };
+  }
+}
+
+export async function adminLoadBusinessRead(batchId: string, candidateId: string): Promise<BusinessReadView | null> {
+  if (!UUID.test(String(batchId)) || !UUID.test(String(candidateId))) return null;
+  const admin = await adminClient();
+  if (!admin) return null;
+  try {
+    const c = await loadBrandImportCandidate(admin, batchId, candidateId);
+    return c ? readView(batchId, c) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Create Business from the reviewed Brand Import candidate — the existing
+ * Save Review + Create Business path (pending review, Free, no owner,
+ * membership, claim, Pro or verification; final re-match first, so an
+ * existing Business is linked instead of duplicated). */
+export async function adminCreateBusinessFromRead(
+  batchId: string,
+  candidateId: string,
+  expectedUpdatedAt: string,
+  input: BrandReviewInput
+): Promise<{ ok: true; business: { id: string; name: string }; existing: boolean } | { ok: false; error: string }> {
+  if (!UUID.test(String(batchId)) || !UUID.test(String(candidateId))) return { ok: false, error: "This Business read is no longer available." };
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  try {
+    const categories = await getAllCategories("business");
+    const clean = (v: unknown) => (typeof v === "string" ? v.slice(0, 2000) : "");
+    const saved = await saveBrandReview(
+      batchId,
+      candidateId,
+      clean(expectedUpdatedAt),
+      {
+        name: clean(input?.name),
+        categoryId: clean(input?.categoryId),
+        website: clean(input?.website),
+        instagram: clean(input?.instagram),
+        shortDescription: clean(input?.shortDescription),
+        about: clean(input?.about),
+        useLogo: input?.useLogo === true,
+        useCover: input?.useCover === true,
+      },
+      { store: supabaseBrandReviewStore(admin), businessCategoryIds: new Set(categories.map((c) => c.id)) }
+    );
+    if (saved.outcome === "invalid") return { ok: false, error: saved.error };
+    if (saved.outcome === "stale") return { ok: false, error: "This Business changed since it was loaded. Reload it and try again." };
+    if (saved.outcome !== "saved") return { ok: false, error: "This Business can't be created from here." };
+    const created = await createBusinessFromCandidate(batchId, candidateId, defaultCreateBusinessDeps(admin));
+    if (created.outcome === "created" || created.outcome === "already_created" || created.outcome === "existing_business") {
+      const { data } = await admin.from("businesses").select("id, name").eq("id", created.businessId).maybeSingle();
+      const row = data as { id: string; name: string } | null;
+      return row ? { ok: true, business: row, existing: created.outcome === "existing_business" } : { ok: false, error: "Couldn't load the new Business." };
+    }
+    if (created.outcome === "invalid") return { ok: false, error: created.error };
+    return { ok: false, error: "Creation didn't finish. It's safe to try again — no duplicate will be created." };
+  } catch {
+    return { ok: false, error: "Creation didn't finish. It's safe to try again — no duplicate will be created." };
+  }
+}
+
+// ── Review Existing Event ─────────────────────────────────────────────────
+
+export async function adminCompareExistingEvent(
+  eventId: string,
+  review: EventImportReview,
+  business: { id: string; name: string } | null
+): Promise<{ ok: true; snapshot: ExistingEventSnapshot; comparisons: FieldComparison[] } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const snapshot = await loadExistingEventSnapshot(admin, String(eventId));
+  if (!snapshot) return { ok: false, error: "That Event is no longer on Findmi." };
+  return { ok: true, snapshot, comparisons: compareExistingEvent(snapshot, proposalFromReview(review ?? {}, business)) };
+}
+
+/** Applies only the fields Admin chose (lib/event-import/existing-event.ts). */
+export async function adminApplyExistingEvent(
+  eventId: string,
+  review: EventImportReview,
+  business: { id: string; name: string } | null,
+  choices: Partial<Record<ExistingField, "fill" | "replace">>
+): Promise<{ ok: true; applied: ExistingField[] } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  if (business) {
+    const { data } = await admin.from("businesses").select("id").eq("id", business.id).maybeSingle();
+    if (!data) return { ok: false, error: "That Business isn't on Findmi." };
+  }
+  try {
+    const deps = discoveryDeps(admin);
+    const result = await applyExistingEventEnrichment(admin, String(eventId), choices ?? {}, proposalFromReview(review ?? {}, business), {
+      storeImage: deps.storeImage,
+      propagateDates: deps.propagateDates,
+    });
+    if (result.ok && result.applied.length > 0) {
+      revalidatePath("/admin/events");
+      revalidatePath("/events");
+    }
+    return result;
+  } catch {
+    return { ok: false, error: "Couldn't update the Event. Please try again." };
   }
 }

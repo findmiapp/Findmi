@@ -5,6 +5,7 @@
 // saved as a participating-style source Event (no host) — see
 // persistDiscoveryEvent. Pure; no I/O.
 import { reviewDefaults } from "./review";
+import { splitPastedEvents } from "./paste-segments";
 import type { EventCandidate, EventImportAnalysis, EventImportMatches, EventImportReview, ImportSource, StructuredEventHints } from "./types";
 
 /** The slice of a canonical Category this needs (kind 'event' / 'event_format'). */
@@ -93,4 +94,14 @@ export function eventBusinessEvidence(candidate: EventCandidate): string | null 
  * unresolved for the operator to choose. */
 export function suggestedEventBusiness(matches: EventImportMatches): { id: string; name: string } | null {
   return matches.organizerBusiness ? { id: matches.organizerBusiness.id, name: matches.organizerBusiness.name } : null;
+}
+
+/** Which pasted text each Review row came from, by the key analysis gave
+ * it: "pasted-event-n" for marked Events, "event-1" for a single Event. */
+export function segmentTextByKey(pasted: string): Map<string, string> {
+  const text = pasted.trim();
+  const split = splitPastedEvents(text, 12);
+  if (split.kind !== "segments") return new Map([["event-1", text]]);
+  if (split.segments.length === 1) return new Map([["event-1", split.segments[0].text]]);
+  return new Map(split.segments.map((s) => [`pasted-event-${s.number}`, s.text]));
 }
