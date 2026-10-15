@@ -348,7 +348,7 @@ test("shared: three inputs, one engine, one Review, one save path", () => {
   assert.match(ui, /showAnalysis\(await analyzeEventImportImage\(businessId, form\)\)/);
   assert.equal(ui.match(/setStep\(\{ kind: "review"/g).length, 1, "one Review for every input");
   assert.equal(ui.match(/commitEventImport\(/g).length, 1, "one save");
-  assert.match(ui, /<WhenWhereEditor key=\{reviewVersion\} review=\{review\} set=\{set\} matches=\{matches\} initialPast=\{initialPast\} \/>/);
+  assert.match(ui, /<WhenWhereEditor\s+key=\{reviewVersion\}\s+review=\{review\}\s+set=\{set\}\s+matches=\{matches\}\s+initialPast=\{initialPast\}\s/);
   assert.doesNotMatch(read("src/lib/event-import/text-source.ts"), /from\(|\.insert\(|\.update\(|fetch\(/, "the text adapter is pure");
   // Entry points now say Import Event.
   assert.match(read("src/app/(public)/account/event/new/page.tsx"), /import-event\?intent=hosting`\} className=\{`mt-3 \$\{primaryButtonClass\}`\}>\s*Import Event/);

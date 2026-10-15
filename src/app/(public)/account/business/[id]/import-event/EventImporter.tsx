@@ -21,7 +21,7 @@ import {
   type ReviewOccurrence,
   type SourceEventAnalysis,
 } from "@/lib/event-import/types";
-import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage } from "@/lib/event-import/review";
+import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage, withCreatedLocations } from "@/lib/event-import/review";
 
 /** Event Import V1 — Business importer: a link, pasted details or an
  * uploaded flyer/screenshot → Findmi reads it →
@@ -571,7 +571,19 @@ export default function EventImporter({
         </p>
       ) : (
         <>
-          <WhenWhereEditor key={reviewVersion} review={review} set={set} matches={matches} initialPast={initialPast} />
+          <WhenWhereEditor
+            key={reviewVersion}
+            review={review}
+            set={set}
+            matches={matches}
+            initialPast={initialPast}
+            quickCreate={{
+              online: Boolean(candidate.online),
+              // A Location created/chosen in Review shows as this place's
+              // match from now on (Review state only).
+              onCreated: (location) => setStep((s) => (s.kind === "review" ? { ...s, matches: withCreatedLocations(s.matches, [location]) } : s)),
+            }}
+          />
           {/* Attendance is saved with a NEW Event (hosting, or a genuine
               Event the Business takes part in) — never on a plain schedule item. */}
           {(intent === "hosting" || review.asEvent) && <AttendanceEditor review={review} set={set} evidence={candidate.attendance} />}

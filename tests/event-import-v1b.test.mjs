@@ -399,7 +399,7 @@ test("HOSTING: one Event → one occurrence per date, each linked to ITS OWN pla
 test("Review UI: per-date place rows, compact summaries, Remove, past dates, no schema jargon", () => {
   // The date/place review parts are shared by the single and several-Events reviews.
   const ui = read("src/app/(public)/account/business/[id]/import-event/ReviewParts.tsx");
-  assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /<WhenWhereEditor key=\{reviewVersion\} review=\{review\} set=\{set\} matches=\{matches\} initialPast=\{initialPast\} \/>/);
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /<WhenWhereEditor\s+key=\{reviewVersion\}\s+review=\{review\}\s+set=\{set\}\s+matches=\{matches\}\s+initialPast=\{initialPast\}\s/);
   assert.match(ui, /\{review\.sharedPlace \? "When" : "When & Where"\}/);
   assert.match(ui, /aria-label=\{`Remove \$\{label\}`\}/);
   assert.match(ui, /Earlier \{pastDates\.length === 1 \? "Date" : "Dates"\} Not Included/);

@@ -253,3 +253,95 @@ export function persistNote(review: EventImportReview, businessName: string): { 
   if (review.asEvent) return { label: "Event", line: `Findmi will add this Event and put ${businessName} on its schedule.` };
   return { label: "Schedule Item", line: `This will be added to ${businessName}’s schedule.` };
 }
+
+// ── Missing canonical Location: Quick Create (Review state only) ───────
+// When a reviewed place is a real, specific physical place that isn't on
+// Findmi yet, the person can create it inline (the existing
+// createInlinePlace action — unlisted, no membership, duplicate-checked)
+// and it is selected exactly like a strong Location match. Nothing here
+// creates or saves the Event; normal Event persistence later writes
+// event_occurrences.location_id from the selected place as always.
+
+/** A Findmi Location created (or chosen from duplicates) during Review. */
+export interface ReviewCreatedLocation {
+  /** The page-place identity (venueKey) it resolves. */
+  key: string;
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+}
+
+// Names that are not a place: unannounced, secret or online.
+const PLACEHOLDER_PLACE = /\b(tba|tbd|tbc|to be (announced|determined|confirmed)|secret|announced later|location (announced|revealed|shared|sent)|online|virtual|zoom|webinar|livestream|live stream|google meet|teams)\b/i;
+// A street address starts with a building number ("121 East 27th St",
+// "20-30 Main St") — "5th Ave", "SoHo" or "Hudson Yards" never do.
+const NUMBERED_STREET = /^\s*\d+[a-z]?(?:-\d+[a-z]?)?\s+[a-z0-9]/i;
+// An intersection or corner is not a single building.
+const INTERSECTION = /\s(&|and|at|@|x)\s|\bcorner\b|\bbetween\b|\bbtwn\b|\s\/\s/i;
+
+/** Whether Review may offer "Create New Location" for this place. Only a
+ * named, specific physical place with a numbered street address, city and
+ * state, on an Event whose source publishes an exact place — never for a
+ * hidden / broad-only / no-location / online Event, a placeholder name, a
+ * neighborhood, city or intersection, or a place already linked. */
+export function canOfferLocationCreate(
+  place: ReviewPlace,
+  context: { locationVisibility?: string | null; online?: boolean | null }
+): boolean {
+  const visibility = context.locationVisibility ?? null;
+  if (visibility === "hidden" || visibility === "broad" || visibility === "none") return false;
+  if (context.online) return false;
+  if (place.useLocationId) return false;
+  const name = place.venueName?.trim() ?? "";
+  const address = place.address?.trim() ?? "";
+  if (!name || PLACEHOLDER_PLACE.test(name)) return false;
+  if (!address || PLACEHOLDER_PLACE.test(address)) return false;
+  if (!NUMBERED_STREET.test(address) || INTERSECTION.test(address)) return false;
+  if (!place.city?.trim() || !place.state?.trim()) return false;
+  return true;
+}
+
+/** The place's identity key: its page key, or (for a place typed in
+ * Review) the same venueKey rule the page places use. */
+export function placeKeyFor(place: ReviewPlace): string {
+  return place.matchKey || venueKey({ name: place.venueName, address: place.address });
+}
+
+/** Matches plus the Locations created/chosen in this Review, each as a
+ * strong match for its place key (it replaces any earlier match for that
+ * key, so the card shows the Location actually chosen). */
+export function withCreatedLocations(matches: EventImportMatches, created: readonly ReviewCreatedLocation[]): EventImportMatches {
+  if (created.length === 0) return matches;
+  const keys = new Set(created.map((c) => c.key));
+  return {
+    ...matches,
+    locations: [
+      ...created.map((c) => ({ key: c.key, id: c.id, name: c.name, address: c.address, city: c.city, state: c.state, postalCode: c.postalCode, confidence: "strong" as const })),
+      ...matches.locations.filter((l) => !keys.has(l.key)),
+    ],
+  };
+}
+
+/** Selects a created Location for one place in a review (the shared
+ * Where, or one date) through the existing decidePlaceFrom path, so other
+ * unanswered places at the same page place on other dates follow. */
+export function selectCreatedLocation(review: EventImportReview, target: string, location: ReviewCreatedLocation): EventImportReview {
+  const keyed = (p: ReviewPlace): ReviewPlace => (p.matchKey ? p : { ...p, matchKey: location.key });
+  const withKey: EventImportReview =
+    target === "shared"
+      ? { ...review, place: keyed(review.place) }
+      : { ...review, occurrences: review.occurrences.map((o) => (o.id === target ? { ...o, place: keyed(o.place) } : o)) };
+  return decidePlaceFrom(withKey, target, "use", location.id);
+}
+
+/** Another reviewed Event in the same batch: every place with exactly the
+ * same place key that isn't already linked to a Location takes the
+ * created one. Places with a different key are never touched. */
+export function applyCreatedLocation(review: EventImportReview, location: ReviewCreatedLocation): EventImportReview {
+  const apply = (p: ReviewPlace): ReviewPlace =>
+    p.matchKey === location.key && !p.useLocationId ? { ...p, matchDecision: "use", useLocationId: location.id } : p;
+  return { ...review, place: apply(review.place), occurrences: review.occurrences.map((o) => ({ ...o, place: apply(o.place) })) };
+}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
-import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
+import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
 import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 import type { Category } from "@/lib/types";
 
@@ -78,6 +78,18 @@ export default function MultiEventImport({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelection(events, intent)));
   const [showPast, setShowPast] = useState(false);
   const [reviews, setReviews] = useState<Record<string, EventImportReview>>({});
+  // Locations created (or chosen from duplicates) during this Review, by
+  // place key — every Event at that same place resolves to the same one.
+  const [createdLocations, setCreatedLocations] = useState<ReviewCreatedLocation[]>([]);
+  const matchesOf = (e: SourceEventAnalysis) => withCreatedLocations(e.matches, createdLocations);
+  function onLocationCreated(location: ReviewCreatedLocation) {
+    setCreatedLocations((prev) => [...prev.filter((c) => c.key !== location.key), location]);
+    setReviews((prev) => {
+      const next = { ...prev };
+      for (const k of Object.keys(next)) next[k] = applyCreatedLocation(next[k], location);
+      return next;
+    });
+  }
   const [initialPast, setInitialPast] = useState<Record<string, ReviewOccurrence[]>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +137,7 @@ export default function MultiEventImport({
       if (!review || review.useEventId) continue;
       const places = review.sharedPlace ? [review.place] : review.occurrences.map((o) => o.place);
       for (const p of places) {
-        const match = p.matchKey ? e.matches.locations.find((l) => l.key === p.matchKey) : undefined;
+        const match = p.matchKey ? matchesOf(e).locations.find((l) => l.key === p.matchKey) : undefined;
         if (!match || !p.matchKey) continue;
         const g = groups.get(p.matchKey) ?? { key: p.matchKey, venue: p.venueName ?? match.name, match, events: new Set<string>(), decisions: new Set<string>() };
         g.events.add(e.key);
@@ -144,7 +156,7 @@ export default function MultiEventImport({
     });
   }
 
-  const statusOf = (key: string) => batchItemStatus(reviews[key], byKey.get(key)!.matches);
+  const statusOf = (key: string) => batchItemStatus(reviews[key], matchesOf(byKey.get(key)!));
   const ready = chosen.filter((e) => reviews[e.key] && statusOf(e.key).kind !== "needs_details");
   const incomplete = chosen.length - ready.length;
 
@@ -333,7 +345,16 @@ export default function MultiEventImport({
                         </label>
                         <input id={`batch-${e.key}-link`} type="url" inputMode="url" autoCapitalize="none" value={review.sourceUrl ?? ""} onChange={(ev) => set({ sourceUrl: ev.target.value })} className={inputClass} />
                       </div>
-                      {!joining && <WhenWhereEditor review={review} set={set} matches={e.matches} initialPast={initialPast[e.key] ?? []} idPrefix={`batch-${e.key}-`} />}
+                      {!joining && (
+                        <WhenWhereEditor
+                          review={review}
+                          set={set}
+                          matches={matchesOf(e)}
+                          initialPast={initialPast[e.key] ?? []}
+                          idPrefix={`batch-${e.key}-`}
+                          quickCreate={{ online: Boolean(e.candidate.online), onCreated: onLocationCreated }}
+                        />
+                      )}
                       {!joining && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
                       {!joining && (review.intent === "hosting" || review.asEvent) && <EventFormatEditor formats={formats} review={review} set={set} />}
                     </div>

@@ -7,7 +7,17 @@ import CategorySubcategoryField from "@/components/admin/CategorySubcategoryFiel
 import EventFormatField from "@/components/admin/EventFormatField";
 import type { Category } from "@/lib/types";
 import type { EventCandidate, EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
-import { decidePlaceFrom, emptyReviewOccurrence, occurrenceSummary } from "@/lib/event-import/review";
+import { createInlinePlace } from "@/app/(public)/account/location/actions";
+import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
+import {
+  canOfferLocationCreate,
+  decidePlaceFrom,
+  emptyReviewOccurrence,
+  occurrenceSummary,
+  placeKeyFor,
+  selectCreatedLocation,
+  type ReviewCreatedLocation,
+} from "@/lib/event-import/review";
 
 export const MAX_DATES = 60;
 
@@ -25,12 +35,17 @@ export function WhenWhereEditor({
   matches,
   initialPast,
   idPrefix = "",
+  quickCreate,
 }: {
   review: EventImportReview;
   set: (patch: Partial<EventImportReview>) => void;
   matches: EventImportMatches;
   initialPast: ReviewOccurrence[];
   idPrefix?: string;
+  /** Missing-Location Quick Create: `online` feeds the eligibility check;
+   * `onCreated` lets the parent show the new Location as a match and reuse
+   * it for the same place elsewhere (other Events in a batch). */
+  quickCreate?: { online: boolean; onCreated: (location: ReviewCreatedLocation) => void };
 }) {
   const [open, setOpen] = useState<Set<string>>(() => initiallyOpen(review.occurrences));
   const [pastDates, setPastDates] = useState<ReviewOccurrence[]>(initialPast);
@@ -58,6 +73,19 @@ export function WhenWhereEditor({
   const usePlacePerDate = () => set({ sharedPlace: false, occurrences: review.occurrences.map((d) => ({ ...d, place: { ...review.place } })) });
   const useOnePlace = () => set({ sharedPlace: true, place: { ...(review.occurrences[0]?.place ?? review.place) } });
   const many = review.occurrences.length > 1;
+  // Quick Create for one place (target = "shared" or a date id): select the
+  // new Location there (and on the same unanswered place on other dates),
+  // then tell the parent. Review state only — the Event isn't saved here.
+  const quickCreateFor = (target: string, place: ReviewPlace): PlaceQuickCreate | undefined =>
+    quickCreate
+      ? {
+          eligible: canOfferLocationCreate(place, { locationVisibility: review.locationVisibility, online: quickCreate.online }),
+          onSelected: (location) => {
+            set(selectCreatedLocation(review, target, location));
+            quickCreate.onCreated(location);
+          },
+        }
+      : undefined;
 
   return (
     <>
@@ -89,6 +117,7 @@ export function WhenWhereEditor({
                   onChange={(patch) => setOccurrence(d.id, patch)}
                   onRemove={many ? () => removeOccurrence(d.id) : null}
                   onDecidePlace={(decision, locationId) => set(decidePlaceFrom(review, d.id ?? "", decision, locationId))}
+                  quickCreate={quickCreateFor(d.id ?? "", d.place)}
                 />
               ))}
             </ol>
@@ -136,6 +165,7 @@ export function WhenWhereEditor({
                 matches={matches}
                 onChange={(patch) => set({ place: { ...review.place, ...patch } })}
                 onDecide={(decision, locationId) => set(decidePlaceFrom(review, "shared", decision, locationId))}
+                quickCreate={quickCreateFor("shared", review.place)}
               />
             </section>
           )}
@@ -178,6 +208,7 @@ export function OccurrenceRow({
   onChange,
   onRemove,
   onDecidePlace,
+  quickCreate,
 }: {
   index: number;
   numbered: boolean;
@@ -190,6 +221,7 @@ export function OccurrenceRow({
   onChange: (patch: Partial<ReviewOccurrence>) => void;
   onRemove: (() => void) | null;
   onDecidePlace?: (decision: "use" | "reject", locationId: string) => void;
+  quickCreate?: PlaceQuickCreate;
 }) {
   const id = d.id ?? String(index);
   const sum = occurrenceSummary(d);
@@ -246,7 +278,7 @@ export function OccurrenceRow({
           {endsAfterMidnight && <p className="col-span-2 text-microcopy text-subtle">Ends after midnight.</p>}
           {showPlace && (
             <div className="col-span-2 flex flex-col gap-2 pt-1">
-              <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} onDecide={onDecidePlace} />
+              <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} onDecide={onDecidePlace} quickCreate={quickCreate} />
             </div>
           )}
         </div>
@@ -261,6 +293,7 @@ export function PlaceFields({
   matches,
   onChange,
   onDecide,
+  quickCreate,
 }: {
   idPrefix: string;
   place: ReviewPlace;
@@ -268,6 +301,7 @@ export function PlaceFields({
   onChange: (patch: Partial<ReviewPlace>) => void;
   /** Answer the Findmi Location question (lets the caller apply it to the same place elsewhere). */
   onDecide?: (decision: "use" | "reject", locationId: string) => void;
+  quickCreate?: PlaceQuickCreate;
 }) {
   const match = place.matchKey ? matches.locations.find((l) => l.key === place.matchKey) : undefined;
   return (
@@ -307,7 +341,148 @@ export function PlaceFields({
           </div>
         </div>
       )}
+      {!place.useLocationId && quickCreate?.eligible && <QuickCreateLocation idPrefix={idPrefix} place={place} onSelected={quickCreate.onSelected} />}
     </>
+  );
+}
+
+export interface PlaceQuickCreate {
+  eligible: boolean;
+  onSelected: (location: ReviewCreatedLocation) => void;
+}
+
+const toCreated = (key: string, l: SelectedLocationDetail): ReviewCreatedLocation => ({
+  key,
+  id: l.id,
+  name: l.name,
+  address: l.address,
+  city: l.city,
+  state: l.state,
+  postalCode: l.postal_code,
+});
+
+/** Missing-Location Quick Create — the existing inline place creation
+ * (createInlinePlace: name + street + city + state, ZIP optional; unlisted,
+ * no membership, duplicate-checked server-side) prefilled from the
+ * reviewed place. A likely duplicate is offered instead of creating;
+ * "Create Anyway" is the same explicit force path. Selecting either only
+ * changes Review — the Event is saved later, as always. */
+export function QuickCreateLocation({
+  idPrefix,
+  place,
+  onSelected,
+}: {
+  idPrefix: string;
+  place: ReviewPlace;
+  onSelected: (location: ReviewCreatedLocation) => void;
+}) {
+  const key = placeKeyFor(place);
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState({ name: "", address: "", city: "", state: "", postal_code: "" });
+  const [duplicates, setDuplicates] = useState<SelectedLocationDetail[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function start() {
+    setFields({ name: place.venueName ?? "", address: place.address ?? "", city: place.city ?? "", state: place.state ?? "", postal_code: place.postalCode ?? "" });
+    setDuplicates([]);
+    setError(null);
+    setOpen(true);
+  }
+
+  async function create(force: boolean) {
+    setBusy(true);
+    setError(null);
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.set(k, v);
+    if (force) form.set("force", "1");
+    try {
+      const result = await createInlinePlace(form);
+      if (result.status === "created") {
+        setOpen(false);
+        onSelected(toCreated(key, result.location));
+      } else if (result.status === "duplicates") {
+        setDuplicates(result.duplicates);
+      } else {
+        setError(result.error);
+      }
+    } catch {
+      setError("Couldn't add this place. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={start} className="w-fit py-1 text-metadata font-semibold text-accent hover:underline">
+        + Create New Location
+      </button>
+    );
+  }
+
+  const field = (name: keyof typeof fields, label: string, span = "col-span-2") => (
+    <div className={span}>
+      <label htmlFor={`${idPrefix}-new-${name}`} className={labelClass}>
+        {label}
+      </label>
+      <input id={`${idPrefix}-new-${name}`} value={fields[name]} onChange={(e) => setFields((f) => ({ ...f, [name]: e.target.value }))} className={inputClass} autoCapitalize="words" />
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-black/[0.08] bg-black/[0.015] p-3">
+      <p className="text-label font-bold uppercase text-subtle">New Findmi Location</p>
+      {duplicates.length > 0 ? (
+        <>
+          <p className="text-metadata text-secondary">This place may already be on Findmi.</p>
+          <ul className="flex flex-col gap-2">
+            {duplicates.map((d) => (
+              <li key={d.id} className="flex items-start justify-between gap-2 rounded-lg border border-black/[0.08] bg-white p-2.5">
+                <span className="min-w-0">
+                  <span className="block text-body font-semibold text-primary">{d.name}</span>
+                  <span className="block text-metadata text-secondary">{[d.address, [d.city, d.state].filter(Boolean).join(", "), d.postal_code].filter(Boolean).join(" · ")}</span>
+                </span>
+                <button type="button" onClick={() => onSelected(toCreated(key, d))} className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-metadata font-semibold text-white">
+                  Use This Location
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" disabled={busy} onClick={() => create(true)} className="text-metadata font-semibold text-accent hover:underline disabled:opacity-50">
+              {busy ? "Creating…" : "Create Anyway"}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-metadata font-semibold text-muted hover:underline">
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            {field("name", "Location Name")}
+            {field("address", "Street Address")}
+            {field("city", "City", "")}
+            {field("state", "State", "")}
+            {field("postal_code", "ZIP Code", "")}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" disabled={busy} onClick={() => create(false)} className="rounded-full bg-findmi px-4 py-2 text-metadata font-semibold text-white disabled:opacity-50">
+              {busy ? "Creating…" : "Create Location"}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-metadata font-semibold text-muted hover:underline">
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+      {error && (
+        <p role="alert" className="text-metadata text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
