@@ -21,6 +21,8 @@ import {
   adminCreateImportLocation,
   adminEnrichPastedEvent,
   adminLoadBusinessRead,
+  adminPreviewBusinessRead,
+  adminPreviewEventImage,
   adminProcessBusinessRead,
   adminStartBusinessReads,
   type BusinessReadView,
@@ -60,6 +62,56 @@ const hostOf = (url: string | null | undefined) => {
     return url ?? "";
   }
 };
+
+// ── Image previews ─────────────────────────────────────────────────────────
+// The page's CSP only allows Findmi's own / data: images, so a third-party
+// image URL never renders directly. Previews come from the server as small
+// re-encoded data URIs of images that passed the SAME verification the save
+// path uses. A preview is display only: nothing is stored until save, and
+// the save path verifies the image again.
+
+type PreviewState = { status: "loading" } | { status: "ok"; src: string } | { status: "failed"; reason: string };
+const eventPreviewCache = new Map<string, PreviewState>();
+const PREVIEW_REASON: Record<string, string> = {
+  fetch_failed: "the image couldn’t be fetched",
+  invalid_file: "it isn’t a valid image file",
+  type_mismatch: "it isn’t a supported image type",
+  unreadable: "the image couldn’t be read",
+  unsuitable: "it’s too small or the wrong shape for an Event image",
+  preview_failed: "the preview couldn’t be made",
+};
+
+function VerifiedEventImagePreview({ url, className }: { url: string; className: string }) {
+  const [state, setState] = useState<PreviewState>(() => eventPreviewCache.get(url) ?? { status: "loading" });
+  useEffect(() => {
+    let live = true;
+    const cached = eventPreviewCache.get(url);
+    if (cached && cached.status !== "loading") {
+      setState(cached);
+      return;
+    }
+    setState({ status: "loading" });
+    adminPreviewEventImage(url)
+      .then((r) => (r.preview ? ({ status: "ok", src: r.preview } as const) : ({ status: "failed", reason: PREVIEW_REASON[r.reason ?? "preview_failed"] ?? "unavailable" } as const)))
+      .catch(() => ({ status: "failed", reason: PREVIEW_REASON.fetch_failed }) as const)
+      .then((next) => {
+        eventPreviewCache.set(url, next);
+        if (live) setState(next);
+      });
+    return () => {
+      live = false;
+    };
+  }, [url]);
+  if (state.status === "ok") {
+    // eslint-disable-next-line @next/next/no-img-element -- verified, re-encoded data URI preview (not the remote URL)
+    return <img src={state.src} alt="Event image preview" className={className} />;
+  }
+  return (
+    <span className={`${className} flex items-center justify-center p-2 text-center text-microcopy ${state.status === "failed" ? "text-amber-900" : "text-muted"}`}>
+      {state.status === "loading" ? "Checking image…" : `No preview: ${state.reason}. Saving checks it again; if it fails then, no image is saved.`}
+    </span>
+  );
+}
 
 // ── Business ───────────────────────────────────────────────────────────────
 
@@ -180,6 +232,26 @@ function BrandReviewCard({
   const [useCover, setUseCover] = useState(p?.useCover !== false && Boolean(p?.cover));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Brand Import's own verified previews (data URIs) for the candidate's
+  // stored logo / cover. As on Admin → Businesses → Import, an image that
+  // can't be previewed starts unselected.
+  const [previews, setPreviews] = useState<{ logo: string | null; cover: string | null; loaded: boolean }>({ logo: null, cover: null, loaded: false });
+  useEffect(() => {
+    let live = true;
+    adminPreviewBusinessRead(read.batchId, read.candidateId)
+      .catch(() => null)
+      .then((r) => {
+        if (!live) return;
+        const logo = r?.logo.preview ?? null;
+        const cover = r?.cover.preview ?? null;
+        setPreviews({ logo, cover, loaded: true });
+        if (!logo) setUseLogo(false);
+        if (!cover) setUseCover(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [read.batchId, read.candidateId]);
   if (!p) return null;
 
   async function create() {
@@ -214,17 +286,25 @@ function BrandReviewCard({
         <div className="flex flex-wrap gap-3">
           {p.logo && (
             <label className="flex items-center gap-2 text-metadata text-secondary">
-              {/* eslint-disable-next-line @next/next/no-img-element -- candidate preview (re-verified on create) */}
-              <img src={p.logo} alt="Logo candidate" referrerPolicy="no-referrer" className="h-12 w-12 rounded-lg bg-white object-contain" />
-              <input type="checkbox" checked={useLogo} onChange={(e) => setUseLogo(e.target.checked)} className="accent-findmi" />
+              {previews.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element -- verified, re-encoded data URI preview (re-verified on create)
+                <img src={previews.logo} alt="Logo candidate" className="h-12 w-12 rounded-lg bg-white object-contain" />
+              ) : (
+                <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-white text-center text-microcopy text-muted">{previews.loaded ? "No preview" : "…"}</span>
+              )}
+              <input type="checkbox" checked={useLogo} disabled={previews.loaded && !previews.logo} onChange={(e) => setUseLogo(e.target.checked)} className="accent-findmi" />
               Use Logo
             </label>
           )}
           {p.cover && (
             <label className="flex items-center gap-2 text-metadata text-secondary">
-              {/* eslint-disable-next-line @next/next/no-img-element -- candidate preview (re-verified on create) */}
-              <img src={p.cover} alt="Cover candidate" referrerPolicy="no-referrer" className="h-12 w-20 rounded-lg bg-white object-cover" />
-              <input type="checkbox" checked={useCover} onChange={(e) => setUseCover(e.target.checked)} className="accent-findmi" />
+              {previews.cover ? (
+                // eslint-disable-next-line @next/next/no-img-element -- verified, re-encoded data URI preview (re-verified on create)
+                <img src={previews.cover} alt="Cover candidate" className="h-12 w-20 rounded-lg bg-white object-cover" />
+              ) : (
+                <span className="flex h-12 w-20 items-center justify-center rounded-lg bg-white text-center text-microcopy text-muted">{previews.loaded ? "No preview" : "…"}</span>
+              )}
+              <input type="checkbox" checked={useCover} disabled={previews.loaded && !previews.cover} onChange={(e) => setUseCover(e.target.checked)} className="accent-findmi" />
               Use Cover
             </label>
           )}
@@ -401,6 +481,7 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
               <li key={c.field} className="rounded-lg bg-white px-3 py-2">
                 <p className="text-metadata font-semibold text-primary">{LABEL[c.field]}</p>
                 {c.kind === "same" && <p className="text-microcopy text-muted">Already the same.</p>}
+                {c.field === "image" && c.kind !== "same" && <VerifiedEventImagePreview url={c.proposed} className="mt-1 h-20 w-28 rounded-lg bg-black/[0.04] object-cover" />}
                 {c.kind === "fill" && (
                   <label className="mt-1 flex items-start gap-2 text-microcopy text-secondary">
                     <input type="checkbox" className="mt-0.5 accent-findmi" checked={choices[c.field] === "fill"} onChange={(e) => setChoices((prev) => ({ ...prev, [c.field]: e.target.checked ? "fill" : "keep" }))} />
@@ -462,8 +543,7 @@ function EventDetails({
       )}
       {review.imageUrl && (
         <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element -- remote event image preview; stored by Findmi only on save */}
-          <img src={review.imageUrl} alt="Event image" referrerPolicy="no-referrer" className="h-20 w-28 rounded-lg bg-black/[0.04] object-cover" />
+          <VerifiedEventImagePreview url={review.imageUrl} className="h-20 w-28 shrink-0 rounded-lg bg-black/[0.04] object-cover" />
           <button type="button" onClick={() => set({ imageUrl: null })} className="text-metadata font-semibold text-muted hover:text-red-600">
             Don&rsquo;t Use Image
           </button>

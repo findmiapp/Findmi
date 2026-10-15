@@ -98,3 +98,32 @@ export async function recoverEventImage(admin: SupabaseClient, url: string, deps
   const stored = await storeEventImage(admin, verified.image);
   return stored ? { ok: true, url: stored } : { ok: false, reason: "store_failed" };
 }
+
+const EVENT_PREVIEW_MAX_BYTES = 120 * 1024;
+const EVENT_PREVIEW_QUALITIES = [72, 60, 45];
+
+export type EventImagePreview = { preview: string; reason: null } | { preview: null; reason: EventImageRejection | "preview_failed" };
+
+/** Admin Review preview of a candidate Event image. The page's CSP only
+ * allows Findmi's own / data: images, so a third-party image URL can't be
+ * shown directly (and isn't opened up): the image goes through the SAME
+ * fetch + verification recoverEventImage uses (fetchVerifiedEventImage:
+ * SSRF-guarded fetch, real-bytes type check, size / pixel / shape limits),
+ * and only a small re-encoded WebP data URI of a verified image comes out.
+ * Nothing is stored — a preview never means the image was saved. */
+export async function previewEventImage(url: string, deps: EventImageDeps = defaultDeps): Promise<EventImagePreview> {
+  const verified = await fetchVerifiedEventImage(url, deps);
+  if (!verified.ok) return { preview: null, reason: verified.reason };
+  try {
+    for (const quality of EVENT_PREVIEW_QUALITIES) {
+      const out = await sharp(verified.image.body, { limitInputPixels: EVENT_IMAGE_PIXEL_LIMIT, animated: false })
+        .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
+        .webp({ quality })
+        .toBuffer();
+      if (out.length <= EVENT_PREVIEW_MAX_BYTES) return { preview: `data:image/webp;base64,${out.toString("base64")}`, reason: null };
+    }
+  } catch {
+    // fall through
+  }
+  return { preview: null, reason: "preview_failed" };
+}

@@ -278,7 +278,10 @@ test("security: byte/type/dimension bounds unchanged; SVG and mismatched bytes a
 test("security: no image proxy — previews are server-rendered thumbnails for recorded candidate URLs only", () => {
   const walk = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
   const users = walk("src").filter((f) => /\.(ts|tsx)$/.test(f) && /previewBrandCandidate(Result)?\(/.test(read(f)) && !f.endsWith(join("lib", "brand-images.ts")));
-  assert.deepEqual(users.sort(), [join("src", "app", "(public)", "account", "business", "new", "page.tsx"), join("src", "app", "admin", "(protected)", "businesses", "import", "[batchId]", "[candidateId]", "page.tsx")].sort());
+  assert.deepEqual(users.sort(), [join("src", "app", "(public)", "account", "business", "new", "page.tsx"), join("src", "app", "admin", "(protected)", "businesses", "import", "[batchId]", "[candidateId]", "page.tsx"),
+    // Admin Event Import's inline Create & Review Business — the stored
+    // candidate's own logo / cover (adminPreviewBusinessRead), server-side.
+    join("src", "app", "admin", "(protected)", "events", "import", "actions.ts")].sort());
   for (const f of users) assert.doesNotMatch(read(f), /^"use client";/, f);
   assert.deepEqual(walk("src/app/api").filter((f) => /brand-images|previewBrandCandidate|safeFetchImage/.test(read(f))), [], "no API route fetches images");
   // The Admin page never hands the remote candidate URL to the browser.

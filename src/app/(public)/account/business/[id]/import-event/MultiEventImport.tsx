@@ -218,13 +218,17 @@ export default function MultiEventImport({
   const statusOf = (key: string) => batchItemStatus(reviews[key], matchesOf(byKey.get(key)!));
   const ready = chosen.filter((e) => reviews[e.key] && statusOf(e.key).kind !== "needs_details");
   const incomplete = chosen.length - ready.length;
+  // Operator: an Event resolved as already on Findmi is updated only by its
+  // own "Apply To Existing Event" — never counted or saved as a new Event.
+  const existingRows = operator ? chosen.filter((e) => reviews[e.key]?.useEventId) : [];
+  const toSave = operator ? ready.filter((e) => !reviews[e.key].useEventId) : ready;
 
   function save() {
     setError(null);
     startSave(async () => {
       try {
         const result = operator
-          ? await operator.commit(ready.map((e) => ({ review: reviews[e.key], businessId: businessFor[e.key]?.id ?? null })))
+          ? await operator.commit(toSave.map((e) => ({ review: reviews[e.key], businessId: businessFor[e.key]?.id ?? null })))
           : await commitEventImportBatch(
               businessId,
               ready.map((e) => reviews[e.key])
@@ -488,8 +492,19 @@ export default function MultiEventImport({
               {incomplete} {incomplete === 1 ? "Event needs" : "Events need"} details and won&rsquo;t be added until completed.
             </p>
           )}
-          <button type="button" onClick={save} disabled={saving || ready.length === 0} className={primaryButtonClass}>
-            {saving ? "Adding…" : `Add ${ready.length} ${ready.length === 1 ? "Event" : "Events"}`}
+          {existingRows.length > 0 && (
+            <p className="text-center text-metadata text-muted">
+              {existingRows.length} {existingRows.length === 1 ? "Existing Event is" : "Existing Events are"} already on Findmi — update {existingRows.length === 1 ? "it" : "each"} with Apply To Existing Event. {existingRows.length === 1 ? "It isn’t" : "They aren’t"} added again.
+            </p>
+          )}
+          <button type="button" onClick={save} disabled={saving || toSave.length === 0} className={primaryButtonClass}>
+            {saving
+              ? "Adding…"
+              : operator
+                ? toSave.length === 0
+                  ? "No New Events To Add"
+                  : `Add ${toSave.length} New ${toSave.length === 1 ? "Event" : "Events"}`
+                : `Add ${ready.length} ${ready.length === 1 ? "Event" : "Events"}`}
           </button>
           <button type="button" onClick={() => setPhase("select")} className="py-2 text-center text-metadata font-semibold text-accent hover:underline">
             Back To Events

@@ -33,7 +33,8 @@ import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { asOperatorAnalysis } from "@/lib/event-import/operator";
 import { normalizeReview, persistDiscoveryEvent, type SourceEventDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
-import { recoverEventImage } from "@/lib/event-import/media";
+import { previewEventImage, recoverEventImage, type EventImagePreview } from "@/lib/event-import/media";
+import { previewBrandCandidateResult, type BrandPreviewResult } from "@/lib/brand-images";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
@@ -189,6 +190,12 @@ export async function adminCommitEventImportBatch(
 
 async function commitOne(admin: SupabaseClient, deps: SourceEventDeps, review: EventImportReview | undefined, businessId: string | null): Promise<EventImportOutcome> {
   if (!review || typeof review !== "object") return { ok: false, error: "Add the event's name." };
+  // An Event resolved as already on Findmi is updated ONLY through Review
+  // Existing Event (adminApplyExistingEvent) — never through new-Event
+  // creation, whatever the client sends.
+  if (typeof review.useEventId === "string" && UUID.test(review.useEventId)) {
+    return { ok: true, kind: "already", title: typeof review.title === "string" ? review.title : "", viewHref: `/admin/events/${review.useEventId}` };
+  }
   // Operator imports are always genuine source Events — never hosted.
   const normalized = normalizeReview({ ...review, intent: "participating", asEvent: true });
   if (!normalized.ok) return normalized;
@@ -402,5 +409,45 @@ export async function adminApplyExistingEvent(
     return result;
   } catch {
     return { ok: false, error: "Couldn't update the Event. Please try again." };
+  }
+}
+
+// ── Image previews (Review only; nothing stored) ──────────────────────────
+
+/** A candidate Event image, previewed through the same fetch + verification
+ * the save path uses (previewEventImage) — a small data URI, because the
+ * page's CSP doesn't (and shouldn't) allow third-party image hosts. */
+export async function adminPreviewEventImage(url: string): Promise<EventImagePreview> {
+  const admin = await adminClient();
+  if (!admin) return { preview: null, reason: "fetch_failed" };
+  let parsed: URL | null = null;
+  try {
+    parsed = typeof url === "string" && url.length <= 2048 ? new URL(url) : null;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || parsed.protocol !== "https:" || parsed.username || parsed.password) return { preview: null, reason: "fetch_failed" };
+  try {
+    return await previewEventImage(parsed.toString());
+  } catch {
+    return { preview: null, reason: "fetch_failed" };
+  }
+}
+
+/** Logo / cover previews of a Brand Import candidate — exactly what Admin →
+ * Businesses → Import shows (previewBrandCandidateResult), read from the
+ * candidate's own stored proposal (never a client-supplied URL). */
+export async function adminPreviewBusinessRead(batchId: string, candidateId: string): Promise<{ logo: BrandPreviewResult; cover: BrandPreviewResult } | null> {
+  const view = await adminLoadBusinessRead(batchId, candidateId);
+  if (!view?.proposal) return null;
+  const none: BrandPreviewResult = { preview: null, reason: null };
+  try {
+    const [logo, cover] = await Promise.all([
+      view.proposal.logo ? previewBrandCandidateResult(view.proposal.logo, "logo") : Promise.resolve(none),
+      view.proposal.cover ? previewBrandCandidateResult(view.proposal.cover, "cover") : Promise.resolve(none),
+    ]);
+    return { logo, cover };
+  } catch {
+    return null;
   }
 }
