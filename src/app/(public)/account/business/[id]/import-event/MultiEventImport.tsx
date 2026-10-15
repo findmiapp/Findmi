@@ -6,7 +6,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
 import { BATCH_STATUS_LABEL, batchItemStatus, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, type BatchStatusKind } from "@/lib/event-import/review";
-import { EventCategoryEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 import type { Category } from "@/lib/types";
 
 /** Event Import V1C — a link that lists MANY distinct Events (an organizer
@@ -52,6 +52,7 @@ export default function MultiEventImport({
   businessHome,
   onTryAnother,
   categories,
+  formats,
 }: {
   businessId: string;
   businessName: string;
@@ -65,6 +66,8 @@ export default function MultiEventImport({
   onTryAnother: () => void;
   /** Event Taxonomy V1 — the kind='event' categories (parents + children). */
   categories: Category[];
+  /** Event Formats V1 — the kind='event_format' vocabulary. */
+  formats: Category[];
 }) {
   const upcoming = events.filter((e) => !e.past);
   const pastEvents = events.filter((e) => e.past);
@@ -332,6 +335,7 @@ export default function MultiEventImport({
                       </div>
                       {!joining && <WhenWhereEditor review={review} set={set} matches={e.matches} initialPast={initialPast[e.key] ?? []} idPrefix={`batch-${e.key}-`} />}
                       {!joining && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
+                      {!joining && (review.intent === "hosting" || review.asEvent) && <EventFormatEditor formats={formats} review={review} set={set} />}
                     </div>
                   )}
                 </li>

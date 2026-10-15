@@ -11,6 +11,7 @@ const KIND_LABEL: Record<CategoryKind, string> = {
   event: "event",
   product: "product",
   location: "location",
+  event_format: "event format",
 };
 
 const inputClass =
@@ -104,7 +105,7 @@ export default function CategoryList({
   const usageFor = (id: string): number => {
     const c = usage.get(id) ?? { events: 0, businesses: 0, products: 0, locations: 0 };
     if (kind === "business") return c.businesses;
-    if (kind === "event") return c.events;
+    if (kind === "event" || kind === "event_format") return c.events;
     if (kind === "location") return c.locations;
     return c.products;
   };

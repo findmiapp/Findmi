@@ -13,11 +13,12 @@ export default async function NewEventPage({
 }) {
   const { error } = await searchParams;
   const marketsAdmin = getAdminSupabase();
-  const [categories, locations, markets, marketsWithAreas] = await Promise.all([
+  const [categories, locations, markets, marketsWithAreas, formats] = await Promise.all([
     getAllCategories("event"),
     getAdminLocations(),
     marketsAdmin ? getAllMarketsForAdmin(marketsAdmin) : Promise.resolve([]),
     getActiveMarketsWithAreaOptions(),
+    getAllCategories("event_format"),
   ]);
 
   return (
@@ -37,6 +38,8 @@ export default async function NewEventPage({
           marketsWithAreas={marketsWithAreas}
           categories={categories}
           selectedCategoryIds={[]}
+          formats={formats}
+          selectedFormatIds={[]}
           error={error}
         />
       </div>

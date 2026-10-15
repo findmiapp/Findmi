@@ -22,6 +22,8 @@ import EntityManagerContextBar from "@/components/account/EntityManagerContextBa
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import EventLocationField from "@/components/account/EventLocationField";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import EventFormatField from "@/components/admin/EventFormatField";
+import { getEventFormatIds } from "@/lib/event-formats-server";
 import { primaryEventCategoryId } from "@/lib/event-categories";
 import MemberEventImageField from "./MemberEventImageField";
 import MemberEventGalleryField from "./MemberEventGalleryField";
@@ -203,6 +205,8 @@ export default async function ManageEventPage({
       : Promise.resolve(null),
     getPendingApplicationNotesForEvent(admin, id),
   ]);
+  // Event Formats V1 — the vocabulary and this Event's current Formats.
+  const [formats, selectedFormatIds] = await Promise.all([getAllCategories("event_format"), getEventFormatIds(admin, id)]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
 
@@ -624,6 +628,9 @@ export default async function ManageEventPage({
                     defaultCategoryId={primaryEventCategoryId(selectedCategoryIds, categories)}
                     emptyText="No Event categories yet."
                   />
+                </div>
+                <div className="mt-3">
+                  <EventFormatField formats={formats} defaultSelectedIds={selectedFormatIds} />
                 </div>
               </div>
 

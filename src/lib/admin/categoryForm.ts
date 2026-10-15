@@ -89,7 +89,7 @@ export async function deleteCategoryRow(
   kind: CategoryKind,
   id: string
 ): Promise<CategoryActionResult> {
-  const [{ count: eventCount }, { count: businessCount }, { count: productCount }, { count: locationCount }] =
+  const [{ count: eventCount }, { count: businessCount }, { count: productCount }, { count: locationCount }, { count: formatCount }] =
     await Promise.all([
       supabase.from("event_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
       supabase.from("business_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
@@ -99,8 +99,10 @@ export async function deleteCategoryRow(
       // so an in-use Location category needs the same explicit guard the
       // three join-table kinds already get below.
       supabase.from("locations").select("id", { count: "exact", head: true }).eq("category_id", id),
+      // Event Formats V1 — event_formats.category_id also cascades.
+      supabase.from("event_formats").select("category_id", { count: "exact", head: true }).eq("category_id", id),
     ]);
-  const totalUses = (eventCount ?? 0) + (businessCount ?? 0) + (productCount ?? 0) + (locationCount ?? 0);
+  const totalUses = (eventCount ?? 0) + (businessCount ?? 0) + (productCount ?? 0) + (locationCount ?? 0) + (formatCount ?? 0);
   if (totalUses > 0) {
     return { error: "This category is currently in use and can't be deleted." };
   }

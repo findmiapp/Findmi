@@ -1,6 +1,8 @@
 "use server";
 
 import { decideEventCategoryWrite } from "@/lib/event-categories";
+import { decideEventFormatWrite } from "@/lib/event-formats";
+import { syncEventFormats } from "@/lib/event-formats-server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -635,6 +637,15 @@ export async function saveEvent(id: string | null, formData: FormData) {
         .insert(categoryWrite.ids.map((category_id) => ({ event_id: eventId, category_id })));
       if (catInsertError) redirect(errorRedirectUrl(editPath, `Categories: ${catInsertError.message}`));
     }
+  }
+
+  // Event Formats V1 — zero-to-many, in their own event_formats table.
+  // Only when the Format picker was on the form; then the links become
+  // exactly the selection (deselected ones removed, no duplicates).
+  const formatWrite = decideEventFormatWrite(formData);
+  if (formatWrite.kind === "set") {
+    const { error: formatError } = await syncEventFormats(supabase, eventId as string, formatWrite.ids);
+    if (formatError) redirect(errorRedirectUrl(editPath, `Formats: ${formatError}`));
   }
 
   revalidatePath("/admin/events");

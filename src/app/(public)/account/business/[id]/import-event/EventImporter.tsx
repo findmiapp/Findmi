@@ -6,7 +6,7 @@ import NavIcon from "@/components/NavIcon";
 import { analyzeEventImport, analyzeEventImportImage, analyzeEventImportText, commitEventImport } from "./actions";
 import MultiEventImport from "./MultiEventImport";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
-import { AttendanceEditor, EventCategoryEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { AttendanceEditor, EventCategoryEditor, EventFormatEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
 import type { Category } from "@/lib/types";
 import {
   EVENT_IMPORT_FAILURE_COPY,
@@ -76,6 +76,7 @@ export default function EventImporter({
   manualHrefs,
   businessHome,
   categories,
+  formats,
 }: {
   businessId: string;
   businessName: string;
@@ -84,6 +85,8 @@ export default function EventImporter({
   businessHome: string;
   /** Event Taxonomy V1 — the kind='event' categories (parents + children). */
   categories: Category[];
+  /** Event Formats V1 — the kind='event_format' vocabulary. */
+  formats: Category[];
 }) {
   const [intent, setIntent] = useState<EventImportIntent | null>(initialIntent);
   const [url, setUrl] = useState("");
@@ -303,6 +306,7 @@ export default function EventImporter({
         header={header}
         manualHref={manualHrefs[intent]}
         categories={categories}
+        formats={formats}
         businessHome={businessHome}
         onTryAnother={addAnother}
       />
@@ -574,6 +578,7 @@ export default function EventImporter({
           {/* Category is saved with a NEW Event only — an existing Event
               this import joins keeps its own category. */}
           {(intent === "hosting" || review.asEvent) && <EventCategoryEditor key={reviewVersion} categories={categories} review={review} set={set} />}
+          {(intent === "hosting" || review.asEvent) && <EventFormatEditor key={`f${reviewVersion}`} formats={formats} review={review} set={set} />}
         </>
       )}
 

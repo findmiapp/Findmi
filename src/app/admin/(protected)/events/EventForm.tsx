@@ -12,6 +12,7 @@ import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import EventFormatField from "@/components/admin/EventFormatField";
 import EventFormSections from "./EventFormSections";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import { RelationField } from "@/components/admin/RelationPicker";
@@ -52,6 +53,8 @@ export default function EventForm({
   marketsWithAreas,
   categories,
   selectedCategoryIds,
+  formats,
+  selectedFormatIds,
   error,
 }: {
   event: AdminEvent | null;
@@ -70,6 +73,9 @@ export default function EventForm({
   marketsWithAreas: MarketWithAreaOptions[];
   categories: Category[];
   selectedCategoryIds: string[];
+  /** Event Formats V1 — the kind='event_format' vocabulary + this Event's links. */
+  formats: Category[];
+  selectedFormatIds: string[];
   error?: string;
 }) {
   const action = saveEvent.bind(null, event?.id ?? null);
@@ -149,6 +155,12 @@ export default function EventForm({
                   categories={categories}
                   defaultCategoryId={primaryEventCategoryId(selectedCategoryIds, categories)}
                   emptyText="No Event categories yet. Add some in /admin/categories/events."
+                />
+
+                <EventFormatField
+                  formats={formats}
+                  defaultSelectedIds={selectedFormatIds}
+                  emptyText="No Event Formats yet. Add some in /admin/categories/formats."
                 />
               </>
             ),

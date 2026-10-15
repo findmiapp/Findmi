@@ -590,7 +590,7 @@ export async function getCategoryUsageCounts(): Promise<
 
   const empty = () => ({ events: 0, businesses: 0, products: 0, locations: 0 });
 
-  const [{ data: eventLinks }, { data: businessLinks }, { data: productLinks }, { data: locationLinks }] =
+  const [{ data: eventLinks }, { data: businessLinks }, { data: productLinks }, { data: locationLinks }, { data: formatLinks }] =
     await Promise.all([
       supabase.from("event_categories").select("category_id"),
       supabase.from("business_categories").select("category_id"),
@@ -599,9 +599,12 @@ export async function getCategoryUsageCounts(): Promise<
       // column, same shape as products.category_id), so its usage is
       // counted straight off that column rather than a *_categories table.
       supabase.from("locations").select("category_id").not("category_id", "is", null),
+      // Event Formats V1 — Format links live in their own table; counted as
+      // Event uses of that (kind='event_format') category.
+      supabase.from("event_formats").select("category_id"),
     ]);
 
-  for (const row of eventLinks ?? []) {
+  for (const row of [...(eventLinks ?? []), ...(formatLinks ?? [])]) {
     const entry = counts.get(row.category_id) ?? empty();
     entry.events += 1;
     counts.set(row.category_id, entry);

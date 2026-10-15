@@ -4,6 +4,7 @@
 import { useState } from "react";
 import ChevronIcon from "@/components/ChevronIcon";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import EventFormatField from "@/components/admin/EventFormatField";
 import type { Category } from "@/lib/types";
 import type { EventCandidate, EventImportMatches, EventImportReview, ReviewOccurrence, ReviewPlace } from "@/lib/event-import/types";
 import { decidePlaceFrom, emptyReviewOccurrence, occurrenceSummary } from "@/lib/event-import/review";
@@ -417,6 +418,25 @@ export function AttendanceEditor({
           />
         </div>
       )}
+    </section>
+  );
+}
+
+/** Event Formats V1 — the NEW Event's Formats (zero to many), chosen by the
+ * person; nothing is inferred. Same shared picker as Event Create/Edit. */
+export function EventFormatEditor({
+  formats,
+  review,
+  set,
+}: {
+  formats: Category[];
+  review: EventImportReview;
+  set: (patch: Partial<EventImportReview>) => void;
+}) {
+  if (formats.length === 0) return null;
+  return (
+    <section className={sectionClass}>
+      <EventFormatField formats={formats} defaultSelectedIds={review.formatIds ?? []} onChange={(ids) => set({ formatIds: ids })} />
     </section>
   );
 }

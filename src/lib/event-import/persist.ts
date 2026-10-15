@@ -35,6 +35,8 @@ import type { EventApplicationResult } from "../event-participation";
 import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
 import { parseLocationVisibility, type LocationVisibility } from "../event-attendance";
 import { existingEventCategoryIds } from "../event-categories-server";
+import { cleanEventFormatIds } from "../event-formats";
+import { syncEventFormats } from "../event-formats-server";
 import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, type ReviewedAttendance } from "./attendance";
 
 export const REVIEW_MAX_DATES = 60;
@@ -72,6 +74,8 @@ export interface NormalizedImport {
   /** The reviewed primary Event category for a NEW Event (validated as a
    * real kind='event' category when written). */
   categoryId: string | null;
+  /** The reviewed Formats for a NEW Event (validated as kind='event_format'). */
+  formatIds: string[];
 }
 
 /** Privacy: when the organizer withholds the address, a date keeps only its
@@ -178,6 +182,7 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       attendance: normalizeReviewedAttendance(review.attendance),
       locationVisibility,
       categoryId: review.categoryId && UUID.test(review.categoryId) ? review.categoryId : null,
+      formatIds: cleanEventFormatIds(Array.isArray(review.formatIds) ? review.formatIds : []).slice(0, 32),
     },
   };
 }
@@ -199,6 +204,14 @@ async function writeEventCategory(admin: SupabaseClient, eventId: string, input:
   if (ids.length === 0) return;
   const { error } = await admin.from("event_categories").insert(ids.map((category_id) => ({ event_id: eventId, category_id })));
   if (error) console.warn("[event-import] category not saved", { eventId, reason: error.message });
+}
+
+/** Event Formats V1 — the reviewed Formats of a NEW Event (only called
+ * right after this import created it, like writeEventCategory). */
+async function writeEventFormats(admin: SupabaseClient, eventId: string, input: NormalizedImport): Promise<void> {
+  if (input.formatIds.length === 0) return;
+  const { error } = await syncEventFormats(admin, eventId, input.formatIds);
+  if (error) console.warn("[event-import] formats not saved", { eventId, reason: error });
 }
 
 export interface PersistDeps {
@@ -401,6 +414,7 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   const eventId = (created as { id: string }).id;
   await writeEventExtras(admin, eventId, input);
   await writeEventCategory(admin, eventId, input);
+  await writeEventFormats(admin, eventId, input);
 
   // 4a. Participation first, so creating the dates realizes it per date.
   const { error: rosterError } = await admin
@@ -507,6 +521,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     .eq("id", eventId);
   await writeEventExtras(admin, eventId, input);
   await writeEventCategory(admin, eventId, input);
+  await writeEventFormats(admin, eventId, input);
 
   // Dates: one Event Occurrence per date — each linked to ITS OWN Location
   // (or carrying its own venue snapshot) — when there are several dates or

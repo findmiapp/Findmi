@@ -2208,6 +2208,24 @@ export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
   return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 
+/** Event Formats V1 — the Format vocabulary for a filter control: every
+ * kind='event_format' row, plus which of them are on at least one Event
+ * that is still discoverable (non-demo, hasn't ended) — the same "never a
+ * chip that can only return nothing" rule as getEventCategories. Empty
+ * before the Formats migration is applied. */
+export async function getEventFormatOptions(): Promise<{ formats: Category[]; usedIds: string[] }> {
+  const supabase = getSupabase();
+  if (!supabase) return { formats: [], usedIds: [] };
+  const [{ data: formats }, { data: links }, { data: realEvents }] = await Promise.all([
+    supabase.from("categories").select("id, name, slug, kind, parent_id").eq("kind", "event_format").order("name"),
+    supabase.from("event_formats").select("event_id, category_id"),
+    supabase.from("events").select("id").eq("is_demo", false).gt("end_at", new Date().toISOString()),
+  ]);
+  const real = new Set(((realEvents ?? []) as { id: string }[]).map((e) => e.id));
+  const used = new Set(((links ?? []) as { event_id: string; category_id: string }[]).filter((l) => real.has(l.event_id)).map((l) => l.category_id));
+  return { formats: (formats ?? []) as Category[], usedIds: [...used] };
+}
+
 export interface EventDiscoveryParams {
   q?: string;
   when?: DiscoveryWindow;
@@ -2232,6 +2250,10 @@ export interface EventDiscoveryParams {
    * EffectiveUpcomingEventsOptions' own doc comment. Only meaningful
    * alongside `marketSlug`. */
   areaSlug?: string;
+  /** Event Formats V1 — ANY of these kind='event_format' slugs (OR within
+   * Formats; AND with category and every other filter). An unknown slug
+   * matches nothing. */
+  formatSlugs?: string[];
   /** Shared Event filter (lib/event-filter.ts) — ANY of these attendance
    * actions, from the Event's own action fields. */
   access?: EventAccess[];
@@ -2297,6 +2319,19 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
       .select("event_id")
       .in("category_id", eventCategoryFilterIds(cat as { id: string; parent_id: string | null }, children));
     categoryEventIds = [...new Set((links ?? []).map((l) => l.event_id))];
+    if (categoryEventIds.length === 0) return [];
+  }
+
+  // Event Formats V1 — Events linked (event_formats) to ANY selected
+  // Format, intersected with the category result: OR within Formats, AND
+  // across dimensions. Only kind='event_format' rows can match a slug.
+  if (params.formatSlugs && params.formatSlugs.length > 0) {
+    const { data: fmts } = await supabase.from("categories").select("id").eq("kind", "event_format").in("slug", params.formatSlugs);
+    const formatIds = ((fmts ?? []) as { id: string }[]).map((f) => f.id);
+    if (formatIds.length === 0) return [];
+    const { data: links } = await supabase.from("event_formats").select("event_id").in("category_id", formatIds);
+    const formatEventIds = new Set(((links ?? []) as { event_id: string }[]).map((l) => l.event_id));
+    categoryEventIds = categoryEventIds ? categoryEventIds.filter((id) => formatEventIds.has(id)) : [...formatEventIds];
     if (categoryEventIds.length === 0) return [];
   }
 

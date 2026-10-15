@@ -8,6 +8,7 @@ import {
   getEventCategoryIds,
 } from "@/lib/admin/queries";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getEventFormatIds } from "@/lib/event-formats-server";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
@@ -47,13 +48,15 @@ export default async function EditEventPage({
   const { id } = await params;
   const { error, saved, result: visibilityResult } = await searchParams;
   const marketsAdmin = getAdminSupabase();
-  const [result, categories, selectedCategoryIds, locations, markets, marketsWithAreas] = await Promise.all([
+  const [result, categories, selectedCategoryIds, locations, markets, marketsWithAreas, formats, selectedFormatIds] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
     getAdminLocations(),
     marketsAdmin ? getAllMarketsForAdmin(marketsAdmin) : Promise.resolve([]),
     getActiveMarketsWithAreaOptions(),
+    getAllCategories("event_format"),
+    marketsAdmin ? getEventFormatIds(marketsAdmin, id) : Promise.resolve([] as string[]),
   ]);
   if (!result) notFound();
   const [vendorRostersByOccurrence, hostBusiness] = await Promise.all([
@@ -168,6 +171,8 @@ export default async function EditEventPage({
           marketsWithAreas={marketsWithAreas}
           categories={categories}
           selectedCategoryIds={selectedCategoryIds}
+          formats={formats}
+          selectedFormatIds={selectedFormatIds}
           error={error}
         />
       </div>

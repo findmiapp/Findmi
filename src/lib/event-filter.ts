@@ -13,14 +13,16 @@
 //   location         — free-text city/state
 //   category         — Event Taxonomy V1 slug (a top-level category
 //                      includes its subcategories)
+//   formats          — Event Formats V1 slugs (kind='event_format'): ANY
+//                      of the selected Formats, AND the other dimensions
 //   access           — RSVP/Register and Tickets, from the Event's own
 //                      action fields (rsvp_enabled + rsvp_url,
 //                      tickets_enabled + tickets_url) — never inferred
 //   q                — text search
 //   locationId / businessId — programmatic scoping for Location and Brand
 //                      surfaces (not URL state)
-// Reserved for later phases, deliberately NOT fields yet (no data): Event
-// formats, cost, audience, geographic radius / map bounds. Walk-In is not
+// Reserved for later phases, deliberately NOT fields yet (no data): cost,
+// audience, geographic radius / map bounds. Walk-In is not
 // derivable (an Event without RSVP/Tickets isn't evidence of walk-in).
 import { getTemporalLabel, type DiscoveryWindow } from "./format";
 
@@ -67,6 +69,8 @@ export interface EventFilter {
   location?: string;
   /** Event category slug (top-level includes its subcategories). */
   category?: string;
+  /** ANY of these Event Format slugs (OR within; AND with everything else). */
+  formats?: string[];
   /** ANY of these attendance actions. */
   access?: EventAccess[];
   q?: string;
@@ -114,6 +118,19 @@ export function parseEventAccess(values: readonly string[]): EventAccess[] {
   return EVENT_ACCESS_KINDS.filter((k) => wanted.has(k));
 }
 
+/** Normalized Format slugs: well-formed slugs only, lower-cased,
+ * de-duplicated, sorted (a stable URL). Accepts repeated params and
+ * comma-separated values. Whether a slug is a real Format is decided by
+ * the query — an unknown one simply matches nothing. */
+export function parseEventFormats(values: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const v of values.flatMap((x) => x.split(","))) {
+    const slug = cleanSlug(v);
+    if (slug) out.add(slug);
+  }
+  return [...out].sort().slice(0, 32);
+}
+
 /** Event discovery URL state → EventFilter. Defensive: unknown values,
  * malformed dates/slugs and empty strings are dropped, never thrown on. */
 export function parseEventFilter(source: ParamSource): EventFilter {
@@ -130,6 +147,8 @@ export function parseEventFilter(source: ParamSource): EventFilter {
   if (location) filter.location = location;
   const category = cleanSlug(first(source, "category"));
   if (category) filter.category = category;
+  const formats = parseEventFormats(getAll(source, "format"));
+  if (formats.length > 0) filter.formats = formats;
   const access = parseEventAccess(getAll(source, "access"));
   if (access.length > 0) filter.access = access;
   const q = cleanText(first(source, "q"));
@@ -148,6 +167,7 @@ export function eventFilterToSearchParams(filter: EventFilter): URLSearchParams 
   if (filter.location) p.set("location", filter.location);
   if (filter.market) p.set("market", filter.market);
   if (filter.market && filter.area) p.set("area", filter.area);
+  for (const f of parseEventFormats(filter.formats ?? [])) p.append("format", f);
   for (const a of parseEventAccess(filter.access ?? [])) p.append("access", a);
   return p;
 }
@@ -164,6 +184,7 @@ export function eventDiscoveryParams(
   location?: string;
   marketSlug?: string;
   areaSlug?: string;
+  formatSlugs?: string[];
   access?: EventAccess[];
   locationId?: string;
   businessId?: string;
@@ -179,6 +200,7 @@ export function eventDiscoveryParams(
     ...(filter.location ? { location: filter.location } : {}),
     ...(filter.market ? { marketSlug: filter.market } : {}),
     ...(filter.market && filter.area ? { areaSlug: filter.area } : {}),
+    ...(filter.formats?.length ? { formatSlugs: parseEventFormats(filter.formats) } : {}),
     ...(filter.access?.length ? { access: filter.access } : {}),
     ...(filter.locationId ? { locationId: filter.locationId } : {}),
     ...(filter.businessId ? { businessId: filter.businessId } : {}),

@@ -56,6 +56,16 @@ export default async function AdminCategoriesPage({
           <ChevronRightGlyph className="h-4 w-4 shrink-0 text-findmi-700" />
         </Link>
         <Link
+          href="/admin/categories/formats"
+          className="flex flex-1 items-center justify-between rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3.5 transition hover:border-findmi/50"
+        >
+          <span>
+            <span className="block text-sm font-semibold text-findmi-700">Event Formats</span>
+            <span className="block text-xs text-ink/50">How events are experienced.</span>
+          </span>
+          <ChevronRightGlyph className="h-4 w-4 shrink-0 text-findmi-700" />
+        </Link>
+        <Link
           href="/admin/categories/products"
           className="flex flex-1 items-center justify-between rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3.5 transition hover:border-findmi/50"
         >

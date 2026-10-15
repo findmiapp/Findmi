@@ -250,6 +250,10 @@ export interface EventImportReview {
    * Review (a subcategory, or a top-level category). Saved only on a NEW
    * Event; never applied to an existing Event this import joins. */
   categoryId?: string | null;
+  /** Event Formats V1 — the Formats the person chose in Review (zero to
+   * many kind='event_format' ids). Saved only on a NEW Event; never
+   * applied to an existing Event this import joins. Never inferred. */
+  formatIds?: string[] | null;
 }
 
 export type EventImportOutcome =

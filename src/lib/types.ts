@@ -426,7 +426,7 @@ export interface Membership {
  * splitting into three tables). Every read path scopes by kind — see
  * lib/data.ts and lib/admin/queries.ts — so a business category can never
  * leak into an event picker or vice versa. */
-export type CategoryKind = "business" | "event" | "product" | "location";
+export type CategoryKind = "business" | "event" | "product" | "location" | "event_format";
 
 export interface Category {
   id: string;

@@ -2,6 +2,8 @@
 
 import { decideEventCategoryWrite } from "@/lib/event-categories";
 import { existingEventCategoryIds } from "@/lib/event-categories-server";
+import { cleanEventFormatIds, decideEventFormatWrite } from "@/lib/event-formats";
+import { syncEventFormats } from "@/lib/event-formats-server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -220,6 +222,8 @@ export async function createMemberEvent(formData: FormData) {
     location_id: locationHintId,
     // Event Taxonomy V1 — the picker's one primary category (optional).
     category_id: str(formData, "category_id"),
+    // Event Formats V1 — kept (comma-joined) across a validation error.
+    format_ids: cleanEventFormatIds(formData.getAll("format_ids")).join(","),
   };
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_EVENT_PATH, message, preservedFields));
@@ -316,6 +320,9 @@ export async function createMemberEvent(formData: FormData) {
   if (createCategoryIds.length > 0) {
     await admin.from("event_categories").insert(createCategoryIds.map((category_id) => ({ event_id: eventId, category_id })));
   }
+  // Event Formats V1 — the Formats picked at creation (best-effort too).
+  const createFormats = decideEventFormatWrite(formData);
+  if (createFormats.kind === "set" && createFormats.ids.length > 0) await syncEventFormats(admin, eventId, createFormats.ids);
 
   // Create Event From Venue — Stage 3, Step 9. Copies the chosen
   // Location's own venue fields onto the brand-new event, same copy
@@ -461,6 +468,14 @@ export async function updateMemberEventDetails(eventId: string, formData: FormDa
         .insert(categoryIds.map((category_id) => ({ event_id: eventId, category_id })));
       if (catInsertError) redirect(appendQuery(redirectPath, { error: `Categories: ${catInsertError.message}` }));
     }
+  }
+
+  // Event Formats V1 — only when the Format picker was on the form; the
+  // links then become exactly the selection (only real Formats linked).
+  const formatWrite = decideEventFormatWrite(formData);
+  if (formatWrite.kind === "set") {
+    const { error: formatError } = await syncEventFormats(admin, eventId, formatWrite.ids);
+    if (formatError) redirect(appendQuery(redirectPath, { error: `Formats: ${formatError}` }));
   }
 
   revalidatePath(redirectPath);

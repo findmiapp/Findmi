@@ -103,7 +103,7 @@ test("seed: additive data only — no delete/DDL, idempotent inserts, one-level 
   assert.ok(!children.some((c) => parents.has(c[2])), "no category is both a parent and a child");
   // The newest migration, after Find Us At.
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261016000000_event_taxonomy_v1.sql");
+  assert.ok(files.includes("20261016000000_event_taxonomy_v1.sql"));
 });
 
 // ── PICKER + PERSISTENCE ──────────────────────────────────────────────────

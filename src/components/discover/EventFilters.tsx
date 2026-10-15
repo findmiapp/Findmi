@@ -23,12 +23,17 @@ export default function EventFilters({
   defaultCategory,
   defaultLocation,
   defaultAccess,
+  formats = [],
+  defaultFormats = [],
 }: {
   categories: Category[];
   defaultCategory?: string;
   defaultLocation?: string;
   /** Shared Event filter — attendance actions (RSVP / Register, Tickets). */
   defaultAccess?: EventAccess[];
+  /** Event Formats V1 — the Formats to offer (slug → `format` param). */
+  formats?: Category[];
+  defaultFormats?: string[];
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -71,6 +76,20 @@ export default function EventFilters({
           className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
         />
       </label>
+
+      {formats.length > 0 && (
+        <fieldset className="block">
+          <legend className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Format</legend>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {formats.map((f) => (
+              <label key={f.id} className="flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" name="format" value={f.slug} defaultChecked={defaultFormats.includes(f.slug)} className="h-4 w-4 shrink-0 accent-findmi" />
+                {f.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <fieldset className="block">
         <legend className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Attendance</legend>

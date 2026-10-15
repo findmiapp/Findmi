@@ -8,6 +8,7 @@ import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import EventFormatField from "@/components/admin/EventFormatField";
 import { getAllCategories } from "@/lib/admin/queries";
 import { createMemberEvent } from "../actions";
 
@@ -89,6 +90,7 @@ export default async function AddEventPage({
     requested_market_text?: string;
     business_id?: string;
     category_id?: string;
+    format_ids?: string;
   }>;
 }) {
   const {
@@ -101,6 +103,7 @@ export default async function AddEventPage({
     requested_market_text: submittedRequestedMarketText,
     business_id: businessIdParam,
     category_id: submittedCategoryId,
+    format_ids: submittedFormatIds,
   } = await searchParams;
   const locationHint = await getLocationHint(locationIdHint);
 
@@ -150,7 +153,7 @@ export default async function AddEventPage({
     );
   }
 
-  const [markets, eventCategories] = await Promise.all([getActiveMarkets(), getAllCategories("event")]);
+  const [markets, eventCategories, eventFormats] = await Promise.all([getActiveMarkets(), getAllCategories("event"), getAllCategories("event_format")]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -208,6 +211,7 @@ export default async function AddEventPage({
           </label>
 
           <CategorySubcategoryField categories={eventCategories} defaultCategoryId={submittedCategoryId ?? null} emptyText="No Event categories yet." />
+          <EventFormatField formats={eventFormats} defaultSelectedIds={(submittedFormatIds ?? "").split(",")} />
 
           <DateTimeRangeFields
             startName="start_at"

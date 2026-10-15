@@ -11,6 +11,7 @@ import {
   attachEventCategories,
   getConsumerVisibleMarketsWithAreas,
   getEventCategories,
+  getEventFormatOptions,
   getEventsDiscovery,
   getMarketAreaLabel,
 } from "@/lib/data";
@@ -43,6 +44,7 @@ interface Params {
   when?: string;
   date?: string;
   access?: string | string[];
+  format?: string | string[];
   q?: string;
   category?: string;
   location?: string;
@@ -73,11 +75,16 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   // getEventCategories()) — never business categories (Discovery/Archive
   // V2 Part 9). Already scoped to categories that can return a real,
   // live, upcoming event — see that function's own note.
-  const [eventCategories, markets, fetchedRaw] = await Promise.all([
+  const [eventCategories, markets, fetchedRaw, formatOptions] = await Promise.all([
     getEventCategories(),
     getConsumerVisibleMarketsWithAreas(),
     getEventsDiscovery(eventDiscoveryParams(filter, { limit: limit + 1, featuredFirst: true })),
+    getEventFormatOptions(),
   ]);
+  // Event Formats V1 — offer the Formats that can return an upcoming Event,
+  // plus any already selected in the URL (so a shared link restores them).
+  const selectedFormats = filter.formats ?? [];
+  const formatChoices = formatOptions.formats.filter((f) => formatOptions.usedIds.includes(f.id) || selectedFormats.includes(f.slug));
   const hasMore = fetchedRaw.length > limit;
   const events = await attachEventCategories(fetchedRaw.slice(0, limit));
 
@@ -113,9 +120,13 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       })()}`,
     });
   }
+  for (const slug of selectedFormats) {
+    const p = eventFilterToSearchParams({ ...filter, formats: selectedFormats.filter((x) => x !== slug) });
+    chips.push({ label: formatOptions.formats.find((f) => f.slug === slug)?.name ?? slug, href: `/events${p.toString() ? `?${p.toString()}` : ""}` });
+  }
   if (filter.date) chips.push({ label: filter.date, href: withoutParam("date") });
 
-  const sheetFilterCount = [params.category, params.location].filter(Boolean).length + (filter.access?.length ?? 0);
+  const sheetFilterCount = [params.category, params.location].filter(Boolean).length + (filter.access?.length ?? 0) + selectedFormats.length;
   const filtering = chips.length > 0 || timeKey !== "next" || Boolean(params.q);
 
   const loadMoreHref = (() => {
@@ -131,7 +142,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   };
 
   const emptyLabel =
-    params.q || params.category || params.location || params.market || filter.access?.length
+    params.q || params.category || params.location || params.market || filter.access?.length || selectedFormats.length
       ? `No events matched${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
       : timeKey === "live"
         ? "Nothing is happening right now. Try Today or This Week."
@@ -147,7 +158,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <SearchFilterAnalytics pageType="events" filterParams={["category", "market", "area", "when", "access"]} />
+      <SearchFilterAnalytics pageType="events" filterParams={["category", "format", "market", "area", "when", "access"]} />
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Events</h1>
       {/* Events Discovery V4, item 1 — same mobile-header compression as
           Businesses Discovery V4: this subtitle adds little a consumer
@@ -198,6 +209,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
               defaultCategory={params.category}
               defaultLocation={params.location}
               defaultAccess={filter.access}
+              formats={formatChoices}
+              defaultFormats={selectedFormats}
             />
           </FilterSheet>
         </div>

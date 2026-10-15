@@ -38,7 +38,7 @@ export default async function ImportEventPage({
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
 
   const intent = parseEventImportIntent(intentParam);
-  const eventCategories = await getAllCategories("event");
+  const [eventCategories, eventFormats] = await Promise.all([getAllCategories("event"), getAllCategories("event_format")]);
   const businessHome = `/account/business/${id}`;
 
   return (
@@ -57,6 +57,7 @@ export default async function ImportEventPage({
         }}
         businessHome={businessHome}
         categories={eventCategories}
+        formats={eventFormats}
       />
     </div>
   );
