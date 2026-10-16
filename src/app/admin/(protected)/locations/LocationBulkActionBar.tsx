@@ -159,7 +159,7 @@ export default function LocationBulkActionBar({
         <FormAction
           action={bulkTrashLocations}
           ids={selectedIds}
-          label={`Trash${count ? ` (${count})` : ""}`}
+          label={`Move To Trash${count ? ` (${count})` : ""}`}
           tone="destructive"
           confirmMessage={`Move ${count} location(s) to Trash? They'll be hidden everywhere until restored.`}
         />

@@ -7,8 +7,8 @@ import { useRouter } from "next/navigation";
  * Events and Businesses (the same pattern as the Locations toolbar): a
  * 2-column grid of ≥ 40px pills on a phone, one row from sm up.
  *
- * `transitions` are the entity's server-confirmed state changes (Make Live,
- * Hide, Approve, Pause…): each is shown only while the selection contains a
+ * `transitions` are the entity's server-confirmed state changes (Publish,
+ * Unpublish, Approve, Pause…): each is shown only while the selection contains a
  * row it applies to (or nothing is selected yet), asks ONE confirmation,
  * shows only the server's confirmed outcome (never optimistic), keeps the
  * failed rows selected for a retry and refreshes the list. `formActions`

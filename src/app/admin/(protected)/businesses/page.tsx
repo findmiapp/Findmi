@@ -77,7 +77,7 @@ export default async function AdminBusinessesPage({
           authoritative query the decision panel wrote to). */}
       {(decided === "approved" || decided === "rejected") && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          {decided === "approved" ? "Business approved and now live." : "Business rejected."}
+          {decided === "approved" ? "Business approved and now Published." : "Business rejected."}
         </p>
       )}
 

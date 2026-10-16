@@ -3,7 +3,7 @@
  * lib/admin/business-lifecycle.ts) and the bulk toolbars' per-action
  * counts, so what the toolbar offers and what the server does can't drift.
  * "change" = this transition applies; "already" = the row is already in
- * the target state (no write); "inactive" = Shut Down / Archived / Trash;
+ * the target state (no write); "inactive" = Archived / Trash;
  * "na" = another state this transition doesn't apply to. */
 
 export type Eligibility = "change" | "already" | "inactive" | "na";
@@ -35,14 +35,17 @@ export function businessEligibility(op: BusinessTransition, row: { publication_s
 }
 
 /** Admin Business row badge — derived from the existing columns only:
- * Trash / Archive first, then the demo flag, then publication_status. */
+ * Trash / Archive first, then the demo flag, then publication_status.
+ * Shared Admin vocabulary: lifecycle PUBLISHED (live) / DRAFT / PAUSED /
+ * ARCHIVED / TRASHED; moderation NEEDS REVIEW (pending_review — the DB
+ * value is unchanged) / REJECTED. */
 export function businessBadge(b: { is_demo: boolean; publication_status?: string | null; archived_at?: string | null; trashed_at?: string | null }): { label: string; className: string } {
   if (b.trashed_at) return { label: "Trashed", className: "bg-red-50 text-red-700" };
   if (b.archived_at) return { label: "Archived", className: "bg-black/[0.06] text-ink/55" };
   if (b.is_demo) return { label: "Demo", className: "bg-black/[0.06] text-ink/50" };
   switch (b.publication_status) {
     case "pending_review":
-      return { label: "Pending Review", className: "bg-amber-50 text-amber-700" };
+      return { label: "Needs Review", className: "bg-amber-50 text-amber-700" };
     case "paused":
       return { label: "Paused", className: "bg-black/[0.06] text-ink/50" };
     case "rejected":
@@ -50,6 +53,6 @@ export function businessBadge(b: { is_demo: boolean; publication_status?: string
     case "draft":
       return { label: "Draft", className: "bg-black/[0.06] text-ink/50" };
     default:
-      return { label: "Active", className: "bg-findmi-50 text-findmi-700" };
+      return { label: "Published", className: "bg-findmi-50 text-findmi-700" };
   }
 }

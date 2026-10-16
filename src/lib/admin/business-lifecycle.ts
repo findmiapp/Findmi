@@ -162,13 +162,13 @@ export async function transitionBusinesses(
 }
 
 const VERB: Record<BusinessTransition, { done: string; already: string; na: string }> = {
-  approve: { done: "Approved", already: "Already Active", na: "Not Pending Review" },
-  reject: { done: "Rejected", already: "Already Rejected", na: "Not Pending Review" },
-  pause: { done: "Paused", already: "Already Paused", na: "Not Active" },
-  resume: { done: "Resumed", already: "Already Active", na: "Not Paused" },
+  approve: { done: "Approved", already: "Already Published", na: "Not in Needs Review" },
+  reject: { done: "Rejected", already: "Already Rejected", na: "Not in Needs Review" },
+  pause: { done: "Paused", already: "Already Paused", na: "Not Published" },
+  resume: { done: "Resumed", already: "Already Published", na: "Not Paused" },
 };
 
-/** One honest summary line ("10 Businesses Approved · 2 Already Active"). */
+/** One honest summary line ("10 Businesses Approved · 2 Already Published"). */
 export function describeBusinessTransition(r: BusinessTransitionResult): string {
   const v = VERB[r.op];
   const n = (k: number) => `${k} ${k === 1 ? "Business" : "Businesses"}`;

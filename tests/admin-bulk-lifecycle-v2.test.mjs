@@ -94,9 +94,9 @@ test("E3 & E4. mixed Live/Hidden selections are idempotent both ways (no write f
   const mixed = () => fakeDb("events", [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ev(n, { is_demo: true })).concat([9, 10, 11].map((n) => ev(n))));
   const all = Array.from({ length: 11 }, (_, i) => id(i + 1));
   const a = await EV.transitionEvents(mixed(), all, "live");
-  assert.equal(EV.describeEventTransition(a), "8 Events Made Live · 3 Already Live");
+  assert.equal(EV.describeEventTransition(a), "8 Events Published · 3 Already Published");
   const b = await EV.transitionEvents(mixed(), all, "hide");
-  assert.equal(EV.describeEventTransition(b), "3 Events Hidden · 8 Already Hidden");
+  assert.equal(EV.describeEventTransition(b), "3 Events Unpublished · 8 Already Draft");
   const db = fakeDb("events", [ev(1)]);
   await EV.transitionEvents(db, [id(1)], "live");
   assert.equal(db.writes.length, 0, "already Live → no write");
@@ -109,7 +109,7 @@ test("E5 & E6. Shut Down = the existing Archive change (archived_at); Shut Down 
   assert.deepEqual(r.already, [id(3)]);
   assert.deepEqual(r.inactive, [id(4)]);
   assert.equal(find(db, "events", 1).archived_at, "2026-10-16T12:00:00.000Z");
-  assert.equal(PUB.EVENT_VISIBILITY_LABEL[PUB.eventVisibility(find(db, "events", 1))], "Shut Down");
+  assert.equal(PUB.EVENT_VISIBILITY_LABEL[PUB.eventVisibility(find(db, "events", 1))], "Archived");
   assert.equal(find(db, "events", 1).is_demo, false, "Shut Down doesn't change publication — Restore returns it to Live/Hidden");
   const live = await EV.transitionEvents(db, [id(3)], "live");
   assert.deepEqual(live.inactive, [id(3)], "Restore first");
@@ -117,15 +117,16 @@ test("E5 & E6. Shut Down = the existing Archive change (archived_at); Shut Down 
   const actions = read("src/app/admin/(protected)/events/lifecycle-actions.ts");
   assert.match(actions, /export async function bulkArchiveEvents[\s\S]*?\.update\(\{ archived_at: new Date\(\)\.toISOString\(\) \}\)/);
   const bar = read("src/app/admin/(protected)/events/EventBulkActionBar.tsx");
-  assert.match(bar, /key: "shutdown", label: "Shut Down"/);
-  assert.doesNotMatch(bar.slice(bar.indexOf("<BulkLifecycleToolbar")), /label: "Archive"/, "no duplicate Archive action");
+  assert.match(bar, /key: "shutdown", label: "Archive"/);
+  assert.equal((bar.slice(bar.indexOf("<BulkLifecycleToolbar")).match(/label: "Archive"/g) ?? []).length, 1, "one Archive action (the archived_at change), no duplicate");
+  assert.doesNotMatch(bar, /label: "Shut Down"|label: "Make Live"|label: "Hide"/);
 });
 
 test("E7. bulk Trash keeps the existing soft-delete action and confirmation", () => {
   const actions = read("src/app/admin/(protected)/events/lifecycle-actions.ts");
   assert.match(actions, /export async function bulkTrashEvents[\s\S]*?\.update\(\{ trashed_at: new Date\(\)\.toISOString\(\) \}\)/);
   const bar = read("src/app/admin/(protected)/events/EventBulkActionBar.tsx");
-  assert.match(bar, /\{ key: "trash", label: "Trash", tone: "destructive", action: bulkTrashEvents, confirm:/);
+  assert.match(bar, /\{ key: "trash", label: "Move To Trash", tone: "destructive", action: bulkTrashEvents, confirm:/);
 });
 
 test("E8–E10. relationships, occurrences and details survive Hide and Shut Down: only events columns are written", async () => {
@@ -148,7 +149,7 @@ test("E11 & E12. partial Event failure is reported; failed ids stay identifiable
   const db = fakeDb("events", [ev(1), ev(2), ev(3)], { failIds: [id(3)] });
   const r = await EV.transitionEvents(db, [id(1), id(2), id(3)], "hide");
   assert.deepEqual([r.changed, r.failed], [[id(1), id(2)], [id(3)]]);
-  assert.equal(EV.describeEventTransition(r), "2 Events Hidden · 1 Failed — still selected, try again");
+  assert.equal(EV.describeEventTransition(r), "2 Events Unpublished · 1 Failed — still selected, try again");
   const err = await EV.transitionEvents(fakeDb("events", [ev(1)], { updateError: true }), [id(1)], "hide");
   assert.deepEqual(err.failed, [id(1)]);
 });
@@ -180,10 +181,10 @@ test("B14 & B15. Pending Review → bulk Approve (live, owners notified); mixed 
   const r = await BZ.transitionBusinesses(db, [1, 2, 3, 4, 5].map(id), "approve", n.fn);
   assert.deepEqual(r.changed, [id(1), id(2), id(3)]);
   assert.deepEqual(r.already, [id(4), id(5)]);
-  assert.equal(BZ.describeBusinessTransition(r), "3 Businesses Approved · 2 Already Active");
+  assert.equal(BZ.describeBusinessTransition(r), "3 Businesses Approved · 2 Already Published");
   assert.deepEqual(n.sent, [[id(1), "live"], [id(2), "live"], [id(3), "live"]], "never re-notified for already-Active rows");
   assert.deepEqual(db.writes.map((w) => w.patch), [{ publication_status: "live" }]);
-  assert.equal(EL.businessBadge(find(db, "businesses", 1)).label, "Active");
+  assert.equal(EL.businessBadge(find(db, "businesses", 1)).label, "Published");
 });
 
 test("B16 & B17. Active → Pause; Paused → Resume; other states skipped (never a pending one paused)", async () => {
@@ -217,7 +218,7 @@ test("B18 & B19. Archive / Trash keep their existing actions; archived / trashed
   assert.match(actions, /export async function bulkTrashBusinesses[\s\S]*?\.update\(\{ trashed_at: new Date\(\)\.toISOString\(\) \}\)/);
   const bar = read("src/app/admin/(protected)/businesses/BusinessBulkActionBar.tsx");
   assert.match(bar, /\{ key: "archive", label: "Archive", tone: "secondary", action: bulkArchiveBusinesses \}/);
-  assert.match(bar, /\{ key: "trash", label: "Trash", tone: "destructive", action: bulkTrashBusinesses, confirm:/);
+  assert.match(bar, /\{ key: "trash", label: "Move To Trash", tone: "destructive", action: bulkTrashBusinesses, confirm:/);
 });
 
 test("B20–B22. ownership, memberships, Events, Appearances, Locations and Pro / billing are untouched", async () => {
@@ -313,11 +314,11 @@ test("S30. single-record and bulk controls use the SAME lifecycle helper", () =>
 });
 
 test("row badges come from existing columns only", () => {
-  assert.equal(EL.businessBadge({ is_demo: false, publication_status: "pending_review" }).label, "Pending Review");
+  assert.equal(EL.businessBadge({ is_demo: false, publication_status: "pending_review" }).label, "Needs Review");
   assert.equal(EL.businessBadge({ is_demo: false, publication_status: "paused" }).label, "Paused");
   assert.equal(EL.businessBadge({ is_demo: false, publication_status: "live", archived_at: "x" }).label, "Archived");
   assert.equal(EL.businessBadge({ is_demo: false, publication_status: "live", trashed_at: "x" }).label, "Trashed");
   assert.equal(EL.businessBadge({ is_demo: true, publication_status: "live" }).label, "Demo");
   assert.equal(EL.businessBadge({ is_demo: false, publication_status: "draft" }).label, "Draft", "draft no longer shows as Public");
-  assert.deepEqual(Object.values(PUB.EVENT_VISIBILITY_LABEL), ["Live", "Hidden", "Shut Down", "Trash"]);
+  assert.deepEqual(Object.values(PUB.EVENT_VISIBILITY_LABEL), ["Published", "Draft", "Archived", "Trashed"]);
 });

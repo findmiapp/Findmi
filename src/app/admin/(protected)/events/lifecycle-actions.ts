@@ -264,27 +264,28 @@ async function oneEvent(eventId: string, op: EventTransition): Promise<{ supabas
 
 export async function hideEvent(eventId: string, returnTo: string | null = null) {
   const { r } = await oneEvent(eventId, "hide");
-  redirect(withResult(backTo(returnTo, eventId), r.changed.length || r.already.length ? "Event hidden from the public." : "Event not found (or shut down / in Trash)."));
+  redirect(withResult(backTo(returnTo, eventId), r.changed.length || r.already.length ? "Event unpublished (Draft)." : "Event not found (or archived / in Trash)."));
 }
 
 export async function publishEvent(eventId: string, returnTo: string | null = null) {
   const { r } = await oneEvent(eventId, "live");
-  redirect(withResult(backTo(returnTo, eventId), r.changed.length || r.already.length ? "Event is live." : "Event not found (or shut down / in Trash)."));
+  redirect(withResult(backTo(returnTo, eventId), r.changed.length || r.already.length ? "Event published." : "Event not found (or archived / in Trash)."));
 }
 
 export async function shutDownEvent(eventId: string, returnTo: string | null = null) {
   const { r } = await oneEvent(eventId, "shutdown");
-  redirect(withResult(backTo(returnTo, eventId), r.changed.length ? "Event shut down — hidden everywhere, record kept (Archived)." : "Event was already shut down."));
+  redirect(withResult(backTo(returnTo, eventId), r.changed.length ? "Event archived — hidden everywhere, record kept." : "Event was already archived."));
 }
 
 export async function restoreEvent(eventId: string, returnTo: string | null = null) {
   const supabase = await requireAdminSupabase();
   const { data } = await supabase.from("events").update({ archived_at: null }).eq("id", eventId).not("archived_at", "is", null).select("id").maybeSingle();
   await afterVisibilityChange(supabase, eventId);
-  redirect(withResult(backTo(returnTo, eventId), data ? "Event restored from Archive." : "Event wasn't shut down."));
+  redirect(withResult(backTo(returnTo, eventId), data ? "Event restored from Archive." : "Event wasn't archived."));
 }
 
-/** Bulk Make Live / Hide / Shut Down — the same transitions as the single
+/** Bulk Publish / Unpublish / Archive (internal ops "live" / "hide" /
+ * "shutdown", unchanged) — the same transitions as the single
  * Event controls, per-id outcome (no redirect) so failed rows can stay
  * selected. Admin session verified first; ids validated and re-read. */
 export async function bulkTransitionEvents(

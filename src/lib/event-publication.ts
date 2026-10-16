@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // Appearance → Event conversion) is public as soon as it is saved. Findmi
 // Admin oversees instead of approving: every new Event is listed under
 // Admin → Events → New Events (and counted on Admin Home), and Admin can
-// Hide or Shut Down any Event at any time.
+// Unpublish or Archive any Event at any time.
 //
 // The two existing columns keep their meanings — nothing is removed:
 //   - events.is_demo — THE public-visibility gate. Every public Event
@@ -46,7 +46,11 @@ export async function publishCreatedEvent(admin: SupabaseClient, eventId: string
 
 export type EventVisibility = "live" | "hidden" | "archived" | "trashed";
 
-/** Admin wording for where an Event stands publicly. */
+/** Admin wording for where an Event stands publicly — the shared Admin
+ * lifecycle vocabulary (Terminology Normalization): PUBLISHED (is_demo =
+ * false), DRAFT (is_demo = true), ARCHIVED (archived_at — formerly "Shut
+ * Down"), TRASHED (trashed_at). Labels only; the states are unchanged.
+ * Admin-only (public "happening live" wording is unrelated). */
 export function eventVisibility(e: { is_demo: boolean; archived_at?: string | null; trashed_at?: string | null }): EventVisibility {
   if (e.trashed_at) return "trashed";
   if (e.archived_at) return "archived";
@@ -54,8 +58,8 @@ export function eventVisibility(e: { is_demo: boolean; archived_at?: string | nu
 }
 
 export const EVENT_VISIBILITY_LABEL: Record<EventVisibility, string> = {
-  live: "Live",
-  hidden: "Hidden",
-  archived: "Shut Down",
-  trashed: "Trash",
+  live: "Published",
+  hidden: "Draft",
+  archived: "Archived",
+  trashed: "Trashed",
 };

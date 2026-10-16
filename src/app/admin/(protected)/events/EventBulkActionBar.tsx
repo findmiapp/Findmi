@@ -104,7 +104,7 @@ export default function EventBulkActionBar({
   selectedRows?: EventRowState[];
   keepSelected?: (ids: string[]) => void;
 }) {
-  // Archived (Shut Down) / Trash views keep the existing shared bar:
+  // Archived / Trash views keep the existing shared bar:
   // Restore, Move to Trash, Permanent Delete — unchanged.
   if (view === "archived" || view === "trashed") {
     return (
@@ -123,19 +123,20 @@ export default function EventBulkActionBar({
     );
   }
   const eligible = (op: EventTransition) => selectedRows.filter((r) => eventEligibility(op, r) === "change").length;
-  // Shut Down IS the Archive change (archived_at) — one button, the
-  // Event's own wording; no separate duplicate "Archive".
+  // Archive is the single archived_at change (formerly labelled "Shut
+  // Down") — one button. Ops keys are unchanged; labels use the shared
+  // Admin vocabulary (Publish / Unpublish / Archive).
   return (
     <BulkLifecycleToolbar
       selectedIds={selectedIds}
       keepSelected={keepSelected}
       transitions={[
-        { key: "live", label: "Make Live", tone: "primary", eligible: eligible("live"), confirm: (n) => `Make ${plural(n)} Live?\n\nThey'll be public on Findmi (Event pages, Events, Location and Business activity).`, run: (ids) => bulkTransitionEvents(ids, "live") },
-        { key: "hide", label: "Hide", tone: "secondary", eligible: eligible("hide"), confirm: (n) => `Hide ${plural(n)}?\n\nThey leave public pages and listings. Nothing is deleted — dates, places and Businesses are kept, and Make Live brings them back.`, run: (ids) => bulkTransitionEvents(ids, "hide") },
-        { key: "shutdown", label: "Shut Down", tone: "destructive", eligible: eligible("shutdown"), confirm: (n) => `Shut Down ${plural(n)}?\n\nThey're hidden everywhere along with their dates and linked schedule items, and move to Archived. Records are kept; Restore reopens them.`, run: (ids) => bulkTransitionEvents(ids, "shutdown") },
+        { key: "live", label: "Publish", tone: "primary", eligible: eligible("live"), confirm: (n) => `Publish ${plural(n)}?\n\nThey'll be public on Findmi (Event pages, Events, Location and Business activity).`, run: (ids) => bulkTransitionEvents(ids, "live") },
+        { key: "hide", label: "Unpublish", tone: "secondary", eligible: eligible("hide"), confirm: (n) => `Unpublish ${plural(n)}?\n\nThey return to Draft and leave public pages and listings. Nothing is deleted — dates, places and Businesses are kept, and Publish brings them back.`, run: (ids) => bulkTransitionEvents(ids, "hide") },
+        { key: "shutdown", label: "Archive", tone: "secondary", eligible: eligible("shutdown"), confirm: (n) => `Archive ${plural(n)}?\n\nThey're hidden everywhere along with their dates and linked schedule items, and move to Archived. Records are kept; Restore reopens them.`, run: (ids) => bulkTransitionEvents(ids, "shutdown") },
       ]}
       formActions={[
-        { key: "trash", label: "Trash", tone: "destructive", action: bulkTrashEvents, confirm: (n) => `Move ${n} event(s) to Trash? They'll be hidden everywhere until restored.` },
+        { key: "trash", label: "Move To Trash", tone: "destructive", action: bulkTrashEvents, confirm: (n) => `Move ${n} event(s) to Trash? They'll be hidden everywhere until restored.` },
       ]}
       quickEdit={<QuickEditForm ids={selectedIds} categories={categories} />}
     />

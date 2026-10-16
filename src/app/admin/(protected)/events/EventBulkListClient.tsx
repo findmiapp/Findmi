@@ -11,12 +11,13 @@ import { EVENT_VISIBILITY_LABEL, eventVisibility } from "@/lib/event-publication
 
 const NEW_EVENTS_LIST = "/admin/events?new=1";
 
-/** Admin status badge. Live/Hidden/Shut Down describe where the Event
- * stands publicly; "In Review"/"Rejected" only ever appear on Events
- * created before Events went live by default. */
+/** Admin status badge — PUBLISHED / DRAFT / ARCHIVED / TRASHED (the shared
+ * Admin lifecycle vocabulary); the moderation flags "Needs Review" /
+ * "Rejected" only ever appear on Events created before Events went live by
+ * default. Rows in the New Events VIEW show their real state, never "New". */
 export function eventStatusBadge(e: Pick<AdminEvent, "is_demo" | "publication_status" | "archived_at" | "trashed_at">): { label: string; className: string } {
   const visibility = eventVisibility(e);
-  if (visibility === "hidden" && e.publication_status === "pending_review") return { label: "In Review", className: "bg-amber-100 text-amber-800" };
+  if (visibility === "hidden" && e.publication_status === "pending_review") return { label: "Needs Review", className: "bg-amber-100 text-amber-800" };
   if (visibility === "hidden" && e.publication_status === "rejected") return { label: "Rejected", className: "bg-red-50 text-red-700" };
   return {
     label: EVENT_VISIBILITY_LABEL[visibility],
@@ -82,7 +83,7 @@ export default function EventBulkListClient({
                   {visibility === "live" && (
                     <form action={hideEvent.bind(null, e.id, NEW_EVENTS_LIST)}>
                       <button type="submit" className="text-ink/70 hover:underline">
-                        Hide
+                        Unpublish
                       </button>
                     </form>
                   )}
@@ -96,7 +97,7 @@ export default function EventBulkListClient({
                   {(visibility === "live" || visibility === "hidden") && (
                     <form action={shutDownEvent.bind(null, e.id, NEW_EVENTS_LIST)}>
                       <button type="submit" className="text-red-700 hover:underline">
-                        Shut Down
+                        Archive
                       </button>
                     </form>
                   )}

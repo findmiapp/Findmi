@@ -113,7 +113,7 @@ export default function BusinessBulkActionBar({
     );
   }
   const eligible = (op: BusinessTransition) => selectedRows.filter((r) => businessEligibility(op, r) === "change").length;
-  // Approve / Reject apply to Pending Review rows, Pause to Active ones,
+  // Approve / Reject (moderation) apply to Needs Review rows, Pause to Published ones,
   // Resume to Paused ones — each appears only when the selection has a row
   // it applies to, and mixed selections are safe (others are skipped).
   return (
@@ -121,14 +121,14 @@ export default function BusinessBulkActionBar({
       selectedIds={selectedIds}
       keepSelected={keepSelected}
       transitions={[
-        { key: "approve", label: "Approve", tone: "primary", eligible: eligible("approve"), confirm: (n) => `Approve ${plural(n)}?\n\nPending Review Businesses go live on Findmi and their team members are notified. Nothing else changes.`, run: (ids) => bulkTransitionBusinesses(ids, "approve") },
-        { key: "resume", label: "Resume", tone: "primary", eligible: eligible("resume"), confirm: (n) => `Resume ${plural(n)}?\n\nPaused Businesses become visible on Findmi again and their team members are notified.`, run: (ids) => bulkTransitionBusinesses(ids, "resume") },
-        { key: "pause", label: "Pause", tone: "secondary", eligible: eligible("pause"), confirm: (n) => `Pause ${plural(n)}?\n\nActive Businesses stop showing on Findmi until resumed and their team members are notified. Nothing is deleted.`, run: (ids) => bulkTransitionBusinesses(ids, "pause") },
-        { key: "reject", label: "Reject", tone: "destructive", eligible: eligible("reject"), confirm: (n) => `Reject ${plural(n)}?\n\nPending Review Businesses are marked Rejected (not public) and their team members are notified. Records are kept.`, run: (ids) => bulkTransitionBusinesses(ids, "reject") },
+        { key: "approve", label: "Approve", tone: "primary", eligible: eligible("approve"), confirm: (n) => `Approve ${plural(n)}?\n\nNeeds Review Businesses become Published on Findmi and their team members are notified. Nothing else changes.`, run: (ids) => bulkTransitionBusinesses(ids, "approve") },
+        { key: "resume", label: "Resume", tone: "primary", eligible: eligible("resume"), confirm: (n) => `Resume ${plural(n)}?\n\nPaused Businesses become Published on Findmi again and their team members are notified.`, run: (ids) => bulkTransitionBusinesses(ids, "resume") },
+        { key: "pause", label: "Pause", tone: "secondary", eligible: eligible("pause"), confirm: (n) => `Pause ${plural(n)}?\n\nPublished Businesses stop showing on Findmi until resumed and their team members are notified. Nothing is deleted.`, run: (ids) => bulkTransitionBusinesses(ids, "pause") },
+        { key: "reject", label: "Reject", tone: "destructive", eligible: eligible("reject"), confirm: (n) => `Reject ${plural(n)}?\n\nNeeds Review Businesses are marked Rejected (not public) and their team members are notified. Records are kept.`, run: (ids) => bulkTransitionBusinesses(ids, "reject") },
       ]}
       formActions={[
         { key: "archive", label: "Archive", tone: "secondary", action: bulkArchiveBusinesses },
-        { key: "trash", label: "Trash", tone: "destructive", action: bulkTrashBusinesses, confirm: (n) => `Move ${n} business(es) to Trash? They'll be hidden everywhere until restored.` },
+        { key: "trash", label: "Move To Trash", tone: "destructive", action: bulkTrashBusinesses, confirm: (n) => `Move ${n} business(es) to Trash? They'll be hidden everywhere until restored.` },
       ]}
       quickEdit={<QuickEditForm ids={selectedIds} categories={categories} />}
     />

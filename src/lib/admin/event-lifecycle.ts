@@ -95,17 +95,18 @@ export async function transitionEvents(supabase: SupabaseClient, ids: string[], 
 }
 
 const VERB: Record<EventTransition, { done: string; already: string }> = {
-  live: { done: "Made Live", already: "Already Live" },
-  hide: { done: "Hidden", already: "Already Hidden" },
-  shutdown: { done: "Shut Down", already: "Already Shut Down" },
+  // Admin vocabulary (labels only; ops and mutations unchanged).
+  live: { done: "Published", already: "Already Published" },
+  hide: { done: "Unpublished", already: "Already Draft" },
+  shutdown: { done: "Archived", already: "Already Archived" },
 };
 
-/** One honest summary line ("8 Events Made Live · 3 Already Live"). */
+/** One honest summary line ("8 Events Published · 3 Already Published"). */
 export function describeEventTransition(r: EventTransitionResult): string {
   const v = VERB[r.op];
   const parts = [`${r.changed.length} Event${r.changed.length === 1 ? "" : "s"} ${v.done}`];
   if (r.already.length) parts.push(`${r.already.length} ${v.already}`);
-  if (r.inactive.length) parts.push(`${r.inactive.length} Skipped (${r.op === "shutdown" ? "in Trash" : "Shut Down or in Trash — restore first"})`);
+  if (r.inactive.length) parts.push(`${r.inactive.length} Skipped (${r.op === "shutdown" ? "in Trash" : "Archived or in Trash — restore first"})`);
   if (r.missing.length) parts.push(`${r.missing.length} Not Found`);
   if (r.failed.length) parts.push(`${r.failed.length} Failed — still selected, try again`);
   return parts.join(" · ");

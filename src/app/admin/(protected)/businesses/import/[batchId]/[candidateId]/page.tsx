@@ -242,7 +242,7 @@ export default async function BrandImportCandidatePage({
             <p className="mt-1 text-base font-semibold text-ink">Ready to add this brand to Findmi?</p>
             <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
               <dt className="text-ink/50">Status</dt>
-              <dd className="text-ink">Pending Review</dd>
+              <dd className="text-ink">Needs Review</dd>
               <dt className="text-ink/50">Category</dt>
               <dd className="break-words text-ink">{category ?? "Not set"}</dd>
             </dl>

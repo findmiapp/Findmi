@@ -85,7 +85,7 @@ function PermanentDeleteForm({
         onClick={() => setOpen(true)}
         className="rounded-full border border-red-300 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Permanently Delete{ids.length > 0 ? ` (${ids.length})` : ""}
+        Delete Permanently{ids.length > 0 ? ` (${ids.length})` : ""}
       </button>
     );
   }
@@ -163,7 +163,7 @@ export default function LifecycleBulkActionBar({
         <ActionButton
           action={actions.trash}
           ids={selectedIds}
-          label="Move to Trash"
+          label="Move To Trash"
           tone="destructive"
           confirmMessage={`Move ${selectedIds.length} ${entityNoun}(s) to Trash? They'll be hidden everywhere until restored.`}
         />
@@ -190,7 +190,7 @@ export default function LifecycleBulkActionBar({
       <ActionButton
         action={actions.trash}
         ids={selectedIds}
-        label="Move to Trash"
+        label="Move To Trash"
         tone="destructive"
         confirmMessage={`Move ${selectedIds.length} ${entityNoun}(s) to Trash? They'll be hidden everywhere until restored.`}
       />

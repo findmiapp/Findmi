@@ -242,7 +242,8 @@ test("visibility wording", () => {
   assert.equal(PUB.eventVisibility({ is_demo: true }), "hidden");
   assert.equal(PUB.eventVisibility({ is_demo: false, archived_at: "2026-10-14" }), "archived");
   assert.equal(PUB.eventVisibility({ is_demo: false, archived_at: "x", trashed_at: "y" }), "trashed");
-  assert.equal(PUB.EVENT_VISIBILITY_LABEL.archived, "Shut Down");
+  // Admin Terminology Normalization — same states, the shared Admin vocabulary.
+  assert.deepEqual(PUB.EVENT_VISIBILITY_LABEL, { live: "Published", hidden: "Draft", archived: "Archived", trashed: "Trashed" });
 });
 
 // ── 10–13: Admin authority; nothing deleted ──────────────────────────────
@@ -269,7 +270,7 @@ test("10 + 11: Hide → is_demo true (Event page, listings, Location dates stop 
   assert.deepEqual(upd.where, [["in", "id", ["ev-1"]], ["is", "trashed_at", null], ["is", "archived_at", null]]);
   assert.ok(r.revalidated.some((a) => a[0] === "/" && a[1] === "layout"), "every public page re-reads it");
   assert.ok(r.revalidated.some((a) => a[0] === "/event/qsbs"));
-  assert.match(r.url, /^\/admin\/events\?new=1&result=Event%20hidden/);
+  assert.match(r.url, /^\/admin\/events\?new=1&result=Event%20unpublished%20\(Draft\)/);
 });
 
 test("10 + 11: Shut Down → archived (restrictive RLS hides the Event, its dates and linked schedule items); Restore undoes it", async () => {

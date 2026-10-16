@@ -140,8 +140,8 @@ export default async function AdminEventsPage({
 
       {newEventsOnly && (
         <p className="mt-3 text-xs text-ink/55">
-          Every Event created in the last {NEW_EVENT_WINDOW_DAYS} days, newest first. They&rsquo;re already public — Hide or Shut Down
-          any of them here.
+          Every Event created in the last {NEW_EVENT_WINDOW_DAYS} days, newest first. They&rsquo;re published when created — Unpublish or
+          Archive any of them here.
         </p>
       )}
 

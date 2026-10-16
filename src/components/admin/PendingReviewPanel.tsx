@@ -32,7 +32,7 @@ export default function PendingReviewPanel({
 }) {
   return (
     <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Pending Review</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Needs Review</p>
       <p className="mt-1 text-sm font-medium text-amber-900">This {entityLabel} is waiting for an Admin decision.</p>
       {context && <p className="mt-1 text-xs text-amber-700">{context}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2">

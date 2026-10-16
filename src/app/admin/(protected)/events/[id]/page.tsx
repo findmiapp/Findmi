@@ -73,7 +73,7 @@ export default async function EditEventPage({
       : Promise.resolve(null),
   ]);
   // Event Publication — Events are live when created; Admin oversees with
-  // Hide / Publish / Shut Down / Restore (events/lifecycle-actions.ts).
+  // Publish / Unpublish / Archive / Restore (events/lifecycle-actions.ts).
   const visibility = eventVisibility(result.event);
   const publicHref = visibility === "live" ? `/event/${result.event.slug}` : null;
   const followerCount = await getEventFollowerCount(id);
@@ -102,14 +102,14 @@ export default async function EditEventPage({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">
             {visibility === "live"
-              ? "Live on Findmi"
+              ? "Published on Findmi"
               : visibility === "hidden"
                 ? legacyReview
                   ? "Not public — created before Events went live by default"
-                  : "Hidden from the public"
+                  : "Draft — not public"
                 : visibility === "archived"
-                  ? "Shut down — hidden everywhere, record kept"
-                  : "In Trash"}
+                  ? "Archived — hidden everywhere, record kept"
+                  : "Trashed"}
           </p>
           <p className="text-xs text-ink/50">
             Added {new Date(result.event.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
@@ -128,14 +128,14 @@ export default async function EditEventPage({
           {visibility === "live" && (
             <form action={hideEvent.bind(null, id, null)}>
               <button type="submit" className="rounded-lg border border-black/15 px-3 py-1.5 text-sm font-semibold text-ink hover:border-black/30">
-                Hide
+                Unpublish
               </button>
             </form>
           )}
           {(visibility === "live" || visibility === "hidden") && (
             <form action={shutDownEvent.bind(null, id, null)}>
               <button type="submit" className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 hover:border-red-300">
-                Shut Down
+                Archive
               </button>
             </form>
           )}

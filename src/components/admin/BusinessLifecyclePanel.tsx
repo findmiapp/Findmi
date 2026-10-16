@@ -27,7 +27,7 @@ export default function BusinessLifecyclePanel({
   if (status === "live") {
     return (
       <div className="mt-3 rounded-2xl border border-black/10 bg-white p-4">
-        <p className="text-sm font-semibold text-ink">Live: publicly visible on Findmi.</p>
+        <p className="text-sm font-semibold text-ink">Published: publicly visible on Findmi.</p>
         <p className="mt-1 text-xs text-ink/50">
           Remove this business from public Findmi without deleting its data. You can restore it later.
         </p>
@@ -36,7 +36,7 @@ export default function BusinessLifecyclePanel({
           onSubmit={(e) => {
             if (
               !confirm(
-                "Pause this business? It will be removed from public Findmi immediately, but you can restore it later."
+                "Pause this business? It will be removed from public Findmi immediately, but you can resume it later."
               )
             ) {
               e.preventDefault();
@@ -62,7 +62,7 @@ export default function BusinessLifecyclePanel({
       <form
         action={restoreAction}
         onSubmit={(e) => {
-          if (!confirm("Restore this business to public Findmi?")) {
+          if (!confirm("Resume this business? It will be Published on Findmi again.")) {
             e.preventDefault();
           }
         }}
@@ -72,7 +72,7 @@ export default function BusinessLifecyclePanel({
           type="submit"
           className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          Restore Business
+          Resume Business
         </button>
       </form>
     </div>

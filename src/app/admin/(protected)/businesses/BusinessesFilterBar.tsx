@@ -137,7 +137,7 @@ export default function BusinessesFilterBar({
           >
             <option value="">Published: All</option>
             <option value="public">Public only</option>
-            <option value="pending_review">Pending Review only</option>
+            <option value="pending_review">Needs Review only</option>
             <option value="demo">Demo/hidden only</option>
           </select>
           {/* Admin Integrity Repair pass — Newest is the default (see

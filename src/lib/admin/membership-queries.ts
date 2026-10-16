@@ -147,5 +147,5 @@ export function onboardingStatusLabel(s: OnboardingStatus): string {
   return { not_started: "Not Started", incomplete: "Incomplete", submitted: "Submitted", approved: "Approved" }[s];
 }
 export function publicationStatusLabel(s: PublicationStatus): string {
-  return { draft: "Draft", pending_review: "Pending Review", live: "Live", paused: "Paused", rejected: "Rejected" }[s];
+  return { draft: "Draft", pending_review: "Needs Review", live: "Published", paused: "Paused", rejected: "Rejected" }[s];
 }

@@ -256,7 +256,7 @@ test("20. phone toolbar: 2-column grid of ≥40px touch targets, no hover-only o
   const bar = read("src/app/admin/(protected)/locations/LocationBulkActionBar.tsx");
   assert.match(bar, /const pill = "flex min-h-10 items-center justify-center rounded-full/);
   assert.match(bar, /className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"/);
-  const order = ["Publish${", "Unpublish{", "label={`Archive", "label={`Trash", "<QuickEditForm"].map((s) => bar.indexOf(s));
+  const order = ["Publish${", "Unpublish{", "label={`Archive", "label={`Move To Trash", "<QuickEditForm"].map((s) => bar.indexOf(s));
   assert.ok(order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])), "Publish · Unpublish · Archive · Trash · Quick Edit");
   assert.doesNotMatch(bar, /onMouseEnter|onHover|title=/);
   assert.match(read("src/app/admin/(protected)/locations/LocationBulkListClient.tsx"), /className="h-5 w-5 shrink-0" aria-label=\{`Select \$\{l\.name\}`\}/);

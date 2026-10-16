@@ -77,8 +77,8 @@ const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goo
 // Native Moderation Consolidation pass — see BusinessForm.tsx's own
 // identical note.
 const LISTING_STATUS_OPTIONS: { value: PublicationStatus; label: string }[] = [
-  { value: "pending_review", label: "Pending Review" },
-  { value: "live", label: "Published / Live" },
+  { value: "pending_review", label: "Needs Review" },
+  { value: "live", label: "Published" },
   { value: "draft", label: "Draft" },
   { value: "paused", label: "Paused" },
   { value: "rejected", label: "Rejected" },
@@ -293,7 +293,7 @@ export default async function EditBusinessPage({
             }`}
           >
             {business.publication_status === "live"
-              ? "Approved"
+              ? "Published"
               : business.publication_status === "rejected"
                 ? "Rejected"
                 : business.publication_status === "paused"
@@ -1128,7 +1128,7 @@ export default async function EditBusinessPage({
                 name="publication_status"
                 defaultValue={business.publication_status ?? "live"}
                 options={LISTING_STATUS_OPTIONS}
-                hint="Pending Review businesses are excluded from Findmi discovery until you set this to Published / Live. This is what approves the listing — the Real Business toggle below does not."
+                hint="Needs Review businesses are excluded from Findmi discovery until you set this to Published. This is what approves the listing — the Real Business toggle below does not."
               />
               <CheckboxField
                 label="Real Business (Not Demo/Test)"

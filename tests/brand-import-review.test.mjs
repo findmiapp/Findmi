@@ -634,7 +634,7 @@ test("page: Create Business card uses the simplified copy — no implementation 
   const card = src.slice(src.indexOf('id="create-business-heading"'), src.indexOf("Not adding this brand?"));
   assert.match(card, /Create Business/);
   assert.match(card, /Ready to add this brand to Findmi\?/);
-  assert.match(card, /<dt className="text-ink\/50">Status<\/dt>\s*<dd className="text-ink">Pending Review<\/dd>/);
+  assert.match(card, /<dt className="text-ink\/50">Status<\/dt>\s*<dd className="text-ink">Needs Review<\/dd>/);
   assert.match(card, /<dt className="text-ink\/50">Category<\/dt>/);
   assert.match(card, /Save any edits before creating\./);
   assert.match(card, /label="Create Business"/);
