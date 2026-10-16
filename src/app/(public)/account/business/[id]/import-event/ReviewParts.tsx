@@ -626,7 +626,9 @@ export function AttendanceEditor({
             aria-label="RSVP button label"
             value={slots.rsvp?.cta ?? "register"}
             onChange={(e) => setSlots({ ...slots, rsvp: { cta: e.target.value as "rsvp" | "register", url: slots.rsvp?.url ?? "" } })}
-            className={`${inputClass} w-auto shrink-0`}
+            // Never the shared `w-full`: beside the URL it would squeeze the
+            // link field to nothing on a phone (the URL looked missing).
+            className={`${inputClass.replace("w-full ", "")} w-auto shrink-0`}
           >
             <option value="register">Register</option>
             <option value="rsvp">RSVP</option>

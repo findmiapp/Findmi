@@ -554,3 +554,86 @@ test("migration: the occurrence_date backfill suspends ONLY the updated_at trigg
   assert.doesNotMatch(sql, /\b(begin|commit)\s*;/i, "runs inside the migration's own transaction");
   assert.ok(enable < sql.indexOf("alter column occurrence_date set not null"), "re-enabled before the rest of the migration");
 });
+
+// ── Live TRACE regression: the Admin pipeline with a blocked Event Link ──
+
+const ENGINE = await import("../src/lib/event-import/engine.ts");
+const blockedDeps = () => ({
+  fetchPage: async () => ({ ok: false, code: "http_error", redirects: 0, status: 403 }),
+  ai: null,
+  matchEvent: async () => null,
+  getEvent: async () => null,
+  matchLocations: async () => [],
+  matchOrganizer: async () => null,
+  matchExistingAppearance: async () => null,
+  findScheduledBySourceUrl: async () => null,
+  findEventBySourceUrl: async () => null,
+  isRateLimited: () => false,
+  now: () => NOW,
+});
+const TRACE_LIVE = (links) => `Event Name: TRACE Pop-Up: Shop What's Next
+Primary Business: TRACE
+Location: Shopify New York
+Address: 131 Greene Street, New York, NY 10012
+${links}
+
+Description: Meet TRACE, The Presale Marketplace. Try TRACE live and shop
+jewelry, handbags and accessories from female-founded brands during its NYC
+launch weekend at Shopify New York.
+
+Occurrence 1:
+Date: October 16, 2026
+Start Time: 11:00 AM
+End Time: 5:00 PM
+Location: Shopify New York
+Address: 131 Greene Street, New York, NY 10012`;
+/** The Admin path end to end: enrichment (Event Link fetch blocked) → the Review the batch builds. */
+async function adminReview(links) {
+  const r = await ENGINE.analyzeAdminSourceEvent({ text: TRACE_LIVE(links), rateKey: "t" }, blockedDeps());
+  assert.equal(r.ok && r.kind, "single");
+  assert.equal(r.candidate.structured.source.status, "failed", "the Event Link fetch failed");
+  return { review: O.operatorReviewDefaults(r.candidate, r.matches), candidate: r.candidate };
+}
+const SHOPIFY = "https://events.shopifyny.com/TRACE/mozart";
+
+test("TRACE live: identical Event Link + RSVP URL, blocked fetch → the RSVP URL is in Review (cta RSVP), Ticket blank", async () => {
+  const { review, candidate } = await adminReview(`Event Link: ${SHOPIFY}\nRSVP URL: ${SHOPIFY}`);
+  assert.deepEqual(review.attendance, { cta: "rsvp", url: SHOPIFY });
+  assert.equal(review.ticketsUrl, null);
+  assert.equal(review.sourceUrl, SHOPIFY, "the same URL is also the Event Link — different fields, never de-duplicated");
+  assert.deepEqual(L.attendanceSlots(review), { rsvp: { cta: "rsvp", url: SHOPIFY }, tickets: null });
+  // Persisted to its own column.
+  const n = P.normalizeReview(review);
+  assert.equal(n.ok, true);
+  assert.deepEqual(A.attendanceEventColumns(n.value.attendance, n.value.ticketsUrl), { rsvp_enabled: true, rsvp_url: SHOPIFY });
+  assert.equal(n.value.sourceUrl, SHOPIFY);
+  assert.equal(candidate.sourceUrl, SHOPIFY);
+});
+
+test("TRACE live: different Event Link + RSVP; identical Event Link + Ticket; RSVP + Ticket together", async () => {
+  const diff = (await adminReview(`Event Link: https://trace.example/launch\nRSVP URL: ${SHOPIFY}`)).review;
+  assert.deepEqual([diff.sourceUrl, diff.attendance, diff.ticketsUrl], ["https://trace.example/launch", { cta: "rsvp", url: SHOPIFY }, null]);
+  const tix = (await adminReview(`Event Link: ${SHOPIFY}\nTicket URL: ${SHOPIFY}`)).review;
+  assert.deepEqual(L.attendanceSlots(tix), { rsvp: null, tickets: SHOPIFY });
+  assert.equal(tix.sourceUrl, SHOPIFY);
+  const both = (await adminReview(`Event Link: ${SHOPIFY}\nRSVP URL: ${SHOPIFY}\nTicket URL: https://tix.example/trace`)).review;
+  assert.deepEqual(L.attendanceSlots(both), { rsvp: { cta: "rsvp", url: SHOPIFY }, tickets: "https://tix.example/trace" });
+});
+
+test("TRACE live: an enrichment reading with no links never clears either slot", async () => {
+  const { review } = await adminReview(`Event Link: ${SHOPIFY}\nRSVP URL: ${SHOPIFY}\nTicket URL: https://tix.example/trace`);
+  const merged = O.fillReviewGaps(review, { ...review, attendance: null, ticketsUrl: null }, { hadImage: false });
+  assert.deepEqual([merged.attendance, merged.ticketsUrl], [{ cta: "rsvp", url: SHOPIFY }, "https://tix.example/trace"]);
+});
+
+test("TRACE live (root cause): the RSVP link field is never squeezed out by its label select on a phone", () => {
+  const parts = read("src/app/(public)/account/business/[id]/import-event/ReviewParts.tsx");
+  const editor = parts.slice(parts.indexOf("export function AttendanceEditor"));
+  const select = editor.slice(editor.indexOf("<select"), editor.indexOf("</select>"));
+  // The shared inputClass is w-full; on the select it beat w-auto and left the
+  // URL input ~26px wide at 390px, so a present RSVP URL looked missing.
+  assert.match(select, /className=\{`\$\{inputClass\.replace\("w-full ", ""\)\} w-auto shrink-0`\}/);
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/ReviewParts.tsx"), /export const inputClass =\s*"w-full /);
+  const input = editor.slice(editor.indexOf(`id={\`\${idPrefix}attendance-rsvp\`}`), editor.indexOf("/>", editor.indexOf(`id={\`\${idPrefix}attendance-rsvp\`}`)));
+  assert.match(input, /min-w-0 flex-1/);
+});
