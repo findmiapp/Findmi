@@ -4,6 +4,7 @@ import { getBusinessesForEvent, getAllOccurrencesForEvent, findLocationByExactVe
 import type { FindmiEvent } from "@/lib/types";
 import { resolveAppearanceHostBusiness, resolveCanonicalHostBusiness } from "./EventPublicView";
 import { pickTodayOccurrence } from "@/lib/schedule-time";
+import { calendarDate } from "@/lib/event-time";
 
 // Moments V2 — Event → Add Moment is a PREFILL for a brand-new Moment
 // (/my-world/journal/new?event=<id>), never "reopen my latest Moment for
@@ -30,8 +31,9 @@ export interface EventMomentPrefill {
   occurrence: {
     id: string;
     event_id: string;
-    start_at: string;
-    end_at: string;
+    start_at: string | null;
+    end_at: string | null;
+    occurrence_date: string;
     timezone: string;
     location_id: string | null;
     localDate: string;
@@ -80,10 +82,11 @@ export async function resolveEventMomentPrefill(
           event_id: single.event_id,
           start_at: single.start_at,
           end_at: single.end_at,
+          occurrence_date: single.occurrence_date,
           timezone: single.timezone,
           location_id: single.location_id ?? null,
-          localDate: isoToLocalDateTime(single.start_at, single.timezone).slice(0, 10),
-          localTime: isoToLocalDateTime(single.start_at, single.timezone).slice(11, 16),
+          localDate: calendarDate(single) ?? single.occurrence_date,
+          localTime: single.start_at ? isoToLocalDateTime(single.start_at, single.timezone).slice(11, 16) : "",
         }
       : null,
     location:

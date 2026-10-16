@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
+import { orPredicate, withDates } from "./helpers/postgrest-or.mjs";
 
 registerHooks({
   resolve(specifier, context, next) {
@@ -68,13 +69,15 @@ function fakeDb(tables, { pastEndCount = false } = {}) {
         gte: (c, v) => f(`gte ${c}`, (r) => get(r, c) != null && get(r, c) >= v),
         lt: (c, v) => f(`lt ${c}`, (r) => get(r, c) != null && get(r, c) < v),
         or: (expr) =>
-          f(`or ${expr}`, (r) =>
-            expr.split(",").some((part) => {
-              const [col, op, ...rest] = part.split(".");
-              return op === "ilike" && like(rest.join("."))(get(r, col));
-            })
-          ),
-        order: (c, { ascending }) => (orders.push({ column: c, ascending }), chain),
+          /\.ilike\./.test(expr)
+            ? f(`or ${expr}`, (r) =>
+                expr.split(",").some((part) => {
+                  const [col, op, ...rest] = part.split(".");
+                  return op === "ilike" && like(rest.join("."))(get(r, col));
+                })
+              )
+            : f(`or ${expr}`, orPredicate(expr)),
+        order: (c, { ascending, nullsFirst }) => (orders.push(nullsFirst === undefined ? { column: c, ascending } : { column: c, ascending, nullsFirst }), chain),
         range: (from, to) => ((range = { from, to }), (call.range = range), chain),
         then: (resolve) => {
           let rows = tables[table].filter((r) => filters.every((p) => p(r)));
@@ -83,6 +86,7 @@ function fakeDb(tables, { pastEndCount = false } = {}) {
               const x = a[o.column] ?? null;
               const y = b[o.column] ?? null;
               if (x === y) continue;
+              if (o.nullsFirst !== undefined && (x === null || y === null)) return (x === null) === o.nullsFirst ? -1 : 1;
               const cmp = x === null ? 1 : y === null ? -1 : x < y ? -1 : 1;
               return o.ascending ? cmp : -cmp;
             }
@@ -139,7 +143,9 @@ test("3. every collection's every sort ends with the deterministic id tie-break"
     for (const key of cfg.options) {
       const cols = SORT.adminSortColumns(cfg, key);
       assert.deepEqual(cols.at(-1), { column: "id", ascending: true }, key);
-      assert.equal(cols.length, 2, key);
+      // Event date/time precision: the Event-date sorts are date → known
+      // start (untimed last) → id; every other sort stays column → id.
+      assert.equal(cols.length, cfg === SORT.EVENT_SORT && key.startsWith("date_") ? 3 : 2, key);
     }
   }
 });
@@ -350,7 +356,7 @@ const iso = (deltaDays) => new Date(now + deltaDays * 86400000).toISOString();
 function events() {
   const rows = [];
   for (let n = 1; n <= 240; n++) {
-    rows.push({
+    rows.push(withDates({
       id: uid(n),
       name: `Event ${pad(n)}`,
       slug: `e-${n}`,
@@ -363,14 +369,16 @@ function events() {
       archived_at: n === 3 ? iso(-1) : null,
       trashed_at: n === 5 ? iso(-1) : null,
       event_businesses: n % 10 === 0 ? [{ status: "applied" }] : [{ status: "accepted" }],
-    });
+    }));
   }
   return rows;
 }
 
-test("24–25. Events: default keeps the chronological order (start_at, latest first); labels say what they sort by", async () => {
+test("24–25. Events: default keeps the chronological order (Event date, latest first); labels say what they sort by", async () => {
   assert.equal(SORT.EVENT_SORT.defaultKey, "date_desc");
-  assert.deepEqual(SORT.EVENT_SORT.columns.date_desc, { column: "start_at", ascending: false });
+  // Event date/time precision (minimum compatibility change): the calendar
+  // date first, then the known start (untimed after timed), then id.
+  assert.deepEqual(SORT.EVENT_SORT.columns.date_desc, { column: "start_date", ascending: false, then: { column: "start_at", ascending: false, nullsFirst: false } });
   assert.deepEqual(SORT.EVENT_SORT.columns.newest, { column: "created_at", ascending: false });
   assert.equal(SORT.ADMIN_SORT_LABEL.date_desc, "Event Date: Latest First");
   assert.equal(SORT.ADMIN_SORT_LABEL.date_asc, "Event Date: Earliest First");
@@ -379,7 +387,11 @@ test("24–25. Events: default keeps the chronological order (start_at, latest f
   globalThis.__DB = fakeDb({ events: events() });
   const def = await Q.getAdminEvents({});
   assert.equal(def.rows[0].id, uid(240));
-  assert.deepEqual(globalThis.__DB.calls.at(-1).orders, [{ column: "start_at", ascending: false }, { column: "id", ascending: true }]);
+  assert.deepEqual(globalThis.__DB.calls.at(-1).orders, [
+    { column: "start_date", ascending: false },
+    { column: "start_at", ascending: false, nullsFirst: false },
+    { column: "id", ascending: true },
+  ]);
   const earliest = await Q.getAdminEvents({ sort: "date_asc" });
   assert.equal(earliest.rows[0].id, uid(1));
   const newest = await Q.getAdminEvents({ sort: "newest" });
@@ -500,4 +512,21 @@ test("39–40. no Import or public discovery code uses the Admin list foundation
   }
   // The shared modules are pure and import nothing app-specific.
   for (const f of ["src/lib/admin/list-sort.ts", "src/lib/admin/list-page.ts"]) assert.doesNotMatch(read(f), /^import /m, f);
+});
+
+test("Event date/time precision: an Event with no published time stays in Upcoming / Past by its calendar date and sorts after timed Events on that date", async () => {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const later = new Date(Date.now() + 2 * 3600_000).toISOString();
+  const rows = [
+    { id: uid(1), name: "Untimed Today", slug: "u", venue_name: "Hall", start_at: null, end_at: null, start_date: today, end_date: today, created_at: iso(-1), is_demo: false, publication_status: "live", archived_at: null, trashed_at: null, event_businesses: [] },
+    withDates({ id: uid(2), name: "Timed Later Today", slug: "t", venue_name: "Hall", start_at: later, end_at: null, created_at: iso(-1), is_demo: false, publication_status: "live", archived_at: null, trashed_at: null, event_businesses: [] }),
+    { id: uid(3), name: "Untimed Past", slug: "p", venue_name: "Hall", start_at: null, end_at: null, start_date: "2020-01-01", end_date: null, created_at: iso(-1), is_demo: false, publication_status: "live", archived_at: null, trashed_at: null, event_businesses: [] },
+  ];
+  globalThis.__DB = fakeDb({ events: rows });
+  const upcoming = await Q.getAdminEvents({ when: "upcoming", sort: "date_asc" });
+  const sameDay = upcoming.rows.filter((r) => r.start_date === today).map((r) => r.id);
+  assert.deepEqual(sameDay, today === rows[1].start_date ? [uid(2), uid(1)] : [uid(1)], "untimed after timed on the same date");
+  assert.ok(!upcoming.rows.some((r) => r.id === uid(3)));
+  const past = await Q.getAdminEvents({ when: "past" });
+  assert.deepEqual(past.rows.map((r) => r.id), [uid(3)], "an untimed past Event is in Past, never lost");
 });

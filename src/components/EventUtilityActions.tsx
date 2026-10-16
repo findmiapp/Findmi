@@ -6,6 +6,7 @@ import AddToCalendarButton from "./AddToCalendarButton";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import { cityState, cityStateZip } from "@/lib/format";
 import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
+import { calendarDate } from "@/lib/event-time";
 
 /** Event Detail Action Bar Correction pass, tightened in the Event Page
  * Visual Convergence pass — shared shell for the Event page's Tier B
@@ -223,6 +224,7 @@ export default function EventUtilityActions({
         location={locationLine}
         startAt={selected.start_at}
         endAt={selected.end_at}
+        date={calendarDate(selected)}
         layout={variant === "icons" ? "icon" : "grid"}
       />
     ) : null,

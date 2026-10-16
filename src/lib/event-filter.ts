@@ -223,6 +223,8 @@ export function eventMatchesAccess(event: Parameters<typeof eventOffersAccess>[0
 }
 
 /** Happening Now — exactly getTemporalLabel()'s "live" rule. */
-export function isEventHappeningNow(startIso: string, endIso: string | null | undefined): boolean {
+export function isEventHappeningNow(startIso: string | null | undefined, endIso: string | null | undefined): boolean {
+  // A date with no published start (or end) is never "now".
+  if (!startIso || !endIso) return false;
   return getTemporalLabel(startIso, endIso).live;
 }

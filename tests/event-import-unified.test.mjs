@@ -359,7 +359,7 @@ test("shared: From Link still runs the existing URL engine unchanged", async () 
   const url = engine.slice(engine.indexOf("export async function analyzeEventUrl"), engine.indexOf("// ── Paste Details / Upload"));
   assert.match(url, /const source = classifySource\(page\.html, page\.url, now\);/, "calendar / multi-Event detection");
   assert.match(url, /if \(needsAiAssist\(candidate\)\) candidate = \(await assistWithAi\(/);
-  assert.match(url, /isLumaEventUrl\(candidate\.sourceUrl\)/);
+  assert.match(url, /isRegistrationPlatformEventUrl\(candidate\.sourceUrl\)/, "verified single-Event platform pages (Luma, Eventbrite, Partiful)");
   assert.doesNotMatch(url, /text-source|extractTextEventCandidate|readEventTextWithAi/);
 });
 

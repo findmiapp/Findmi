@@ -52,11 +52,19 @@ test("timezone: exact stored instants in UTC (Z) — the calendar app localizes;
   assert.equal(C.toIcsDate("2026-03-08T07:00:00Z"), "20260308T070000Z", "DST boundary untouched");
 });
 
-test("end time: the real one when present; the existing 2-hour convention only when absent", () => {
+// Event date/time precision (approved): the earlier 2-hour fallback was a
+// fabricated end. A start-only date now exports its known start with NO
+// Findmi-made end; a date with no published time exports as all-day.
+test("end time: the real one when present; never invented when absent (start only / all-day)", () => {
   const withEnd = C.buildCalendarPayload({ title: "x", startAt: OCC.oct21.start_at, endAt: OCC.oct21.end_at });
   assert.equal(ics(withEnd).DTEND, "20261021T200000Z");
   const noEnd = C.buildCalendarPayload({ title: "x", startAt: OCC.oct21.start_at, endAt: null });
-  assert.equal(ics(noEnd).DTEND, "20261021T173000Z");
+  assert.equal(ics(noEnd).DTSTART, "20261021T153000Z");
+  assert.ok(!("DTEND" in ics(noEnd)), "no Findmi-made end");
+  assert.equal(gcal(noEnd).get("dates"), "20261021T153000Z/20261021T153000Z", "Google: the start only (zero-length), never a guessed end");
+  const dateOnly = C.buildCalendarPayload({ title: "x", startAt: null, endAt: null, date: "2026-10-16" });
+  assert.match(dateOnly.ics, /DTSTART;VALUE=DATE:20261016\r\nDTEND;VALUE=DATE:20261017/);
+  assert.equal(gcal(dateOnly).get("dates"), "20261016/20261017");
 });
 
 test("location: venue + address when available (escaped in .ics); omitted entirely when there is none", () => {
@@ -81,7 +89,7 @@ test("canonical Findmi link: in the Google details, the .ics DESCRIPTION and URL
 
 // ── Sheet wiring ─────────────────────────────────────────────────────────
 test("occurrence sheet: Calendar uses THIS occurrence's start/end, its displayed venue/address and the Event URL", () => {
-  assert.match(SHEET, /<AddToCalendarButton\s+title=\{eventName\}\s+location=\{calendarLocation\}\s+url=\{eventUrl\}\s+startAt=\{occurrence\.start_at\}\s+endAt=\{occurrence\.end_at\}\s+layout="row"\s+\/>/);
+  assert.match(SHEET, /<AddToCalendarButton\s+title=\{eventName\}\s+location=\{calendarLocation\}\s+url=\{eventUrl\}\s+startAt=\{occurrence\.start_at\}\s+endAt=\{occurrence\.end_at\}\s+date=\{occurrenceDate\}\s+layout="row"\s+\/>/);
   assert.match(SHEET, /const calendarLocation = \[venueLabel, fullAddress\]\.filter\(\(v, i, all\) => v && all\.indexOf\(v\) === i\)\.join\(", "\) \|\| null;/);
   // The sheet is opened for the tapped occurrence, not the first.
   assert.match(RAIL, /occurrence=\{openOccurrence\}/);
@@ -140,7 +148,7 @@ test("accessibility: keyboard-native buttons, labelled, expanded state announced
 });
 
 test("payload is built at tap time from the button's own props (never shared across rows)", () => {
-  assert.match(BUTTON, /const payload = \(\) => buildCalendarPayload\(\{ title, description, location, url, startAt, endAt \}\);/);
+  assert.match(BUTTON, /const payload = \(\) => buildCalendarPayload\(\{ title, description, location, url, startAt, endAt, date, endDate \}\);/);
   assert.match(BUTTON, /window\.location\.assign\(payload\(\)\.gcalUrl\);/);
   assert.match(BUTTON, /new Blob\(\[payload\(\)\.ics\], \{ type: "text\/calendar;charset=utf-8" \}\)/);
 });

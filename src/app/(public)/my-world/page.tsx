@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatEventRange } from "@/lib/event-time";
 import { useEffect, useState } from "react";
 import ProductCard from "@/components/ProductCard";
 import BusinessCard from "@/components/BusinessCard";
@@ -15,7 +16,7 @@ import {
 import { getFollowedSlugs } from "@/lib/followed";
 import { getAccountSession } from "@/lib/accountSession";
 import { syncLocalToAccountOnce } from "@/lib/accountSync";
-import { cityState, formatDateRange } from "@/lib/format";
+import { cityState } from "@/lib/format";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
 import type { LocationWithCategory } from "@/lib/data";
 
@@ -229,7 +230,7 @@ export default function MyWorldPage() {
                     href={`/event/${e.slug}`}
                     image={e.cover_image_url}
                     title={e.name}
-                    meta={[formatDateRange(e.start_at, e.end_at), cityState(e.city, e.state)]
+                    meta={[formatEventRange(e), cityState(e.city, e.state)]
                       .filter(Boolean)
                       .join(" · ")}
                   />
@@ -251,7 +252,7 @@ export default function MyWorldPage() {
                     href={`/event/${e.slug}`}
                     image={e.cover_image_url}
                     title={e.name}
-                    meta={[formatDateRange(e.start_at, e.end_at), cityState(e.city, e.state)].filter(Boolean).join(" · ")}
+                    meta={[formatEventRange(e), cityState(e.city, e.state)].filter(Boolean).join(" · ")}
                   />
                 ))}
                 {data.followingLocations.map((l) => (

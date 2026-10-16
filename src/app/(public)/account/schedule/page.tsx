@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { formatCalendarDate } from "@/lib/event-time";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -178,8 +179,8 @@ export default async function AccountSchedulePage({
                       </span>
                     </div>
                     <p className="mt-0.5 text-metadata text-muted">
-                      {formatDateShort(item.startAt)} · {formatTime(item.startAt)}
-                      {item.endAt ? `–${formatTime(item.endAt)}` : ""}
+                      {item.startAt ? `${formatDateShort(item.startAt)} · ${formatTime(item.startAt)}` : formatCalendarDate(item.date, "short")}
+                      {item.startAt && item.endAt ? `–${formatTime(item.endAt)}` : ""}
                     </p>
                     {item.where && <p className="mt-0.5 text-metadata text-muted">{item.where}</p>}
                     <p className="mt-0.5 text-metadata font-semibold text-accent">{item.relatedTo.join(" · ")}</p>

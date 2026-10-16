@@ -7,6 +7,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { useAccountSaved } from "@/lib/useAccountSaved";
 import type { LocationActivityPreviewItem, LocationWithCategory } from "@/lib/data";
 import { cityState, cityStateZip, formatDateShort, formatTime } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/event-time";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
@@ -215,7 +216,7 @@ function EventFeaturePreview({ item }: { item: LocationActivityPreviewItem }) {
         <p className="flex items-center gap-1 whitespace-nowrap text-xs text-ink/55">
           <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">
-            {formatDateShort(item.startAt)} · {formatTime(item.startAt)}
+            {item.startAt ? `${formatDateShort(item.startAt)} · ${formatTime(item.startAt)}` : formatCalendarDate(item.date, "short")}
           </span>
         </p>
       </div>
@@ -245,7 +246,7 @@ function EventMiniPreview({ item }: { item: LocationActivityPreviewItem }) {
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-1.5 py-1">
         <p className="truncate text-[11px] font-semibold leading-tight text-ink">{item.title}</p>
         <p className="truncate text-[10px] text-ink/45">
-          {formatDateShort(item.startAt)} · {formatTime(item.startAt)}
+          {item.startAt ? `${formatDateShort(item.startAt)} · ${formatTime(item.startAt)}` : formatCalendarDate(item.date, "short")}
         </p>
       </div>
     </Link>

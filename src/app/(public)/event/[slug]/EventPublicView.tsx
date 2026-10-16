@@ -56,15 +56,14 @@ import {
   isPrimaryDateId,
 } from "@/lib/data";
 import {
-  APP_TIMEZONE,
   cityState,
   cityStateZip,
   formatDateShort,
   formatTime,
   formatTimeInZone,
   formatTimeRange,
-  getTemporalLabel,
 } from "@/lib/format";
+import { calendarDate, calendarEndDate, formatCalendarDate, hasEnded, temporalLabelFor } from "@/lib/event-time";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -274,7 +273,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // visitor sees/selects whenever other real dates exist. The row itself
   // (and anything attached to it) is untouched.
   // Shared rule: lib/event-range-mirror.
-  const isRangeMirror = (o: { start_at: string; end_at: string }) => isRangeMirrorOccurrence(o, event);
+  const isRangeMirror = (o: { start_at: string | null; end_at: string | null }) => isRangeMirrorOccurrence(o, event);
   const datedOccurrences = withoutRangeMirrors(realOccurrences, event);
   const rostersByOccurrence = hasOccurrences ? await getOccurrenceBusinessRosters(realOccurrenceIds) : {};
   const primaryEntry = upcomingOccurrences.find((o) => isPrimaryDateId(o.id));
@@ -341,8 +340,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
     upcomingOccurrences.find((o) => datedOccurrences.length === realOccurrences.length || !isRangeMirror(o)) ?? {
       start_at: event.start_at,
       end_at: event.end_at,
+      start_date: event.start_date,
+      end_date: event.end_date,
     };
-  const heroTemporal = getTemporalLabel(heroTemporalSource.start_at, heroTemporalSource.end_at ?? undefined);
+  // Never live without a real interval (Event date/time precision).
+  const heroTemporal = temporalLabelFor(heroTemporalSource);
 
   // Event Top Hierarchy Final Micro-pass — the hero no longer shows any
   // temporal metadata (that reverted to the white logistics card below
@@ -432,7 +434,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
   // Ended — no date left to attend. Multi-date: nothing upcoming in the
   // effective schedule; single-date: its own end has passed.
-  const legacyEnded = new Date(event.end_at ?? event.start_at).getTime() < Date.now();
+  // A timed Event ends at its real end; one with no published end stays
+  // through its calendar end date (never a guessed end).
+  const legacyEnded = hasEnded(event);
   const eventEnded = hasOccurrences ? upcomingOccurrences.length === 0 : legacyEnded;
 
   // Multi-date with no upcoming date: the real historical schedule (one
@@ -444,18 +448,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
     if (past.length > 0) {
       const first = past[0];
       const last = past[past.length - 1];
-      const tz = first.timezone;
-      const firstLabel = formatDateWithYearInZone(first.start_at, tz);
-      const lastLabel = formatDateWithYearInZone(last.end_at, tz);
-      const startTime = formatTimeInZone(first.start_at, tz);
-      const endTime = formatTimeInZone(first.end_at, tz);
-      const uniformTime = past.every(
-        (o) => formatTimeInZone(o.start_at, o.timezone) === startTime && formatTimeInZone(o.end_at, o.timezone) === endTime
-      );
+      // Real calendar dates; times only where published.
+      const firstDate = calendarDate(first) ?? "";
+      const lastDate = calendarEndDate(last) ?? firstDate;
+      const firstLabel = formatDateWithYearInZone(dateAnchor(firstDate), "UTC");
+      const lastLabel = formatDateWithYearInZone(dateAnchor(lastDate), "UTC");
+      const timeOfDay = (o: (typeof past)[number]) =>
+        !o.start_at ? "" : o.end_at ? `${formatTimeInZone(o.start_at, o.timezone)} – ${formatTimeInZone(o.end_at, o.timezone)}` : formatTimeInZone(o.start_at, o.timezone);
+      const firstTime = timeOfDay(first);
+      const uniformTime = Boolean(firstTime) && past.every((o) => timeOfDay(o) === firstTime);
       const lastLocation = last.location ?? canonicalLocation;
       historical = {
-        dateLabel: formatHistoricalRange(first.start_at, last.end_at, tz, firstLabel, lastLabel),
-        detail: uniformTime ? `${startTime} – ${endTime}` : null,
+        dateLabel: formatHistoricalRange(dateAnchor(firstDate), dateAnchor(lastDate), "UTC", firstLabel, lastLabel),
+        detail: uniformTime ? firstTime : null,
         count: past.length > 1 ? `${past.length} dates` : null,
         where: locationHidden
           ? { name: HIDDEN_LOCATION_COPY, href: null, line: cityState(last.city, last.state) || null }
@@ -484,15 +489,21 @@ export async function EventPublicView({ slug }: { slug: string }) {
     ? [matchedLocation.address, cityStateZip(matchedLocation.city, matchedLocation.state, matchedLocation.postal_code ?? null)]
     : [event.address, location];
   const legacyHasWhereLines = legacyWhereLines.some(Boolean);
-  const legacySameDay = !event.end_at || formatDateShort(event.start_at) === formatDateShort(event.end_at);
+  // Calendar dates always; a time only when published (never a closing
+  // time that isn't known, never a time for a date-only Event).
+  const legacyStartDate = calendarDate(event) ?? event.start_date;
+  const legacyEndDate = calendarEndDate(event) ?? legacyStartDate;
+  const legacySameDay = legacyStartDate === legacyEndDate;
   const legacyDateLabel = legacyEnded
     ? legacySameDay
-      ? formatDateWithYear(event.start_at)
-      : formatHistoricalRange(event.start_at, event.end_at!, APP_TIMEZONE, formatDateWithYear(event.start_at), formatDateWithYear(event.end_at!))
+      ? formatDateWithYearInZone(dateAnchor(legacyStartDate), "UTC")
+      : formatHistoricalRange(dateAnchor(legacyStartDate), dateAnchor(legacyEndDate), "UTC", formatDateWithYearInZone(dateAnchor(legacyStartDate), "UTC"), formatDateWithYearInZone(dateAnchor(legacyEndDate), "UTC"))
     : legacySameDay
-      ? formatDateShort(event.start_at)
-      : `${formatDateShort(event.start_at)} – ${formatDateShort(event.end_at!)}`;
-  const legacyTime = legacySameDay ? formatTimeRange(event.start_at, event.end_at) : formatTime(event.start_at);
+      ? event.start_at
+        ? formatDateShort(event.start_at)
+        : formatCalendarDate(legacyStartDate, "long")
+      : `${formatCalendarDate(legacyStartDate, "short")} – ${formatCalendarDate(legacyEndDate, "short")}`;
+  const legacyTime = !event.start_at ? "" : legacySameDay ? formatTimeRange(event.start_at, event.end_at) : formatTime(event.start_at);
   const keyFacts = hasOccurrences ? (
     <EventScheduleSummary
       locationHidden={locationHidden}
@@ -854,7 +865,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             targetType="event"
             targetId={event.id}
             targetName={event.name}
-            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at, date: calendarDate(o) ?? o.occurrence_date })) : undefined}
             messagingEnabled={isDirectBusinessMessagingEnabled()}
           />
         )}
@@ -1014,8 +1025,10 @@ function formatHistoricalRange(startIso: string, endIso: string, timezone: strin
   return `${sm} ${part(startIso, { day: "numeric" })} – ${endPart}, ${sy}`;
 }
 
-function formatDateWithYear(iso: string): string {
-  return formatDateWithYearInZone(iso, APP_TIMEZONE);
+/** A calendar date as a display-only instant (noon UTC, formatted in UTC)
+ * so date-only labels reuse the existing formatters — never stored. */
+function dateAnchor(date: string): string {
+  return `${date}T12:00:00Z`;
 }
 
 

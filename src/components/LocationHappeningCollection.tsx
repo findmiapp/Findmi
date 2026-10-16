@@ -4,9 +4,9 @@ import { useState } from "react";
 import { ProgressiveListFooter, useProgressiveReveal } from "./ProgressiveList";
 import Link from "next/link";
 import type { LocationHappening } from "@/lib/data";
-import { formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import SupabaseImage from "./SupabaseImage";
+import { happeningDateLine, happeningDay, happeningMonth, happeningTemporal } from "@/lib/event-time";
 
 type ViewMode = "cards" | "list";
 
@@ -124,7 +124,7 @@ function LocationMomentCard({ item }: { item: LocationHappening }) {
 }
 
 function LocationMomentCardBody({ item, className }: { item: LocationHappening; className: string }) {
-  const { label, live } = getTemporalLabel(item.start_at, item.end_at);
+  const { label, live } = happeningTemporal(item);
 
   return (
     <Link href={item.href} className={className}>
@@ -154,7 +154,7 @@ function LocationMomentCardBody({ item, className }: { item: LocationHappening; 
             card for the identical reason. */}
         {item.subtitle && <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{item.subtitle}</p>}
         <p className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{item.title}</p>
-        <p className="mt-1 truncate text-xs text-ink/45">{formatAppearanceDateRange(item.start_at, item.end_at, item.description)}</p>
+        <p className="mt-1 truncate text-xs text-ink/45">{happeningDateLine(item, item.description)}</p>
       </div>
     </Link>
   );
@@ -177,7 +177,7 @@ function LocationMomentList({ happenings, noun }: { happenings: LocationHappenin
 }
 
 function LocationMomentRow({ item }: { item: LocationHappening }) {
-  const { label, live } = getTemporalLabel(item.start_at, item.end_at);
+  const { label, live } = happeningTemporal(item);
 
   return (
     <li>
@@ -220,9 +220,9 @@ function LocationMomentRowLink({ item, label, live }: { item: LocationHappening;
           ) : (
             <>
               <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
-                {new Date(item.start_at).toLocaleDateString("en-US", { month: "short" })}
+                {happeningMonth(item)}
               </span>
-              <span className="text-lg font-bold leading-none">{new Date(item.start_at).getDate()}</span>
+              <span className="text-lg font-bold leading-none">{happeningDay(item)}</span>
             </>
           )}
         </div>
@@ -232,7 +232,7 @@ function LocationMomentRowLink({ item, label, live }: { item: LocationHappening;
           <p className="mt-0.5 line-clamp-1 font-display text-sm font-semibold leading-snug text-ink">{item.title}</p>
           {item.subtitle && <p className="mt-0.5 truncate text-xs font-medium text-ink/70">{item.subtitle}</p>}
           <p className="mt-0.5 truncate text-xs text-ink/50">
-            {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
+            {happeningDateLine(item, item.description)}
           </p>
         </div>
 

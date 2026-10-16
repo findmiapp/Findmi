@@ -14,6 +14,7 @@ import type { EventLocationCardLocation } from "./EventLocationCard";
 import LiveDot from "./LiveDot";
 import SupabaseImage from "./SupabaseImage";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
+import { calendarDate, formatCalendarDate, isHappeningNow } from "@/lib/event-time";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -45,18 +46,29 @@ export function describeOccurrence(occurrence: EventOccurrenceWithLocation, cano
     state: occurrence.state,
   });
 
-  const now = Date.now();
-  const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
+  // Event date/time precision: HAPPENING NOW only for a real interval;
+  // a date with no published time shows its date alone, and a start with
+  // no published end shows just the start (never a closing time).
+  const live = !cancelled && isHappeningNow(occurrence);
+  if (!occurrence.start_at) {
+    const date = calendarDate(occurrence);
+    return { cancelled, live, dateLabel: date ? formatCalendarDate(date, "short") : "", timeLabel: "", venueLabel };
+  }
+  if (!occurrence.end_at) {
+    return { cancelled, live, dateLabel: formatDateShortInZone(occurrence.start_at, occurrence.timezone), timeLabel: formatTimeInZone(occurrence.start_at, occurrence.timezone), venueLabel };
+  }
+  const startAt = occurrence.start_at;
+  const endAt = occurrence.end_at;
 
   // Midnight Display Polish: an occurrence ending exactly at local midnight
   // (e.g. 11:30 AM -> 12:00 AM the next day) reads to a visitor as "the
   // day it started," not a two-day span — so for DATE-LABEL purposes only,
   // roll the effective end back to the prior local calendar day. The real
-  // occurrence.end_at is never touched, and the TIME line below always
+  // endAt is never touched, and the TIME line below always
   // renders the true end time (still "12:00 AM") regardless.
-  const dateLabelEndIso = isExactlyMidnightInZone(occurrence.end_at, occurrence.timezone)
-    ? new Date(new Date(occurrence.end_at).getTime() - ONE_DAY_MS).toISOString()
-    : occurrence.end_at;
+  const dateLabelEndIso = isExactlyMidnightInZone(endAt, occurrence.timezone)
+    ? new Date(new Date(endAt).getTime() - ONE_DAY_MS).toISOString()
+    : endAt;
 
   // A multi-day occurrence (its own start/end fall on different calendar
   // days in ITS OWN timezone — e.g. an overnight date) gets both bounds
@@ -65,17 +77,17 @@ export function describeOccurrence(occurrence: EventOccurrenceWithLocation, cano
   // date when the occurrence genuinely spans two. Both branches use only
   // real occurrence data already available on this object.
   const sameDay =
-    formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone) ===
+    formatMonthAbbrevInZone(startAt, occurrence.timezone) ===
       formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone) &&
-    formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone) === formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone);
+    formatDayOfMonthInZone(startAt, occurrence.timezone) === formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone);
   const dateLabel = sameDay
-    ? formatDateShortInZone(occurrence.start_at, occurrence.timezone)
-    : `${formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone)} ${formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone)} – ${formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone)} ${formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone)}`;
+    ? formatDateShortInZone(startAt, occurrence.timezone)
+    : `${formatMonthAbbrevInZone(startAt, occurrence.timezone)} ${formatDayOfMonthInZone(startAt, occurrence.timezone)} – ${formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone)} ${formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone)}`;
   // Time-of-day only for both bounds, regardless of same-day/multi-day —
   // the date line above already conveys any day-crossing, so this line
   // never needs to fall back to a combined date+time string the way
   // formatTimeRangeInZone's own multi-day branch does.
-  const timeLabel = `${formatTimeInZone(occurrence.start_at, occurrence.timezone)} – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}`;
+  const timeLabel = `${formatTimeInZone(startAt, occurrence.timezone)} – ${formatTimeInZone(endAt, occurrence.timezone)}`;
   return { cancelled, live, dateLabel, timeLabel, venueLabel };
 }
 

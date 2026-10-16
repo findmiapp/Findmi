@@ -4,6 +4,7 @@ import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirr
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
 import {
+  APP_TIMEZONE,
   formatAppearanceDateRange,
   getDiscoveryWindowBounds,
   getExactDateBounds,
@@ -16,6 +17,7 @@ import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import { eventMatchesAccess, isEventHappeningNow, type EventAccess } from "./event-filter";
+import { calendarDate, calendarEndDate, compareChronological, eventUpcomingOr, eventWindowOr, hasEnded, occurrenceUpcomingOr, occurrenceWindowOr, todayIn, windowDates } from "./event-time";
 import { eventCategoryFilterIds, primaryEventCategoryId } from "./event-categories";
 import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
 import {
@@ -397,7 +399,7 @@ export async function getEventCategories(): Promise<Category[]> {
     .from("events")
     .select("id")
     .eq("is_demo", false)
-    .gt("end_at", new Date().toISOString());
+    .or(eventUpcomingOr(new Date().toISOString(), todayIn(APP_TIMEZONE)));
   const realEventIds = new Set((realEvents ?? []).map((e) => e.id));
   if (realEventIds.size === 0) return [];
 
@@ -1795,8 +1797,11 @@ export async function getShowcaseBusiness(): Promise<ShowcaseBusinessData | null
 
 export interface EffectiveEventRow {
   event: FindmiEvent;
-  effectiveStart: string;
-  effectiveEnd: string;
+  /** Exact start / end of the chosen date — null when not published
+   * (Event date/time precision); `effectiveDate` is always the real date. */
+  effectiveStart: string | null;
+  effectiveEnd: string | null;
+  effectiveDate: string;
   /** The occurrence this row's date/location came from — null for a
    * legacy event with no event_occurrences rows (using the event's own
    * start_at/end_at directly). */
@@ -1889,10 +1894,14 @@ export function applyOccurrenceOverride(
   location: FindmiLocation | null
 ): FindmiEvent {
   if (!occurrence) return event;
+  // The chosen date's real calendar date travels with its (optional) times.
+  const date = calendarDate(occurrence) ?? occurrence.occurrence_date;
   return {
     ...event,
     start_at: occurrence.start_at,
     end_at: occurrence.end_at,
+    start_date: date,
+    end_date: calendarEndDate(occurrence) ?? date,
     ...(location
       ? {
           venue_name: location.name,
@@ -1989,12 +1998,24 @@ export async function getEffectiveUpcomingEvents(
   // (the public carousel) intentionally does NOT filter on status at all —
   // it still needs to return cancelled-but-not-yet-past occurrences so the
   // page can badge them, and is untouched by this change.
+  //
+  // Event date/time precision: a date with no published end (start-only or
+  // date-only) is in a window by its real calendar date, and upcoming
+  // through the end of that date — never by a stored fake end.
   let occQuery = supabase.from("event_occurrences").select("*").eq("status", "scheduled");
   if (options.locationId) occQuery = occQuery.eq("location_id", options.locationId);
-  occQuery = bounds
-    ? occQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
-    : occQuery.gt("end_at", new Date().toISOString());
-  const { data: occRows } = await occQuery.order("start_at", { ascending: true });
+  const nowIso = new Date().toISOString();
+  const today = todayIn(APP_TIMEZONE);
+  if (bounds) {
+    const dates = windowDates(bounds);
+    occQuery = occQuery.or(occurrenceWindowOr(bounds.start.toISOString(), bounds.end.toISOString(), dates.from, dates.to));
+  } else {
+    occQuery = occQuery.or(occurrenceUpcomingOr(nowIso, today));
+  }
+  const { data: occRows } = await occQuery
+    .order("occurrence_date", { ascending: true })
+    .order("start_at", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true });
 
   // Consumer Event Market Filtering V1 — when a Market is selected, an
   // occurrence's EFFECTIVE Market (never just its parent event's) decides
@@ -2073,7 +2094,7 @@ export async function getEffectiveUpcomingEvents(
   // A legitimate single multi-day occurrence is unaffected. When
   // Market-scoped, this is the pick WITHIN the selected Market — see
   // eligibleOccRows above. The nearest-FEATURED pick follows the same rule.
-  const nowMs = Date.now();
+  const nowDate = new Date();
   const candidatesByEvent = new Map<string, EventOccurrence[]>();
   for (const row of eligibleOccRows) {
     const event = eventById.get(row.event_id);
@@ -2083,7 +2104,7 @@ export async function getEffectiveUpcomingEvents(
     list.push(row);
     candidatesByEvent.set(row.event_id, list);
   }
-  const pick = (list: EventOccurrence[]) => list.find((o) => new Date(o.end_at).getTime() > nowMs) ?? list[0];
+  const pick = (list: EventOccurrence[]) => list.find((o) => !hasEnded(o, nowDate)) ?? list[0];
   const nearestByEvent = new Map<string, EventOccurrence>();
   const nearestFeaturedByEvent = new Map<string, EventOccurrence>();
   for (const [eventId, list] of candidatesByEvent) {
@@ -2103,9 +2124,12 @@ export async function getEffectiveUpcomingEvents(
   if (marketId) legacyQuery = legacyQuery.eq("market_id", marketId);
   if (areaId) legacyQuery = legacyQuery.eq("market_area_id", areaId);
   if (options.requireShowOnHomepage) legacyQuery = legacyQuery.eq("show_on_homepage", true);
-  legacyQuery = bounds
-    ? legacyQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
-    : legacyQuery.gt("end_at", new Date().toISOString());
+  if (bounds) {
+    const dates = windowDates(bounds);
+    legacyQuery = legacyQuery.or(eventWindowOr(bounds.start.toISOString(), bounds.end.toISOString(), dates.from, dates.to));
+  } else {
+    legacyQuery = legacyQuery.or(eventUpcomingOr(nowIso, today));
+  }
   legacyQuery = applyEventTextFilters(legacyQuery, options);
   if (businessAllDates) legacyQuery = legacyQuery.in("id", [...businessAllDates]);
   // A dateless (legacy) Event has no Location relationship and can only
@@ -2138,6 +2162,7 @@ export async function getEffectiveUpcomingEvents(
       event,
       effectiveStart: occ.start_at,
       effectiveEnd: occ.end_at,
+      effectiveDate: calendarDate(occ) ?? occ.occurrence_date,
       occurrence: occ,
       occurrenceLocation: occ.location_id ? (locationsById.get(occ.location_id) ?? null) : null,
     });
@@ -2146,13 +2171,14 @@ export async function getEffectiveUpcomingEvents(
     rows.push({
       event,
       effectiveStart: event.start_at,
-      effectiveEnd: event.end_at ?? event.start_at,
+      effectiveEnd: event.end_at,
+      effectiveDate: calendarDate(event) ?? event.start_date,
       occurrence: null,
       occurrenceLocation: null,
     });
   }
 
-  rows.sort((a, b) => new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime());
+  rows.sort(compareEffectiveRows);
   // Location privacy: an Event that hides its address shows no venue,
   // address or Location on any card (events are select("*"), so the
   // Event's own location_visibility is on the row once migrated).
@@ -2203,7 +2229,7 @@ export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
     const aOrder = a.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
     const bOrder = b.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
     if (aOrder !== bOrder) return aOrder - bOrder;
-    return new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime();
+    return compareEffectiveRows(a, b);
   });
   return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
@@ -2219,7 +2245,7 @@ export async function getEventFormatOptions(): Promise<{ formats: Category[]; us
   const [{ data: formats }, { data: links }, { data: realEvents }] = await Promise.all([
     supabase.from("categories").select("id, name, slug, kind, parent_id").eq("kind", "event_format").order("name"),
     supabase.from("event_formats").select("event_id, category_id"),
-    supabase.from("events").select("id").eq("is_demo", false).gt("end_at", new Date().toISOString()),
+    supabase.from("events").select("id").eq("is_demo", false).or(eventUpcomingOr(new Date().toISOString(), todayIn(APP_TIMEZONE))),
   ]);
   const real = new Set(((realEvents ?? []) as { id: string }[]).map((e) => e.id));
   const used = new Set(((links ?? []) as { event_id: string; category_id: string }[]).filter((l) => real.has(l.event_id)).map((l) => l.category_id));
@@ -2277,9 +2303,18 @@ export interface EventDiscoveryParams {
  * combined, in JS rather than a single SQL ORDER BY/LIMIT — the
  * trade-off that lets one query surface both occurrence-driven and
  * legacy events without a database-side recurrence join. */
+/** Chronological without fake times: calendar date, then known start
+ * (timed before untimed on the same date), then Event id. */
+export function compareEffectiveRows(a: Pick<EffectiveEventRow, "effectiveStart" | "effectiveDate"> & { event: { id: string } }, b: Pick<EffectiveEventRow, "effectiveStart" | "effectiveDate"> & { event: { id: string } }): number {
+  return compareChronological(
+    { start_at: a.effectiveStart, end_at: null, occurrence_date: a.effectiveDate, id: a.event.id },
+    { start_at: b.effectiveStart, end_at: null, occurrence_date: b.effectiveDate, id: b.event.id }
+  );
+}
+
 /** Featured Events first (featured_sort_order, nulls last, then date);
  * the rest keep their existing date order. Stable, in place. */
-export function sortFeaturedFirst<R extends { event: { is_featured?: boolean | null; featured_sort_order?: number | null }; effectiveStart: string }>(rows: R[]): R[] {
+export function sortFeaturedFirst<R extends { event: { id: string; is_featured?: boolean | null; featured_sort_order?: number | null }; effectiveStart: string | null; effectiveDate: string }>(rows: R[]): R[] {
   const rank = (r: R) => (r.event.is_featured ? 0 : 1);
   return rows.sort((a, b) => {
     if (rank(a) !== rank(b)) return rank(a) - rank(b);
@@ -2288,7 +2323,7 @@ export function sortFeaturedFirst<R extends { event: { is_featured?: boolean | n
       const bo = b.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
       if (ao !== bo) return ao - bo;
     }
-    return new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime();
+    return compareEffectiveRows(a, b);
   });
 }
 
@@ -2431,8 +2466,11 @@ export async function getUpcomingOccurrencesForEvent(
     .from("event_occurrences")
     .select("*")
     .eq("event_id", eventId)
-    .gt("end_at", new Date().toISOString())
-    .order("start_at", { ascending: true })
+    // Not over yet — a date with no published end stays through its day.
+    .or(occurrenceUpcomingOr(new Date().toISOString(), todayIn(APP_TIMEZONE)))
+    .order("occurrence_date", { ascending: true })
+    .order("start_at", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true })
     .limit(limit);
   const occurrences = (data ?? []) as EventOccurrence[];
   if (occurrences.length === 0) return [];
@@ -2466,7 +2504,9 @@ export async function getAllOccurrencesForEvent(eventId: string, limit = 60): Pr
     .from("event_occurrences")
     .select("*")
     .eq("event_id", eventId)
-    .order("start_at", { ascending: true })
+    .order("occurrence_date", { ascending: true })
+    .order("start_at", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true })
     .limit(limit);
   const occurrences = (data ?? []) as EventOccurrence[];
   if (occurrences.length === 0) return [];
@@ -2528,13 +2568,17 @@ export function isPrimaryDateId(id: string): boolean {
  * prevents it) resolve to the earliest by start_at, a stable, arbitrary
  * but deterministic choice. */
 export function findCoveringOccurrenceId(
-  eventStartAtIso: string,
-  occurrences: { id: string; start_at: string }[]
+  eventStartAtIso: string | null,
+  occurrences: { id: string; start_at: string | null; occurrence_date?: string | null; timezone?: string | null }[],
+  eventStartDate: string | null = null
 ): string | null {
-  const primaryLocalDate = isoToLocalDateTime(eventStartAtIso).slice(0, 10);
+  // The Primary Date's calendar day: its exact start's local date, else
+  // the Event's own start_date (Event date/time precision).
+  const primaryLocalDate = eventStartAtIso ? isoToLocalDateTime(eventStartAtIso).slice(0, 10) : eventStartDate;
+  if (!primaryLocalDate) return null;
   const matches = occurrences
-    .filter((o) => isoToLocalDateTime(o.start_at).slice(0, 10) === primaryLocalDate)
-    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+    .filter((o) => (o.start_at ? isoToLocalDateTime(o.start_at).slice(0, 10) : (o.occurrence_date ?? null)) === primaryLocalDate)
+    .sort((a, b) => compareChronological({ ...a, end_at: null }, { ...b, end_at: null }));
   return matches[0]?.id ?? null;
 }
 
@@ -2565,13 +2609,13 @@ export async function getEffectiveEventSchedule(
   // events.end_at is nullable at the type/DB level even though app-level
   // validation always requires it at creation (see createMemberEvent) —
   // never synthesize an entry from an incomplete Primary Date.
-  if (!event.end_at) return realOccurrences;
+  // Event date/time precision: likewise never from a parent with no
+  // published start (no placeholder entry is ever made).
+  if (!event.start_at || !event.end_at) return realOccurrences;
 
   const primaryStillUpcoming = new Date(event.end_at).getTime() > Date.now();
   const primaryLocalDate = isoToLocalDateTime(event.start_at).slice(0, 10);
-  const alreadyCoveredByRealOccurrence = realOccurrences.some(
-    (o) => isoToLocalDateTime(o.start_at).slice(0, 10) === primaryLocalDate
-  );
+  const alreadyCoveredByRealOccurrence = realOccurrences.some((o) => calendarDate(o) === primaryLocalDate);
   if (!primaryStillUpcoming || alreadyCoveredByRealOccurrence) {
     return realOccurrences;
   }
@@ -2579,6 +2623,7 @@ export async function getEffectiveEventSchedule(
   const primaryEntry: EventOccurrenceWithLocation = {
     id: primaryDateId(event.id),
     event_id: event.id,
+    occurrence_date: primaryLocalDate,
     start_at: event.start_at,
     end_at: event.end_at,
     location_id: null,
@@ -2599,7 +2644,7 @@ export async function getEffectiveEventSchedule(
     location: null,
   };
 
-  return [primaryEntry, ...realOccurrences].sort((a, b) => a.start_at.localeCompare(b.start_at)).slice(0, limit);
+  return [primaryEntry, ...realOccurrences].sort(compareChronological).slice(0, limit);
 }
 
 /** Whether an event has ANY event_occurrences row at all — any status,
@@ -4084,7 +4129,10 @@ export interface LocationActivityPreviewItem {
   id: string;
   title: string;
   imageUrl: string | null;
-  startAt: string;
+  /** Null for an Event date with no published time. */
+  startAt: string | null;
+  /** The real calendar date (YYYY-MM-DD). */
+  date: string;
   href: string;
   /** Public Experience Consolidation pass — which real entity this preview
    * is, same "set once here, never guessed later" rule LocationHappening's
@@ -4188,7 +4236,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     .select("location_id, event_id")
     .in("location_id", locations.map((l) => l.id))
     .eq("status", "scheduled")
-    .gt("end_at", new Date().toISOString());
+    .or(occurrenceUpcomingOr(new Date().toISOString(), todayIn(APP_TIMEZONE)));
   // Hidden-location Events never count toward a precise place.
   const occurrenceRows = await excludeHiddenEventRows(supabase, rawOccurrenceRows ?? [], (r) => r.event_id as string | null);
 
@@ -4263,7 +4311,7 @@ async function getLocationActivitySummaries(
         .select("location_id, event_id")
         .in("location_id", locationIds)
         .eq("status", "scheduled")
-        .gt("end_at", nowIso),
+        .or(occurrenceUpcomingOr(nowIso, todayIn(APP_TIMEZONE))),
       supabase
         .from("appearances")
         .select("location_id")
@@ -4276,11 +4324,12 @@ async function getLocationActivitySummaries(
       // soonest per location in JS.
       supabase
         .from("event_occurrences")
-        .select("id, location_id, event_id, start_at, event:events(slug, name, cover_image_url, is_demo)")
+        .select("id, location_id, event_id, occurrence_date, start_at, event:events(slug, name, cover_image_url, is_demo)")
         .in("location_id", locationIds)
         .eq("status", "scheduled")
-        .gt("end_at", nowIso)
-        .order("start_at", { ascending: true })
+        .or(occurrenceUpcomingOr(nowIso, todayIn(APP_TIMEZONE)))
+        .order("occurrence_date", { ascending: true })
+        .order("start_at", { ascending: true, nullsFirst: false })
         .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
       supabase
         .from("appearances")
@@ -4313,7 +4362,8 @@ async function getLocationActivitySummaries(
   for (const row of (occurrencePreviewRows ?? []) as {
     id: string;
     location_id: string | null;
-    start_at: string;
+    occurrence_date: string;
+    start_at: string | null;
     event: { slug: string; name: string; cover_image_url: string | null; is_demo: boolean } | { slug: string; name: string; cover_image_url: string | null; is_demo: boolean }[] | null;
   }[]) {
     if (!row.location_id) continue;
@@ -4324,6 +4374,7 @@ async function getLocationActivitySummaries(
       title: e.name,
       imageUrl: e.cover_image_url,
       startAt: row.start_at,
+      date: row.occurrence_date,
       href: `/event/${e.slug}`,
       kind: "event",
     });
@@ -4347,6 +4398,7 @@ async function getLocationActivitySummaries(
       title: row.title,
       imageUrl: b.logo_url ?? b.cover_image_url,
       startAt: row.start_at,
+      date: calendarDate({ start_at: row.start_at, end_at: null }) ?? row.start_at.slice(0, 10),
       href: `/business/${b.slug}`,
       kind: "appearance",
     });
@@ -4354,7 +4406,7 @@ async function getLocationActivitySummaries(
 
   for (const locationId of locationIds) {
     const items = (itemsByLocation.get(locationId) ?? [])
-      .sort((a, b) => a.startAt.localeCompare(b.startAt))
+      .sort((a, b) => compareChronological({ start_at: a.startAt, end_at: null, occurrence_date: a.date, id: a.id }, { start_at: b.startAt, end_at: null, occurrence_date: b.date, id: b.id }))
       .slice(0, ACTIVITY_PREVIEW_ITEMS_PER_LOCATION);
     result.set(locationId, { count: countByLocation.get(locationId) ?? 0, items });
   }
@@ -4506,8 +4558,13 @@ export interface LocationHappening {
   id: string;
   title: string;
   subtitle: string | null;
-  start_at: string;
+  /** Exact start — null for an Event date with no published time. */
+  start_at: string | null;
   end_at: string | null;
+  /** The real calendar date (YYYY-MM-DD) — always present. */
+  date: string;
+  /** The date's own timezone (Event dates), when known. */
+  timezone?: string | null;
   href: string;
   imageUrl: string | null;
   /** Always null for an event (no such placeholder-time concept there);
@@ -4592,11 +4649,13 @@ async function queryUpcomingHappenings(
   const [{ data: rawOccurrenceRows }, { data: linkedAppearances }, galleryImages] = await Promise.all([
     supabase
       .from("event_occurrences")
-      .select("location_id, event_id, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
+      .select("location_id, event_id, occurrence_date, timezone, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
       .in("location_id", locationIds)
       .eq("status", "scheduled")
-      .gt("end_at", nowIso)
-      .order("start_at", { ascending: true })
+      // Not over yet — a date with no published end stays through its day.
+      .or(occurrenceUpcomingOr(nowIso, todayIn(APP_TIMEZONE)))
+      .order("occurrence_date", { ascending: true })
+      .order("start_at", { ascending: true, nullsFirst: false })
       .limit(limit),
     supabase
       .from("appearances")
@@ -4640,17 +4699,20 @@ async function queryUpcomingHappenings(
   for (const row of occurrenceRows ?? []) {
     const e = eventOf(row);
     if (!e || e.is_demo || !keptOccurrenceRows.has(row)) continue;
+    const occurrenceKey = row.start_at ?? `${row.occurrence_date}-${row.location_id}`;
     fromOccurrences.push({
-      id: `occurrence-${e.id}-${row.start_at}`,
+      id: `occurrence-${e.id}-${occurrenceKey}`,
       idSuffix: row.location_id as string,
       locationId: row.location_id as string,
       title: e.name,
       subtitle: e.organizer_name,
       start_at: row.start_at,
       end_at: row.end_at,
+      date: calendarDate(row) ?? (row.occurrence_date as string),
+      timezone: (row.timezone as string | null) ?? null,
       href: `/event/${e.slug}`,
       imageUrl: resolveAppearanceDisplayImage({
-        appearanceId: `occurrence-${e.id}-${row.start_at}`,
+        appearanceId: `occurrence-${e.id}-${occurrenceKey}`,
         specificImageUrl: e.cover_image_url,
         galleryImages,
         businessCoverUrl: null,
@@ -4673,6 +4735,8 @@ async function queryUpcomingHappenings(
         subtitle: b.name,
         start_at: a.start_at,
         end_at: a.end_at,
+        date: calendarDate({ start_at: a.start_at, end_at: a.end_at }) ?? "",
+        timezone: null,
         href: `/business/${b.slug}#findmi-here`,
         imageUrl: resolveAppearanceDisplayImage({
           appearanceId: a.id,
@@ -4687,7 +4751,9 @@ async function queryUpcomingHappenings(
     })
     .filter((x): x is HappeningRow => x !== null);
 
-  return [...fromOccurrences, ...fromAppearances].sort((a, b) => a.start_at.localeCompare(b.start_at)).slice(0, limit);
+  return [...fromOccurrences, ...fromAppearances]
+    .sort((a, b) => compareChronological({ start_at: a.start_at, end_at: a.end_at, occurrence_date: a.date, id: a.id }, { start_at: b.start_at, end_at: b.end_at, occurrence_date: b.date, id: b.id }))
+    .slice(0, limit);
 }
 
 /** Physical Presence Pass 3 — every public place physically contained by

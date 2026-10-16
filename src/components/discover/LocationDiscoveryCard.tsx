@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatCalendarDate } from "@/lib/event-time";
 import { useRouter } from "next/navigation";
 import SupabaseImage from "@/components/SupabaseImage";
 import WantHeartButton from "@/components/WantHeartButton";
@@ -53,7 +54,8 @@ function formatActivitySummary(count: number, items: LocationActivityPreviewItem
   const allWithinWeek =
     fullyVisible &&
     items.every((item) => {
-      const days = (new Date(item.startAt).getTime() - now) / 86_400_000;
+      // By the real calendar date when no time is published.
+      const days = ((item.startAt ? new Date(item.startAt).getTime() : Date.parse(`${item.date}T12:00:00Z`)) - now) / 86_400_000;
       return days >= 0 && days <= 7;
     });
   return allWithinWeek ? `${count} things happening this week` : `${count} upcoming happenings`;
@@ -265,7 +267,7 @@ function ActivityMiniCard({ item }: { item: LocationActivityPreviewItem }) {
       </div>
       <div className="flex flex-col gap-0 px-1.5 py-1.5">
         <p className="truncate text-[11px] font-semibold leading-tight text-ink">{item.title}</p>
-        <p className="truncate text-[10px] text-ink/45">{formatDateShort(item.startAt)}</p>
+        <p className="truncate text-[10px] text-ink/45">{item.startAt ? formatDateShort(item.startAt) : formatCalendarDate(item.date, "short")}</p>
       </div>
     </button>
   );

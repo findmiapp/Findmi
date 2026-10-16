@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { calendarDate, compareChronological, formatCalendarDate, occurrenceUpcomingOr, todayIn } from "@/lib/event-time";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -189,8 +190,11 @@ export default async function ManageLocationPage({
   type UpcomingHereItem = {
     kind: "occurrence" | "appearance";
     id: string;
-    startAt: string;
+    /** Null for an Event date with no published time. */
+    startAt: string | null;
     endAt: string | null;
+    /** The real calendar date (YYYY-MM-DD). */
+    date: string;
     title: string;
     subtitle: string | null;
     publicHref: string;
@@ -202,7 +206,7 @@ export default async function ManageLocationPage({
   type ManageableEvent = {
     id: string;
     name: string;
-    occurrences: { id: string; start_at: string; end_at: string; assignedHere: boolean }[];
+    occurrences: { id: string; start_at: string | null; end_at: string | null; occurrence_date: string; assignedHere: boolean }[];
   };
   let manageableEvents: ManageableEvent[] = [];
   let manageableBusinesses: { id: string; name: string }[] = [];
@@ -212,11 +216,13 @@ export default async function ManageLocationPage({
     const [{ data: occRows }, { data: apRows }, { data: myEventLinks }, { data: myBusinessLinks }] = await Promise.all([
       admin
         .from("event_occurrences")
-        .select("id, start_at, end_at, event:events(id, name, slug, organizer_name, publication_status, is_demo)")
+        .select("id, occurrence_date, start_at, end_at, event:events(id, name, slug, organizer_name, publication_status, is_demo)")
         .eq("location_id", id)
         .eq("status", "scheduled")
-        .gt("end_at", nowIso)
-        .order("start_at", { ascending: true }),
+        // Not over — a date with no published end stays through its day.
+        .or(occurrenceUpcomingOr(nowIso, todayIn()))
+        .order("occurrence_date", { ascending: true })
+        .order("start_at", { ascending: true, nullsFirst: false }),
       admin
         .from("appearances")
         .select("id, title, start_at, end_at, business:businesses!appearances_business_id_fkey(id, name, slug)")
@@ -255,6 +261,7 @@ export default async function ManageLocationPage({
           id: r.id,
           startAt: r.start_at,
           endAt: r.end_at,
+          date: r.occurrence_date,
           title: e.name,
           subtitle: e.organizer_name,
           publicHref: `/event/${e.slug}`,
@@ -274,6 +281,7 @@ export default async function ManageLocationPage({
           id: r.id,
           startAt: r.start_at,
           endAt: r.end_at,
+          date: calendarDate({ start_at: r.start_at, end_at: r.end_at }) ?? "",
           title: r.title,
           subtitle: b.name,
           publicHref: `/business/${b.slug}`,
@@ -284,7 +292,9 @@ export default async function ManageLocationPage({
       ];
     });
 
-    upcomingHere = [...fromOccurrences, ...fromAppearances].sort((a, b) => a.startAt.localeCompare(b.startAt));
+    upcomingHere = [...fromOccurrences, ...fromAppearances].sort((a, b) =>
+      compareChronological({ start_at: a.startAt, end_at: a.endAt, occurrence_date: a.date, id: a.id }, { start_at: b.startAt, end_at: b.endAt, occurrence_date: b.date, id: b.id })
+    );
 
     // "Add Existing Event Here" — every Event the current session
     // manages, with ITS OWN existing occurrences only (never a new one
@@ -297,18 +307,19 @@ export default async function ManageLocationPage({
         admin.from("events").select("id, name").in("id", Array.from(manageableEventIds)).eq("is_demo", false),
         admin
           .from("event_occurrences")
-          .select("id, event_id, start_at, end_at, location_id")
+          .select("id, event_id, occurrence_date, start_at, end_at, location_id")
           .in("event_id", Array.from(manageableEventIds))
           .eq("status", "scheduled")
-          .gt("end_at", nowIso)
-          .order("start_at", { ascending: true }),
+          .or(occurrenceUpcomingOr(nowIso, todayIn()))
+          .order("occurrence_date", { ascending: true })
+          .order("start_at", { ascending: true, nullsFirst: false }),
       ]);
       manageableEvents = (myEvents ?? []).map((e) => ({
         id: e.id,
         name: e.name,
         occurrences: (myOccRows ?? [])
           .filter((o) => o.event_id === e.id)
-          .map((o) => ({ id: o.id, start_at: o.start_at, end_at: o.end_at, assignedHere: o.location_id === id })),
+          .map((o) => ({ id: o.id, start_at: o.start_at, end_at: o.end_at, occurrence_date: o.occurrence_date as string, assignedHere: o.location_id === id })),
       }));
     }
 
@@ -418,7 +429,7 @@ export default async function ManageLocationPage({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{nextUp.title}</p>
                     <p className="truncate text-xs text-ink/50">
-                      {new Date(nextUp.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                      {whenLabel(nextUp.startAt, nextUp.date)}
                       {nextUp.subtitle ? ` · ${nextUp.subtitle}` : ""}
                     </p>
                   </div>
@@ -549,7 +560,7 @@ export default async function ManageLocationPage({
                                       defaultChecked={o.assignedHere}
                                       className="h-4 w-4 shrink-0 accent-findmi"
                                     />
-                                    {new Date(o.start_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                                    {whenLabel(o.start_at, o.occurrence_date)}
                                     {o.assignedHere && <span className="text-xs font-semibold text-findmi-700">Already here</span>}
                                   </label>
                                 ))}
@@ -597,7 +608,7 @@ export default async function ManageLocationPage({
                       <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
                       <p className="truncate text-xs text-ink/50">
                         {item.kind === "occurrence" ? "Event" : "Appearance"} ·{" "}
-                        {new Date(item.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                        {whenLabel(item.startAt, item.date)}
                         {item.subtitle ? ` · ${item.subtitle}` : ""}
                       </p>
                       {item.confirmedCount !== null && (
@@ -795,4 +806,10 @@ export default async function ManageLocationPage({
       </div>
     </div>
   );
+}
+
+/** "Oct 16, 2026, 6:00 PM", or "Fri, Oct 16 · Time Not Listed" for a date
+ * with no published time (Event date/time precision). */
+function whenLabel(startAt: string | null, date: string): string {
+  return startAt ? new Date(startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : `${formatCalendarDate(date, "short")} · Time Not Listed`;
 }

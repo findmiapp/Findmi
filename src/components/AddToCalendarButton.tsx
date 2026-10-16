@@ -15,6 +15,8 @@ export default function AddToCalendarButton({
   url,
   startAt,
   endAt,
+  date,
+  endDate,
   layout = "pill",
 }: {
   title: string;
@@ -24,11 +26,16 @@ export default function AddToCalendarButton({
    * the calendar entry's description (and the .ics URL field). Omit when
    * there's no public destination. */
   url?: string | null;
-  startAt: string;
-  /** Falls back to a 2-hour block when the event has no real end time —
-   * calendar apps require SOME end, so this is the least presumptuous
-   * default rather than fabricating a specific one. */
+  /** Exact start, or null for a date with no published time (exported
+   * as an all-day entry on `date`). */
+  startAt: string | null;
+  /** Exact end, when published. Never invented: a start-only date is
+   * exported with no Findmi-made end. */
   endAt?: string | null;
+  /** The calendar date (YYYY-MM-DD) — required when startAt is null. */
+  date?: string | null;
+  /** Calendar end date for a multi-day date-only entry. */
+  endDate?: string | null;
   /** Event Detail Action Bar Correction pass — "pill" (default, unchanged)
    * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
    * control that fills its parent grid cell (label shortened to
@@ -102,7 +109,7 @@ export default function AddToCalendarButton({
 
   // Built at tap time (never during render) from this button's own props —
   // i.e. the exact occurrence/appearance the caller rendered it for.
-  const payload = () => buildCalendarPayload({ title, description, location, url, startAt, endAt });
+  const payload = () => buildCalendarPayload({ title, description, location, url, startAt, endAt, date, endDate });
 
   function openGoogleCalendar() {
     window.location.assign(payload().gcalUrl);

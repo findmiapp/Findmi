@@ -26,6 +26,7 @@ registerHooks({
 const F = await import("../src/lib/event-filter.ts");
 const FMT = await import("../src/lib/format.ts");
 const D = await import("../src/lib/data.ts");
+const { orPredicate, withDates } = await import("./helpers/postgrest-or.mjs");
 const read = (p) => readFileSync(p, "utf8");
 
 // ── In-memory Supabase double (eq / in / lt / gt / order / limit) ─────────
@@ -34,13 +35,16 @@ function fakeSupabase(tables) {
     const filters = [];
     let limitN = null;
     const rows = () => {
-      let out = (tables[table] ?? []).filter((r) =>
+      // Rows carry the calendar dates the database derives (withDates), and
+      // `.or(...)` windows are evaluated like PostgREST (helpers/postgrest-or).
+      let out = (tables[table] ?? []).map(withDates).filter((r) =>
         filters.every(([op, k, v]) => {
           const x = r[k];
           if (op === "eq") return x === v;
           if (op === "in") return v.includes(x);
           if (op === "lt") return x < v;
           if (op === "gt") return x > v;
+          if (op === "or") return orPredicate(k)(r);
           return true;
         })
       );
@@ -53,14 +57,26 @@ function fakeSupabase(tables) {
       in: (k, v) => (filters.push(["in", k, v]), api),
       lt: (k, v) => (filters.push(["lt", k, v]), api),
       gt: (k, v) => (filters.push(["gt", k, v]), api),
-      or: () => api, ilike: () => api, neq: () => api, is: () => api, not: () => api,
+      or: (expr) => (filters.push(["or", expr]), api), ilike: () => api, neq: () => api, is: () => api, not: () => api,
       order: (k) => (filters.push(["order", k]), api),
       limit: (n) => ((limitN = n), api),
       maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
       then: (resolve) => {
         const out = rows();
-        const order = filters.find((f) => f[0] === "order");
-        if (order) out.sort((a, b) => (a[order[1]] < b[order[1]] ? -1 : 1));
+        const orders = filters.filter((f) => f[0] === "order").map((f) => f[1]);
+        if (orders.length) {
+          out.sort((a, b) => {
+            for (const k of orders) {
+              const x = a[k] ?? null;
+              const y = b[k] ?? null;
+              if (x === y) continue;
+              if (x === null) return 1;
+              if (y === null) return -1;
+              return x < y ? -1 : 1;
+            }
+            return 0;
+          });
+        }
         return resolve({ data: out, error: null });
       },
     };

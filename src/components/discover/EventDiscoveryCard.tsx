@@ -4,10 +4,11 @@ import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import LiveDot from "@/components/LiveDot";
 import type { EventWithCategories } from "@/lib/types";
-import { cityState, formatTime, getTemporalLabel } from "@/lib/format";
+import { cityState, formatTime } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { temporalLabelFor } from "@/lib/event-time";
 
 /** Events Discovery V4 — a dedicated DENSE result presentation for /events'
  * own results grid, deliberately separate from HomeEventCard (which stays
@@ -46,8 +47,8 @@ export default function EventDiscoveryCard({
 }) {
   const category = event.categories[0]?.name ?? null;
   const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
-  const { label, live } = getTemporalLabel(event.start_at, event.end_at);
-  const dateLine = live ? label : `${label} · ${formatTime(event.start_at)}`;
+  const { label, live } = temporalLabelFor(event);
+  const dateLine = live || !event.start_at ? label : `${label} · ${formatTime(event.start_at)}`;
 
   const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });

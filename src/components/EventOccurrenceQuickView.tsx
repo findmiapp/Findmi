@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
 import AddToCalendarButton from "./AddToCalendarButton";
+import { calendarDate, formatCalendarDate, isHappeningNow } from "@/lib/event-time";
 import EventScheduleCtas from "./EventScheduleCtas";
 import { RosterListItem } from "./EventBusinessRoster";
 import LiveDot from "./LiveDot";
@@ -88,8 +89,9 @@ export default function EventOccurrenceQuickView({
   }, [onClose]);
 
   const cancelled = occurrence.status === "cancelled";
-  const now = Date.now();
-  const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
+  // HAPPENING NOW only for a real interval (Event date/time precision).
+  const live = !cancelled && isHappeningNow(occurrence);
+  const occurrenceDate = calendarDate(occurrence);
 
   // Same location precedence as EventScheduleSummary/EventUtilityActions:
   // this occurrence's own linked Location wins, then the event's own
@@ -164,16 +166,19 @@ export default function EventOccurrenceQuickView({
           </h2>
 
           <div className="mt-3 flex flex-col gap-0.5 text-sm">
-            <p className="font-bold text-ink">{formatDateShortInZone(occurrence.start_at, occurrence.timezone)}</p>
+            <p className="font-bold text-ink">
+              {occurrence.start_at ? formatDateShortInZone(occurrence.start_at, occurrence.timezone) : occurrenceDate ? formatCalendarDate(occurrenceDate, "long") : ""}
+            </p>
             {cancelled ? (
               <span className="mt-0.5 inline-flex w-fit items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
                 Cancelled
               </span>
-            ) : (
+            ) : occurrence.start_at ? (
               <p className="text-ink/55">
-                {formatTimeInZone(occurrence.start_at, occurrence.timezone)} – {formatTimeInZone(occurrence.end_at, occurrence.timezone)}
+                {formatTimeInZone(occurrence.start_at, occurrence.timezone)}
+                {occurrence.end_at ? ` – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}` : ""}
               </p>
-            )}
+            ) : null}
             {live && (
               <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-red-600">
                 <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
@@ -232,6 +237,7 @@ export default function EventOccurrenceQuickView({
                 url={eventUrl}
                 startAt={occurrence.start_at}
                 endAt={occurrence.end_at}
+                date={occurrenceDate}
                 layout="row"
               />
             </div>

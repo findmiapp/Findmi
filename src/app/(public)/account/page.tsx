@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { temporalLabelFor } from "@/lib/event-time";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -14,7 +15,7 @@ import {
 } from "@/lib/dashboard";
 import { getPersonalGraphSummary, type PersonalEntityRef } from "@/lib/personalGraph";
 import { getJournalArchiveEntries } from "@/lib/journal";
-import { getTemporalLabel, formatDateShort, formatTime } from "@/lib/format";
+import { formatDateShort, formatTime } from "@/lib/format";
 import type { EventPublicationStatus } from "@/lib/types";
 import LiveDot from "@/components/LiveDot";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -749,12 +750,16 @@ function HomeSection({
  * never do). Live state reuses getTemporalLabel (the one source of truth
  * for HERE NOW) with the restrained glass + glowing-dot treatment. */
 function ScheduleCard({ item }: { item: PersonalUpcomingItem }) {
-  const { label, live } = getTemporalLabel(item.startAt, item.endAt);
+  // Never live without a real interval; a date with no published time
+  // shows its date label alone (Event date/time precision).
+  const { label, live } = temporalLabelFor({ start_at: item.startAt, end_at: item.endAt, occurrence_date: item.date });
   const when = live
     ? item.endAt
       ? `Until ${formatTime(item.endAt)}`
       : null
-    : `${label} · ${formatTime(item.startAt)}`;
+    : item.startAt
+    ? `${label} · ${formatTime(item.startAt)}`
+    : label;
   const context = item.where ?? (item.relatedTo.length > 0 ? item.relatedTo.join(" · ") : null);
   return (
     <Link href={item.href} className="group flex w-[172px] shrink-0 snap-start flex-col gap-1.5 lg:w-auto">

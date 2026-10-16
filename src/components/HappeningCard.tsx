@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type { LocationHappening } from "@/lib/data";
-import { formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import PostCard from "./PostCard";
 import SupabaseImage from "./SupabaseImage";
+import { happeningDateLine, happeningDay, happeningMonth, happeningTemporal } from "@/lib/event-time";
 
 /** Location Upcoming CTA Semantics fix — "Find Them" made sense for
  * finding a business/vendor, not opening an Event happening at this
@@ -20,7 +20,7 @@ function happeningCtaLabel(type: LocationHappening["type"]): string {
  * genuinely reusable "this is basically a discovery-feed post" primitive
  * and removing it isn't this pass's job. */
 export function HappeningCard({ item }: { item: LocationHappening }) {
-  const { label: when, live } = getTemporalLabel(item.start_at, item.end_at);
+  const { label: when, live } = happeningTemporal(item);
 
   return (
     <PostCard
@@ -32,7 +32,7 @@ export function HappeningCard({ item }: { item: LocationHappening }) {
       title={item.title}
       metaLines={[
         ...(item.subtitle ? [{ icon: "tag" as const, text: item.subtitle }] : []),
-        { icon: "calendar", text: formatAppearanceDateRange(item.start_at, item.end_at, item.description) },
+        { icon: "calendar", text: happeningDateLine(item, item.description) },
       ]}
       cta={happeningCtaLabel(item.type)}
     />
@@ -48,7 +48,7 @@ export function HappeningCard({ item }: { item: LocationHappening }) {
  * fewer upcoming happenings, and for just the nearest one when it has
  * more (see LocationPublicView's own density rule). */
 export function HappeningFeatureCard({ item }: { item: LocationHappening }) {
-  const { label: when, live } = getTemporalLabel(item.start_at, item.end_at);
+  const { label: when, live } = happeningTemporal(item);
 
   return (
     <Link
@@ -76,7 +76,7 @@ export function HappeningFeatureCard({ item }: { item: LocationHappening }) {
         {!live && <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">{when}</p>}
         <p className="truncate font-display text-base font-bold text-ink">{item.title}</p>
         <p className="mt-0.5 truncate text-xs text-ink/60">
-          {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
+          {happeningDateLine(item, item.description)}
         </p>
         {item.subtitle && <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>}
       </div>
@@ -106,7 +106,7 @@ function CalendarGlyph({ className }: { className?: string }) {
  * Whole card is one Link, same destination/type rules as every other
  * LocationHappening card (href is set once at the query). */
 export function LocationUpcomingCard({ item }: { item: LocationHappening }) {
-  const { live } = getTemporalLabel(item.start_at, item.end_at);
+  const { live } = happeningTemporal(item);
 
   return (
     <Link
@@ -131,7 +131,7 @@ export function LocationUpcomingCard({ item }: { item: LocationHappening }) {
         <p className="truncate font-display text-sm font-bold text-ink">{item.title}</p>
         {item.subtitle && <p className="truncate text-xs text-ink/55">{item.subtitle}</p>}
         <p className="mt-0.5 truncate text-xs text-ink/50">
-          {live ? "Happening Now" : formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
+          {live ? "Happening Now" : happeningDateLine(item, item.description)}
         </p>
       </div>
       <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
@@ -150,7 +150,7 @@ function ChevronGlyph({ className }: { className?: string }) {
 /** Compact list row for the same data, for a scannable full list underneath
  * the carousel. */
 export function HappeningRow({ item }: { item: LocationHappening }) {
-  const { label: when, live } = getTemporalLabel(item.start_at, item.end_at);
+  const { label: when, live } = happeningTemporal(item);
 
   return (
     <Link
@@ -178,10 +178,10 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
         ) : (
           <>
             <span className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">
-              {new Date(item.start_at).toLocaleDateString("en-US", { month: "short" })}
+              {happeningMonth(item)}
             </span>
             <span className="text-xl font-bold leading-none">
-              {new Date(item.start_at).getDate()}
+              {happeningDay(item)}
             </span>
           </>
         )}
@@ -192,7 +192,7 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
         )}
         <p className="truncate font-display text-sm font-bold text-ink">{item.title}</p>
         <p className="mt-0.5 truncate text-xs text-ink/60">
-          {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
+          {happeningDateLine(item, item.description)}
         </p>
         {item.subtitle && (
           <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>

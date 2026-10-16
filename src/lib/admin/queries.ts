@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminSupabase } from "./supabase-admin";
 import { newEventsSinceIso } from "../event-publication";
+import { todayIn } from "../event-time";
 import { getPeopleForBusinessAdmin, type BusinessPersonRow } from "./people-queries";
 import { applyAdminSort, BUSINESS_SORT, EVENT_SORT, LOCATION_SORT, NEW_EVENTS_DEFAULT_SORT, type AdminSortKey } from "./list-sort";
 import { emptyAdminPage, fetchAdminPage, type AdminPage } from "./list-page";
@@ -285,8 +286,11 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
       const term = `%${filters.q}%`;
       q = q.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
     }
-    if (filters.when === "upcoming") q = q.gte("start_at", nowIso);
-    if (filters.when === "past") q = q.lt("start_at", nowIso);
+    // Timed Events keep the existing start_at comparison; an Event with no
+    // published start time is placed by its real calendar start date.
+    const today = todayIn();
+    if (filters.when === "upcoming") q = q.or(`start_at.gte.${nowIso},and(start_at.is.null,start_date.gte.${today})`);
+    if (filters.when === "past") q = q.or(`start_at.lt.${nowIso},and(start_at.is.null,start_date.lt.${today})`);
     return q;
   };
 
@@ -404,7 +408,9 @@ export async function getAdminEventById(id: string): Promise<{
         .from("event_occurrences")
         .select("*, locations(name, city, slug, address, state, postal_code, category:categories(name))")
         .eq("event_id", id)
-        .order("start_at", { ascending: true }),
+        .order("occurrence_date", { ascending: true })
+        .order("start_at", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true }),
     ]);
   if (!event) return null;
 

@@ -173,8 +173,11 @@ export async function reverseSyncEventParticipation(
 // that is ever read or written by anything in this section.
 
 interface EventWhereWhen {
-  start_at: string;
-  end_at: string;
+  /** Null when the Event / date has no published start time (Event
+   * date/time precision). appearances.start_at is required, so such a
+   * date is never mirrored — no placeholder time is ever written. */
+  start_at: string | null;
+  end_at: string | null;
   venue_name: string | null;
   address: string | null;
   city: string | null;
@@ -297,7 +300,8 @@ export async function ensureEventAppearance(supabase: SupabaseClient, eventId: s
   if (existing) return;
 
   const fields = await deriveEventFields(supabase, eventId);
-  if (!fields) return;
+  // No published start time → not mirrored (never a placeholder time).
+  if (!fields || !fields.start_at) return;
 
   // Production Bugfix — Multi-Date Participation Status. Ordered +
   // limited to exactly one row before .maybeSingle(): a business that's
@@ -390,7 +394,9 @@ export async function ensureOccurrenceAppearance(supabase: SupabaseClient, occur
   if (existing) return;
 
   const derived = await deriveOccurrenceFields(supabase, occurrenceId);
-  if (!derived) return;
+  // A date with no published start time is not mirrored into Appearances
+  // (Findmi Here needs a real time; never a placeholder).
+  if (!derived || !derived.start_at) return;
   const { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude } = derived;
   // Event Participation <-> Appearance Integrity Repair pass — CONCRETE
   // DEFECT FIX. This object previously omitted event_occurrence_id
@@ -503,6 +509,21 @@ export async function cancelOccurrenceAppearance(supabase: SupabaseClient, occur
 export async function syncOfficialEventAppearances(supabase: SupabaseClient, eventId: string): Promise<void> {
   const fields = await deriveEventFields(supabase, eventId);
   if (!fields) return;
+  if (!fields.start_at) {
+    // The Event no longer has a published start time: its mirrored
+    // official Appearances would show a stale time, so they're cancelled
+    // (never deleted; ensureEventAppearance reactivates them if a time is
+    // added back). No placeholder time is ever written.
+    const { error } = await supabase
+      .from("appearances")
+      .update({ status: "canceled" })
+      .eq("event_id", eventId)
+      .is("event_occurrence_id", null)
+      .eq("source", "official_participation")
+      .neq("status", "canceled");
+    if (error) console.error(`[appearance-event-sync] failed to cancel untimed official appearances for event ${eventId}:`, error);
+    return;
+  }
 
   const { error } = await supabase
     .from("appearances")
@@ -536,6 +557,9 @@ export async function syncOfficialEventAppearances(supabase: SupabaseClient, eve
 export async function syncOfficialOccurrenceAppearances(supabase: SupabaseClient, occurrenceId: string): Promise<void> {
   const fields = await deriveOccurrenceFields(supabase, occurrenceId);
   if (!fields) return;
+  // The date no longer has a published start time: cancel (never delete)
+  // its mirrored official Appearances rather than leave a stale time.
+  if (!fields.start_at) return cancelOfficialOccurrenceAppearances(supabase, occurrenceId);
 
   const { error } = await supabase
     .from("appearances")

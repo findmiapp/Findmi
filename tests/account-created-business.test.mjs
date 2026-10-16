@@ -100,7 +100,7 @@ test("card actions: Preview = the existing member-only owner preview; Manage = t
 
 test("A2 adds no schema, migration or privileged write", () => {
   const migrations = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.deepEqual(migrations.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql", "20261014010000_event_attendance_cta_and_location_visibility.sql" /* Event attendance pass */, "20261015000000_business_location_availability.sql" /* Find Us At pass */, "20261016000000_event_taxonomy_v1.sql" /* Event Taxonomy V1 pass */, "20261017000000_event_formats_v1.sql" /* Event Formats V1 pass */, "20261018000000_event_occurrence_details.sql" /* Event Occurrence details pass */], "no new migration (A2b's later one aside)");
+  assert.deepEqual(migrations.filter((f) => f > "20261013000000_bd_foundation.sql"), ["20261014000000_optional_business_geography.sql", "20261014010000_event_attendance_cta_and_location_visibility.sql" /* Event attendance pass */, "20261015000000_business_location_availability.sql" /* Find Us At pass */, "20261016000000_event_taxonomy_v1.sql" /* Event Taxonomy V1 pass */, "20261017000000_event_formats_v1.sql" /* Event Formats V1 pass */, "20261018000000_event_occurrence_details.sql" /* Event Occurrence details pass */, "20261019000000_event_date_time_precision.sql" /* Event date/time precision pass */], "no new migration (A2b's later one aside)");
   for (const src of [CARD, read("src/lib/account-created-business.ts")]) {
     assert.doesNotMatch(src, /getAdminSupabase|\.insert\(|\.update\(|\.rpc\(|cookies\(/);
   }

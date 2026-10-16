@@ -9,6 +9,7 @@ import { useOccurrenceDirections } from "../EventUtilityActions";
 import type { EventLocationCardLocation } from "../EventLocationCard";
 import DirectionsIconLink from "./DirectionsIconLink";
 import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
+import { calendarDate } from "@/lib/event-time";
 
 /** Multi-date Event action zone, resolved per selected date:
  *
@@ -87,6 +88,7 @@ export default function EventActionRow({
             location={directions.locationLine}
             startAt={selected.start_at}
             endAt={selected.end_at}
+            date={calendarDate(selected)}
             layout="icon"
           />
         )}

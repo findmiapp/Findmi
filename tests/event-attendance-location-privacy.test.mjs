@@ -152,9 +152,15 @@ test("an arbitrary source link never becomes the attendance link by itself", asy
   const { out } = await analyze("https://oldmill.example.org/harvest", page(ld({ ...EVENT, location: PLACE }), `<h1>Harvest Supper</h1><p>Join us.</p>`));
   assert.equal(out.candidate.sourceUrl, "https://oldmill.example.org/harvest");
   assert.deepEqual(out.candidate.attendance, { ...A.UNKNOWN_ATTENDANCE });
-  // Same for an Eventbrite page without structured offers (no platform rule).
+  // Registration correctness pass (approved precedence rule 4 — "Event Link
+  // itself ONLY when that URL genuinely functions as the registration or
+  // ticket destination"): an Eventbrite single-Event page (/e/…) IS that
+  // destination, like a verified Luma Event page. A listing page is not.
   const eb = await analyze("https://www.eventbrite.com/e/harvest-supper-123", page(ld({ ...EVENT, location: PLACE })));
-  assert.equal(eb.out.candidate.attendance.url, null);
+  assert.equal(eb.out.candidate.attendance.url, "https://www.eventbrite.com/e/harvest-supper-123");
+  assert.equal(A.isRegistrationPlatformEventUrl("https://www.eventbrite.com/d/ny--new-york/events/"), false, "a listing page is not one Event");
+  assert.equal(A.isRegistrationPlatformEventUrl("https://partiful.com/e/AbCd1234"), true);
+  assert.equal(A.isRegistrationPlatformEventUrl("https://www.fujikina.com/nyc-2026"), false, "an informational Event Link is never the RSVP");
 });
 
 test("AI cannot invent attendance: AI output never sets price / free / RSVP / tickets", async () => {

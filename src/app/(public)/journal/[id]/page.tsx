@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { formatWhen, formatWhenTime } from "@/lib/event-time";
 import type { ReactNode } from "react";
 import Image from "@/components/SupabaseImage";
 import Link from "next/link";
@@ -11,7 +12,6 @@ import JournalMomentGallery from "@/components/journal/JournalMomentGallery";
 import { JournalMediaViewerRoot, JournalPhotoTrigger } from "@/components/journal/JournalMediaViewer";
 import type { MediaViewerItem } from "@/components/MediaViewer";
 import ReadMoreText from "@/components/ReadMoreText";
-import { formatDateShortInZone, formatTimeRangeInZone } from "@/lib/format";
 import { getRelatedPublicMoments } from "@/lib/journal-distribution";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import ChevronIcon from "@/components/ChevronIcon";
@@ -79,9 +79,8 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   // Visit Details' time line prefers the connected occurrence's real
   // start–end range (authoritative) over the manually-typed entry_time —
   // available data this pass surfaces without redesigning the section.
-  const occurrenceTimeLabel = primaryOccurrence
-    ? formatTimeRangeInZone(primaryOccurrence.start_at, primaryOccurrence.end_at, primaryOccurrence.timezone)
-    : null;
+  // A date with no published time has no time label (entry_time is used).
+  const occurrenceTimeLabel = primaryOccurrence ? formatWhenTime(primaryOccurrence) || null : null;
 
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
 
@@ -142,7 +141,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const eventPlaceName = primaryOccurrence?.location?.name ?? location?.name ?? null;
   const eventWhen = primaryEvent
     ? primaryOccurrence
-      ? `${formatDateShortInZone(primaryOccurrence.start_at, primaryOccurrence.timezone)} · ${formatTimeRangeInZone(primaryOccurrence.start_at, primaryOccurrence.end_at, primaryOccurrence.timezone)}`
+      ? formatWhen(primaryOccurrence)
       : null
     : null;
 
@@ -410,7 +409,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
                       {otherEvents.map((e) => {
                         const occ = occurrenceForEvent(e.id);
                         const meta = occ
-                          ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeRangeInZone(occ.start_at, occ.end_at, occ.timezone)}`
+                          ? formatWhen(occ)
                           : undefined;
                         return <ConnectedRow key={`event-${e.id}`} href={`/event/${e.slug}`} imageUrl={e.cover_image_url} name={e.name} meta={meta} />;
                       })}

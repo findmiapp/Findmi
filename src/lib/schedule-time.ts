@@ -128,16 +128,26 @@ export function localDateInZone(instant: Date, timeZone: string): string {
 
 export interface OccurrenceLike {
   id: string;
-  start_at: string;
-  end_at: string;
+  /** Null when the date has no published time (Event date/time precision). */
+  start_at: string | null;
+  end_at: string | null;
   timezone: string;
+  /** The real calendar date — required to place a date with no time. */
+  occurrence_date?: string | null;
+}
+
+/** An occurrence's own local calendar date. */
+function occurrenceLocalDate(o: OccurrenceLike): string {
+  return o.start_at ? localDateInZone(new Date(o.start_at), o.timezone) : (o.occurrence_date ?? "");
 }
 
 /**
  * Which occurrence a Moment being made now most likely means — "today" is
  * judged in EACH occurrence's own timezone (the Event's local day), never
  * a naive UTC date:
- *   - today's occurrences: starting today locally, or happening right now;
+ *   - today's occurrences: on today's local date, or happening right now
+ *     (a real interval only — a date with no published time is "today"
+ *     by its calendar date, never "live");
  *   - auto: exactly one today → it; several today but exactly one
  *     happening right now → it; otherwise null (never a guess);
  *   - anchor: where a date picker should open — the first of today's,
@@ -145,13 +155,20 @@ export interface OccurrenceLike {
  */
 export function pickTodayOccurrence<T extends OccurrenceLike>(occurrences: T[], now: Date = new Date()): { auto: T | null; todayIds: Set<string>; anchorId: string | null } {
   const nowMs = now.getTime();
-  const isLive = (o: T) => new Date(o.start_at).getTime() <= nowMs && nowMs < new Date(o.end_at).getTime();
-  const sorted = [...occurrences].sort((a, b) => a.start_at.localeCompare(b.start_at));
-  const today = sorted.filter((o) => localDateInZone(new Date(o.start_at), o.timezone) === localDateInZone(now, o.timezone) || isLive(o));
+  const isLive = (o: T) => Boolean(o.start_at && o.end_at && new Date(o.start_at).getTime() <= nowMs && nowMs < new Date(o.end_at).getTime());
+  const sorted = [...occurrences].sort((a, b) => {
+    const da = occurrenceLocalDate(a);
+    const db = occurrenceLocalDate(b);
+    if (da !== db) return da < db ? -1 : 1;
+    if (a.start_at && b.start_at) return a.start_at.localeCompare(b.start_at);
+    return a.start_at ? -1 : b.start_at ? 1 : a.id.localeCompare(b.id);
+  });
+  const today = sorted.filter((o) => occurrenceLocalDate(o) === localDateInZone(now, o.timezone) || isLive(o));
   const live = today.filter(isLive);
   const auto = today.length === 1 ? today[0] : live.length === 1 ? live[0] : null;
 
-  const upcoming = sorted.find((o) => new Date(o.end_at).getTime() >= nowMs);
+  // Not over: a timed date until its end; otherwise through its local date.
+  const upcoming = sorted.find((o) => (o.end_at ? new Date(o.end_at).getTime() >= nowMs : occurrenceLocalDate(o) >= localDateInZone(now, o.timezone)));
   const anchor = today[0] ?? upcoming ?? sorted[sorted.length - 1] ?? null;
   return { auto, todayIds: new Set(today.map((o) => o.id)), anchorId: anchor?.id ?? null };
 }

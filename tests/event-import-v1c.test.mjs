@@ -186,8 +186,16 @@ test("review is required: batch status marks what's missing; incomplete Events a
   const r = await analyze("https://listeningroom.example.com/events", deps(F.venueCalendar()));
   const poetry = r.events.find((e) => e.candidate.title === "Poetry Slam"); // "7pm" — no end time
   const review = R.reviewDefaults(poetry.candidate, poetry.matches, "participating", "Corgi");
-  assert.deepEqual(R.batchItemStatus(review, poetry.matches), { kind: "needs_details", missing: ["Start and end time"] });
-  assert.equal(P.normalizeReview(review).ok, false, "the server refuses it too");
+  // Event date/time precision (approved): a known start with no published
+  // end is complete — it's saved with NO end, never an invented one.
+  assert.equal(R.batchItemStatus(review, poetry.matches).kind !== "needs_details", true);
+  const poetryNorm = P.normalizeReview(review);
+  assert.equal(poetryNorm.ok, true);
+  assert.equal(poetryNorm.value.occurrences[0].end, null, "no fabricated end");
+  // Missing details are still caught: an end time with no start.
+  const endOnly = { ...review, occurrences: review.occurrences.map((o) => ({ ...o, startTime: "", endTime: "21:00" })) };
+  assert.equal(R.batchItemStatus(endOnly, poetry.matches).kind, "needs_details");
+  assert.equal(P.normalizeReview(endOnly).ok, false, "the server refuses it too");
   const jazz = r.events.find((e) => e.candidate.title === "Late Night Jazz Trio");
   assert.equal(R.batchItemStatus(R.reviewDefaults(jazz.candidate, jazz.matches, "participating", "Corgi"), jazz.matches).kind, "ready");
   const ui = read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx");

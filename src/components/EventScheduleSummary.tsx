@@ -1,12 +1,11 @@
 "use client";
 
+import { calendarDate, calendarDayOfMonth, calendarEndDate, calendarMonthAbbrev, formatCalendarDate } from "@/lib/event-time";
 import { publicLocationHref } from "@/lib/location-links";
 import {
   cityState,
   cityStateZip,
   formatDateShortInZone,
-  formatDayOfMonthInZone,
-  formatMonthAbbrevInZone,
   formatTimeInZone,
 } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
@@ -109,22 +108,25 @@ export default function EventScheduleSummary({
 
   const first = occurrences[0] ?? selected;
   const last = occurrences[occurrences.length - 1] ?? selected;
-  const sameDay = formatDateShortInZone(first.start_at, first.timezone) === formatDateShortInZone(last.end_at, first.timezone);
+  // Event date/time precision: the range comes from real calendar dates;
+  // times only where published (never a closing time that isn't known).
+  const firstDate = calendarDate(first) ?? "";
+  const lastDate = calendarEndDate(last) ?? firstDate;
+  const sameDay = firstDate === lastDate;
   // A range drops weekdays ("Oct 10 – Dec 26") so it fits one line of the
   // half-width band; a single day keeps its weekday.
-  const monthDay = (iso: string) => `${formatMonthAbbrevInZone(iso, first.timezone)} ${formatDayOfMonthInZone(iso, first.timezone)}`;
+  const monthDay = (date: string) => `${calendarMonthAbbrev(date)} ${calendarDayOfMonth(date)}`;
   const dateRangeLabel = sameDay
-    ? formatDateShortInZone(first.start_at, first.timezone)
-    : `${monthDay(first.start_at)} – ${monthDay(last.end_at)}`;
+    ? first.start_at
+      ? formatDateShortInZone(first.start_at, first.timezone)
+      : formatCalendarDate(firstDate, "short")
+    : `${monthDay(firstDate)} – ${monthDay(lastDate)}`;
 
-  const firstStartTime = formatTimeInZone(first.start_at, first.timezone);
-  const firstEndTime = formatTimeInZone(first.end_at, first.timezone);
-  const hasUniformTime = occurrences.every(
-    (o) => formatTimeInZone(o.start_at, o.timezone) === firstStartTime && formatTimeInZone(o.end_at, o.timezone) === firstEndTime
-  );
-  const timeLabel = hasUniformTime
-    ? `${firstStartTime} – ${firstEndTime}`
-    : `${formatTimeInZone(selected.start_at, selected.timezone)} – ${formatTimeInZone(selected.end_at, selected.timezone)}`;
+  const timeOfDay = (o: typeof first) =>
+    !o.start_at ? "" : o.end_at ? `${formatTimeInZone(o.start_at, o.timezone)} – ${formatTimeInZone(o.end_at, o.timezone)}` : formatTimeInZone(o.start_at, o.timezone);
+  const firstTime = timeOfDay(first);
+  const hasUniformTime = occurrences.every((o) => timeOfDay(o) === firstTime);
+  const timeLabel = hasUniformTime ? firstTime : timeOfDay(selected);
   // `occurrences` is the upcoming schedule (end_at > now — a date that is
   // live right now is included), never the Event's lifetime count; the
   // same list feeds the Upcoming Dates section below.
@@ -137,7 +139,7 @@ export default function EventScheduleSummary({
   } else if (dateCount > 1 && selectedState !== "current") {
     // Live status is NOT repeated here — the hero's glass indicator is the
     // page-level "Happening now", and the occurrence card marks the date.
-    status = <QuietStatus>Next: {formatDateShortInZone(selected.start_at, selected.timezone)}</QuietStatus>;
+    status = <QuietStatus>Next: {selected.start_at ? formatDateShortInZone(selected.start_at, selected.timezone) : formatCalendarDate(calendarDate(selected) ?? "", "short")}</QuietStatus>;
   }
 
   // Directions — the selected date's place (same query EventUtilityActions

@@ -13,7 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateCustomDestination } from "../navigation";
 import { cleanText } from "../brand-website-extract";
 import { cleanEventDescription } from "./description";
-import { attendanceEventColumns, normalizeReviewedAttendance } from "./attendance";
+import { attendanceEventColumns, normalizeReviewedAttendance, normalizeReviewedUrl } from "./attendance";
 import { existingEventCategoryIds } from "../event-categories-server";
 import { cleanEventFormatIds } from "../event-formats";
 import { syncEventFormats } from "../event-formats-server";
@@ -21,19 +21,23 @@ import type { EventImportReview } from "./types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type ExistingField = "image" | "description" | "link" | "attendance" | "organizer" | "category" | "formats" | "business";
+// "attendance" is the RSVP / Registration action (events.rsvp_url);
+// "tickets" the Get Tickets action (events.tickets_url) — compared and
+// filled separately, so one never overwrites the other.
+export type ExistingField = "image" | "description" | "link" | "attendance" | "tickets" | "organizer" | "category" | "formats" | "business";
 export const EXISTING_FIELD_LABEL: Record<ExistingField, string> = {
   image: "Image",
   description: "Description",
   link: "Event Link",
-  attendance: "RSVP / Tickets",
+  attendance: "RSVP / Registration",
+  tickets: "Tickets",
   organizer: "Organizer",
   category: "Category",
   formats: "Formats",
   business: "Business",
 };
 /** Fields whose populated value may be replaced by explicit choice. */
-const REPLACEABLE = new Set<ExistingField>(["image", "description", "link", "attendance", "organizer"]);
+const REPLACEABLE = new Set<ExistingField>(["image", "description", "link", "attendance", "tickets", "organizer"]);
 
 export interface ExistingEventSnapshot {
   id: string;
@@ -42,7 +46,10 @@ export interface ExistingEventSnapshot {
   coverImageUrl: string | null;
   description: string | null;
   externalUrl: string | null;
+  /** The RSVP / Registration link (rsvp_url). */
   attendanceUrl: string | null;
+  /** The Get Tickets link (tickets_url). */
+  ticketsUrl: string | null;
   organizerName: string | null;
   categoryIds: string[];
   formatIds: string[];
@@ -87,7 +94,8 @@ export async function loadExistingEventSnapshot(admin: SupabaseClient, id: strin
     coverImageUrl: ev.cover_image_url,
     description: ev.description,
     externalUrl: ev.external_url,
-    attendanceUrl: ev.tickets_url || ev.rsvp_url || null,
+    attendanceUrl: ev.rsvp_url || null,
+    ticketsUrl: ev.tickets_url || null,
     organizerName: ev.organizer_name,
     categoryIds: ((cats.data ?? []) as { category_id: string }[]).map((r) => r.category_id),
     formatIds: ((fmts.data ?? []) as { category_id: string }[]).map((r) => r.category_id),
@@ -102,7 +110,9 @@ export interface ExistingEventProposal {
   imageUrl: string | null;
   description: string | null;
   link: string | null;
+  /** RSVP / Registration action (never "tickets" — see ticketsUrl). */
   attendance: ReturnType<typeof normalizeReviewedAttendance>;
+  ticketsUrl: string | null;
   organizer: string | null;
   categoryId: string | null;
   formatIds: string[];
@@ -122,12 +132,19 @@ export function proposalFromReview(review: Partial<EventImportReview>, business:
     imageUrl,
     description: cleanEventDescription(review.description ?? null),
     link: linkCheck?.ok ? linkCheck.value : null,
-    attendance: normalizeReviewedAttendance(review.attendance ?? null),
+    ...splitAttendance(normalizeReviewedAttendance(review.attendance ?? null), normalizeReviewedUrl(review.ticketsUrl ?? null)),
     organizer: cleanText(review.organizer ?? null, 160),
     categoryId: review.categoryId && UUID.test(review.categoryId) ? review.categoryId : null,
     formatIds: cleanEventFormatIds(Array.isArray(review.formatIds) ? review.formatIds : []).slice(0, 32),
     business: business && UUID.test(business.id) ? business : null,
   };
+}
+
+/** Review's attendance → the two separate existing columns: RSVP /
+ * Registration (attendance) and Tickets. */
+export function splitAttendance(a: ReturnType<typeof normalizeReviewedAttendance>, ticketsUrl: string | null): { attendance: ReturnType<typeof normalizeReviewedAttendance>; ticketsUrl: string | null } {
+  if (a?.cta === "tickets") return { attendance: null, ticketsUrl: a.url };
+  return { attendance: a, ticketsUrl };
 }
 
 export type FieldComparison = { field: ExistingField; kind: "fill" | "conflict" | "same"; existing: string | null; proposed: string };
@@ -146,6 +163,7 @@ export function compareExistingEvent(snapshot: ExistingEventSnapshot, p: Existin
   text("description", snapshot.description, p.description);
   text("link", snapshot.externalUrl, p.link);
   text("attendance", snapshot.attendanceUrl, p.attendance?.url ?? null);
+  text("tickets", snapshot.ticketsUrl, p.ticketsUrl);
   text("organizer", snapshot.organizerName, p.organizer);
   if (p.categoryId) out.push({ field: "category", kind: snapshot.categoryIds.length === 0 ? "fill" : snapshot.categoryIds.includes(p.categoryId) ? "same" : "conflict", existing: snapshot.categoryIds.length ? `${snapshot.categoryIds.length} set` : null, proposed: p.categoryId });
   if (p.formatIds.length) out.push({ field: "formats", kind: snapshot.formatIds.length === 0 ? "fill" : p.formatIds.every((f) => snapshot.formatIds.includes(f)) ? "same" : "conflict", existing: snapshot.formatIds.length ? `${snapshot.formatIds.length} set` : null, proposed: p.formatIds.join(",") });
@@ -189,7 +207,10 @@ export async function applyExistingEventEnrichment(
   }
   if (allowed("description")) (patch.description = p.description), applied.push("description");
   if (allowed("link")) (patch.external_url = p.link), applied.push("link");
+  // Each action only from its own proposed value; an absent proposal is
+  // never a reason to clear anything.
   if (allowed("attendance") && p.attendance) Object.assign(patch, attendanceEventColumns(p.attendance)), applied.push("attendance");
+  if (allowed("tickets") && p.ticketsUrl) Object.assign(patch, { tickets_enabled: true, tickets_url: p.ticketsUrl }), applied.push("tickets");
   if (allowed("organizer")) (patch.organizer_name = p.organizer), applied.push("organizer");
   if (Object.keys(patch).length > 0) {
     const { error } = await admin.from("events").update(patch).eq("id", eventId);

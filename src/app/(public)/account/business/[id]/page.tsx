@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { calendarDayOfMonth, calendarMonthAbbrev, compareChronological, formatCalendarDate, hasEnded, todayIn } from "@/lib/event-time";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -894,8 +895,11 @@ export default async function ManageBusinessPage({
     id: string;
     name: string;
     slug: string;
-    startAt: string;
+    /** Null when the date has no published time (Event date/time precision). */
+    startAt: string | null;
     endAt: string | null;
+    /** The real calendar date (YYYY-MM-DD). */
+    date: string;
     where: string | null;
     venueName: string | null;
     city: string | null;
@@ -904,7 +908,7 @@ export default async function ManageBusinessPage({
     statusLabel: string | null;
     coverImageUrl: string | null;
     /** B2 — every not-yet-ended date, soonest first (Home's Coming Up). */
-    upcomingDates: { startAt: string; endAt: string | null }[];
+    upcomingDates: { startAt: string | null; endAt: string | null; date: string }[];
   };
   const hostedUpcoming: HostedEventRow[] = [];
   const hostedPast: HostedEventRow[] = [];
@@ -935,8 +939,11 @@ export default async function ManageBusinessPage({
   type EventOnlySchedule = {
     key: string;
     title: string;
-    startAt: string;
+    /** Null for an Event date with no published time (Event date/time precision). */
+    startAt: string | null;
     endAt: string | null;
+    /** The real calendar date (YYYY-MM-DD). */
+    date: string;
     where: string | null;
     href: string | null;
   };
@@ -1033,11 +1040,18 @@ export default async function ManageBusinessPage({
     // offered per-date (never as a bare event-level option) — a
     // recurring event is always added at the occurrence level.
     const [{ data: events }, { data: occurrences }] = await Promise.all([
-      admin.from("events").select("id, name, slug, is_demo, start_at, end_at, venue_name, city, state").eq("is_demo", false),
-      admin.from("event_occurrences").select("id, event_id, start_at, timezone").gt("start_at", nowIso).order("start_at"),
+      admin.from("events").select("id, name, slug, is_demo, start_at, end_at, start_date, end_date, venue_name, city, state").eq("is_demo", false),
+      // Upcoming dates: a known start still ahead, or (no published time)
+      // a calendar date today or later — never dropped for a missing time.
+      admin
+        .from("event_occurrences")
+        .select("id, event_id, occurrence_date, start_at, timezone")
+        .or(`start_at.gt.${nowIso},and(start_at.is.null,occurrence_date.gte.${todayIn()})`)
+        .order("occurrence_date")
+        .order("start_at", { nullsFirst: false }),
     ]);
 
-    const occurrencesByEvent = new Map<string, { id: string; start_at: string; timezone: string }[]>();
+    const occurrencesByEvent = new Map<string, { id: string; occurrence_date: string; start_at: string | null; timezone: string }[]>();
     for (const occ of occurrences ?? []) {
       const list = occurrencesByEvent.get(occ.event_id) ?? [];
       list.push(occ);
@@ -1053,7 +1067,7 @@ export default async function ManageBusinessPage({
           requestOptions.push({
             value: `occ:${ev.id}:${occ.id}`,
             name: ev.name,
-            dateLabel: `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`,
+            dateLabel: occ.start_at ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}` : `${formatCalendarDate(occ.occurrence_date, "short")} · Time Not Listed`,
             venueLabel,
             // Launch Stability pass — this business's own participation
             // status for this exact occurrence, if any exists yet (from the
@@ -1065,12 +1079,12 @@ export default async function ManageBusinessPage({
           });
         }
       } else {
-        const upcoming = ev.end_at ? new Date(ev.end_at) > new Date() : ev.start_at ? new Date(ev.start_at) > new Date() : false;
+        const upcoming = ev.end_at ? new Date(ev.end_at) > new Date() : ev.start_at ? new Date(ev.start_at) > new Date() : !hasEnded(ev);
         if (!upcoming || linkedEventIds.has(ev.id)) continue;
         requestOptions.push({
           value: `event:${ev.id}`,
           name: ev.name,
-          dateLabel: `${formatDateShort(ev.start_at)} · ${formatTime(ev.start_at)}`,
+          dateLabel: ev.start_at ? `${formatDateShort(ev.start_at)} · ${formatTime(ev.start_at)}` : `${formatCalendarDate(ev.start_date, "short")} · Time Not Listed`,
           venueLabel,
           status: statusByEvent.get(ev.id) ?? null,
         });
@@ -1088,12 +1102,15 @@ export default async function ManageBusinessPage({
       .map((r) => r.event_id);
     for (const eventId of approvedOrphanEventIds) {
       const ev = eventById.get(eventId);
-      if (!ev || !ev.end_at || new Date(ev.end_at) <= new Date()) continue;
+      // Not over (a timed end still ahead, or no published end and its
+      // calendar end date not yet passed).
+      if (!ev || hasEnded(ev)) continue;
       eventOnlySchedule.push({
         key: `event:${ev.id}`,
         title: ev.name,
         startAt: ev.start_at,
         endAt: ev.end_at,
+        date: ev.start_date,
         where: [ev.venue_name, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null,
         href: `/event/${ev.slug}`,
       });
@@ -1112,11 +1129,12 @@ export default async function ManageBusinessPage({
         title: ev.name,
         startAt: occ.start_at,
         endAt: null,
+        date: occ.occurrence_date,
         where: [ev.venue_name, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null,
         href: `/event/${ev.slug}`,
       });
     }
-    eventOnlySchedule.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    eventOnlySchedule.sort(compareScheduleRows);
 
     const isAwaitingDecision = (status: string) => status === "applied" || status === "pending";
     const venueFor = (ev: { venue_name: string | null; city: string | null; state: string | null }) =>
@@ -1124,10 +1142,8 @@ export default async function ManageBusinessPage({
     for (const r of ebStatusRows ?? []) {
       if (!isAwaitingDecision(r.status)) continue;
       const ev = eventById.get(r.event_id);
-      if (!ev || !ev.start_at) continue;
-      const endsAt = ev.end_at ?? ev.start_at;
-      if (new Date(endsAt) <= new Date()) continue;
-      pendingSchedule.push({ key: `pending-event:${ev.id}`, title: ev.name, startAt: ev.start_at, endAt: ev.end_at, where: venueFor(ev), href: `/event/${ev.slug}` });
+      if (!ev || hasEnded(ev)) continue;
+      pendingSchedule.push({ key: `pending-event:${ev.id}`, title: ev.name, startAt: ev.start_at, endAt: ev.end_at, date: ev.start_date, where: venueFor(ev), href: `/event/${ev.slug}` });
     }
     for (const r of eobStatusRows ?? []) {
       if (!isAwaitingDecision(r.status)) continue;
@@ -1135,28 +1151,31 @@ export default async function ManageBusinessPage({
       const occ = occurrenceById.get(r.occurrence_id);
       const ev = occ ? eventById.get(occ.event_id) : undefined;
       if (!occ || !ev) continue;
-      pendingSchedule.push({ key: `pending-occurrence:${occ.id}`, title: ev.name, startAt: occ.start_at, endAt: null, where: venueFor(ev), href: `/event/${ev.slug}` });
+      pendingSchedule.push({ key: `pending-occurrence:${occ.id}`, title: ev.name, startAt: occ.start_at, endAt: null, date: occ.occurrence_date, where: venueFor(ev), href: `/event/${ev.slug}` });
     }
-    pendingSchedule.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    pendingSchedule.sort(compareScheduleRows);
 
     const { data: hostedEvents } = await admin
       .from("events")
-      .select("id, name, slug, start_at, end_at, venue_name, city, state, is_demo, publication_status, cover_image_url")
+      .select("id, name, slug, start_at, end_at, start_date, end_date, venue_name, city, state, is_demo, publication_status, cover_image_url")
       .eq("host_business_id", id)
       .is("trashed_at", null);
     const hostedIds = (hostedEvents ?? []).map((ev) => ev.id as string);
     const { data: hostedOccurrences } = hostedIds.length
       ? await admin
           .from("event_occurrences")
-          .select("event_id, start_at, end_at, status, venue_name, city, state, location:locations(name, city, state)")
+          .select("event_id, occurrence_date, timezone, start_at, end_at, status, venue_name, city, state, location:locations(name, city, state)")
           .in("event_id", hostedIds)
           .neq("status", "cancelled")
-          .order("start_at", { ascending: true })
+          .order("occurrence_date", { ascending: true })
+          .order("start_at", { ascending: true, nullsFirst: false })
       : { data: [] };
     type HostedOccurrence = {
       event_id: string;
-      start_at: string;
-      end_at: string;
+      occurrence_date: string;
+      timezone: string;
+      start_at: string | null;
+      end_at: string | null;
       venue_name: string | null;
       city: string | null;
       state: string | null;
@@ -1168,7 +1187,6 @@ export default async function ManageBusinessPage({
       list.push(occ);
       hostedOccByEvent.set(occ.event_id, list);
     }
-    const nowMs = Date.now();
     for (const ev of hostedEvents ?? []) {
       hostedEventIds.add(ev.id);
       const occs = hostedOccByEvent.get(ev.id) ?? [];
@@ -1176,7 +1194,8 @@ export default async function ManageBusinessPage({
       const place = (p: { venue_name: string | null; city: string | null; state: string | null }) =>
         [p.venue_name, [p.city, p.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null;
       if (occs.length > 0) {
-        const upcoming = occs.filter((o) => new Date(o.end_at).getTime() > nowMs);
+        // Not over: a timed date until its end; otherwise through its day.
+        const upcoming = occs.filter((o) => !hasEnded(o));
         const pick = upcoming[0] ?? occs[occs.length - 1];
         const loc = Array.isArray(pick.location) ? (pick.location[0] ?? null) : pick.location;
         const row: HostedEventRow = {
@@ -1185,6 +1204,7 @@ export default async function ManageBusinessPage({
           slug: ev.slug,
           startAt: pick.start_at,
           endAt: pick.end_at,
+          date: pick.occurrence_date,
           where: loc ? place({ venue_name: loc.name, city: loc.city, state: loc.state }) : place(pick),
           venueName: loc?.name ?? pick.venue_name,
           city: loc?.city ?? pick.city,
@@ -1192,30 +1212,31 @@ export default async function ManageBusinessPage({
           upcomingCount: upcoming.length,
           statusLabel,
           coverImageUrl: ev.cover_image_url ?? null,
-          upcomingDates: upcoming.map((o) => ({ startAt: o.start_at, endAt: o.end_at })),
+          upcomingDates: upcoming.map((o) => ({ startAt: o.start_at, endAt: o.end_at, date: o.occurrence_date })),
         };
         (upcoming.length > 0 ? hostedUpcoming : hostedPast).push(row);
       } else {
-        const ends = ev.end_at ?? ev.start_at;
+        const stillOn = !hasEnded(ev);
         const row: HostedEventRow = {
           id: ev.id,
           name: ev.name,
           slug: ev.slug,
           startAt: ev.start_at,
           endAt: ev.end_at,
+          date: ev.start_date,
           where: place(ev),
           venueName: ev.venue_name,
           city: ev.city,
           state: ev.state,
-          upcomingCount: ends && new Date(ends).getTime() > nowMs ? 1 : 0,
+          upcomingCount: stillOn ? 1 : 0,
           statusLabel,
           coverImageUrl: ev.cover_image_url ?? null,
-          upcomingDates: ends && new Date(ends).getTime() > nowMs ? [{ startAt: ev.start_at, endAt: ev.end_at }] : [],
+          upcomingDates: stillOn ? [{ startAt: ev.start_at, endAt: ev.end_at, date: ev.start_date }] : [],
         };
         (row.upcomingCount > 0 ? hostedUpcoming : hostedPast).push(row);
       }
     }
-    hostedUpcoming.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    hostedUpcoming.sort((a, b) => compareScheduleRows({ key: a.id, startAt: a.startAt, date: a.date }, { key: b.id, startAt: b.startAt, date: b.date }));
 
     // Read-side dedupe only (no data changes): an Event this Business hosts
     // is represented once, by its Hosting row — its Event-level
@@ -1273,7 +1294,9 @@ export default async function ManageBusinessPage({
     hostedUpcoming.map((h) => ({
       eventId: h.id,
       name: h.name,
-      dates: h.upcomingDates,
+      // Home's Coming Up is built on exact times; a hosted date with no
+      // published time is listed in the Hosting section instead.
+      dates: h.upcomingDates.flatMap((d) => (d.startAt ? [{ startAt: d.startAt, endAt: d.endAt }] : [])),
       where: h.where,
       statusLabel: h.statusLabel,
       imageUrl: h.coverImageUrl ?? business.cover_image_url ?? business.logo_url ?? null,
@@ -2352,7 +2375,9 @@ export default async function ManageBusinessPage({
                   })),
                 // Business-Hosted Events V1 — hosted Events whose dates have
                 // all passed, at their last date.
-                ...hostedPast.map((h) => ({
+                // (Past is built on exact times; an untimed hosted date
+                // isn't listed here.)
+                ...hostedPast.flatMap((h) => (h.startAt ? [{ ...h, startAt: h.startAt }] : [])).map((h) => ({
                   id: `hosted:${h.id}`,
                   title: h.name,
                   startAt: h.startAt,
@@ -2469,12 +2494,12 @@ export default async function ManageBusinessPage({
                 <ul className="flex flex-col divide-y divide-black/[0.05]">
                   {hostedUpcoming.map((h) => (
                     <li key={h.id} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
-                      <ScheduleDateBadge iso={h.startAt} live={getTemporalLabel(h.startAt, h.endAt).live} />
+                      <ScheduleDateBadge iso={h.startAt} date={h.date} live={Boolean(h.startAt && h.endAt && getTemporalLabel(h.startAt, h.endAt).live)} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-body font-semibold text-primary">{h.name}</p>
                         <p className="mt-0.5 truncate text-metadata text-muted">
-                          {formatTime(h.startAt)}
-                          {h.endAt && `–${formatTime(h.endAt)}`}
+                          {h.startAt ? formatTime(h.startAt) : "Time Not Listed"}
+                          {h.startAt && h.endAt && `–${formatTime(h.endAt)}`}
                           {h.where && ` · ${h.where}`}
                         </p>
                         <p className="mt-0.5 text-microcopy text-subtle">
@@ -2650,12 +2675,12 @@ export default async function ManageBusinessPage({
                     Edit. */}
                 {eventOnlySchedule.map((e) => (
                   <li key={e.key} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
-                    <ScheduleDateBadge iso={e.startAt} live={getTemporalLabel(e.startAt, e.endAt).live} />
+                    <ScheduleDateBadge iso={e.startAt} date={e.date} live={Boolean(e.startAt && e.endAt && getTemporalLabel(e.startAt, e.endAt).live)} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-body font-semibold text-primary">{e.title}</p>
                       <p className="mt-0.5 truncate text-metadata text-muted">
-                        {formatTime(e.startAt)}
-                        {e.endAt && `–${formatTime(e.endAt)}`}
+                        {e.startAt ? formatTime(e.startAt) : "Time Not Listed"}
+                        {e.startAt && e.endAt && `–${formatTime(e.endAt)}`}
                         {e.where && ` · ${e.where}`}
                       </p>
                       <p className="mt-0.5 text-microcopy text-subtle">Findmi event · Confirmed</p>
@@ -2671,11 +2696,11 @@ export default async function ManageBusinessPage({
                     confirmed stop and not on the public profile yet. */}
                 {pendingSchedule.map((e) => (
                   <li key={e.key} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
-                    <ScheduleDateBadge iso={e.startAt} live={false} />
+                    <ScheduleDateBadge iso={e.startAt} date={e.date} live={false} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-body font-semibold text-primary">{e.title}</p>
                       <p className="mt-0.5 truncate text-metadata text-muted">
-                        {formatTime(e.startAt)}
+                        {e.startAt ? formatTime(e.startAt) : "Time Not Listed"}
                         {e.where && ` · ${e.where}`}
                       </p>
                       <p className="mt-0.5 text-microcopy text-subtle">
@@ -3482,7 +3507,7 @@ function ComingUpRow({ appearance }: { appearance: DashboardAppearance }) {
  * getTemporalLabel (zero new data); a stop already in progress sorts
  * first in start_at-ascending order regardless, so this only needs to
  * badge it, never reorder the list. */
-function ScheduleDateBadge({ iso, live }: { iso: string; live?: boolean }) {
+function ScheduleDateBadge({ iso, date, live }: { iso: string | null; date?: string | null; live?: boolean }) {
   if (live) {
     return (
       <span className="flex w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-findmi py-1.5 text-white">
@@ -3491,13 +3516,18 @@ function ScheduleDateBadge({ iso, live }: { iso: string; live?: boolean }) {
       </span>
     );
   }
-  const d = new Date(iso);
+  // A date with no published time shows its real calendar date.
+  const month = iso ? new Date(iso).toLocaleDateString("en-US", { month: "short" }) : date ? calendarMonthAbbrev(date) : "";
+  const day = iso ? String(new Date(iso).getDate()) : date ? calendarDayOfMonth(date) : "";
   return (
     <span className="flex w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-black/[0.04] py-1.5">
-      <span className="text-label font-bold uppercase text-subtle">
-        {d.toLocaleDateString("en-US", { month: "short" })}
-      </span>
-      <span className="font-display text-body font-bold leading-none text-primary">{d.getDate()}</span>
+      <span className="text-label font-bold uppercase text-subtle">{month}</span>
+      <span className="font-display text-body font-bold leading-none text-primary">{day}</span>
     </span>
   );
+}
+
+/** Schedule rows chronologically without fake times. */
+function compareScheduleRows(a: { key: string; startAt: string | null; date: string }, b: { key: string; startAt: string | null; date: string }): number {
+  return compareChronological({ start_at: a.startAt, end_at: null, occurrence_date: a.date, id: a.key }, { start_at: b.startAt, end_at: null, occurrence_date: b.date, id: b.key });
 }

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { formatCardWhen } from "@/lib/event-time";
 import { getEventsDiscovery, getMarketplaceProducts, searchBusinesses, searchLocations } from "@/lib/data";
 import { cityState, formatPrice } from "@/lib/format";
 
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
       href: `/event/${e.slug}`,
       image: e.cover_image_url,
       subtitle: [
-        new Date(e.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        formatCardWhen(e, (start) => new Date(start).toLocaleDateString("en-US", { month: "short", day: "numeric" })),
         e.venue_name ?? [e.city, e.state].filter(Boolean).join(", "),
       ]
         .filter(Boolean)

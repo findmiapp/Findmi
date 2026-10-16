@@ -11,6 +11,22 @@ import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, ty
 
 const NY = "America/New_York";
 /** The local (New York) calendar day of an occurrence. */
+/** The page's time may fill an explicit untimed date only when it's
+ * unambiguous: the page lists exactly ONE timed occurrence on that day, it
+ * is a single-day time (not an Event span crossing days), the paste has
+ * exactly ONE date on that day (several Locations sharing a day never share
+ * a guessed time), and the page's place is empty or the same place. */
+export function sourceTimeFor(o: ImportedOccurrence, explicit: ImportedOccurrence[], source: ImportedOccurrence[]): boolean {
+  const day = occurrenceDay(o);
+  const pageSameDay = source.filter((s) => s.hasTime && occurrenceDay(s) === day);
+  if (pageSameDay.length !== 1) return false;
+  const page = pageSameDay[0];
+  if (page.end && Date.parse(page.end) - Date.parse(page.start) > 18 * 60 * 60 * 1000) return false;
+  if (explicit.filter((e) => occurrenceDay(e) === day).length !== 1) return false;
+  const pageKey = venueKey(page.venue);
+  return !pageKey || pageKey === venueKey(o.venue);
+}
+
 export function occurrenceDay(o: Pick<ImportedOccurrence, "start" | "hasTime">): string {
   if (!o.hasTime || /^\d{4}-\d{2}-\d{2}$/.test(o.start)) return o.start.slice(0, 10);
   return new Date(o.start).toLocaleDateString("en-CA", { timeZone: NY });
@@ -64,14 +80,17 @@ export function mergeSourceIntoStructured(explicit: EventCandidate, source: Even
     next.sources.dates = source.sources.dates ?? "page";
     filled.push("dates");
   } else if (next.occurrences.length > 0) {
-    // Explicit dates stay exactly as written; a date with no time takes the
-    // page's time for that SAME day only.
+    // Explicit dates stay exactly as written. A date with no time takes the
+    // page's time for that SAME day only when that time unambiguously
+    // belongs to it (sourceTimeFor) — a festival's overall span, a time on a
+    // day shared by several Locations, or a different venue's time never
+    // becomes this date's hours. Unknown otherwise stays unknown.
     const byDay = new Map<string, ImportedOccurrence>();
     for (const o of source.occurrences) if (o.hasTime && !byDay.has(occurrenceDay(o))) byDay.set(occurrenceDay(o), o);
     let timesFilled = false;
     next.occurrences = next.occurrences.map((o) => {
       const match = byDay.get(occurrenceDay(o));
-      if (!o.hasTime && match) {
+      if (!o.hasTime && match && sourceTimeFor(o, next.occurrences, source.occurrences)) {
         timesFilled = true;
         return { ...o, start: match.start, end: match.end, hasTime: true };
       }

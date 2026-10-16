@@ -197,7 +197,9 @@ test("discovery: /events and /discover opt in; homepage rows, search and /find k
 test("Location page: same query, same Location featured pointer, same 3-at-a-time reveal", () => {
   const data = read("src/lib/data.ts");
   const fn = data.slice(data.indexOf("async function queryUpcomingHappenings("), data.indexOf("export async function getLocationDescendants("));
-  assert.match(fn, /\.from\("event_occurrences"\)[\s\S]*?\.in\("location_id", locationIds\)\s*\.eq\("status", "scheduled"\)\s*\.gt\("end_at", nowIso\)/);
+  // Event date/time precision: "not ended" also keeps a date with no
+  // published end through its calendar day (occurrenceUpcomingOr).
+  assert.match(fn, /\.from\("event_occurrences"\)[\s\S]*?\.in\("location_id", locationIds\)\s*\.eq\("status", "scheduled"\)[\s\S]{0,120}\.or\(occurrenceUpcomingOr\(nowIso, todayIn\(APP_TIMEZONE\)\)\)/);
   assert.match(fn, /\.in\("location_id", locationIds\)\s*\.is\("event_id", null\)/);
   assert.doesNotMatch(fn, /is_featured/);
   const view = read("src/app/(public)/location/[slug]/LocationPublicView.tsx");

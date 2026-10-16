@@ -976,11 +976,15 @@ async function sendApplicationDecisionNotification(
   if (occurrenceIds.length > 0) {
     const { data: occRows } = await admin
       .from("event_occurrences")
-      .select("id, start_at")
+      .select("id, occurrence_date, start_at")
       .in("id", occurrenceIds)
-      .order("start_at", { ascending: true });
-    const dates = ((occRows ?? []) as { id: string; start_at: string }[]).map((r) =>
-      new Date(r.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      .order("occurrence_date", { ascending: true })
+      .order("start_at", { ascending: true, nullsFirst: false });
+    // The real calendar date of each (time optional — Event date/time precision).
+    const dates = ((occRows ?? []) as { id: string; occurrence_date: string; start_at: string | null }[]).map((r) =>
+      r.start_at
+        ? new Date(r.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        : new Date(`${r.occurrence_date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })
     );
     if (dates.length === 1) dateSuffix = ` on ${dates[0]}`;
     else if (dates.length > 1) dateSuffix = ` on ${dates.slice(0, -1).join(", ")} and ${dates[dates.length - 1]}`;

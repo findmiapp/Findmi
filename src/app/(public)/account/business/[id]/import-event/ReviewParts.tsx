@@ -1,6 +1,7 @@
 // Event Import — Review building blocks shared by the single-Event Review
 // and the V1C several-Events review: each date with its own place (V1B),
 // compact rows, an existing-Location choice per place.
+import { attendanceSlots, fromAttendanceSlots, type AttendanceSlots } from "@/lib/event-import/attendance-links";
 import { useState } from "react";
 import ChevronIcon from "@/components/ChevronIcon";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
@@ -16,6 +17,7 @@ import {
   decidePlaceFrom,
   emptyReviewOccurrence,
   occurrenceSummary,
+  REVIEW_TIME_NOT_LISTED,
   placeKeyFor,
   placesDiffer,
   selectCreatedLocation,
@@ -196,7 +198,9 @@ export function Choice({ checked, onChange, title, line }: { checked: boolean; o
 
 /** Rows open at first: a single date, or any date still missing its day or times. */
 export function initiallyOpen(rows: ReviewOccurrence[]): Set<string> {
-  return new Set(rows.filter((d) => rows.length === 1 || !d.date || !d.startTime || !d.endTime).map((d) => d.id ?? ""));
+  // A date with no published time is complete; only a missing day or an
+  // end with no start needs attention.
+  return new Set(rows.filter((d) => rows.length === 1 || !d.date || (d.endTime && !d.startTime)).map((d) => d.id ?? ""));
 }
 
 function placeLine(p: ReviewPlace, matches: EventImportMatches): string {
@@ -244,7 +248,7 @@ export function OccurrenceRow({
           <button type="button" onClick={onToggle} aria-expanded={expanded} aria-controls={`occ-${id}`} className="flex min-w-0 flex-1 items-start gap-2 text-left">
             <span className="min-w-0 flex-1">
               <span className="block text-body font-semibold text-primary">{sum.day || <span className="text-amber-700">Add a date</span>}</span>
-              <span className="block text-metadata text-secondary">{sum.time || <span className="text-amber-700">Add a time</span>}</span>
+              <span className="block text-metadata text-secondary">{sum.time || <span className="text-amber-700">Add a start time</span>}</span>
               {d.details && <span className="block truncate text-microcopy text-muted">{d.details}</span>}
               {showPlace && (
                 <span className="flex min-w-0 items-center gap-1.5 text-metadata text-muted">
@@ -277,15 +281,18 @@ export function OccurrenceRow({
             <label htmlFor={`start-${id}`} className={labelClass}>
               Starts
             </label>
-            <input id={`start-${id}`} type="time" value={d.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className={inputClass} />
+            {/* Optional — blank means no time is published (never guessed). */}
+            <input id={`start-${id}`} type="time" value={d.startTime} onChange={(e) => onChange({ startTime: e.target.value, ...(e.target.value ? {} : { endTime: "" }) })} className={inputClass} />
           </div>
           <div>
             <label htmlFor={`end-${id}`} className={labelClass}>
               Ends
             </label>
-            <input id={`end-${id}`} type="time" value={d.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className={inputClass} />
+            <input id={`end-${id}`} type="time" value={d.endTime} disabled={!d.startTime} onChange={(e) => onChange({ endTime: e.target.value })} className={`${inputClass} disabled:opacity-50`} />
           </div>
           {endsAfterMidnight && <p className="col-span-2 text-microcopy text-subtle">Ends after midnight.</p>}
+          {!d.startTime && <p className="col-span-2 text-microcopy text-subtle">{REVIEW_TIME_NOT_LISTED} — leave blank when no time is published.</p>}
+          {d.startTime && !d.endTime && <p className="col-span-2 text-microcopy text-subtle">No end time listed — Findmi won&rsquo;t show a closing time.</p>}
           {showPlace && (
             <div className="col-span-2 flex flex-col gap-2 pt-1">
               <PlaceFields idPrefix={`place-${id}`} place={d.place} matches={matches} onChange={(patch) => onChange({ place: { ...d.place, ...patch } })} onDecide={onDecidePlace} quickCreate={quickCreate} />
@@ -594,10 +601,11 @@ export function AttendanceEditor({
   evidence: EventCandidate["attendance"];
   idPrefix?: string;
 }) {
-  const a = review.attendance ?? null;
-  const cta = a?.cta ?? "";
-  const setCta = (value: string) =>
-    set({ attendance: value === "" ? null : { cta: value as "tickets" | "rsvp" | "register", url: a?.url ?? evidence?.url ?? "" } });
+  // Two separate, visible slots — RSVP / Registration and Tickets are
+  // different actions (events.rsvp_url / events.tickets_url). Each shows
+  // what the operator pasted or the Event Link evidenced, else blank.
+  const slots = attendanceSlots(review);
+  const setSlots = (next: AttendanceSlots) => set(fromAttendanceSlots(next));
   const pricing = evidence?.pricing ?? "unknown";
   return (
     <section aria-labelledby={`${idPrefix}attendance`} className={`${sectionClass} flex flex-col gap-3`}>
@@ -610,38 +618,58 @@ export function AttendanceEditor({
         </p>
       )}
       <div>
-        <label htmlFor={`${idPrefix}attendance-cta`} className={labelClass}>
-          Button
+        <label htmlFor={`${idPrefix}attendance-rsvp`} className={labelClass}>
+          RSVP / Registration Link
         </label>
-        <select id={`${idPrefix}attendance-cta`} value={cta} onChange={(e) => setCta(e.target.value)} className={inputClass}>
-          <option value="">No button</option>
-          <option value="register">Register</option>
-          <option value="rsvp">RSVP</option>
-          <option value="tickets">Get Tickets</option>
-        </select>
+        <div className="flex gap-2">
+          <select
+            aria-label="RSVP button label"
+            value={slots.rsvp?.cta ?? "register"}
+            onChange={(e) => setSlots({ ...slots, rsvp: { cta: e.target.value as "rsvp" | "register", url: slots.rsvp?.url ?? "" } })}
+            className={`${inputClass} w-auto shrink-0`}
+          >
+            <option value="register">Register</option>
+            <option value="rsvp">RSVP</option>
+          </select>
+          <input
+            id={`${idPrefix}attendance-rsvp`}
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            value={slots.rsvp?.url ?? ""}
+            onChange={(e) => setSlots({ ...slots, rsvp: e.target.value || slots.rsvp ? { cta: slots.rsvp?.cta ?? "register", url: e.target.value } : null })}
+            onBlur={(e) => {
+              if (!e.target.value.trim()) setSlots({ ...slots, rsvp: null });
+            }}
+            placeholder="https://"
+            className={`${inputClass} min-w-0 flex-1`}
+          />
+        </div>
+      </div>
+      <div>
+        <label htmlFor={`${idPrefix}attendance-tickets`} className={labelClass}>
+          Ticket Link
+        </label>
+        <input
+          id={`${idPrefix}attendance-tickets`}
+          type="url"
+          inputMode="url"
+          autoCapitalize="none"
+          value={slots.tickets ?? ""}
+          onChange={(e) => setSlots({ ...slots, tickets: e.target.value })}
+          onBlur={(e) => {
+            if (!e.target.value.trim()) setSlots({ ...slots, tickets: null });
+          }}
+          placeholder="https://"
+          className={inputClass}
+        />
         <p className="mt-1 text-microcopy text-subtle">
+          {!slots.rsvp && !slots.tickets ? "No RSVP or ticket link found — the Event Link alone never becomes one. " : ""}
           {PRICING_NOTE[pricing]}
           {evidence?.price ? ` ${evidence.price}.` : ""}
           {evidence?.registration === "not_required" ? " It says no registration is needed." : ""}
         </p>
       </div>
-      {a && (
-        <div>
-          <label htmlFor={`${idPrefix}attendance-url`} className={labelClass}>
-            Link
-          </label>
-          <input
-            id={`${idPrefix}attendance-url`}
-            type="url"
-            inputMode="url"
-            autoCapitalize="none"
-            value={a.url ?? ""}
-            onChange={(e) => set({ attendance: { cta: a.cta, url: e.target.value } })}
-            placeholder="https://"
-            className={inputClass}
-          />
-        </div>
-      )}
     </section>
   );
 }

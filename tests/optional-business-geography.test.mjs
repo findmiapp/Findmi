@@ -85,7 +85,7 @@ test("one forward-only migration, after the BD foundation, replacing only create
   // Its own position: right after the BD foundation (a later pass — Event
   // attendance — adds its own migration after it).
   assert.equal(files[files.indexOf(FILE) - 1], "20261013000000_bd_foundation.sql");
-  assert.deepEqual(files.slice(files.indexOf(FILE) + 1), ["20261014010000_event_attendance_cta_and_location_visibility.sql", "20261015000000_business_location_availability.sql", "20261016000000_event_taxonomy_v1.sql" /* a later pass (Event Taxonomy V1) */, "20261017000000_event_formats_v1.sql" /* a later pass (Event Formats V1) */, "20261018000000_event_occurrence_details.sql" /* a later pass (Event Occurrence details) */]);
+  assert.deepEqual(files.slice(files.indexOf(FILE) + 1), ["20261014010000_event_attendance_cta_and_location_visibility.sql", "20261015000000_business_location_availability.sql", "20261016000000_event_taxonomy_v1.sql" /* a later pass (Event Taxonomy V1) */, "20261017000000_event_formats_v1.sql" /* a later pass (Event Formats V1) */, "20261018000000_event_occurrence_details.sql" /* a later pass (Event Occurrence details) */, "20261019000000_event_date_time_precision.sql" /* Event date/time precision pass */]);
   const statements = MIGRATION.split(/\$function\$;/)[1].trim();
   assert.equal(statements, "", "nothing but the function replacement");
   assert.equal((MIGRATION.match(/create or replace function/gi) ?? []).length, 1);

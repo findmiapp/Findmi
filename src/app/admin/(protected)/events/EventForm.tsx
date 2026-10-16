@@ -90,7 +90,7 @@ export default function EventForm({
   // rendered as manual mode — never auto-matched against a Location by
   // text alone, so a legacy event's data is never silently reinterpreted
   // as "connected" to a Location it was never actually related to.
-  const primaryOccurrenceId = event ? findCoveringOccurrenceId(event.start_at, occurrences) : null;
+  const primaryOccurrenceId = event ? findCoveringOccurrenceId(event.start_at, occurrences, event.start_date) : null;
   const primaryOccurrenceLocationId = primaryOccurrenceId
     ? (occurrences.find((o) => o.id === primaryOccurrenceId)?.location_id ?? null)
     : null;
@@ -177,8 +177,13 @@ export default function EventForm({
                   endName="end_at"
                   defaultStart={isoToLocalDateTime(event?.start_at ?? null)}
                   defaultEnd={isoToLocalDateTime(event?.end_at ?? null)}
+                  defaultDate={event?.start_date ?? null}
+                  defaultEndDate={event?.end_date ?? null}
+                  optionalTimes
+                  dateName="start_date"
+                  endDateName="end_date"
                   required
-                  hint="Eastern time (America/New_York). End must be after Start; it keeps the event visible for its whole real duration, not just until it starts."
+                  hint="Eastern time (America/New_York). The Start date is required; times are optional — leave a time blank when it isn't published (Findmi never guesses one). An End time needs a Start time."
                 />
 
                 <div className="rounded-2xl border border-black/10 p-4">

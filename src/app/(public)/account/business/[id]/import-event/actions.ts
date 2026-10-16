@@ -103,11 +103,11 @@ function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
       const base = resolveSlugInput(null, title);
       return base ? ensureUniqueSlug(base, (candidate) => isSlugTaken("events", candidate)) : null;
     },
-    notifyNewEvent: async (eventId, title, startIso) => {
+    notifyNewEvent: async (eventId, title, startIso, date) => {
       await notifyAdmin({
         subject: `New Event on Findmi: ${title}`,
         heading: "New Event published",
-        body: [`Event: ${title}`, `Added by: ${business.name}`, `Starts: ${new Date(startIso).toLocaleString()}`, "Source: Event Import"],
+        body: [`Event: ${title}`, `Added by: ${business.name}`, startIso ? `Starts: ${new Date(startIso).toLocaleString()}` : `Date: ${date} (time not listed)`, "Source: Event Import"],
         actionLabel: "View in Admin",
         actionUrl: `/admin/events/${eventId}`,
       });

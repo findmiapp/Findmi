@@ -309,9 +309,13 @@ Time: 6 PM – 9 PM`;
   assert.equal(ET(r.candidate.occurrences[1].start), "Oct 18, 12:00 PM");
   assert.equal(ET(r.candidate.occurrences[2].start), "Oct 19, 6:00 PM");
   const review = O.operatorReviewDefaults(r.candidate, { event: null, locations: [], organizerBusiness: null, existingAppearance: null });
-  assert.deepEqual(R.batchItemStatus(review, { event: null, locations: [], organizerBusiness: null, existingAppearance: null }).missing, ["Start and end time"]);
-  assert.deepEqual(R.datesMissingTime(review), ["Sun, Oct 18"], "names the one date actually missing its end time");
-  assert.match(MULTI, /Start and end time \(\$\{datesMissingTime\(review\)\.join\(", "\)\}\)/);
+  // Event date/time precision (approved): a known start with no published
+  // end is a VALID date (never given an invented end) — nothing is missing.
+  // Only an end with no start still needs the operator.
+  assert.deepEqual(R.batchItemStatus(review, { event: null, locations: [], organizerBusiness: null, existingAppearance: null }).missing, []);
+  assert.deepEqual(R.datesMissingTime(review), [], "a start-only date is complete");
+  assert.equal(review.occurrences.find((o) => o.date === "2026-10-18").endTime, "", "the end stays unknown");
+  assert.match(MULTI, /m === END_WITHOUT_START \? `\$\{END_WITHOUT_START\} \(\$\{datesMissingTime\(review\)\.join\(", "\)\}\)`/);
   // A date with no time anywhere stays without one.
   const bare = SP.extractStructuredEvent("Event Name: Book Swap\nDate: Oct 20, 2026\nLocation Name: Pier 57\nCity: New York\nState: NY", { now: NOW });
   assert.deepEqual(bare.candidate.occurrences.map((o) => [o.start, o.hasTime]), [["2026-10-20", false]]);

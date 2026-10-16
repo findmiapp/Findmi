@@ -3,12 +3,13 @@
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { EventWithCategories } from "@/lib/types";
-import { cityState, formatCardDateRange, getTemporalLabel } from "@/lib/format";
+import { cityState, formatCardDateRange } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import WantHeartButton from "./WantHeartButton";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { formatCardWhen, temporalLabelFor } from "@/lib/event-time";
 
 /** Compact Event Carousel pass — the premium, short/wide, image-led
  * preview card for a horizontal event rail, sized/proportioned like the
@@ -49,13 +50,13 @@ export default function CompactEventCard({
   event: EventWithCategories;
   analyticsContext?: AnalyticsPlacementContext;
 }) {
-  const { live } = getTemporalLabel(event.start_at, event.end_at);
+  const { live } = temporalLabelFor(event);
   const category = event.categories[0]?.name ?? null;
   // Up to 3 useful chips (real data — event_categories), never padded out
   // with placeholders when an event has fewer.
   const chips = event.categories.slice(0, 3).map((c) => c.name);
   const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
-  const dateLabel = formatCardDateRange(event.start_at, event.end_at);
+  const dateLabel = formatCardWhen(event, formatCardDateRange);
 
   const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });

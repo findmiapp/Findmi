@@ -136,7 +136,7 @@ export function formatDayOfMonthInZone(iso: string, timezone: string): string {
   return parts.find((p) => p.type === "day")?.value ?? "";
 }
 
-function dateKeyInZone(date: Date, timezone: string): string {
+export function dateKeyInZone(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",

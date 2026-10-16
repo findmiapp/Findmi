@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { occurrenceUpcomingOr, todayIn } from "@/lib/event-time";
+import { formatEventRange } from "@/lib/event-time";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import BusinessCard from "@/components/BusinessCard";
 import CompactCard from "@/components/CompactCard";
 import LocationCard from "@/components/LocationCard";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { cityState, formatDateRange } from "@/lib/format";
+import { cityState } from "@/lib/format";
 import { PUBLIC_BUSINESS_COLUMNS, type LocationWithCategory } from "@/lib/data";
 import type { BusinessWithCategories, FindmiEvent } from "@/lib/types";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
@@ -78,7 +80,8 @@ export default async function AccountFollowingPage() {
         locations.map((l) => l.id)
       )
       .eq("status", "scheduled")
-      .gt("end_at", new Date().toISOString());
+      // Not over — a date with no published end stays through its day.
+      .or(occurrenceUpcomingOr(new Date().toISOString(), todayIn()));
     const countByLocation = new Map<string, number>();
     for (const row of occurrenceRows ?? []) {
       if (!row.location_id) continue;
@@ -139,7 +142,7 @@ export default async function AccountFollowingPage() {
                       href={`/event/${e.slug}`}
                       image={e.cover_image_url}
                       title={e.name}
-                      meta={[formatDateRange(e.start_at, e.end_at), cityState(e.city, e.state)]
+                      meta={[formatEventRange(e), cityState(e.city, e.state)]
                         .filter(Boolean)
                         .join(" · ")}
                     />

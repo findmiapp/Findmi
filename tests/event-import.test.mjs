@@ -335,7 +335,12 @@ const norm = (r) => {
 test("review is required: incomplete reviewed values are refused before any write", () => {
   assert.equal(P.normalizeReview(review({ title: "  " })).ok, false);
   assert.equal(P.normalizeReview(review({ dates: [] })).ok, false);
-  assert.equal(P.normalizeReview(review({ dates: [{ date: DAY1, startTime: "", endTime: "" }] })).error, "Each date needs a start and end time.");
+  // Event date/time precision (approved): a date with no published time is
+  // valid (no time invented); an end with no start is refused.
+  assert.equal(P.normalizeReview(review({ dates: [{ date: DAY1, startTime: "", endTime: "" }] })).ok, true);
+  assert.equal(P.normalizeReview(review({ dates: [{ date: DAY1, startTime: "", endTime: "" }] })).value.occurrences[0].start, null);
+  assert.equal(P.normalizeReview(review({ dates: [{ date: DAY1, startTime: "", endTime: "21:00" }] })).error, "An end time needs a start time. Add the start, or clear the end.");
+  assert.equal(P.normalizeReview(review({ dates: [{ date: "", startTime: "18:00", endTime: "21:00" }] })).error, "Each date needs a day.");
   assert.equal(P.normalizeReview(review({ dates: [{ date: DAY1, startTime: "18:00", endTime: "10:00" }] })).error, "End time must be after the start time.");
   assert.equal(P.normalizeReview(review({ sourceUrl: "javascript:alert(1)" })).ok, false);
   assert.equal(norm(review({ imageUrl: "http://insecure.com/a.jpg" })).imageUrl, null);

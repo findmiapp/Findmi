@@ -5,7 +5,7 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
-import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
+import { BATCH_STATUS_LABEL, END_WITHOUT_START, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
 import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction, type LocationCreateRenderer } from "./ReviewParts";
 import { businessEvidenceKey, eventBusinessEvidence, operatorImportSummary, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness, type OperatorSessionStats } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
@@ -447,7 +447,7 @@ export default function MultiEventImport({
                         </span>
                         {status.missing.length > 0 && (
                           <span className="mt-0.5 block text-microcopy text-red-700">
-                            Missing: {status.missing.map((m) => (m === "Start and end time" ? `Start and end time (${datesMissingTime(review).join(", ")})` : m)).join(", ")}
+                            Missing: {status.missing.map((m) => (m === END_WITHOUT_START ? `${END_WITHOUT_START} (${datesMissingTime(review).join(", ")})` : m)).join(", ")}
                           </span>
                         )}
                       </span>

@@ -3,7 +3,7 @@
 import Image from "@/components/SupabaseImage";
 import Link from "next/link";
 import type { EventWithCategories, FindmiEvent } from "@/lib/types";
-import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";
+import { cityState, formatTime } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import WantHeartButton from "./WantHeartButton";
 import AddToCalendarButton from "./AddToCalendarButton";
@@ -12,6 +12,7 @@ import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 import { rsvpActionLabel } from "@/lib/event-attendance";
+import { formatStartLine, temporalLabelFor } from "@/lib/event-time";
 
 // Homepage discovery event card (2026 feed-builder pass, Part 2) —
 // deliberately NOT built on EventCard/PostCard (both kept untouched/safe
@@ -74,7 +75,7 @@ export default function HomeEventCard({
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   const category = event.categories[0]?.name ?? null;
-  const { live } = getTemporalLabel(event.start_at, event.end_at);
+  const { live } = temporalLabelFor(event);
   const cta = resolvePrimaryCta(event);
   const directionsHref = resolveDirectionsHref(event);
   const venueLine = event.venue_name || null;
@@ -194,8 +195,8 @@ export default function HomeEventCard({
         <p className="flex items-center gap-1.5 text-sm text-white/90">
           <CalendarGlyph className="h-4 w-4 shrink-0" />
           <span className="truncate">
-            {formatDateShort(event.start_at)} · {formatTime(event.start_at)}
-            {event.end_at ? ` – ${formatTime(event.end_at)}` : ""}
+            {formatStartLine(event)}
+            {event.start_at && event.end_at ? ` – ${formatTime(event.end_at)}` : ""}
           </span>
         </p>
         {(venueLine || cityStateLine) && (
@@ -266,6 +267,8 @@ export default function HomeEventCard({
             location={calendarLocation}
             startAt={event.start_at}
             endAt={event.end_at}
+            date={event.start_date}
+            endDate={event.end_date}
             layout="glass"
           />
           <EventShareButton

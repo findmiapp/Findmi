@@ -12,10 +12,12 @@
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-type Range = { start_at: string; end_at: string | null };
+// Times are optional (Event date/time precision): a mirror needs a real
+// start AND end on both sides — an untimed date is never one.
+type Range = { start_at: string | null; end_at: string | null };
 
 export function isRangeMirrorOccurrence(occurrence: Range, event: Range): boolean {
-  if (!event.end_at || !occurrence.end_at) return false;
+  if (!event.start_at || !occurrence.start_at || !event.end_at || !occurrence.end_at) return false;
   const eventStart = new Date(event.start_at).getTime();
   const eventEnd = new Date(event.end_at).getTime();
   return (

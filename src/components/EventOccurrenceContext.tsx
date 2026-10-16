@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { EventOccurrenceWithLocation } from "@/lib/data";
+import { hasEnded, isHappeningNow } from "@/lib/event-time";
 
 // Recurring Events V2 — the single shared selectedOccurrence controller.
 // Per the pass spec: no individual component (hero, Directions/Add to
@@ -43,13 +44,14 @@ type DefaultResolution =
  * getUpcomingOccurrencesForEvent's own ordering), so the first match for
  * each is the nearest one. */
 function resolveDefault(occurrences: EventOccurrenceWithLocation[]): DefaultResolution {
-  const now = Date.now();
-  const current = occurrences.find(
-    (o) => o.status === "scheduled" && new Date(o.start_at).getTime() <= now && new Date(o.end_at).getTime() > now
-  );
+  // Event date/time precision: "current" needs a real interval; "next" is
+  // the nearest date that isn't over (a date with no published end stays
+  // through its calendar day, never treated as live).
+  const now = new Date();
+  const current = occurrences.find((o) => o.status === "scheduled" && isHappeningNow(o, now));
   if (current) return { occurrence: current, state: "current" };
 
-  const next = occurrences.find((o) => o.status === "scheduled" && new Date(o.start_at).getTime() > now);
+  const next = occurrences.find((o) => o.status === "scheduled" && !hasEnded(o, now));
   if (next) return { occurrence: next, state: "next" };
 
   return { occurrence: null, state: "none" };
@@ -113,10 +115,11 @@ export function EventOccurrenceProvider({
   // tab.
   useEffect(() => {
     if (!initial.occurrence) return;
-    const boundaryMs =
-      initial.state === "current"
-        ? new Date(initial.occurrence.end_at).getTime()
-        : new Date(initial.occurrence.start_at).getTime();
+    // Only a real time is a boundary; an untimed date is re-checked on the
+    // visibility-change effect below.
+    const boundaryIso = initial.state === "current" ? initial.occurrence.end_at : initial.occurrence.start_at;
+    if (!boundaryIso) return;
+    const boundaryMs = new Date(boundaryIso).getTime();
     const delay = boundaryMs - Date.now();
     if (delay <= 0) return; // resolveDefault() already reflects "now" correctly on the next render
     const id = window.setTimeout(() => setTick((t) => t + 1), Math.min(delay, MAX_BOUNDARY_TIMEOUT_MS));

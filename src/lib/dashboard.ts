@@ -1,3 +1,5 @@
+import { calendarDate, compareChronological, eventUpcomingOr, hasEnded, occurrenceUpcomingOr, todayIn } from "./event-time";
+import { APP_TIMEZONE } from "./format";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityState } from "@/lib/format";
 import {
@@ -118,8 +120,11 @@ export interface ScheduleItem {
   /** Canonical dedup key — see getAccountCommandCenter's own doc comment
    * on precedence. Also used as the React list key. */
   key: string;
-  startAt: string;
+  /** Exact start — null for an Event date with no published time. */
+  startAt: string | null;
   endAt: string | null;
+  /** The real calendar date (YYYY-MM-DD) — always present. */
+  date: string;
   /** Only ever set for an Appearance-sourced item — carries the
    * TIME_UNKNOWN_MARKER convention formatAppearanceTime/
    * formatAppearanceDateRange (lib/format.ts) already knows how to read.
@@ -202,8 +207,10 @@ async function getPlanRows(admin: SupabaseClient, businessIds: string[]): Promis
 
 interface FallbackEventRow {
   event_id: string;
-  start_at: string;
-  end_at: string;
+  start_at: string | null;
+  end_at: string | null;
+  /** The Event's calendar start date. */
+  date: string;
   venue_name: string | null;
   city: string | null;
   state: string | null;
@@ -228,14 +235,16 @@ async function getFallbackNonRecurringEvents(admin: SupabaseClient, candidateEve
   if (targets.length === 0) return [];
   const { data } = await admin
     .from("events")
-    .select("id, start_at, end_at, venue_name, city, state, cover_image_url")
+    .select("id, start_at, end_at, start_date, end_date, venue_name, city, state, cover_image_url")
     .in("id", targets)
-    .gt("end_at", new Date().toISOString());
+    .or(eventUpcomingOr(new Date().toISOString(), todayIn(APP_TIMEZONE)));
   return (
     (data ?? []) as {
       id: string;
-      start_at: string;
-      end_at: string;
+      start_at: string | null;
+      end_at: string | null;
+      start_date: string;
+      end_date: string | null;
       venue_name: string | null;
       city: string | null;
       state: string | null;
@@ -245,6 +254,7 @@ async function getFallbackNonRecurringEvents(admin: SupabaseClient, candidateEve
     event_id: r.id,
     start_at: r.start_at,
     end_at: r.end_at,
+    date: r.start_date,
     venue_name: r.venue_name,
     city: r.city,
     state: r.state,
@@ -255,8 +265,9 @@ async function getFallbackNonRecurringEvents(admin: SupabaseClient, candidateEve
 interface LocationOccurrenceRow {
   occurrence_id: string;
   location_id: string;
-  start_at: string;
-  end_at: string;
+  start_at: string | null;
+  end_at: string | null;
+  date: string;
   event_name: string;
   event_slug: string;
 }
@@ -274,17 +285,18 @@ async function getLocationOccurrences(admin: SupabaseClient, locationIds: string
   if (locationIds.length === 0) return [];
   const { data } = await admin
     .from("event_occurrences")
-    .select("id, location_id, start_at, end_at, event:events(name, slug, is_demo)")
+    .select("id, location_id, occurrence_date, start_at, end_at, event:events(name, slug, is_demo)")
     .in("location_id", locationIds)
     .eq("status", "scheduled")
-    .gt("end_at", new Date().toISOString())
-    .order("start_at", { ascending: true })
+    .or(occurrenceUpcomingOr(new Date().toISOString(), todayIn(APP_TIMEZONE)))
+    .order("occurrence_date", { ascending: true })
+    .order("start_at", { ascending: true, nullsFirst: false })
     .limit(PER_SOURCE_FETCH_LIMIT * locationIds.length);
   const rows: LocationOccurrenceRow[] = [];
-  for (const row of (data ?? []) as { id: string; location_id: string; start_at: string; end_at: string; event: { name: string; slug: string; is_demo: boolean } | { name: string; slug: string; is_demo: boolean }[] | null }[]) {
+  for (const row of (data ?? []) as { id: string; location_id: string; occurrence_date: string; start_at: string | null; end_at: string | null; event: { name: string; slug: string; is_demo: boolean } | { name: string; slug: string; is_demo: boolean }[] | null }[]) {
     const event = Array.isArray(row.event) ? (row.event[0] ?? null) : row.event;
     if (!event || event.is_demo) continue;
-    rows.push({ occurrence_id: row.id, location_id: row.location_id, start_at: row.start_at, end_at: row.end_at, event_name: event.name, event_slug: event.slug });
+    rows.push({ occurrence_id: row.id, location_id: row.location_id, start_at: row.start_at, end_at: row.end_at, date: row.occurrence_date, event_name: event.name, event_slug: event.slug });
   }
   return rows;
 }
@@ -403,6 +415,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
       upsertSchedule(`occurrence:${occ.id}`, "Your Event", () => ({
         startAt: occ.start_at,
         endAt: occ.end_at,
+        date: calendarDate(occ) ?? occ.occurrence_date,
         description: null,
         title: e.name,
         where: occ.location ? [occ.location.name, cityState(occ.location.city, occ.location.state)].filter(Boolean).join(" · ") : null,
@@ -418,6 +431,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
     upsertSchedule(`event:${ev.event_id}`, "Your Event", () => ({
       startAt: ev.start_at,
       endAt: ev.end_at,
+      date: ev.date,
       description: null,
       title: e.name,
       where: [ev.venue_name, cityState(ev.city, ev.state)].filter(Boolean).join(" · ") || null,
@@ -435,6 +449,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
       upsertSchedule(key, b.name, () => ({
         startAt: a.start_at,
         endAt: a.end_at,
+        date: appearanceDate(a.start_at),
         description: a.description,
         title: a.title,
         where: [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ") || null,
@@ -457,6 +472,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
     upsertSchedule(`occurrence:${row.occurrence_id}`, `At ${loc.name}`, () => ({
       startAt: row.start_at,
       endAt: row.end_at,
+      date: row.date,
       description: null,
       title: row.event_name,
       where: loc.name,
@@ -471,6 +487,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
     upsertSchedule(`appearance:${row.appearance_id}`, `At ${loc.name}`, () => ({
       startAt: row.start_at,
       endAt: row.end_at,
+      date: appearanceDate(row.start_at),
       description: null,
       title: row.title,
       where: loc.name,
@@ -481,8 +498,8 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
   }
 
   return [...scheduleMap.values()]
-    .filter((item) => !item.endAt || new Date(item.endAt).getTime() > Date.now())
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .filter((item) => !hasEnded(itemTimes(item)))
+    .sort((a, b) => compareChronological(itemTimes(a), itemTimes(b)))
     .slice(0, limit);
 }
 
@@ -714,6 +731,7 @@ export async function getUnifiedPastSchedule(admin: SupabaseClient, input: Unifi
       upsertSchedule(key, b.name, () => ({
         startAt: a.start_at,
         endAt: a.end_at,
+        date: appearanceDate(a.start_at),
         description: a.description,
         title: a.title,
         where: [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ") || null,
@@ -732,6 +750,7 @@ export async function getUnifiedPastSchedule(admin: SupabaseClient, input: Unifi
     upsertSchedule(`appearance:${row.appearance_id}`, `At ${loc.name}`, () => ({
       startAt: row.start_at,
       endAt: row.end_at,
+      date: appearanceDate(row.start_at),
       description: null,
       title: row.title,
       where: loc.name,
@@ -741,7 +760,7 @@ export async function getUnifiedPastSchedule(admin: SupabaseClient, input: Unifi
     }));
   }
 
-  return [...scheduleMap.values()].sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime()).slice(0, limit);
+  return [...scheduleMap.values()].sort((a, b) => compareChronological(itemTimes(b), itemTimes(a))).slice(0, limit);
 }
 
 // ── Personal Upcoming (Universal Account V1 foundation) ─────────────────
@@ -762,8 +781,11 @@ export interface PersonalUpcomingEventInput {
   id: string;
   slug: string;
   name: string;
-  startAt: string;
+  startAt: string | null;
   endAt: string | null;
+  /** The Event's calendar start / end dates (Event date/time precision). */
+  startDate?: string | null;
+  endDate?: string | null;
   imageUrl: string | null;
 }
 export interface PersonalUpcomingBusinessInput {
@@ -795,8 +817,11 @@ export interface PersonalUpcomingInput {
 
 export interface PersonalUpcomingItem {
   key: string;
-  startAt: string;
+  /** Exact start — null for an Event date with no published time. */
+  startAt: string | null;
   endAt: string | null;
+  /** The real calendar date (YYYY-MM-DD) — always present. */
+  date: string;
   title: string;
   where: string | null;
   /** Same "never collapsed to one label" convention as ScheduleItem —
@@ -843,18 +868,21 @@ export async function getPersonalUpcoming(input: PersonalUpcomingInput, limit: n
         upsert(`occurrence:${occ.id}`, label, () => ({
           startAt: occ.start_at,
           endAt: occ.end_at,
+          date: calendarDate(occ) ?? occ.occurrence_date,
           title: e.name,
           where: occ.location ? [occ.location.name, cityState(occ.location.city, occ.location.state)].filter(Boolean).join(" · ") : null,
           href: `/event/${e.slug}`,
           imageUrl: e.imageUrl,
         }));
       }
-    } else if (e.endAt && new Date(e.endAt).getTime() > Date.now()) {
+    } else if (eventDate(e) && !hasEnded({ start_at: e.startAt, end_at: e.endAt, start_date: e.startDate ?? null, end_date: e.endDate ?? null })) {
       // Non-recurring event with no occurrence rows — its own start_at/
-      // end_at, same fallback principle getUnifiedSchedule already uses.
+      // end_at (or, with no published time, its calendar dates), same
+      // fallback principle getUnifiedSchedule already uses.
       upsert(`event:${e.id}`, label, () => ({
         startAt: e.startAt,
         endAt: e.endAt,
+        date: eventDate(e) as string,
         title: e.name,
         where: null,
         href: `/event/${e.slug}`,
@@ -873,6 +901,7 @@ export async function getPersonalUpcoming(input: PersonalUpcomingInput, limit: n
         upsert(key, `Following ${b.name}`, () => ({
           startAt: a.start_at,
           endAt: a.end_at,
+          date: appearanceDate(a.start_at),
           title: a.title,
           where: [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ") || null,
           href: `/business/${b.slug}#findmi-here`,
@@ -886,6 +915,7 @@ export async function getPersonalUpcoming(input: PersonalUpcomingInput, limit: n
         upsert(`location:${h.id}`, `Following ${l.name}`, () => ({
           startAt: h.start_at,
           endAt: h.end_at,
+          date: h.date,
           title: h.title,
           where: l.name,
           href: h.href,
@@ -896,7 +926,21 @@ export async function getPersonalUpcoming(input: PersonalUpcomingInput, limit: n
   ]);
 
   return [...upcomingMap.values()]
-    .filter((item) => !item.endAt || new Date(item.endAt).getTime() > Date.now())
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .filter((item) => !hasEnded(itemTimes(item)))
+    .sort((a, b) => compareChronological(itemTimes(a), itemTimes(b)))
     .slice(0, limit);
+}
+
+/** A schedule item as dated times (Event date/time precision). */
+function itemTimes(item: { key: string; startAt: string | null; endAt: string | null; date: string }) {
+  return { start_at: item.startAt, end_at: item.endAt, occurrence_date: item.date, id: item.key };
+}
+
+/** An Appearance's calendar date (appearances always have a real start). */
+function appearanceDate(startAt: string): string {
+  return calendarDate({ start_at: startAt, end_at: null }) ?? startAt.slice(0, 10);
+}
+
+function eventDate(e: PersonalUpcomingEventInput): string | null {
+  return calendarDate({ start_at: e.startAt, end_at: e.endAt, start_date: e.startDate ?? null });
 }

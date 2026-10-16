@@ -1,7 +1,8 @@
 import type { FindmiEvent } from "@/lib/types";
-import { cityState, formatDateRange, getTemporalLabel } from "@/lib/format";
+import { cityState } from "@/lib/format";
 import PostCard from "./PostCard";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { formatWhen, temporalLabelFor } from "@/lib/event-time";
 
 export default function EventCard({
   event,
@@ -13,7 +14,7 @@ export default function EventCard({
   const location = [event.venue_name, cityState(event.city, event.state)]
     .filter(Boolean)
     .join(" · ");
-  const { label: when, live } = getTemporalLabel(event.start_at, event.end_at);
+  const { label: when, live } = temporalLabelFor(event);
 
   return (
     <PostCard
@@ -25,7 +26,7 @@ export default function EventCard({
       title={event.name}
       metaLines={[
         ...(location ? [{ icon: "pin" as const, text: location }] : []),
-        { icon: "calendar", text: formatDateRange(event.start_at, event.end_at) },
+        { icon: "calendar", text: formatWhen(event) },
       ]}
       cta="Who's Going"
       analyticsFields={buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext)}

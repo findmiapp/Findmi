@@ -125,8 +125,8 @@ test("G/H. Free and Pro: Coming Up has no plan logic (core Findmi activity is op
 
 test("page: hosted Events come from the existing host_business_id + event_occurrences reads; nothing is written", () => {
   const page = readFileSync("src/app/(public)/account/business/[id]/page.tsx", "utf8");
-  assert.match(page, /\.select\("id, name, slug, start_at, end_at, venue_name, city, state, is_demo, publication_status, cover_image_url"\)\s*\.eq\("host_business_id", id\)/);
-  assert.match(page, /upcomingDates: upcoming\.map\(\(o\) => \(\{ startAt: o\.start_at, endAt: o\.end_at \}\)\),/);
+  assert.match(page, /\.select\("id, name, slug, start_at, end_at, start_date, end_date, venue_name, city, state, is_demo, publication_status, cover_image_url"\)\s*\.eq\("host_business_id", id\)/);
+  assert.match(page, /upcomingDates: upcoming\.map\(\(o\) => \(\{ startAt: o\.start_at, endAt: o\.end_at, date: o\.occurrence_date \}\)\),/);
   assert.match(page, /href: `\/account\/event\/\$\{h\.id\}\?business_id=\$\{encodeURIComponent\(id\)\}`,/);
   const fn = readFileSync("src/lib/business-dashboard.ts", "utf8");
   const helper = fn.slice(fn.indexOf("export function buildHomeComingUp"), fn.indexOf("/** Not-yet-live upcoming dated Appearances"));

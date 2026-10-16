@@ -30,6 +30,7 @@ const D = await import("../src/lib/data.ts");
 const V = await import("../src/lib/event-location-privacy.ts");
 const FMT = await import("../src/lib/format.ts");
 const read = (p) => readFileSync(p, "utf8");
+const { orPredicate, withDates } = await import("./helpers/postgrest-or.mjs");
 
 const CORGI_CAFE = { id: "660d3744-dc88-4e91-856c-c0a296c9e776", name: "Corgi Cafe NYC" };
 const FUTURE = new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -54,13 +55,15 @@ function fakeClient(tables, { migrated = true } = {}) {
         neq: (k, v) => (filters.push((r) => r[k] !== v), api),
         gt: (k, v) => (filters.push((r) => (k.includes(".") ? true : r[k] > v)), api),
         lte: (k, v) => (filters.push((r) => r[k] <= v), api),
+        // `.or(...)` windows evaluated like PostgREST (helpers/postgrest-or).
+        or: (expr) => (filters.push(orPredicate(expr)), api),
         not: () => api, order: () => api, limit: () => api, range: () => api,
         then: (resolve) => {
           calls.push({ table, selectCols });
           if (missingColumn) return resolve({ data: null, error: { code: "42703", message: "column events.location_visibility does not exist" } });
-          return resolve({ data: (tables[table] ?? []).filter((r) => filters.every((f) => f(r))), error: null });
+          return resolve({ data: (tables[table] ?? []).map(withDates).filter((r) => filters.every((f) => f(r))), error: null });
         },
-        maybeSingle: async () => ({ data: (tables[table] ?? []).filter((r) => filters.every((f) => f(r)))[0] ?? null, error: null }),
+        maybeSingle: async () => ({ data: (tables[table] ?? []).map(withDates).filter((r) => filters.every((f) => f(r)))[0] ?? null, error: null }),
       };
       return api;
     },

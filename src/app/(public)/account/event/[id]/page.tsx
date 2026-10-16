@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { compareChronological, formatCalendarDate, hasEnded } from "@/lib/event-time";
 import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -251,7 +252,7 @@ export default async function ManageEventPage({
   // list that happens to have any location_id at all — a multi-venue event
   // could otherwise show an Additional Date's venue as though it were the
   // Primary Date's own.
-  const primaryOccurrenceId = findCoveringOccurrenceId(event.start_at, occurrences);
+  const primaryOccurrenceId = findCoveringOccurrenceId(event.start_at, occurrences, event.start_date);
   const occurrenceLocationId = occurrences.find((o) => o.id === primaryOccurrenceId)?.location_id ?? null;
   const occurrenceLocationRow = occurrenceLocationId
     ? await admin
@@ -324,15 +325,14 @@ export default async function ManageEventPage({
   // Event Manager V3, Overview — "Next up" reads the same Primary Date +
   // Additional Dates already fetched for Dates & Locations (no new
   // query), so Overview never needs its own schedule lookup.
-  const nowIso = new Date().toISOString();
   const allDates = [
-    { id: "primary", startAt: event.start_at, endAt: event.end_at, locationName: event.venue_name ?? null },
-    ...occurrences.map((o) => ({ id: o.id, startAt: o.start_at, endAt: o.end_at, locationName: o.location_name ?? o.venue_name ?? null })),
+    { id: "primary", startAt: event.start_at, endAt: event.end_at, date: event.start_date, endDate: event.end_date, locationName: event.venue_name ?? null },
+    ...occurrences.map((o) => ({ id: o.id, startAt: o.start_at, endAt: o.end_at, date: o.occurrence_date, endDate: null, locationName: o.location_name ?? o.venue_name ?? null })),
   ];
-  const nextUp =
-    allDates
-      .filter((d) => d.endAt && d.endAt > nowIso)
-      .sort((a, b) => a.startAt.localeCompare(b.startAt))[0] ?? null;
+  // Not over yet (a date with no published end stays through its day);
+  // chronological without fake times.
+  const asTimes = (d: (typeof allDates)[number]) => ({ id: d.id, start_at: d.startAt, end_at: d.endAt, occurrence_date: d.date, end_date: d.endDate });
+  const nextUp = allDates.filter((d) => !hasEnded(asTimes(d))).sort((a, b) => compareChronological(asTimes(a), asTimes(b)))[0] ?? null;
 
   // Multi-Date Business Participation Pass 2B — the organizer-facing
   // "Participating dates" picker (invite scope + per-participant scope
@@ -342,8 +342,8 @@ export default async function ManageEventPage({
   // server-side. Human-facing labels only — never "primary"/"occurrence"
   // terminology.
   const effectiveScheduleDates = [
-    { id: primaryDateId(id), label: formatScheduleDisplay(event.start_at, event.end_at ?? event.start_at).dateLabel },
-    ...occurrences.map((o) => ({ id: o.id, label: formatScheduleDisplay(o.start_at, o.end_at).dateLabel })),
+    { id: primaryDateId(id), label: formatScheduleDisplay(event.start_at, event.end_at, event.start_date).dateLabel },
+    ...occurrences.map((o) => ({ id: o.id, label: formatScheduleDisplay(o.start_at, o.end_at, o.occurrence_date).dateLabel })),
   ];
 
   // Event Manager V3, Overview — "pending attention" reads the already-
@@ -366,10 +366,10 @@ export default async function ManageEventPage({
   // bulk composer can mark a generated date as "already scheduled" for
   // organizer clarity — the SERVER action re-derives this same set fresh
   // before ever inserting anything, this is a preview convenience only.
-  const primarySchedule = formatScheduleDisplay(event.start_at, event.end_at ?? event.start_at);
+  const primarySchedule = formatScheduleDisplay(event.start_at, event.end_at, event.start_date);
   const primaryLocationName = matchedEventLocation?.name ?? event.venue_name ?? null;
   const scheduleOccurrences: ScheduleOccurrence[] = occurrences.map((occ) => {
-    const display = formatScheduleDisplay(occ.start_at, occ.end_at);
+    const display = formatScheduleDisplay(occ.start_at, occ.end_at, occ.occurrence_date);
     return {
       id: occ.id,
       location_id: occ.location_id,
@@ -487,7 +487,7 @@ export default async function ManageEventPage({
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-body font-semibold text-primary">
-                      {new Date(nextUp.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                      {nextUp.startAt ? new Date(nextUp.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : `${formatCalendarDate(nextUp.date, "short")} · Time Not Listed`}
                     </p>
                     {nextUp.locationName && <p className="truncate text-metadata text-muted">{nextUp.locationName}</p>}
                   </div>
@@ -1003,10 +1003,12 @@ function appendQuery(base: string, params: Record<string, string>): string {
  * bare `new Date(iso)` read back in a client component, which would drift
  * to the viewer's own browser timezone instead of Findmi's single-
  * timezone convention). Computed server-side once per row. */
-function formatScheduleDisplay(startIso: string, endIso: string) {
+function formatScheduleDisplay(startIso: string | null, endIso: string | null, date: string) {
+  // Event date/time precision: the real date always; a time only when
+  // published ("Time Not Listed" otherwise — never a placeholder).
   const startLocal = isoToLocalDateTime(startIso);
   const endLocal = isoToLocalDateTime(endIso);
-  const dateLocal = startLocal.slice(0, 10);
+  const dateLocal = startLocal ? startLocal.slice(0, 10) : date;
   const startTimeLocal = startLocal.slice(11);
   const endTimeLocal = endLocal.slice(11);
   const [y, m, d] = dateLocal.split("-").map(Number);
@@ -1019,7 +1021,7 @@ function formatScheduleDisplay(startIso: string, endIso: string) {
   };
   return {
     dateLabel,
-    timeLabel: `${fmtTime(startTimeLocal)}–${fmtTime(endTimeLocal)}`,
+    timeLabel: !startTimeLocal ? "Time Not Listed" : endTimeLocal ? `${fmtTime(startTimeLocal)}–${fmtTime(endTimeLocal)}` : fmtTime(startTimeLocal),
     dateLocal,
     startTimeLocal,
     endTimeLocal,

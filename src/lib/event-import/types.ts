@@ -127,6 +127,13 @@ export interface StructuredEventHints {
   /** Event Link enrichment (Admin only): whether the source page was read
    * and which fields it filled. */
   source?: { status: "read" | "failed" | "several_events" | "not_read"; filled: string[]; detail?: string };
+  /** Explicitly pasted attendance links ("RSVP:", "Registration:", "Ticket
+   * URL:" …) — the operator's own values, which win over anything read
+   * from the Event Link. RSVP / Registration and Tickets are kept apart. */
+  links?: { rsvp: { cta: RsvpCta; url: string } | null; tickets: string | null };
+  /** The Event Link page's own evidenced attendance link (Admin enrichment)
+   * — evidence that may fill an EMPTY Review slot only. */
+  pageAttendance?: { cta: "tickets" | RsvpCta; url: string };
 }
 
 export const EMPTY_VENUE: ImportedVenue = { name: null, address: null, city: null, state: null, postalCode: null };
@@ -294,6 +301,10 @@ export interface EventImportReview {
    * "register" → the RSVP action with that label; null/absent → none.
    * Re-validated server-side (https link required). */
   attendance?: { cta: "tickets" | RsvpCta | null; url: string | null } | null;
+  /** A separate Ticket link, kept ONLY when `attendance` is the RSVP /
+   * Registration action and the Event also has a different Get Tickets
+   * destination (both are existing Event columns: rsvp_url, tickets_url). */
+  ticketsUrl?: string | null;
   /** From Analyze; "hidden" means the organizer withholds the address — no
    * venue, street address or Findmi Location is saved. */
   locationVisibility?: LocationVisibility | null;

@@ -29,6 +29,7 @@ const EFS = await import("../src/lib/event-formats-server.ts");
 const F = await import("../src/lib/event-filter.ts");
 const P = await import("../src/lib/event-import/persist.ts");
 const D = await import("../src/lib/data.ts");
+const { orPredicate, withDates } = await import("./helpers/postgrest-or.mjs");
 const read = (p) => readFileSync(p, "utf8");
 
 const MIGRATION = "supabase/migrations/20261017000000_event_formats_v1.sql";
@@ -79,7 +80,7 @@ test("migration: integrity — only kind='event_format' can be linked; Formats a
   // from its parent's, so no Format can be a parent either (a child would
   // have to be an event_format, which can't have a parent).
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261018000000_event_occurrence_details.sql" /* a later pass (Event Occurrence details) */);
+  assert.equal(files.at(-1), "20261019000000_event_date_time_precision.sql" /* later passes (… Event Occurrence details, Event date/time precision) */);
 });
 
 // ── PERSISTENCE ───────────────────────────────────────────────────────────
@@ -302,14 +303,15 @@ function fakeSupabase(tables) {
       in: (k, v) => (filters.push(["in", k, v]), api),
       lt: (k, v) => (filters.push(["lt", k, v]), api),
       gt: (k, v) => (filters.push(["gt", k, v]), api),
-      or: () => api, ilike: () => api, neq: () => api, is: () => api, not: () => api, limit: () => api,
+      // `.or(...)` windows evaluated like PostgREST (helpers/postgrest-or).
+      or: (expr) => (filters.push(["or", expr]), api), ilike: () => api, neq: () => api, is: () => api, not: () => api, limit: () => api,
       order: () => api,
       maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
       then: (resolve) => resolve({ data: run(), error: null }),
     };
     const run = () =>
-      (tables[table] ?? []).filter((r) =>
-        filters.every(([op, k, v]) => (op === "eq" ? r[k] === v : op === "in" ? v.includes(r[k]) : op === "lt" ? r[k] < v : op === "gt" ? r[k] > v : true))
+      (tables[table] ?? []).map(withDates).filter((r) =>
+        filters.every(([op, k, v]) => (op === "eq" ? r[k] === v : op === "in" ? v.includes(r[k]) : op === "lt" ? r[k] < v : op === "gt" ? r[k] > v : op === "or" ? orPredicate(k)(r) : true))
       );
     return api;
   };
@@ -399,5 +401,7 @@ test("/events: Format lives in the existing filter sheet (not top-level tabs), r
   const filters = read("src/components/discover/EventFilters.tsx");
   assert.match(filters, /<input type="checkbox" name="format" value=\{f\.slug\} defaultChecked=\{defaultFormats\.includes\(f\.slug\)\}/);
   // getEventFormatOptions only offers Formats on a discoverable (non-demo, not-ended) Event.
-  assert.match(read("src/lib/data.ts"), /supabase\.from\("events"\)\.select\("id"\)\.eq\("is_demo", false\)\.gt\("end_at", new Date\(\)\.toISOString\(\)\)/);
+  // Event date/time precision: "not ended" also keeps an Event with no
+  // published end through its calendar end date (eventUpcomingOr).
+  assert.match(read("src/lib/data.ts"), /supabase\.from\("events"\)\.select\("id"\)\.eq\("is_demo", false\)\.or\(eventUpcomingOr\(new Date\(\)\.toISOString\(\), todayIn\(APP_TIMEZONE\)\)\)/);
 });

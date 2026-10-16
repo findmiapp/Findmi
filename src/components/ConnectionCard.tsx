@@ -4,11 +4,12 @@ import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
 import WantHeartButton from "./WantHeartButton";
 import type { EventWithCategories } from "@/lib/types";
-import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";
+import { cityState } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import { formatStartLine, temporalLabelFor } from "@/lib/event-time";
 
 /** Consumer Experience V1 — the Brand -> Place -> Moment connection-card
  * grammar: an event's own real time/place (Moment + Place, same visual
@@ -52,7 +53,7 @@ export default function ConnectionCard({
   const category = event.categories[0]?.name ?? null;
   const cityStateLabel = cityState(event.city, event.state);
   const locationLabel = [event.venue_name, cityStateLabel].filter(Boolean).join(" · ");
-  const { live } = getTemporalLabel(event.start_at, event.end_at);
+  const { live } = temporalLabelFor(event);
 
   const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
@@ -109,7 +110,7 @@ export default function ConnectionCard({
           <p className="flex items-center gap-1.5 text-sm text-white/90 sm:text-base">
             <CalendarGlyph className="h-4 w-4 shrink-0" />
             <span className="truncate">
-              {formatDateShort(event.start_at)} · {formatTime(event.start_at)}
+              {formatStartLine(event)}
             </span>
           </p>
           {locationLabel && (
@@ -144,7 +145,7 @@ export default function ConnectionCard({
             </Link>
           ) : (
             <span className="truncate text-sm text-ink/50">
-              {formatDateShort(event.start_at)} · {formatTime(event.start_at)}
+              {formatStartLine(event)}
             </span>
           )}
           {place && (

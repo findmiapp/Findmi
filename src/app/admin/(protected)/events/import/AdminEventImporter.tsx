@@ -644,8 +644,8 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
     }
   }
 
-  const LABEL: Record<string, string> = { image: "Image", description: "Description", link: "Event Link", attendance: "RSVP / Tickets", organizer: "Organizer", category: "Category", formats: "Formats", business: "Business" };
-  const REPLACEABLE = new Set(["image", "description", "link", "attendance", "organizer"]);
+  const LABEL: Record<string, string> = { image: "Image", description: "Description", link: "Event Link", attendance: "RSVP / Registration", tickets: "Tickets", organizer: "Organizer", category: "Category", formats: "Formats", business: "Business" };
+  const REPLACEABLE = new Set(["image", "description", "link", "attendance", "tickets", "organizer"]);
   return (
     <section className="flex flex-col gap-2 rounded-xl border border-black/[0.08] bg-black/[0.02] p-3">
       <p className="text-label font-bold uppercase text-subtle">Review Existing Event</p>
@@ -1069,7 +1069,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
     );
     if (status !== "read") return `Still not read: ${read.candidate.structured?.source?.detail ?? "unavailable"}`;
     const filled = fillReviewGaps(review, operatorReviewDefaults(read.candidate, read.matches, { categories, formats }), { hadImage });
-    set({ description: filled.description, organizer: filled.organizer, attendance: filled.attendance, imageUrl: filled.imageUrl, occurrences: filled.occurrences });
+    set({ description: filled.description, organizer: filled.organizer, attendance: filled.attendance, ticketsUrl: filled.ticketsUrl, imageUrl: filled.imageUrl, occurrences: filled.occurrences });
     return "Event Link read. Only empty fields were filled — your edits were kept.";
   }
 

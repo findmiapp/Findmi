@@ -149,8 +149,11 @@ export interface JournalEventRef {
 export interface JournalOccurrenceRef {
   id: string;
   event_id: string;
-  start_at: string;
-  end_at: string;
+  /** Null when the date has no published time (Event date/time precision). */
+  start_at: string | null;
+  end_at: string | null;
+  /** The real calendar date (YYYY-MM-DD). */
+  occurrence_date?: string | null;
   location_id: string | null;
   // Journal V2 Pass 2B — the occurrence's own IANA timezone (every
   // event_occurrences row carries one), needed to render its date/time
@@ -359,7 +362,7 @@ async function resolveConnectedObjects(
       ? supabase.from("events").select("id, name, slug, cover_image_url, start_at, city, state").in("id", eventIds)
       : Promise.resolve({ data: [] }),
     occurrenceIds.length
-      ? supabase.from("event_occurrences").select("id, event_id, start_at, end_at, location_id, timezone, location:locations(name, slug)").in("id", occurrenceIds)
+      ? supabase.from("event_occurrences").select("id, event_id, occurrence_date, start_at, end_at, location_id, timezone, location:locations(name, slug)").in("id", occurrenceIds)
       : Promise.resolve({ data: [] }),
   ]);
 

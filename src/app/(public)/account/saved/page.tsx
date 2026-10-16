@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { formatEventRange } from "@/lib/event-time";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import BusinessCard from "@/components/BusinessCard";
@@ -6,7 +7,7 @@ import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
 import LocationCard from "@/components/LocationCard";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { cityState, formatDateRange } from "@/lib/format";
+import { cityState } from "@/lib/format";
 import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS, type LocationWithCategory } from "@/lib/data";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
@@ -115,7 +116,7 @@ export default async function AccountSavedPage() {
                     href={`/event/${e.slug}`}
                     image={e.cover_image_url}
                     title={e.name}
-                    meta={[formatDateRange(e.start_at, e.end_at), cityState(e.city, e.state)]
+                    meta={[formatEventRange(e), cityState(e.city, e.state)]
                       .filter(Boolean)
                       .join(" · ")}
                   />

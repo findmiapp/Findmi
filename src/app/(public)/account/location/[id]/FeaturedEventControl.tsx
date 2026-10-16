@@ -25,17 +25,18 @@ export default async function FeaturedEventControl({
 
   const { data } = await admin
     .from("event_occurrences")
-    .select("event:events(id, name, start_at)")
+    .select("event:events(id, name, start_at, start_date)")
     .eq("location_id", locationId)
     .eq("status", "scheduled");
 
-  type JoinedEvent = { id: string; name: string; start_at: string };
+  type JoinedEvent = { id: string; name: string; start_at: string | null; start_date: string };
   const byId = new Map<string, JoinedEvent>();
   for (const row of data ?? []) {
     const e = Array.isArray(row.event) ? row.event[0] : row.event;
     if (e) byId.set(e.id, e as JoinedEvent);
   }
-  const eligibleEvents = Array.from(byId.values()).sort((a, b) => a.start_at.localeCompare(b.start_at));
+  // Chronological by calendar date, then known start (Event date/time precision).
+  const eligibleEvents = Array.from(byId.values()).sort((a, b) => (a.start_date !== b.start_date ? a.start_date.localeCompare(b.start_date) : (a.start_at ?? "~").localeCompare(b.start_at ?? "~")));
 
   if (eligibleEvents.length === 0) return null;
 

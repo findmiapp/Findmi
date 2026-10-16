@@ -4,6 +4,7 @@
 // Review (one row per Event, each with its OWN Business), and each Event is
 // saved as a participating-style source Event (no host) — see
 // persistDiscoveryEvent. Pure; no I/O.
+import { attendanceSlots, fromAttendanceSlots } from "./attendance-links";
 import { reviewDefaults } from "./review";
 import { splitPastedEvents } from "./paste-segments";
 import type { EventCandidate, EventImportAnalysis, EventImportMatches, EventImportReview, ImportSource, StructuredEventHints } from "./types";
@@ -144,11 +145,19 @@ export function fillReviewGaps(review: EventImportReview, fresh: EventImportRevi
   const next: EventImportReview = { ...review };
   if (!next.description?.trim() && fresh.description) next.description = fresh.description;
   if (!next.organizer?.trim() && fresh.organizer) next.organizer = fresh.organizer;
-  if (!next.attendance && fresh.attendance) next.attendance = fresh.attendance;
+  // RSVP / Registration and Tickets each fill only their own empty slot.
+  const mine = attendanceSlots(review);
+  const theirs = attendanceSlots(fresh);
+  const slots = { rsvp: mine.rsvp?.url ? mine.rsvp : theirs.rsvp, tickets: mine.tickets ? mine.tickets : theirs.tickets };
+  Object.assign(next, fromAttendanceSlots(slots));
   if (!next.imageUrl && !opts.hadImage && fresh.imageUrl) next.imageUrl = fresh.imageUrl;
-  const freshByDate = new Map(fresh.occurrences.filter((o) => o.startTime && o.endTime).map((o) => [o.date, o]));
+  // Only a date that is ALONE on its day (in both the edited rows and the
+  // fresh reading) can take a fresh time — several Locations sharing a day
+  // never inherit one guessed time.
+  const count = (list: { date: string }[], date: string) => list.filter((o) => o.date === date).length;
+  const freshByDate = new Map(fresh.occurrences.filter((o) => o.startTime && count(fresh.occurrences, o.date) === 1).map((o) => [o.date, o]));
   next.occurrences = review.occurrences.map((o) => {
-    const f = o.date ? freshByDate.get(o.date) : undefined;
+    const f = o.date && count(review.occurrences, o.date) === 1 ? freshByDate.get(o.date) : undefined;
     return f && !o.startTime && !o.endTime ? { ...o, startTime: f.startTime, endTime: f.endTime } : o;
   });
   return next;

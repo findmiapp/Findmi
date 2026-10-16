@@ -23,6 +23,10 @@ export const ADMIN_SORT_LABEL: Record<AdminSortKey, string> = {
 export interface AdminSortColumn {
   column: string;
   ascending: boolean;
+  /** Where unknown (NULL) values go; omitted = the database default. */
+  nullsFirst?: boolean;
+  /** A secondary column applied right after this one (before the id tie-break). */
+  then?: AdminSortColumn;
 }
 
 export interface AdminSortConfig {
@@ -58,15 +62,18 @@ export const LOCATION_SORT: AdminSortConfig = {
   columns: { az: byName(true), za: byName(false) },
 };
 
-/** Events: the existing chronological order (start_at, latest first) stays
+/** Events: the existing chronological order (Event date, latest first) stays
  * the default. Newest / Oldest mean when the Event was ADDED (created_at),
  * and the Event-date options say so in their labels. */
 export const EVENT_SORT: AdminSortConfig = {
   options: ["date_desc", "date_asc", "newest", "oldest", "az", "za"],
   defaultKey: "date_desc",
   columns: {
-    date_desc: { column: "start_at", ascending: false },
-    date_asc: { column: "start_at", ascending: true },
+    // Event date/time precision: the real calendar date first, then the
+    // known start on that date (an Event with no published time after the
+    // timed ones), then the id tie-break.
+    date_desc: { column: "start_date", ascending: false, then: { column: "start_at", ascending: false, nullsFirst: false } },
+    date_asc: { column: "start_date", ascending: true, then: { column: "start_at", ascending: true, nullsFirst: false } },
     newest: created(false),
     oldest: created(true),
     az: byName(true),
@@ -98,11 +105,15 @@ export function adminSortOptions(config: AdminSortConfig): { value: AdminSortKey
 /** The ordered columns a sort applies, always ending with the `id` tie-break. */
 export function adminSortColumns(config: AdminSortConfig, key: AdminSortKey): AdminSortColumn[] {
   const primary = config.columns[key] ?? config.columns[config.defaultKey];
-  return [...(primary ? [primary] : []), { column: "id", ascending: true }];
+  const flat = (c: AdminSortColumn): AdminSortColumn[] => {
+    const { then, ...own } = c;
+    return [own, ...(then ? flat(then) : [])];
+  };
+  return [...(primary ? flat(primary) : []), { column: "id", ascending: true }];
 }
 
-export function applyAdminSort<Q extends { order: (column: string, options: { ascending: boolean }) => Q }>(query: Q, config: AdminSortConfig, key: AdminSortKey): Q {
+export function applyAdminSort<Q extends { order: (column: string, options: { ascending: boolean; nullsFirst?: boolean }) => Q }>(query: Q, config: AdminSortConfig, key: AdminSortKey): Q {
   let q = query;
-  for (const c of adminSortColumns(config, key)) q = q.order(c.column, { ascending: c.ascending });
+  for (const c of adminSortColumns(config, key)) q = q.order(c.column, c.nullsFirst === undefined ? { ascending: c.ascending } : { ascending: c.ascending, nullsFirst: c.nullsFirst });
   return q;
 }

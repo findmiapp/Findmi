@@ -138,6 +138,11 @@ export function DateTimeRangeField({
   defaultEnd,
   required,
   hint,
+  optionalTimes,
+  dateName,
+  endDateName,
+  defaultDate,
+  defaultEndDate,
 }: {
   startLabel: string;
   endLabel: string;
@@ -147,6 +152,12 @@ export function DateTimeRangeField({
   defaultEnd?: string | null;
   required?: boolean;
   hint?: string;
+  /** Event date/time precision — see DateTimeRangeFields. */
+  optionalTimes?: boolean;
+  dateName?: string;
+  endDateName?: string;
+  defaultDate?: string | null;
+  defaultEndDate?: string | null;
 }) {
   return (
     <div className="block">
@@ -159,6 +170,11 @@ export function DateTimeRangeField({
         endLabel={endLabel}
         required={required}
         inputClassName={inputClass}
+        optionalTimes={optionalTimes}
+        dateName={dateName}
+        endDateName={endDateName}
+        defaultDate={defaultDate}
+        defaultEndDate={defaultEndDate}
       />
       {hint && <span className="mt-1 block text-xs text-ink/45">{hint}</span>}
     </div>

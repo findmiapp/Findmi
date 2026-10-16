@@ -18,6 +18,7 @@ import { cleanText, usStateCode } from "../brand-website-extract";
 import { absoluteHttps, sameEventUrl, str, type JsonObject } from "./extract";
 import type { EventCandidate, ImportedVenue } from "./types";
 import type { LocationVisibility } from "../event-attendance";
+export { reviewAttendanceDefaults } from "./attendance-links";
 
 export type AttendanceCta = "rsvp" | "register" | "tickets";
 export type AttendancePricing = "free" | "paid" | "unknown";
@@ -166,7 +167,9 @@ export function pageRecordAttendance(record: JsonObject | null): Pick<Attendance
 
 const TICKET_WORDS = /^(get|buy|purchase|book)\s+(your\s+)?tickets?$|^tickets?$|^get\s+a\s+ticket$/i;
 const RSVP_WORDS = /^rsvp(\s+(now|here|today))?$/i;
-const REGISTER_WORDS = /^(register(\s+(now|here|today))?|request\s+to\s+join|reserve\s+(a\s+|your\s+)?spot)$/i;
+// Whole-label matches only (a control reading exactly "Sign Up", "Reserve
+// a Spot", "Book Now", "Attend" …) — never a word inside longer copy.
+const REGISTER_WORDS = /^(register(\s+(now|here|today))?|request\s+to\s+join|reserve(\s+now|\s+(a|your)\s+(spot|seat|place))?|sign\s*-?\s*up(\s+(now|here|today))?|book(\s+now|\s+(a|your)\s+(spot|seat|place))?|attend(\s+this\s+event)?)$/i;
 
 export function controlWording(text: string): AttendanceCta | null {
   const t = text.replace(/\s+/g, " ").trim();
@@ -276,6 +279,25 @@ export function isLumaEventUrl(url: string | URL | null | undefined): boolean {
   }
 }
 
+/** A registration platform's own single-Event page — the page IS where
+ * people register or buy (Luma, Eventbrite /e/…, Partiful /e/…). Only then
+ * may an Event Link serve as the attendance destination (approved
+ * registration precedence, rule 4); an informational page (a venue, a
+ * brand, a festival site, a platform listing / discovery page) never does. */
+export function isRegistrationPlatformEventUrl(url: string | URL | null | undefined): boolean {
+  if (!url) return false;
+  if (isLumaEventUrl(url)) return true;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    if (/(^|\.)eventbrite\.[a-z.]+$/i.test(u.hostname)) return /^\/e\/[A-Za-z0-9][A-Za-z0-9_-]{2,200}\/?$/.test(u.pathname);
+    if (/(^|\.)partiful\.com$/i.test(u.hostname)) return /^\/e\/[A-Za-z0-9_-]{4,64}\/?$/.test(u.pathname);
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // ── decision ───────────────────────────────────────────────────────────
 
 /** The attendance action, from evidence only:
@@ -369,11 +391,17 @@ export function normalizeReviewedAttendance(value: unknown): ReviewedAttendance 
   }
 }
 
+/** A reviewed Ticket link (https only), or null. */
+export function normalizeReviewedUrl(value: unknown): string | null {
+  return normalizeReviewedAttendance({ cta: "tickets", url: value })?.url ?? null;
+}
+
 /** Existing Event action columns for a reviewed attendance action. Only a
  * present action turns anything on — nothing is ever switched off here. */
-export function attendanceEventColumns(a: ReviewedAttendance | null): { tickets_enabled?: boolean; tickets_url?: string; rsvp_enabled?: boolean; rsvp_url?: string } {
-  if (!a) return {};
-  return a.cta === "tickets" ? { tickets_enabled: true, tickets_url: a.url } : { rsvp_enabled: true, rsvp_url: a.url };
+export function attendanceEventColumns(a: ReviewedAttendance | null, ticketsUrl: string | null = null): { tickets_enabled?: boolean; tickets_url?: string; rsvp_enabled?: boolean; rsvp_url?: string } {
+  const tickets = ticketsUrl && a?.cta !== "tickets" ? { tickets_enabled: true, tickets_url: ticketsUrl } : {};
+  if (!a) return tickets;
+  return a.cta === "tickets" ? { tickets_enabled: true, tickets_url: a.url } : { rsvp_enabled: true, rsvp_url: a.url, ...tickets };
 }
 
 /** The two newer Event columns (rsvp_cta, location_visibility). Written in

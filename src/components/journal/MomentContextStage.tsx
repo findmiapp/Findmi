@@ -8,10 +8,25 @@ import { getEventOccurrencesForJournal, type JournalOccurrenceOption } from "@/a
 import { pickTodayOccurrence } from "@/lib/schedule-time";
 import { EMPTY_MANUAL_LOCATION, manualLocationHasText, type JournalManualLocationState, type MomentEventPick, type MomentPick } from "@/lib/moment-composer";
 
-export function formatOccurrence(occ: { start_at: string; end_at: string; timezone: string }): string {
-  const date = new Date(occ.start_at).toLocaleDateString("en-US", { timeZone: occ.timezone, weekday: "short", month: "short", day: "numeric", year: "numeric" });
+export function formatOccurrence(occ: { start_at: string | null; end_at: string | null; timezone: string; occurrence_date?: string | null }): string {
+  // Event date/time precision: the real date always; times only where
+  // published (a date with no time shows the date alone).
+  const day = occurrenceDay(occ);
+  const date = day ? new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "";
+  const times = occurrenceTimes(occ);
+  return times ? `${date} · ${times}` : date;
+}
+
+/** The occurrence's own local calendar date. */
+function occurrenceDay(occ: { start_at: string | null; timezone: string; occurrence_date?: string | null }): string {
+  return occ.start_at ? new Date(occ.start_at).toLocaleDateString("en-CA", { timeZone: occ.timezone }) : (occ.occurrence_date ?? "");
+}
+
+/** "6:00 PM–9:00 PM", "6:00 PM" (no published end) or "" (no time). */
+function occurrenceTimes(occ: { start_at: string | null; end_at: string | null; timezone: string }): string {
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: occ.timezone, hour: "numeric", minute: "2-digit" });
-  return `${date} · ${time(occ.start_at)}–${time(occ.end_at)}`;
+  if (!occ.start_at) return "";
+  return occ.end_at ? `${time(occ.start_at)}–${time(occ.end_at)}` : time(occ.start_at);
 }
 
 /** Moments V2 — Stage 1, "Context": WHERE / WHAT was this, then WHO /
@@ -289,7 +304,13 @@ function OccurrenceChooser({
   selectedId: string | null;
   onPick: (occ: JournalOccurrenceOption) => void;
 }) {
-  const sorted = [...options].sort((a, b) => a.start_at.localeCompare(b.start_at));
+  const sorted = [...options].sort((a, b) => {
+    const da = occurrenceDay(a);
+    const db = occurrenceDay(b);
+    if (da !== db) return da < db ? -1 : 1;
+    if (a.start_at && b.start_at) return a.start_at.localeCompare(b.start_at);
+    return a.start_at ? -1 : b.start_at ? 1 : a.id.localeCompare(b.id);
+  });
   const { todayIds, anchorId } = pickTodayOccurrence(sorted);
   const focusId = selectedId && sorted.some((o) => o.id === selectedId) ? selectedId : anchorId;
   const listRef = useRef<HTMLDivElement>(null);
@@ -311,13 +332,13 @@ function OccurrenceChooser({
       </p>
       <div ref={listRef} className="relative max-h-64 overflow-y-auto rounded-xl border border-black/10 bg-white">
         {sorted.map((occ) => {
-          const month = new Date(occ.start_at).toLocaleDateString("en-US", { timeZone: occ.timezone, month: "long", year: "numeric" });
+          const dayAnchor = new Date(`${occurrenceDay(occ)}T12:00:00Z`);
+          const month = dayAnchor.toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" });
           const header = month !== lastMonth ? month : null;
           lastMonth = month;
           const isToday = todayIds.has(occ.id);
           const isSelected = occ.id === selectedId;
-          const day = new Date(occ.start_at).toLocaleDateString("en-US", { timeZone: occ.timezone, weekday: "short", month: "short", day: "numeric" });
-          const time = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: occ.timezone, hour: "numeric", minute: "2-digit" });
+          const day = dayAnchor.toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
           return (
             <div key={occ.id}>
               {header && <p className="sticky top-0 z-10 bg-mist/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/45">{header}</p>}
@@ -337,9 +358,7 @@ function OccurrenceChooser({
                   </span>
                   {showLocation && occ.location && <span className="block truncate text-[11px] text-ink/45">{occ.location.name}</span>}
                 </span>
-                <span className="shrink-0 text-xs text-ink/55">
-                  {time(occ.start_at)}–{time(occ.end_at)}
-                </span>
+                <span className="shrink-0 text-xs text-ink/55">{occurrenceTimes(occ)}</span>
                 {isSelected && <span className="shrink-0 text-xs font-bold text-findmi-700">Selected</span>}
               </button>
             </div>

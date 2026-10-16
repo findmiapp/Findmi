@@ -1,4 +1,5 @@
 import { getAdminSupabase } from "./supabase-admin";
+import { occurrenceWindowOr, todayIn, windowDates } from "@/lib/event-time";
 import { getAdminUserCount } from "./user-queries";
 import { getDiscoveryWindowBounds } from "@/lib/format";
 import { dedupeAppearances, deriveEventIdsWithOccurrenceProjections, withoutSupersededEventProjections } from "@/lib/data";
@@ -210,7 +211,9 @@ export async function getDashboardGlance(): Promise<DashboardGlance | null> {
   const nowIso = new Date().toISOString();
 
   const [upcomingEvents, inquiries, users] = await Promise.all([
-    supabase.from("events").select("id", { count: "exact", head: true }).gte("start_at", nowIso),
+    // Upcoming: a known start still ahead, or (no published start) a
+    // calendar start date today or later.
+    supabase.from("events").select("id", { count: "exact", head: true }).or(`start_at.gte.${nowIso},and(start_at.is.null,start_date.gte.${todayIn()})`),
     supabase.from("inquiries").select("id", { count: "exact", head: true }),
     getAdminUserCount(),
   ]);
@@ -362,7 +365,9 @@ export interface TodayActivityItem {
   kind: "appearance" | "event";
   title: string;
   subtitle: string | null;
-  startAt: string;
+  /** Null for an Event date with no published time (shown "Time Not
+   * Listed", sorted after timed rows). */
+  startAt: string | null;
   endAt: string | null;
   href: string;
   /** Compact visual identity, resolved from the row's own entity:
@@ -391,10 +396,11 @@ export interface TodayAppearanceInput {
 
 export interface TodayOccurrenceInput {
   id: string;
-  start_at: string;
+  start_at: string | null;
   end_at: string | null;
+  occurrence_date?: string | null;
   venue_name: string | null;
-  event: { id: string; name: string; cover_image_url: string | null; start_at?: string; end_at?: string | null };
+  event: { id: string; name: string; cover_image_url: string | null; start_at?: string | null; end_at?: string | null };
 }
 
 /** Admin Today is a DAILY operational schedule (every Event date and
@@ -439,7 +445,7 @@ export function buildTodayActivity(appearances: TodayAppearanceInput[], occurren
     };
     eventRows.set(o.id, item);
     const first = firstRowForEvent.get(o.event.id);
-    if (!first || item.startAt < first.startAt) firstRowForEvent.set(o.event.id, item);
+    if (!first || compareTodayStart(item.startAt, first.startAt) < 0) firstRowForEvent.set(o.event.id, item);
   }
 
   const byBusiness = new Map<string, TodayAppearanceInput[]>();
@@ -478,7 +484,13 @@ export function buildTodayActivity(appearances: TodayAppearanceInput[], occurren
       });
     }
   }
-  return items.sort((a, b) => (a.startAt < b.startAt ? -1 : a.startAt > b.startAt ? 1 : a.id.localeCompare(b.id)));
+  return items.sort((a, b) => compareTodayStart(a.startAt, b.startAt) || a.id.localeCompare(b.id));
+}
+
+/** Timed rows by start; rows with no published time after them. */
+function compareTodayStart(a: string | null, b: string | null): number {
+  if (a && b) return a < b ? -1 : a > b ? 1 : 0;
+  return a ? -1 : b ? 1 : 0;
 }
 
 /** Admin V2 Pass 1 — "Today on Findmi": non-canceled Appearances and
@@ -508,13 +520,15 @@ export async function getTodayOnFindmi(): Promise<TodayActivityItem[] | null> {
       .limit(25),
     supabase
       .from("event_occurrences")
-      .select("id, start_at, end_at, venue_name, event:events!inner(id, name, cover_image_url, start_at, end_at, is_demo, trashed_at)")
+      .select("id, occurrence_date, start_at, end_at, venue_name, event:events!inner(id, name, cover_image_url, start_at, end_at, is_demo, trashed_at)")
       .eq("status", "scheduled")
       .eq("event.is_demo", false)
       .is("event.trashed_at", null)
-      .lt("start_at", endIso)
-      .or(`end_at.gte."${startIso}",and(end_at.is.null,start_at.gte."${startIso}")`)
-      .order("start_at")
+      // Today: a timed date overlapping today; a date with no published end
+      // (start-only or date-only) by its real calendar date.
+      .or(occurrenceWindowOr(startIso, endIso, windowDates(bounds).from, windowDates(bounds).to))
+      .order("occurrence_date")
+      .order("start_at", { nullsFirst: false })
       .limit(25),
   ]);
   if (appearances.error && occurrences.error) return null;

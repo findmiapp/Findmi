@@ -5,6 +5,7 @@
 // V1B: each date keeps its own place. When every date shares one place,
 // Review keeps a single Where section (`sharedPlace`); when places differ,
 // each date is reviewed together with its place.
+import { reviewAttendanceDefaults } from "./attendance-links";
 import {
   EMPTY_VENUE,
   sharedVenue,
@@ -125,7 +126,12 @@ export function reviewDefaults(candidate: EventCandidate, matches: EventImportMa
     asEvent: candidate.persistAs === "event",
     // Evidence-only defaults (never AI): the action the source supports,
     // and what it made public about the place.
-    attendance: candidate.attendance?.cta && candidate.attendance.url ? { cta: candidate.attendance.cta, url: candidate.attendance.url } : null,
+    // Explicitly pasted links first, then what the source evidenced — each
+    // slot (RSVP / Registration, Tickets) from its own kind only.
+    ...reviewAttendanceDefaults(
+      candidate.structured?.links,
+      candidate.structured?.links ? (candidate.structured.pageAttendance ?? null) : candidate.attendance
+    ),
     locationVisibility: candidate.locationVisibility ?? null,
   };
 }
@@ -143,11 +149,15 @@ export function formatDay(date: string): string {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-/** One-line summary of a reviewed date: "Thu, Sep 24 · 1:00 PM – 7:00 PM". */
+/** Review label for a date with no published time (never a guessed one). */
+export const REVIEW_TIME_NOT_LISTED = "Time Not Listed";
+
+/** One-line summary of a reviewed date: "Thu, Sep 24 · 1:00 PM – 7:00 PM",
+ * "… · Starts 1:00 PM" (no published end) or "… · Time Not Listed". */
 export function occurrenceSummary(o: { date: string; startTime: string; endTime: string }): { day: string; time: string } {
   const start = formatTime(o.startTime);
   const end = formatTime(o.endTime);
-  return { day: formatDay(o.date), time: start && end ? `${start} – ${end}` : start };
+  return { day: formatDay(o.date), time: start && end ? `${start} – ${end}` : start ? `Starts ${start}` : end ? "" : REVIEW_TIME_NOT_LISTED };
 }
 
 /** Business-facing success sentence — never "Appearance". */
@@ -190,7 +200,9 @@ export function batchItemStatus(review: EventImportReview, matches: EventImportM
   if (!review.title.trim()) missing.push("Name");
   if (!review.useEventId) {
     if (review.occurrences.length === 0 || review.occurrences.some((o) => !/^\d{4}-\d{2}-\d{2}$/.test(o.date))) missing.push("Date");
-    if (review.occurrences.some((o) => !o.startTime || !o.endTime)) missing.push("Start and end time");
+    // Times are optional (a date with no published time is valid); only an
+    // end with no start needs the operator — a start is never guessed.
+    if (review.occurrences.some((o) => o.endTime && !o.startTime)) missing.push(END_WITHOUT_START);
   }
   if (missing.length > 0) return { kind: "needs_details", missing };
   if (review.useEventId) return { kind: "joins_existing", missing };
@@ -198,12 +210,14 @@ export function batchItemStatus(review: EventImportReview, matches: EventImportM
   return { kind: "ready", missing };
 }
 
-/** Which reviewed dates are missing a start or end time ("Sat, Oct 17",
- * or "Date 3" when the day itself is missing) — so "Missing: Start and end
- * time" names the actual dates, never the first one. */
+export const END_WITHOUT_START = "Start time for an end time";
+
+/** Which reviewed dates have an end time but no start ("Sat, Oct 17", or
+ * "Date 3" when the day itself is missing) — so the status names the
+ * actual dates. Dates with no time at all are valid and never listed. */
 export function datesMissingTime(review: EventImportReview): string[] {
   if (review.useEventId) return [];
-  return review.occurrences.flatMap((o, i) => (o.startTime && o.endTime ? [] : [formatDay(o.date) || `Date ${i + 1}`]));
+  return review.occurrences.flatMap((o, i) => (o.endTime && !o.startTime ? [formatDay(o.date) || `Date ${i + 1}`] : []));
 }
 
 export const BATCH_STATUS_LABEL: Record<BatchStatusKind, string> = {

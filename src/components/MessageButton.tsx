@@ -61,7 +61,9 @@ export default function MessageButton({
   /** Event target only — lets "Apply to Vend" ask which date on a
    * recurring event. Omitted (or empty) for a non-recurring event, which
    * applies to the whole event exactly as before. */
-  eventOccurrences?: { id: string; startAt: string }[];
+  /** `date` is the real calendar date (YYYY-MM-DD); a date with no
+   * published time is listed by that date alone. */
+  eventOccurrences?: { id: string; startAt: string | null; date: string }[];
   /** "compact" (default) — the h-9 trigger sized to match FollowButton on
    * Business/Location pages. "default" — a larger h-11 trigger sized to
    * match the Event page's own Tier A CTA geometry, used only in the
@@ -509,7 +511,7 @@ export default function MessageButton({
                                   className="h-4 w-4 shrink-0 accent-findmi"
                                 />
                                 <span className="text-sm text-ink">
-                                  {new Date(o.startAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                  {occurrenceDayLabel(o.date)}
                                 </span>
                               </label>
                             ))}
@@ -523,11 +525,7 @@ export default function MessageButton({
                         <p className="text-xs text-ink/50">
                           Applying for{" "}
                           <span className="font-medium text-ink">
-                            {new Date(eventOccurrences[0].startAt).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
+                            {occurrenceDayLabel(eventOccurrences[0].date)}
                           </span>
                         </p>
                       )}
@@ -613,4 +611,10 @@ function MessageGlyph({ className }: { className?: string }) {
       />
     </svg>
   );
+}
+
+/** "Oct 16, 2026" from a calendar date — the date itself, never shifted by
+ * the viewer's timezone. */
+function occurrenceDayLabel(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
 }

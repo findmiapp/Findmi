@@ -38,7 +38,7 @@ import { parseLocationVisibility, type LocationVisibility } from "../event-atten
 import { existingEventCategoryIds } from "../event-categories-server";
 import { cleanEventFormatIds } from "../event-formats";
 import { syncEventFormats } from "../event-formats-server";
-import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, type ReviewedAttendance } from "./attendance";
+import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, normalizeReviewedUrl, type ReviewedAttendance } from "./attendance";
 
 export const REVIEW_MAX_DATES = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,14 +54,24 @@ export interface NormalizedPlace {
   locationId: string | null;
 }
 
+export interface NormalizedDate {
+  date: string;
+  start: string | null;
+  end: string | null;
+  place: NormalizedPlace;
+  details: string | null;
+}
+
 export interface NormalizedImport {
   intent: EventImportIntent;
   title: string;
   description: string | null;
   imageUrl: string | null;
   sourceUrl: string | null;
-  /** Chronological; each date with its own place. */
-  occurrences: { start: string; end: string; place: NormalizedPlace; details: string | null }[];
+  /** Chronological; each date with its own place. `date` (YYYY-MM-DD) is
+   * always real; `start` / `end` are exact instants ONLY when published —
+   * null means unknown (never a placeholder). No end without a start. */
+  occurrences: NormalizedDate[];
   useEventId: string | null;
   /** Participating: create (or reuse) a canonical Event for this import. */
   asEvent: boolean;
@@ -69,6 +79,8 @@ export interface NormalizedImport {
   organizer: string | null;
   /** Reviewed attendance action for a NEW Event (Get Tickets / RSVP / Register). */
   attendance: ReviewedAttendance | null;
+  /** A separate reviewed Ticket link beside an RSVP / Registration action. */
+  ticketsUrl: string | null;
   /** What the source made public about the place; "hidden" → no venue,
    * street address or Findmi Location is saved for any date. */
   locationVisibility: LocationVisibility | null;
@@ -99,6 +111,49 @@ function normalizePlace(p: ReviewPlace | null | undefined): NormalizedPlace {
 
 const placeKey = (p: NormalizedPlace) => p.locationId ?? `${(p.name ?? "").toLowerCase()}|${(p.address ?? "").toLowerCase()}`;
 
+/** One Event date's identity: calendar date + exact start (or "untimed") +
+ * place. Same date at different Locations stays distinct even with no
+ * times; the same date at the same place with the same (or no) time is a
+ * duplicate. */
+export function importDateKey(d: Pick<NormalizedDate, "date" | "start" | "place">): string {
+  return `${d.date}#${d.start ? new Date(d.start).toISOString() : "untimed"}#${placeKey(d.place)}`;
+}
+
+/** Chronological without fake times: date, then known start (timed before
+ * untimed on the same date), then place. */
+export function compareImportDates(a: NormalizedDate, b: NormalizedDate): number {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  if (a.start && b.start && a.start !== b.start) return a.start.localeCompare(b.start);
+  if (a.start && !b.start) return -1;
+  if (!a.start && b.start) return 1;
+  return placeKey(a.place).localeCompare(placeKey(b.place));
+}
+
+/** The parent Event's calendar range from its dates. Dates are always
+ * real; the parent's exact start / end are kept ONLY when every date on the
+ * first (last) calendar day publishes one — never borrowed from a later
+ * date, a Programming item or a guess. */
+export function parentEventRange(dates: Pick<NormalizedDate, "date" | "start" | "end">[]): { start_date: string; end_date: string; start_at: string | null; end_at: string | null } {
+  const endDateOf = (d: Pick<NormalizedDate, "date" | "end">) => (d.end ? dateInAppZone(d.end, d.date) : d.date);
+  const start_date = dates.reduce((min, d) => (d.date < min ? d.date : min), dates[0].date);
+  const end_date = dates.reduce((max, d) => (endDateOf(d) > max ? endDateOf(d) : max), endDateOf(dates[0]));
+  const first = dates.filter((d) => d.date === start_date);
+  const start_at = first.every((d) => d.start) ? first.map((d) => d.start as string).sort()[0] : null;
+  const last = dates.filter((d) => endDateOf(d) === end_date);
+  const end_at = start_at && last.every((d) => d.end) ? last.map((d) => d.end as string).sort().at(-1)! : null;
+  return { start_date, end_date: end_date > start_date ? end_date : start_date, start_at, end_at };
+}
+
+// A timed end's calendar date in the app timezone (an end exactly at
+// midnight belongs to the day before).
+function dateInAppZone(iso: string, fallback: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return fallback;
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(t - 1));
+  const get = (k: string) => parts.find((p) => p.type === k)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 function nextDay(date: string): string {
   const t = new Date(`${date}T00:00:00Z`);
   t.setUTCDate(t.getUTCDate() + 1);
@@ -116,26 +171,39 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
   const shared = review.sharedPlace ? normalizePlace(review.place) : null;
   const occurrences: NormalizedImport["occurrences"] = [];
   const seen = new Set<string>();
+  const HHMM = /^\d{2}:\d{2}$/;
   for (const d of raw) {
+    // The calendar date is required; times are optional precision on it.
     if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d.date ?? "")) return { ok: false, error: "Each date needs a day.", field: "dates" };
-    if (!/^\d{2}:\d{2}$/.test(d.startTime ?? "") || !/^\d{2}:\d{2}$/.test(d.endTime ?? "")) {
-      return { ok: false, error: "Each date needs a start and end time.", field: "dates" };
+    const startText = (d.startTime ?? "").trim();
+    const endText = (d.endTime ?? "").trim();
+    if (startText && !HHMM.test(startText)) return { ok: false, error: "A start time couldn't be read. Fix it or leave it blank.", field: "dates" };
+    if (endText && !HHMM.test(endText)) return { ok: false, error: "An end time couldn't be read. Fix it or leave it blank.", field: "dates" };
+    // An end with no start is never guessed into a start.
+    if (endText && !startText) return { ok: false, error: "An end time needs a start time. Add the start, or clear the end.", field: "dates" };
+    let start: string | null = null;
+    let end: string | null = null;
+    if (startText) {
+      start = localDateTimeToIso(`${d.date}T${startText}`);
+      if (!start) return { ok: false, error: "A start time couldn't be read. Fix it or leave it blank.", field: "dates" };
+      if (endText) {
+        end = localDateTimeToIso(`${d.date}T${endText}`);
+        // 6 PM – 12 AM: an end before the start ends after midnight.
+        if (end && Date.parse(end) <= Date.parse(start) && endText < startText) {
+          const overnight = localDateTimeToIso(`${nextDay(d.date)}T${endText}`);
+          end = overnight && Date.parse(overnight) - Date.parse(start) <= MAX_OVERNIGHT_MS ? overnight : end;
+        }
+        if (!end || Date.parse(end) <= Date.parse(start)) return { ok: false, error: "End time must be after the start time.", field: "dates" };
+      }
     }
-    const start = localDateTimeToIso(`${d.date}T${d.startTime}`);
-    let end = localDateTimeToIso(`${d.date}T${d.endTime}`);
-    // 6 PM – 12 AM: an end before the start ends after midnight.
-    if (start && end && Date.parse(end) <= Date.parse(start) && d.endTime < d.startTime) {
-      const overnight = localDateTimeToIso(`${nextDay(d.date)}T${d.endTime}`);
-      end = overnight && Date.parse(overnight) - Date.parse(start) <= MAX_OVERNIGHT_MS ? overnight : end;
-    }
-    if (!start || !end || Date.parse(end) <= Date.parse(start)) return { ok: false, error: "End time must be after the start time.", field: "dates" };
     const place = shared ?? normalizePlace(d.place);
-    const key = `${start}#${placeKey(place)}`;
+    const next: NormalizedDate = { date: d.date, start, end, place, details: cleanOccurrenceDetails(d.details) };
+    const key = importDateKey(next);
     if (seen.has(key)) continue;
     seen.add(key);
-    occurrences.push({ start, end, place, details: cleanOccurrenceDetails(d.details) });
+    occurrences.push(next);
   }
-  occurrences.sort((a, b) => a.start.localeCompare(b.start));
+  occurrences.sort(compareImportDates);
 
   // The source's location decision. "hidden" is enforced on every date;
   // "broad" never links a precise Location by itself, but a place the
@@ -181,6 +249,7 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
       asEvent: review.intent === "participating" && review.asEvent === true,
       organizer: cleanText(review.organizer, 160),
       attendance: normalizeReviewedAttendance(review.attendance),
+      ticketsUrl: normalizeReviewedUrl(review.ticketsUrl),
       locationVisibility,
       categoryId: review.categoryId && UUID.test(review.categoryId) ? review.categoryId : null,
       formatIds: cleanEventFormatIds(Array.isArray(review.formatIds) ? review.formatIds : []).slice(0, 32),
@@ -195,7 +264,7 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
  * position. */
 async function writeOccurrenceDetails(
   admin: SupabaseClient,
-  rows: { id: string; start_at?: string; location_id?: string | null; venue_name?: string | null }[],
+  rows: OccurrenceRowRef[],
   dates: NormalizedImport["occurrences"],
   snaps: { location_id: string | null; venue_name: string | null }[]
 ): Promise<void> {
@@ -203,10 +272,7 @@ async function writeOccurrenceDetails(
   for (let i = 0; i < dates.length; i++) {
     const details = dates[i].details;
     if (!details) continue;
-    const at = Date.parse(dates[i].start);
-    const row = rows.find(
-      (r) => !used.has(r.id) && r.start_at !== undefined && Date.parse(r.start_at) === at && (r.location_id ?? null) === snaps[i].location_id && (r.venue_name ?? null) === snaps[i].venue_name
-    );
+    const row = rows.find((r) => !used.has(r.id) && sameImportDateRow(r, dates[i], snaps[i]));
     if (!row) continue;
     used.add(row.id);
     const { error } = await admin.from("event_occurrences").update({ details }).eq("id", row.id);
@@ -215,6 +281,26 @@ async function writeOccurrenceDetails(
       return;
     }
   }
+}
+
+export interface OccurrenceRowRef {
+  id: string;
+  occurrence_date?: string | null;
+  start_at?: string | null;
+  location_id?: string | null;
+  venue_name?: string | null;
+}
+
+/** A created row IS this reviewed date: same calendar date, same start
+ * (both unknown counts as the same), same Location and venue. Never by
+ * position — so two untimed dates on the same day at different Locations
+ * each get their own details. */
+export function sameImportDateRow(r: OccurrenceRowRef, d: Pick<NormalizedDate, "date" | "start">, snap: { location_id: string | null; venue_name: string | null }): boolean {
+  if (r.occurrence_date && r.occurrence_date !== d.date) return false;
+  const rowStart = r.start_at ? Date.parse(r.start_at) : null;
+  const dateStart = d.start ? Date.parse(d.start) : null;
+  if (rowStart !== dateStart) return false;
+  return (r.location_id ?? null) === snap.location_id && (r.venue_name ?? null) === snap.venue_name;
 }
 
 /** The newer Event columns, best-effort (see attendanceExtraColumns). */
@@ -256,7 +342,8 @@ export interface PersistDeps {
   /** Existing active Market/Area for typed city/state (never creates one). */
   geography: (text: string) => Promise<{ marketId: string; areaId: string | null } | null>;
   uniqueEventSlug: (title: string) => Promise<string | null>;
-  notifyNewEvent: (eventId: string, title: string, startIso: string) => Promise<void>;
+  /** `startIso` is null when the first date has no published time. */
+  notifyNewEvent: (eventId: string, title: string, startIso: string | null, date: string) => Promise<void>;
   propagateDates: (eventId: string, occurrenceIds: string[]) => Promise<void>;
   /** Rich Event Persistence: an Event already carrying this source link
    * (pending review included) — reused instead of creating a second one. */
@@ -313,6 +400,12 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
 
   if (input.asEvent) return persistParticipatingEvent(input, deps);
 
+  // A schedule item (appearances) needs a real start time — a date with no
+  // published time can't be one, and no placeholder time is ever written.
+  if (input.occurrences.some((d) => !d.start)) {
+    return { ok: false, error: "Add a start time for each date to put it on your schedule.", field: "dates" };
+  }
+
   // Never add a second copy of a date already on this Business's schedule.
   const { data: existing } = await admin
     .from("appearances")
@@ -321,11 +414,11 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
     .neq("status", "canceled")
     .in(
       "start_at",
-      input.occurrences.map((d) => d.start)
+      input.occurrences.map((d) => d.start as string)
     );
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const taken = new Set(((existing ?? []) as { start_at: string; title: string }[]).filter((r) => norm(r.title) === norm(input.title)).map((r) => new Date(r.start_at).toISOString()));
-  const toAdd = input.occurrences.filter((d) => !taken.has(new Date(d.start).toISOString()));
+  const toAdd = input.occurrences.filter((d) => !taken.has(new Date(d.start as string).toISOString()));
   if (toAdd.length === 0) return { ok: true, kind: "already", title: input.title, viewHref: scheduleHref };
 
   const locations = await loadLocations(admin, toAdd.flatMap((d) => (d.place.locationId ? [d.place.locationId] : [])));
@@ -411,7 +504,7 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   // 4b. The Business's Event-linked schedule item for every date.
   await deps.propagateDates(created.eventId, created.occurrenceIds);
 
-  await deps.notifyNewEvent(created.eventId, input.title, input.occurrences[0].start);
+  await deps.notifyNewEvent(created.eventId, input.title, input.occurrences[0].start, input.occurrences[0].date);
   return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true };
 }
 
@@ -432,8 +525,10 @@ async function createSourceEvent(
   const { admin } = deps;
   const slug = await deps.uniqueEventSlug(input.title);
   if (!slug) return { ok: false, error: "Add the event's name.", field: "title" };
-  const first = input.occurrences[0];
-  const lastEnd = input.occurrences.reduce((max, d) => (d.end > max ? d.end : max), first.end);
+  // The parent's calendar range from its dates; exact parent times only
+  // where the dates themselves publish them (never the festival span
+  // pushed down, never a Programming time pulled up).
+  const range = parentEventRange(input.occurrences);
   const locations = await loadLocations(admin, input.occurrences.flatMap((d) => (d.place.locationId ? [d.place.locationId] : [])));
   const snaps = input.occurrences.map((d) => snapshotFor(d.place, locations));
   const eventPlace = eventPlaceFor(snaps);
@@ -449,8 +544,10 @@ async function createSourceEvent(
     .insert({
       name: input.title,
       slug,
-      start_at: first.start,
-      end_at: lastEnd,
+      start_date: range.start_date,
+      end_date: range.end_date,
+      start_at: range.start_at,
+      end_at: range.end_at,
       ...NEW_EVENT_PUBLICATION,
       host_business_id: null,
       organizer_name: input.organizer,
@@ -460,7 +557,7 @@ async function createSourceEvent(
       market_id: geo?.marketId ?? null,
       market_area_id: geo?.areaId ?? null,
       ...eventPlace,
-      ...attendanceEventColumns(input.attendance),
+      ...attendanceEventColumns(input.attendance, input.ticketsUrl),
     })
     .select("id")
     .single();
@@ -482,20 +579,10 @@ async function createSourceEvent(
   const { data: occs } = await admin
     .from("event_occurrences")
     .insert(
-      input.occurrences.map((d, i) => ({
-        event_id: eventId,
-        start_at: d.start,
-        end_at: d.end,
-        location_id: snaps[i].location_id,
-        venue_name: snaps[i].venue_name,
-        address: snaps[i].address,
-        city: snaps[i].city,
-        state: snaps[i].state,
-        postal_code: snaps[i].postal_code,
-      }))
+      input.occurrences.map((d, i) => occurrenceInsertRow(eventId, d, snaps[i]))
     )
-    .select("id, start_at, location_id, venue_name");
-  const occRows = (occs ?? []) as { id: string; start_at?: string; location_id?: string | null; venue_name?: string | null }[];
+    .select("id, occurrence_date, start_at, location_id, venue_name");
+  const occRows = (occs ?? []) as OccurrenceRowRef[];
   const ids = occRows.map((o) => o.id);
   if (ids.length > 0) await writeOccurrenceDetails(admin, occRows, input.occurrences, snaps);
   if (ids.length === 0) {
@@ -537,6 +624,23 @@ export async function persistDiscoveryEvent(input: NormalizedImport, businessId:
   return { ok: true, kind: "scheduled", title: input.title, viewHref: adminHref(created.eventId), newEvent: true };
 }
 
+/** One event_occurrences insert: the real calendar date always, exact
+ * times only when published (null otherwise — never a placeholder). */
+export function occurrenceInsertRow(eventId: string, d: NormalizedDate, snap: ReturnType<typeof snapshotFor>) {
+  return {
+    event_id: eventId,
+    occurrence_date: d.date,
+    start_at: d.start,
+    end_at: d.start ? d.end : null,
+    location_id: snap.location_id,
+    venue_name: snap.venue_name,
+    address: snap.address,
+    city: snap.city,
+    state: snap.state,
+    postal_code: snap.postal_code,
+  };
+}
+
 /** Event-level place: the shared one, or — for a multi-place Event — only
  * the city/state every date has in common (each date keeps its own). */
 function eventPlaceFor(snaps: ReturnType<typeof snapshotFor>[]) {
@@ -564,10 +668,15 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     };
   }
 
+  // Hosting creates through create_owned_event, which (unchanged) requires
+  // an exact start and end — ask for them rather than invent either.
+  const range = parentEventRange(input.occurrences);
+  if (!range.start_at || !range.end_at) {
+    return { ok: false, error: "To host this Event, add a start and end time for its first and last dates.", field: "dates" };
+  }
   const slug = await deps.uniqueEventSlug(input.title);
   if (!slug) return { ok: false, error: "Add the event's name.", field: "title" };
   const first = input.occurrences[0];
-  const lastEnd = input.occurrences.reduce((max, d) => (d.end > max ? d.end : max), first.end);
 
   const locations = await loadLocations(admin, input.occurrences.flatMap((d) => (d.place.locationId ? [d.place.locationId] : [])));
   const snaps = input.occurrences.map((d) => snapshotFor(d.place, locations));
@@ -579,8 +688,8 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     p_user_id: deps.userId,
     p_name: input.title,
     p_slug: slug,
-    p_start_at: first.start,
-    p_end_at: lastEnd,
+    p_start_at: range.start_at,
+    p_end_at: range.end_at,
     p_market_id: geo?.marketId ?? null,
     p_requested_market_text: null,
     p_host_business_id: businessId,
@@ -600,7 +709,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
       external_url: input.sourceUrl,
       ...(cover ? { cover_image_url: cover } : {}),
       ...(geo?.areaId ? { market_area_id: geo.areaId } : {}),
-      ...attendanceEventColumns(input.attendance),
+      ...attendanceEventColumns(input.attendance, input.ticketsUrl),
     })
     .eq("id", eventId);
   await writeEventExtras(admin, eventId, input);
@@ -616,25 +725,15 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     const { data: occs } = await admin
       .from("event_occurrences")
       .insert(
-        input.occurrences.map((d, i) => ({
-          event_id: eventId,
-          start_at: d.start,
-          end_at: d.end,
-          location_id: snaps[i].location_id,
-          venue_name: snaps[i].venue_name,
-          address: snaps[i].address,
-          city: snaps[i].city,
-          state: snaps[i].state,
-          postal_code: snaps[i].postal_code,
-        }))
+        input.occurrences.map((d, i) => occurrenceInsertRow(eventId, d, snaps[i]))
       )
-      .select("id, start_at, location_id, venue_name");
-    const occRows = (occs ?? []) as { id: string; start_at?: string; location_id?: string | null; venue_name?: string | null }[];
+      .select("id, occurrence_date, start_at, location_id, venue_name");
+    const occRows = (occs ?? []) as OccurrenceRowRef[];
     const ids = occRows.map((o) => o.id);
     if (ids.length) await writeOccurrenceDetails(admin, occRows, input.occurrences, snaps);
     if (ids.length) await deps.propagateDates(eventId, ids);
   }
 
-  await deps.notifyNewEvent(eventId, input.title, first.start);
+  await deps.notifyNewEvent(eventId, input.title, first.start, first.date);
   return { ok: true, kind: "scheduled", title: input.title, viewHref: `/account/event/${eventId}?business_id=${encodeURIComponent(businessId)}` };
 }

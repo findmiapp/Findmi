@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { happeningDateLine, happeningTemporal } from "@/lib/event-time";
 import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText } from "@/lib/journal-distribution";
@@ -32,7 +33,7 @@ import {
   getUpcomingWithinLocation,
   type LocationHappening,
 } from "@/lib/data";
-import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
+import { cityStateZip } from "@/lib/format";
 import { hasAnyHours } from "@/lib/locationHours";
 import { LocationHoursStatus } from "@/components/LocationHours";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
@@ -88,7 +89,7 @@ function resolveFeaturedLocationHappening(
     if (manual) return manual;
   }
 
-  const liveNow = happenings.find((h) => getTemporalLabel(h.start_at, h.end_at).live);
+  const liveNow = happenings.find((h) => happeningTemporal(h).live);
   if (liveNow) return liveNow;
 
   // happenings is already sorted start_at ascending by getUpcomingAtLocation.
@@ -147,7 +148,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // Resolution is pure/in-memory off the happenings array already fetched
   // above — see resolveFeaturedLocationHappening's own note.
   const featuredHappening = resolveFeaturedLocationHappening(happenings, location.featured_event_id ?? null);
-  const featuredLive = featuredHappening ? getTemporalLabel(featuredHappening.start_at, featuredHappening.end_at).live : false;
+  const featuredLive = featuredHappening ? happeningTemporal(featuredHappening).live : false;
   const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
     .join(", ");
@@ -396,11 +397,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               href={featuredHappening.href}
               ctaLabel={locationHappeningCtaLabel(featuredHappening.type)}
               subtitleLine={featuredHappening.subtitle}
-              dateTimeLine={formatAppearanceDateRange(
-                featuredHappening.start_at,
-                featuredHappening.end_at,
-                featuredHappening.description
-              )}
+              dateTimeLine={happeningDateLine(featuredHappening, featuredHappening.description)}
               locationLine={location.name}
               live={featuredLive}
             />

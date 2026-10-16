@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatCalendarDate } from "@/lib/event-time";
 import type { AdminEventOccurrence, AdminLocation, AdminOccurrenceVendor } from "@/lib/admin/queries";
 import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "@/lib/admin/form-helpers";
@@ -31,8 +32,10 @@ const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
 
 interface Row {
   id: string;
-  start_at: string; // datetime-local value, in this row's own timezone
-  end_at: string; // datetime-local value, in this row's own timezone
+  /** The calendar date (YYYY-MM-DD) — required; times are optional. */
+  date: string;
+  start_at: string; // datetime-local value, in this row's own timezone ("" = no published start)
+  end_at: string; // datetime-local value, in this row's own timezone ("" = no published end)
   timezone: string; // IANA zone — event_occurrences.timezone
   location_id: string; // "" = none
   market_id: string; // "" = inherit automatically (DB stays NULL — see F)
@@ -47,6 +50,7 @@ interface Row {
 function toRow(o: AdminEventOccurrence): Row {
   return {
     id: o.id,
+    date: o.start_at ? isoToLocalDateTime(o.start_at, o.timezone).slice(0, 10) : o.occurrence_date,
     start_at: isoToLocalDateTime(o.start_at, o.timezone),
     end_at: isoToLocalDateTime(o.end_at, o.timezone),
     timezone: o.timezone,
@@ -75,6 +79,7 @@ function toRow(o: AdminEventOccurrence): Row {
 function emptyRow(inheritTimezone?: string): Row {
   return {
     id: crypto.randomUUID(),
+    date: "",
     start_at: "",
     end_at: "",
     timezone: inheritTimezone ?? DEFAULT_ADMIN_TIMEZONE,
@@ -104,11 +109,19 @@ function addDaysToLocalDateTime(value: string, days: number): string {
 
 const MAX_REPEAT_WEEKS = 26;
 
+/** Adds `days` to a calendar date ("YYYY-MM-DD"). */
+function addDaysToDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Compact label for one saved occurrence in the Copy Vendors source
  * picker — reuses the existing formatters purely for display, doesn't
  * touch date/time formatting logic itself. */
 function occurrenceLabel(o: AdminEventOccurrence): string {
-  return `${formatDateShortInZone(o.start_at, o.timezone)} · ${formatTimeInZone(o.start_at, o.timezone)}`;
+  // Admin: "Time Not Listed" for a date with no published time.
+  return o.start_at ? `${formatDateShortInZone(o.start_at, o.timezone)} · ${formatTimeInZone(o.start_at, o.timezone)}` : `${formatCalendarDate(o.occurrence_date, "short")} · Time Not Listed`;
 }
 
 /** Occurrence (concrete date/time/location) editor for one event, nested
@@ -198,7 +211,9 @@ export default function EventOccurrencesEditor({
 
   const repeatFromLast = () => {
     const template = rows[rows.length - 1];
-    if (!template || !template.start_at || !template.end_at) return;
+    // A template needs its date; times repeat only where it has them (a
+    // date with no published time repeats as dates only).
+    if (!template || !template.date) return;
     const weeks = Math.max(1, Math.min(MAX_REPEAT_WEEKS, Number(repeatWeeks) || 0));
     const generated: Row[] = [];
     for (let i = 1; i <= weeks; i++) {
@@ -209,6 +224,7 @@ export default function EventOccurrencesEditor({
         // they were generated from, never a silent DB-default timezone.
         ...template,
         id: crypto.randomUUID(),
+        date: addDaysToDate(template.date, 7 * i),
         start_at: addDaysToLocalDateTime(template.start_at, 7 * i),
         end_at: addDaysToLocalDateTime(template.end_at, 7 * i),
       });
@@ -267,9 +283,12 @@ export default function EventOccurrencesEditor({
                   endName={`end_at_${row.id}`}
                   defaultStart={row.start_at}
                   defaultEnd={row.end_at}
+                  defaultDate={row.date}
+                  optionalTimes
+                  dateName={`occurrence_date_${row.id}`}
                   inputClassName={`${inputClass} w-full`}
                   labelClassName="mb-1 block text-xs font-medium text-ink/60"
-                  onChange={({ start, end }) => updateRow(row.id, { start_at: start, end_at: end })}
+                  onChange={({ start, end, date }) => updateRow(row.id, { start_at: start, end_at: end, date })}
                 />
               </div>
 

@@ -49,6 +49,7 @@ type Field =
   | "subcategory"
   | "formats"
   | "rsvp"
+  | "register"
   | "tickets"
   | "programming";
 
@@ -67,6 +68,11 @@ const FIELDS: Record<string, Field> = {
   organiser: "organizer",
   "event link": "eventLink",
   "event url": "eventLink",
+  "event page": "eventLink",
+  "event website": "eventLink",
+  "event site": "eventLink",
+  link: "eventLink",
+  url: "eventLink",
   "source url": "sourceUrl",
   "source link": "sourceUrl",
   description: "description",
@@ -94,11 +100,37 @@ const FIELDS: Record<string, Field> = {
   subcategory: "subcategory",
   format: "formats",
   formats: "formats",
+  // Attendance links. The label decides the button's wording: RSVP vs
+  // Register (registration / sign-up / reservation) vs Get Tickets.
+  rsvp: "rsvp",
   "rsvp url": "rsvp",
   "rsvp link": "rsvp",
+  "rsvp page": "rsvp",
+  register: "register",
+  "register url": "register",
+  "register link": "register",
+  registration: "register",
+  "registration url": "register",
+  "registration link": "register",
+  "registration page": "register",
+  "sign up": "register",
+  signup: "register",
+  "sign up link": "register",
+  "sign up url": "register",
+  reservation: "register",
+  reservations: "register",
+  "reservation link": "register",
+  "reservation url": "register",
+  reserve: "register",
+  tickets: "tickets",
+  ticket: "tickets",
   "ticket url": "tickets",
   "tickets url": "tickets",
   "ticket link": "tickets",
+  "tickets link": "tickets",
+  "ticket page": "tickets",
+  "get tickets": "tickets",
+  "buy tickets": "tickets",
   programming: "programming",
   details: "programming",
 };
@@ -185,6 +217,11 @@ function timesFrom(b: Block, notes: string[], label: string): Times | null | "un
   const startText = first(b, "start");
   const endText = first(b, "end");
   if (!startText && !endText) return null;
+  if (!startText) {
+    // An end with no start is never turned into a guessed start.
+    notes.push(`${label}an end time was given without a start time, so no time was used. Add the start in Review.`);
+    return null;
+  }
   const s = startText ? parseTimes(startText) : null;
   const e = endText ? parseTimes(endText) : null;
   if (!s || (endText && !e)) {
@@ -286,15 +323,20 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
   // attendance evidence for the existing reader.
   const eventLink = httpsUrl(first(event, "eventLink"));
   const sourceLink = httpsUrl(first(event, "sourceUrl"));
-  for (const [f, value] of [["eventLink", first(event, "eventLink")], ["sourceUrl", first(event, "sourceUrl")], ["rsvp", first(event, "rsvp")], ["tickets", first(event, "tickets")]] as const) {
-    if (value && !httpsUrl(value)) notes.push(`${f === "rsvp" ? "RSVP URL" : f === "tickets" ? "Ticket URL" : f === "eventLink" ? "Event Link" : "Source URL"} isn't a full https link, so it wasn't used.`);
+  for (const [f, value] of [["eventLink", first(event, "eventLink")], ["sourceUrl", first(event, "sourceUrl")], ["rsvp", first(event, "rsvp")], ["register", first(event, "register")], ["tickets", first(event, "tickets")]] as const) {
+    if (value && !httpsUrl(value)) notes.push(`${f === "rsvp" ? "RSVP URL" : f === "register" ? "Registration URL" : f === "tickets" ? "Ticket URL" : f === "eventLink" ? "Event Link" : "Source URL"} isn't a full https link, so it wasn't used.`);
   }
   if (eventLink && sourceLink && eventLink !== sourceLink) notes.push("Findmi keeps one link per Event: the Event Link is used and the different Source URL isn't saved.");
   const controls: PageControl[] = [];
   const rsvp = httpsUrl(first(event, "rsvp"));
+  const register = httpsUrl(first(event, "register"));
   const tickets = httpsUrl(first(event, "tickets"));
   if (tickets) controls.push({ text: "Get Tickets", href: tickets });
   if (rsvp) controls.push({ text: "RSVP", href: rsvp });
+  else if (register) controls.push({ text: "Register", href: register });
+  // The pasted links themselves, kept apart (an RSVP and a Ticket link are
+  // different actions; neither is ever taken from the Event Link).
+  const links = { rsvp: rsvp ? { cta: "rsvp" as const, url: rsvp } : register ? { cta: "register" as const, url: register } : null, tickets: tickets ?? null };
 
   // Programming: an Occurrence block's own Programming / Details is THAT
   // date's details (event_occurrences.details, above). Event-level
@@ -337,6 +379,7 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
       organizer,
       sources,
       structured: {
+        ...(links.rsvp || links.tickets ? { links } : {}),
         business: cleanText(first(event, "business"), 160),
         businessWebsite: httpsUrl(first(event, "businessWebsite")) ?? websiteOrNull(first(event, "businessWebsite")),
         otherBusinesses: [...(event.values.featured ?? []), ...(event.values.participating ?? [])]

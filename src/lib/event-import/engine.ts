@@ -20,7 +20,7 @@ import {
   combineEvidence,
   decideAttendance,
   decideLocationVisibility,
-  isLumaEventUrl,
+  isRegistrationPlatformEventUrl,
   pageAttendance,
   pageRecordAttendance,
   structuredAttendance,
@@ -306,7 +306,9 @@ export async function analyzeEventUrl(
   // Platform rule: a VERIFIED individual Luma Event page (a single-Event
   // classification, Event data for this page, an Event-slug URL) is where
   // people register — its own link may be the attendance destination.
-  const lumaEventUrl = isLumaEventUrl(candidate.sourceUrl) && (candidate.sources.title === "structured" || record !== null) ? candidate.sourceUrl : null;
+  // Same rule for Eventbrite / Partiful single-Event pages (the page IS the
+  // registration / ticketing destination). Never an informational page.
+  const lumaEventUrl = isRegistrationPlatformEventUrl(candidate.sourceUrl) && (candidate.sources.title === "structured" || record !== null) ? candidate.sourceUrl : null;
   candidate = { ...candidate, locationVisibility, attendance: decideAttendance(evidence, { lumaEventUrl }) };
 
   const hasPlace = candidate.occurrences.some((o) => venueKey(o.venue) || o.venue.city);
@@ -547,6 +549,12 @@ export async function analyzeAdminSourceEvent(input: { text: string; rateKey: st
   let finished = result.candidate;
   // RSVP / tickets: an explicit structured link wins; else the page's own.
   if (!fields.controls.length && sourceAttendance?.cta && sourceAttendance.url) finished = { ...finished, attendance: sourceAttendance };
+  // The page's own evidenced link is also kept as evidence, so Review can
+  // fill ONLY an empty slot from it (e.g. a page ticket link beside a
+  // pasted RSVP) — a pasted link is never overwritten.
+  if (sourceAttendance?.cta && sourceAttendance.url && finished.structured) {
+    finished = { ...finished, structured: { ...finished.structured, pageAttendance: { cta: sourceAttendance.cta, url: sourceAttendance.url } } };
+  }
   const matches = { ...result.matches };
   if (link && !matches.event) {
     const existing = await deps.findEventBySourceUrl(link).catch(() => null);

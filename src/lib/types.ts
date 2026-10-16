@@ -537,8 +537,15 @@ export interface FindmiEvent {
   name: string;
   description: string | null;
   cover_image_url: string | null;
-  start_at: string;
+  /** Exact start, or null when only the calendar date is known (Event
+   * date/time precision — the date is required, time is optional). */
+  start_at: string | null;
   end_at: string | null;
+  /** Required calendar start date (YYYY-MM-DD, America/New_York). Agrees
+   * with start_at whenever start_at is known (database trigger + CHECK). */
+  start_date: string;
+  /** Calendar end date, when known. Agrees with end_at whenever end_at is known. */
+  end_date: string | null;
   venue_name: string | null;
   address: string | null;
   city: string | null;
@@ -634,8 +641,13 @@ export interface EventOccurrence {
   location_hidden?: boolean;
   id: string;
   event_id: string;
-  start_at: string;
-  end_at: string;
+  /** Required calendar date (YYYY-MM-DD in this row's `timezone`). Always
+   * the real date; agrees with start_at whenever start_at is known. */
+  occurrence_date: string;
+  /** Exact start, or null when no time is published for this date. */
+  start_at: string | null;
+  /** Exact end, or null when not published. Never set without start_at. */
+  end_at: string | null;
   location_id: string | null;
   featured: boolean;
   status: EventOccurrenceStatus;

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { formatEventRange } from "@/lib/event-time";
 import AdminBulkList from "@/components/admin/AdminBulkList";
 import EventBulkActionBar from "./EventBulkActionBar";
 import { hideEvent, publishEvent, shutDownEvent } from "./lifecycle-actions";
 import type { AdminEvent } from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
-import { formatDateRange, formatDateShort } from "@/lib/format";
+import { formatDateShort } from "@/lib/format";
 import { EVENT_VISIBILITY_LABEL, eventVisibility } from "@/lib/event-publication";
 
 const NEW_EVENTS_LIST = "/admin/events?new=1";
@@ -67,7 +68,7 @@ export default function EventBulkListClient({
             <div className="min-w-0 flex-1">
               <Link href={`/admin/events/${e.id}`} className="block min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">{e.name}</p>
-                <p className="truncate text-xs text-ink/45">{formatDateRange(e.start_at, e.end_at)}</p>
+                <p className="truncate text-xs text-ink/45">{formatEventRange(e, { admin: true })}</p>
                 {oversight && (
                   <p className="truncate text-[11px] text-ink/45">
                     Added {formatDateShort(e.created_at)}

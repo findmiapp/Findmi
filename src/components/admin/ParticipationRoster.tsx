@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { formatCalendarDate, formatWhen } from "@/lib/event-time";
 import { Avatar, EntitySearchAdd, type SearchResult } from "./RelationPicker";
 import type { AdminOccurrenceVendor, EventParticipant } from "@/lib/admin/queries";
 import type { EventOccurrence } from "@/lib/types";
-import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import { formatDateShortInZone } from "@/lib/format";
 import { addOccurrenceVendor } from "@/app/admin/(protected)/events/actions";
 
 const STATUS_OPTIONS = [
@@ -51,7 +52,8 @@ function toRow(p: EventParticipant): Row {
 }
 
 function occurrenceLabel(o: EventOccurrence): string {
-  return `${formatDateShortInZone(o.start_at, o.timezone)} · ${formatTimeInZone(o.start_at, o.timezone)}–${formatTimeInZone(o.end_at, o.timezone)}`;
+  // Admin: "Time Not Listed" for a date with no published time.
+  return formatWhen(o, { admin: true });
 }
 
 /**
@@ -215,7 +217,7 @@ function summarizeOccurrenceParticipation(
   const byBusiness = new Map<string, OccurrenceParticipationSummary>();
   for (const occ of occurrences) {
     for (const vendor of vendorRostersByOccurrence[occ.id] ?? []) {
-      const entry = { occurrenceId: occ.id, label: formatDateShortInZone(occ.start_at, occ.timezone), status: vendor.status };
+      const entry = { occurrenceId: occ.id, label: occ.start_at ? formatDateShortInZone(occ.start_at, occ.timezone) : formatCalendarDate(occ.occurrence_date, "short"), status: vendor.status };
       const existing = byBusiness.get(vendor.business_id);
       if (existing) existing.entries.push(entry);
       else

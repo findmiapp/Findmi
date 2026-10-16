@@ -13,6 +13,7 @@ import { getAllOccurrencesForEvent } from "@/lib/data";
 import { canGenerateVariants, mapLimit, storePrivateVariants, variantPathsFor } from "@/lib/image-variants-server";
 import { isVariantPath } from "@/lib/image-variants";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import { calendarDate } from "@/lib/event-time";
 import {
   isJournalSectionType,
   JOURNAL_PHOTO_CAPTION_MAX,
@@ -1019,8 +1020,10 @@ export async function saveJournalConnections(entryId: string, ids: JournalConnec
 export interface JournalOccurrenceOption {
   id: string;
   event_id: string;
-  start_at: string;
-  end_at: string;
+  /** Null when the date has no published time (Event date/time precision). */
+  start_at: string | null;
+  end_at: string | null;
+  occurrence_date: string;
   timezone: string;
   /** Pre-resolved local calendar date (YYYY-MM-DD) in the occurrence's own
    * timezone — see isoToLocalDateTime's own doc comment. Computed here,
@@ -1061,9 +1064,11 @@ export async function getEventOccurrencesForJournal(eventId: string): Promise<Jo
     event_id: o.event_id,
     start_at: o.start_at,
     end_at: o.end_at,
+    occurrence_date: o.occurrence_date,
     timezone: o.timezone,
-    localDate: isoToLocalDateTime(o.start_at, o.timezone).slice(0, 10),
-    localTime: isoToLocalDateTime(o.start_at, o.timezone).slice(11, 16),
+    // The real calendar date always; a time only when published ("" else).
+    localDate: calendarDate(o) ?? o.occurrence_date,
+    localTime: o.start_at ? isoToLocalDateTime(o.start_at, o.timezone).slice(11, 16) : "",
     location: o.location
       ? {
           id: o.location.id,

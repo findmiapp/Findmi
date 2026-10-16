@@ -182,12 +182,13 @@ export default async function AdminDashboardPage() {
             <ModulePanel title="Today on Findmi" meta={<span className="text-metadata text-muted">{todayItems.length} today</span>} flush>
               <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
                 {todayItems.map((item) => {
+                  // Live only for a real interval (Here Now rule).
                   const live =
-                    item.endAt !== null && new Date(item.startAt).getTime() <= now && now <= new Date(item.endAt).getTime();
+                    item.startAt !== null && item.endAt !== null && new Date(item.startAt).getTime() <= now && now <= new Date(item.endAt).getTime();
                   return (
                     <Link key={item.id} href={item.href} className="flex min-h-[52px] items-center gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">
                       <span className="w-[4.5rem] shrink-0 text-metadata font-semibold tabular-nums text-secondary">
-                        {formatTime(item.startAt)}
+                        {item.startAt ? formatTime(item.startAt) : "Time Not Listed"}
                       </span>
                       {/* Compact visual identity — same small avatar
                           treatment as the admin RelationPicker. */}

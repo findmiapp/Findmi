@@ -16,6 +16,7 @@ import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import { findCoveringOccurrenceId } from "@/lib/data";
+import { parseEventDateTimes, parseOccurrenceDateTimes } from "@/lib/event-date-input";
 import {
   cancelEventAppearance,
   ensureEventAppearance,
@@ -90,24 +91,20 @@ export async function saveEvent(id: string | null, formData: FormData) {
   const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
-  const startLocal = str(formData, "start_at");
-  const endLocal = str(formData, "end_at");
-  if (!name || !startLocal) {
-    redirect(errorRedirectUrl(editPath, "Name and start date/time are required."));
+  // Event date/time precision: the Start DATE is required; the exact start
+  // and end times are optional precision (never defaulted or guessed). An
+  // Event with no published end stays visible through its calendar end
+  // date (discovery reads start_date / end_date), never a fake end.
+  const parentTimes = parseEventDateTimes({
+    startLocal: str(formData, "start_at"),
+    endLocal: str(formData, "end_at"),
+    startDate: str(formData, "start_date"),
+    endDate: str(formData, "end_date"),
+  });
+  if (!name || !parentTimes.ok) {
+    redirect(errorRedirectUrl(editPath, !name ? "Name is required." : parentTimes.ok ? "" : parentTimes.error));
   }
-  // End Date & Time is required, not optional — see the active-event
-  // visibility bug fix. Without a real end time the app has no honest way
-  // to know an event is still happening, so a missing/invalid end can't
-  // be silently defaulted or guessed here; it has to block the save with
-  // a clear message instead.
-  if (!endLocal) {
-    redirect(errorRedirectUrl(editPath, "End date/time is required — Findmi uses it to know when the event is over."));
-  }
-  const startIso = localDateTimeToIso(startLocal);
-  const endIso = localDateTimeToIso(endLocal);
-  if (!startIso || !endIso || new Date(endIso) <= new Date(startIso)) {
-    redirect(errorRedirectUrl(editPath, "End date/time must be after the start date/time."));
-  }
+  const { startIso, endIso, startDate, endDate } = parentTimes;
 
   // Slug safety can't depend on client JS having run: normalize whatever
   // was submitted, fall back to generating one from the name if it's
@@ -188,6 +185,8 @@ export async function saveEvent(id: string | null, formData: FormData) {
     cover_image_url: str(formData, "cover_image_url"),
     start_at: startIso,
     end_at: endIso,
+    start_date: startDate,
+    end_date: endDate,
     venue_name: matchedLocation ? matchedLocation.name : str(formData, "venue_name"),
     address: matchedLocation ? matchedLocation.address : str(formData, "address"),
     city: matchedLocation ? matchedLocation.city : str(formData, "city"),
@@ -323,9 +322,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
   const occurrencesToUpsert = occurrenceIds.map((occId) => {
     const occStartLocal = str(formData, `start_at_${occId}`);
     const occEndLocal = str(formData, `end_at_${occId}`);
-    if (!occStartLocal || !occEndLocal) {
-      redirect(errorRedirectUrl(editPath, "Every occurrence needs both a start and end date/time."));
-    }
+    const occDate = str(formData, `occurrence_date_${occId}`) ?? (occStartLocal ? occStartLocal.slice(0, 10) : null);
     // Admin Occurrence Timezone Correctness pass — each occurrence carries
     // its own IANA timezone (event_occurrences.timezone, EventOccurrencesEditor's
     // per-row select), submitted as `timezone_${occId}`. Falls back to
@@ -334,16 +331,17 @@ export async function saveEvent(id: string | null, formData: FormData) {
     // matches the column's own DB default and is never worse than the
     // previous hardcoded behavior.
     const occTimezone = str(formData, `timezone_${occId}`) ?? DEFAULT_ADMIN_TIMEZONE;
-    const occStartIso = localDateTimeToIso(occStartLocal, occTimezone);
-    const occEndIso = localDateTimeToIso(occEndLocal, occTimezone);
-    if (!occStartIso || !occEndIso || new Date(occEndIso) <= new Date(occStartIso)) {
-      redirect(errorRedirectUrl(editPath, "Each occurrence's end date/time must be after its own start date/time."));
-    }
+    // Event date/time precision: every date needs its calendar day; times
+    // are optional (null = not published), an end needs a start, and a
+    // known end follows the start. Nothing is defaulted or guessed.
+    const occ = parseOccurrenceDateTimes({ date: occDate, startLocal: occStartLocal, endLocal: occEndLocal, timezone: occTimezone });
+    if (!occ.ok) redirect(errorRedirectUrl(editPath, occ.error));
     return {
       id: occId,
       event_id: eventId as string,
-      start_at: occStartIso as string,
-      end_at: occEndIso as string,
+      occurrence_date: occ.date,
+      start_at: occ.startIso,
+      end_at: occ.endIso,
       timezone: occTimezone,
       location_id: str(formData, `location_id_${occId}`),
       // Critical admin semantics (item F) — this posts exactly what the
@@ -457,9 +455,9 @@ export async function saveEvent(id: string | null, formData: FormData) {
   {
     const { data: freshOccurrences } = await supabase
       .from("event_occurrences")
-      .select("id, start_at")
+      .select("id, start_at, occurrence_date")
       .eq("event_id", eventId as string);
-    const primaryOccurrenceId = findCoveringOccurrenceId(startIso as string, freshOccurrences ?? []);
+    const primaryOccurrenceId = findCoveringOccurrenceId(startIso, freshOccurrences ?? [], startDate);
 
     if (matchedLocation) {
       if (primaryOccurrenceId) {
@@ -485,8 +483,9 @@ export async function saveEvent(id: string | null, formData: FormData) {
           .from("event_occurrences")
           .insert({
             event_id: eventId as string,
-            start_at: startIso as string,
-            end_at: endIso as string,
+            occurrence_date: startDate,
+            start_at: startIso,
+            end_at: endIso,
             location_id: locationId,
             venue_name: matchedLocation.name,
             address: matchedLocation.address,
