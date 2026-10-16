@@ -1,6 +1,13 @@
 import Link from "next/link";
-import { getAdminLocations, getAllCategories } from "@/lib/admin/queries";
+import Form from "next/form";
+import { getAdminLocationList, getAllCategories } from "@/lib/admin/queries";
+import { adminSortOptions, LOCATION_SORT, parseAdminSort } from "@/lib/admin/list-sort";
+import { adminListHref, adminListScopeKey, parseAdminPage } from "@/lib/admin/list-page";
+import AdminSortSelect from "@/components/admin/AdminSortSelect";
+import AdminPagination from "@/components/admin/AdminPagination";
 import LocationBulkListClient from "./LocationBulkListClient";
+
+const PATH = "/admin/locations";
 
 export const dynamic = "force-dynamic";
 
@@ -15,19 +22,28 @@ const LIFECYCLE_TABS = [
 export default async function AdminLocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string; published?: string }>;
+  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string; published?: string; sort?: string; page?: string }>;
 }) {
-  const { q, lifecycle, result, review, published } = await searchParams;
+  const params = await searchParams;
+  const { q, lifecycle, result, review, published } = params;
+  // A–Z / Z–A only: locations has no created_at, so Newest / Oldest
+  // aren't offered (see LOCATION_SORT).
+  const sort = parseAdminSort(params.sort, LOCATION_SORT);
+  const page = parseAdminPage(params.page);
   const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value ?? "active";
   // "Needs Review": active Locations not publicly listed yet (Admin Home's
   // queue) — their rows read DRAFT. "Published": active and publicly listed.
   const needsReview = review === "1" && lifecycleTab === "active";
   const publishedOnly = !needsReview && published === "1" && lifecycleTab === "active";
 
-  const [locations, categories] = await Promise.all([
-    getAdminLocations(q, lifecycleTab, needsReview, publishedOnly),
+  const [list, categories] = await Promise.all([
+    getAdminLocationList({ q, lifecycle: lifecycleTab, needsReview, publishedOnly, sort, page }),
     getAllCategories("location"),
   ]);
+  // Every view link / search keeps the chosen sort and resets to page 1.
+  const keep = sort !== LOCATION_SORT.defaultKey ? sort : null;
+  const viewHref = (changes: Record<string, string | null>) => adminListHref(PATH, { q, sort: keep ?? undefined }, changes);
+  const filtered = Boolean(q);
 
   return (
     <div>
@@ -60,10 +76,7 @@ export default async function AdminLocationsPage({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {LIFECYCLE_TABS.map((tab) => {
           const active = lifecycleTab === tab.value && !needsReview && !publishedOnly;
-          const params = new URLSearchParams();
-          if (tab.value !== "active") params.set("lifecycle", tab.value);
-          if (q) params.set("q", q);
-          const href = `/admin/locations${params.toString() ? `?${params.toString()}` : ""}`;
+          const href = viewHref({ lifecycle: tab.value !== "active" ? tab.value : null });
           return (
             <Link
               key={tab.value}
@@ -77,7 +90,7 @@ export default async function AdminLocationsPage({
           );
         })}
         <Link
-          href={`/admin/locations?review=1${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+          href={viewHref({ review: "1" })}
           className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
             needsReview ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
           }`}
@@ -85,7 +98,7 @@ export default async function AdminLocationsPage({
           Needs Review
         </Link>
         <Link
-          href={`/admin/locations?published=1${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+          href={viewHref({ published: "1" })}
           className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
             publishedOnly ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
           }`}
@@ -100,21 +113,45 @@ export default async function AdminLocationsPage({
         </p>
       )}
 
-      <form method="get" className="mt-4">
-        {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
-        {needsReview && <input type="hidden" name="review" value="1" />}
-        {publishedOnly && <input type="hidden" name="published" value="1" />}
-        <input autoCapitalize="none"
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Search by name, city, or address…"
-          className="w-full max-w-sm rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-        />
-      </form>
+      {/* Search runs in the database across the whole view before the page
+          range; submitting keeps the view and sort and resets to page 1
+          (no `page` field). next/form navigates client-side. */}
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Form action={PATH} className="w-full sm:max-w-sm">
+          {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
+          {needsReview && <input type="hidden" name="review" value="1" />}
+          {publishedOnly && <input type="hidden" name="published" value="1" />}
+          {keep && <input type="hidden" name="sort" value={keep} />}
+          <input autoCapitalize="none"
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="Search by name, city, or address…"
+            className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+          />
+        </Form>
+        <AdminSortSelect pathname={PATH} params={params} value={sort} defaultValue={LOCATION_SORT.defaultKey} options={adminSortOptions(LOCATION_SORT)} />
+      </div>
 
       <div className="mt-4">
-        <LocationBulkListClient locations={locations} view={lifecycleTab} categories={categories} />
+        <LocationBulkListClient
+          locations={list.rows}
+          view={lifecycleTab}
+          categories={categories}
+          scopeKey={adminListScopeKey(params)}
+          emptyMessage={
+            list.failed
+              ? "Couldn't load Locations — try again."
+              : filtered
+              ? "No Locations match this search."
+              : needsReview
+              ? "No Locations need review."
+              : publishedOnly
+              ? "No Published Locations yet."
+              : "No Locations in this view."
+          }
+        />
+        <AdminPagination pathname={PATH} params={params} result={list} noun="Locations" />
       </div>
     </div>
   );

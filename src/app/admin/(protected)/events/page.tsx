@@ -1,5 +1,10 @@
 import Link from "next/link";
+import Form from "next/form";
 import { getAdminEvents, getAllCategories } from "@/lib/admin/queries";
+import { adminSortOptions, EVENT_SORT, NEW_EVENTS_DEFAULT_SORT, parseAdminSort } from "@/lib/admin/list-sort";
+import { adminListHref, adminListScopeKey, parseAdminPage } from "@/lib/admin/list-page";
+import AdminSortSelect from "@/components/admin/AdminSortSelect";
+import AdminPagination from "@/components/admin/AdminPagination";
 import EventBulkListClient from "./EventBulkListClient";
 import { NEW_EVENT_WINDOW_DAYS } from "@/lib/event-publication";
 
@@ -16,6 +21,8 @@ const LIFECYCLE_TABS = [
   { value: "trashed", label: "Trash" },
 ] as const;
 
+const PATH = "/admin/events";
+
 export default async function AdminEventsPage({
   searchParams,
 }: {
@@ -29,9 +36,13 @@ export default async function AdminEventsPage({
     decided?: string;
     lifecycle?: string;
     result?: string;
+    sort?: string;
+    page?: string;
   }>;
 }) {
-  const { q, when, vendorApps, pending, needsReview, new: newParam, decided, lifecycle, result } = await searchParams;
+  const params = await searchParams;
+  const { q, when, vendorApps, pending, needsReview, new: newParam, decided, lifecycle, result } = params;
+  const page = parseAdminPage(params.page);
   // Event Publication — Events go live when created; "New Events" is
   // Admin's oversight of what was just added (not an approval queue).
   const newEventsOnly = newParam === "1";
@@ -44,8 +55,15 @@ export default async function AdminEventsPage({
   // otherwise default to "active".
   const moderationFilterActive = vendorApps === "1" || pending === "1" || needsReviewOnly || newEventsOnly;
   const effectiveLifecycle = moderationFilterActive ? undefined : (lifecycleTab ?? "active");
+  // Shared Admin List Foundation — the existing chronological order stays
+  // the default (Event Date: Latest First); New Events keeps its newest-
+  // ADDED-first order. "Newest" / "Oldest" always mean created_at.
+  const defaultSort = newEventsOnly && pending !== "1" ? NEW_EVENTS_DEFAULT_SORT : EVENT_SORT.defaultKey;
+  const sort = parseAdminSort(params.sort, EVENT_SORT, defaultSort);
+  // An explicitly chosen sort follows the operator across views.
+  const chosenSort = EVENT_SORT.options.find((k) => k === params.sort);
 
-  const [events, categories] = await Promise.all([
+  const [list, categories] = await Promise.all([
     getAdminEvents({
       q,
       when: whenFilter,
@@ -54,6 +72,8 @@ export default async function AdminEventsPage({
       needsReview: needsReviewOnly,
       newEvents: newEventsOnly,
       lifecycle: effectiveLifecycle,
+      sort,
+      page,
     }),
     getAllCategories("event"),
   ]);
@@ -110,7 +130,7 @@ export default async function AdminEventsPage({
           visitor has to guess) — same pattern as Products/Businesses. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Link
-          href={`/admin/events?new=1${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+          href={adminListHref(PATH, { q, sort: chosenSort }, { new: "1" })}
           className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
             newEventsOnly ? "bg-findmi text-white" : "border border-findmi/40 text-findmi-700 hover:border-findmi"
           }`}
@@ -119,11 +139,7 @@ export default async function AdminEventsPage({
         </Link>
         {LIFECYCLE_TABS.map((tab) => {
           const active = (lifecycleTab ?? "active") === tab.value && !moderationFilterActive;
-          const params = new URLSearchParams();
-          if (tab.value !== "active") params.set("lifecycle", tab.value);
-          if (q) params.set("q", q);
-          if (when) params.set("when", when);
-          const href = `/admin/events${params.toString() ? `?${params.toString()}` : ""}`;
+          const href = adminListHref(PATH, { q, when, sort: chosenSort }, { lifecycle: tab.value !== "active" ? tab.value : null });
           return (
             <Link
               key={tab.value}
@@ -145,9 +161,14 @@ export default async function AdminEventsPage({
         </p>
       )}
 
-      <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      {/* Search + filters run in the database before the page range;
+          submitting keeps the view and sort and resets to page 1 (no
+          `page` field). next/form navigates client-side. */}
+      <Form action={PATH} className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         {newEventsOnly && <input type="hidden" name="new" value="1" />}
+        {needsReviewOnly && <input type="hidden" name="needsReview" value="1" />}
         {lifecycleTab && lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
+        {chosenSort && <input type="hidden" name="sort" value={chosenSort} />}
         <input autoCapitalize="none"
           type="text"
           name="q"
@@ -176,10 +197,27 @@ export default async function AdminEventsPage({
             Filter
           </button>
         </div>
-      </form>
+      </Form>
+
+      <div className="mt-3">
+        <AdminSortSelect pathname={PATH} params={params} value={sort} defaultValue={defaultSort} options={adminSortOptions(EVENT_SORT)} />
+      </div>
 
       <div className="mt-4">
-        <EventBulkListClient events={events} view={barView} categories={categories} />
+        <EventBulkListClient
+          events={list.rows}
+          view={barView}
+          categories={categories}
+          scopeKey={adminListScopeKey(params)}
+          emptyMessage={
+            list.failed
+              ? "Couldn't load Events — try again."
+              : q || whenFilter || vendorApps === "1" || pending === "1"
+              ? "No Events match these filters."
+              : undefined
+          }
+        />
+        <AdminPagination pathname={PATH} params={params} result={list} noun="Events" />
       </div>
     </div>
   );

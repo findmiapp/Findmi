@@ -29,6 +29,8 @@ export default function EventBulkListClient({
   events,
   view,
   categories,
+  scopeKey,
+  emptyMessage,
 }: {
   events: AdminEvent[];
   // No "paused" view — events have no Pause concept (see
@@ -36,12 +38,17 @@ export default function EventBulkListClient({
   // New Events oversight view.
   view: "active" | "archived" | "trashed" | "other" | "new";
   categories: Category[];
+  /** The page's URL scope — selection clears when it changes. */
+  scopeKey?: string;
+  /** Overrides the view's own empty message (e.g. no search matches). */
+  emptyMessage?: string;
 }) {
   const oversight = view === "new";
   return (
     <AdminBulkList
       items={events}
-      emptyMessage={oversight ? "No Events created in the last few days." : "No events in this view."}
+      scopeKey={scopeKey}
+      emptyMessage={emptyMessage ?? (oversight ? "No Events created in the last few days." : "No Events in this view.")}
       renderBulkBar={(selectedIds, _clear, keepSelected) => (
         <EventBulkActionBar
           view={oversight ? "other" : view}

@@ -30,6 +30,7 @@ export default function BusinessesFilterBar({
   initialLifecycle,
   initialSort,
   sortOptions,
+  defaultSort = "newest",
   children,
 }: {
   categories: Category[];
@@ -46,6 +47,8 @@ export default function BusinessesFilterBar({
    * an unrelated filter change" treatment as initialLifecycle above. */
   initialSort: string;
   sortOptions: readonly { value: string; label: string }[];
+  /** Left out of the URL when chosen (BUSINESS_SORT.defaultKey). */
+  defaultSort?: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -77,7 +80,8 @@ export default function BusinessesFilterBar({
     if (nextCategory) params.set("category", nextCategory);
     if (nextPublished) params.set("published", nextPublished);
     if (initialLifecycle) params.set("lifecycle", initialLifecycle);
-    if (nextSort && nextSort !== "newest") params.set("sort", nextSort);
+    // No `page`: any search / filter / sort change resets to page 1.
+    if (nextSort && nextSort !== defaultSort) params.set("sort", nextSort);
     const qs = params.toString();
     startTransition(() => {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -150,11 +154,11 @@ export default function BusinessesFilterBar({
             value={initialSort}
             onChange={(e) => navigate({ sort: e.target.value })}
             className={selectClass}
-            aria-label="Sort"
+            aria-label="Sort By"
           >
             {sortOptions.map((o) => (
               <option key={o.value} value={o.value}>
-                Sort: {o.label}
+                Sort By: {o.label}
               </option>
             ))}
           </select>

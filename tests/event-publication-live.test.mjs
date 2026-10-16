@@ -218,10 +218,12 @@ test("9: New Events = created in the last 7 days (not Trash), newest first; on A
   const now = Date.parse("2026-10-14T12:00:00Z");
   assert.equal(PUB.newEventsSinceIso(now), "2026-10-07T12:00:00.000Z");
   const q = read("src/lib/admin/queries.ts");
-  assert.match(q, /if \(filters\.newEvents\) \{\s*let query = supabase\.from\("events"\)\.select\("\*"\)\.gte\("created_at", newEventsSinceIso\(\)\)\.is\("trashed_at", null\);/);
-  assert.match(q, /\.order\("created_at", \{ ascending: false \}\)/);
+  // Shared Admin List Foundation — paginated; New Events' default sort is
+  // still newest-ADDED first (created_at desc, see NEW_EVENTS_DEFAULT_SORT).
+  assert.match(q, /if \(filters\.newEvents\) \{[\s\S]{0,200}supabase\.from\("events"\)\.select\("\*", \{ count: "exact" \}\)\.gte\("created_at", newEventsSinceIso\(\)\)\.is\("trashed_at", null\)/);
+  assert.match(read("src/lib/admin/list-sort.ts"), /export const NEW_EVENTS_DEFAULT_SORT: AdminSortKey = "newest";/);
   const list = read("src/app/admin/(protected)/events/page.tsx");
-  assert.match(list, /href=\{`\/admin\/events\?new=1/);
+  assert.match(list, /href=\{adminListHref\(PATH, \{ q, sort: chosenSort \}, \{ new: "1" \}\)\}/);
   assert.match(list, />\s*New Events\s*</);
   assert.match(list, /newEvents: newEventsOnly/);
   const home = read("src/app/admin/(protected)/page.tsx");

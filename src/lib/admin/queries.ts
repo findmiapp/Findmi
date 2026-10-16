@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminSupabase } from "./supabase-admin";
 import { newEventsSinceIso } from "../event-publication";
 import { getPeopleForBusinessAdmin, type BusinessPersonRow } from "./people-queries";
+import { applyAdminSort, BUSINESS_SORT, EVENT_SORT, LOCATION_SORT, NEW_EVENTS_DEFAULT_SORT, type AdminSortKey } from "./list-sort";
+import { emptyAdminPage, fetchAdminPage, type AdminPage } from "./list-page";
 import type {
   Appearance,
   Business,
@@ -95,15 +97,13 @@ export interface BusinessListFilters {
    * the secondary tie-break for every option (not just created_at/
    * updated_at ties) so two rows with an identical primary sort value
    * never render in a browser-dependent order. */
-  sort?: "newest" | "updated" | "az" | "oldest";
-}
-
-function applySort<Q extends { order: (c: string, o: { ascending: boolean }) => Q }>(query: Q, sort: BusinessListFilters["sort"]): Q {
-  if (sort === "updated") return query.order("updated_at", { ascending: false }).order("id", { ascending: true });
-  if (sort === "az") return query.order("name", { ascending: true }).order("id", { ascending: true });
-  if (sort === "oldest") return query.order("created_at", { ascending: true }).order("id", { ascending: true });
-  // "newest" (explicit or default)
-  return query.order("created_at", { ascending: false }).order("id", { ascending: true });
+  //
+  // Shared Admin List Foundation — the sort columns now live in
+  // lib/admin/list-sort.ts (BUSINESS_SORT, which also adds Z–A); same
+  // created_at / updated_at / name columns and the same `id` tie-break.
+  sort?: AdminSortKey;
+  /** 1-based page (ADMIN_PAGE_SIZE rows per page). */
+  page?: number;
 }
 
 function applyLifecycleFilter<
@@ -120,51 +120,54 @@ function applyLifecycleFilter<
   return query.is("archived_at", null).is("trashed_at", null).neq("publication_status", "paused");
 }
 
-export async function getAdminBusinesses(filters: BusinessListFilters = {}): Promise<AdminBusiness[]> {
+export async function getAdminBusinesses(filters: BusinessListFilters = {}): Promise<AdminPage<AdminBusiness>> {
   const supabase = getAdminSupabase();
-  if (!supabase) return [];
+  if (!supabase) return emptyAdminPage<AdminBusiness>(filters.page ?? 1, true);
+  const sort = filters.sort ?? BUSINESS_SORT.defaultKey;
 
   // The category filter needs an inner-join embed to filter server-side
   // rather than fetching every business and checking in JS — kept as a
   // separate query branch (not a ternary select string) so each branch's
-  // select() literal stays statically typeable.
+  // select() literal stays statically typeable. Every filter and the sort
+  // are applied in the database BEFORE the page range is taken.
   if (filters.categoryId) {
-    let query = supabase
-      .from("businesses")
-      .select("*, business_categories!inner(category_id)")
-      .eq("business_categories.category_id", filters.categoryId);
+    const categoryId = filters.categoryId;
+    return fetchAdminPage<AdminBusiness>(() => {
+      let query = supabase
+        .from("businesses")
+        .select("*, business_categories!inner(category_id)", { count: "exact" })
+        .eq("business_categories.category_id", categoryId);
+      if (filters.q) {
+        const term = `%${filters.q}%`;
+        query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
+      }
+      if (filters.published === "public") query = query.eq("is_demo", false);
+      if (filters.published === "demo") query = query.eq("is_demo", true);
+      // Admin Integrity Repair pass — added the same trashed_at exclusion
+      // the no-category branch below already has, so "pending_review"
+      // means the same thing (and agrees with the Dashboard's count)
+      // regardless of whether a category filter is also applied.
+      if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review").is("trashed_at", null);
+      else query = applyLifecycleFilter(query, filters.lifecycle);
+      return applyAdminSort(query, BUSINESS_SORT, sort);
+    }, filters.page ?? 1);
+  }
+
+  return fetchAdminPage<AdminBusiness>(() => {
+    let query = supabase.from("businesses").select("*", { count: "exact" });
     if (filters.q) {
       const term = `%${filters.q}%`;
       query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
     }
     if (filters.published === "public") query = query.eq("is_demo", false);
     if (filters.published === "demo") query = query.eq("is_demo", true);
-    // Admin Integrity Repair pass — added the same trashed_at exclusion
-    // the no-category branch below already has, so "pending_review"
-    // means the same thing (and agrees with the Dashboard's count)
-    // regardless of whether a category filter is also applied.
-    if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review").is("trashed_at", null);
-    else query = applyLifecycleFilter(query, filters.lifecycle);
-    query = applySort(query, filters.sort);
-    const { data } = await query;
-    return ((data ?? []) as unknown as AdminBusiness[]) ?? [];
-  }
-
-  let query = supabase.from("businesses").select("*");
-  if (filters.q) {
-    const term = `%${filters.q}%`;
-    query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
-  }
-  if (filters.published === "public") query = query.eq("is_demo", false);
-  if (filters.published === "demo") query = query.eq("is_demo", true);
-  if (filters.published === "pending_review") {
-    query = query.eq("is_demo", false).eq("publication_status", "pending_review").is("trashed_at", null);
-  } else {
-    query = applyLifecycleFilter(query, filters.lifecycle);
-  }
-  query = applySort(query, filters.sort);
-  const { data } = await query;
-  return (data as AdminBusiness[]) ?? [];
+    if (filters.published === "pending_review") {
+      query = query.eq("is_demo", false).eq("publication_status", "pending_review").is("trashed_at", null);
+    } else {
+      query = applyLifecycleFilter(query, filters.lifecycle);
+    }
+    return applyAdminSort(query, BUSINESS_SORT, sort);
+  }, filters.page ?? 1);
 }
 
 export async function getAdminBusinessById(
@@ -259,69 +262,72 @@ export interface EventListFilters {
    * created in the last NEW_EVENT_WINDOW_DAYS (live, hidden or shut down —
    * not Trash), newest first. Awareness, not an approval queue. */
   newEvents?: boolean;
+  /** Shared Admin List Foundation — see EVENT_SORT. Defaults keep the
+   * existing orders: start_at latest-first everywhere, created_at
+   * newest-first in New Events. */
+  sort?: AdminSortKey;
+  /** 1-based page (ADMIN_PAGE_SIZE rows per page). Replaces New Events'
+   * old 200-row cap, so no Event is ever unreachable. */
+  page?: number;
 }
 
-export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
+export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminPage<AdminEvent>> {
   const supabase = getAdminSupabase();
-  if (!supabase) return [];
+  if (!supabase) return emptyAdminPage<AdminEvent>(filters.page ?? 1, true);
   const nowIso = new Date().toISOString();
+  const sort = filters.sort ?? (filters.newEvents && !filters.pendingApplications ? NEW_EVENTS_DEFAULT_SORT : EVENT_SORT.defaultKey);
+  const page = filters.page ?? 1;
+
+  // Shared search + date filters, applied in the database before the range.
+  const common = <Q extends { or: (f: string) => Q; gte: (c: string, v: string) => Q; lt: (c: string, v: string) => Q }>(query: Q): Q => {
+    let q = query;
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      q = q.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
+    }
+    if (filters.when === "upcoming") q = q.gte("start_at", nowIso);
+    if (filters.when === "past") q = q.lt("start_at", nowIso);
+    return q;
+  };
 
   // Kept as a separate query branch (not a ternary select string) so each
   // branch's select() literal stays statically typeable.
   if (filters.pendingApplications) {
-    let query = supabase
-      .from("events")
-      .select("*, event_businesses!inner(status)")
-      .in("event_businesses.status", ["applied", "pending"])
-      .is("trashed_at", null);
-    if (filters.q) {
-      const term = `%${filters.q}%`;
-      query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
-    }
-    if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
-    if (filters.when === "past") query = query.lt("start_at", nowIso);
-    if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
-    const { data } = await query.order("start_at", { ascending: false });
-    return ((data ?? []) as unknown as AdminEvent[]) ?? [];
+    return fetchAdminPage<AdminEvent>(() => {
+      let query = common(
+        supabase
+          .from("events")
+          .select("*, event_businesses!inner(status)", { count: "exact" })
+          .in("event_businesses.status", ["applied", "pending"])
+          .is("trashed_at", null)
+      );
+      if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
+      return applyAdminSort(query, EVENT_SORT, sort);
+    }, page);
   }
 
   if (filters.newEvents) {
-    let query = supabase.from("events").select("*").gte("created_at", newEventsSinceIso()).is("trashed_at", null);
-    if (filters.q) {
-      const term = `%${filters.q}%`;
-      query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
-    }
-    if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
-    if (filters.when === "past") query = query.lt("start_at", nowIso);
-    const { data } = await query.order("created_at", { ascending: false }).limit(200);
-    return (data as AdminEvent[]) ?? [];
+    return fetchAdminPage<AdminEvent>(
+      () => applyAdminSort(common(supabase.from("events").select("*", { count: "exact" }).gte("created_at", newEventsSinceIso()).is("trashed_at", null)), EVENT_SORT, sort),
+      page
+    );
   }
 
   if (filters.needsReview) {
-    let query = supabase.from("events").select("*").eq("publication_status", "pending_review").is("trashed_at", null);
-    if (filters.q) {
-      const term = `%${filters.q}%`;
-      query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
-    }
-    if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
-    if (filters.when === "past") query = query.lt("start_at", nowIso);
-    const { data } = await query.order("start_at", { ascending: false });
-    return (data as AdminEvent[]) ?? [];
+    return fetchAdminPage<AdminEvent>(
+      () => applyAdminSort(common(supabase.from("events").select("*", { count: "exact" }).eq("publication_status", "pending_review").is("trashed_at", null)), EVENT_SORT, sort),
+      page
+    );
   }
 
-  let query = supabase.from("events").select("*");
-  if (filters.q) {
-    const term = `%${filters.q}%`;
-    query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
-  }
-  if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
-  if (filters.when === "past") query = query.lt("start_at", nowIso);
-  if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
-  if (filters.lifecycle === "archived") query = query.not("archived_at", "is", null).is("trashed_at", null);
-  else if (filters.lifecycle === "trashed") query = query.not("trashed_at", "is", null);
-  else query = query.is("archived_at", null).is("trashed_at", null);
-  const { data } = await query.order("start_at", { ascending: false });
-  return (data as AdminEvent[]) ?? [];
+  return fetchAdminPage<AdminEvent>(() => {
+    let query = common(supabase.from("events").select("*", { count: "exact" }));
+    if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
+    if (filters.lifecycle === "archived") query = query.not("archived_at", "is", null).is("trashed_at", null);
+    else if (filters.lifecycle === "trashed") query = query.not("trashed_at", "is", null);
+    else query = query.is("archived_at", null).is("trashed_at", null);
+    return applyAdminSort(query, EVENT_SORT, sort);
+  }, page);
 }
 
 export interface EventParticipant {
@@ -693,6 +699,43 @@ export async function getAdminLocations(
   else query = query.is("archived_at", null).is("trashed_at", null);
   const { data } = await query;
   return (data as AdminLocation[]) ?? [];
+}
+
+export interface LocationListFilters {
+  q?: string;
+  lifecycle?: "active" | "archived" | "trashed";
+  /** Only Locations awaiting review: active and not publicly listed
+   * (is_demo = true) — the same set Admin Home counts. */
+  needsReview?: boolean;
+  /** Only Published Locations (active and publicly listed, is_demo = false). */
+  publishedOnly?: boolean;
+  /** A–Z / Z–A only — see LOCATION_SORT (locations has no created_at). */
+  sort?: AdminSortKey;
+  /** 1-based page (ADMIN_PAGE_SIZE rows per page). */
+  page?: number;
+}
+
+/** Shared Admin List Foundation — the paginated Admin Locations directory.
+ * Same filters as getAdminLocations (which stays the unpaginated full list
+ * the Event editors' Location pickers read), applied in the database
+ * before the page range. */
+export async function getAdminLocationList(filters: LocationListFilters = {}): Promise<AdminPage<AdminLocation>> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return emptyAdminPage<AdminLocation>(filters.page ?? 1, true);
+  const sort = filters.sort ?? LOCATION_SORT.defaultKey;
+  return fetchAdminPage<AdminLocation>(() => {
+    let query = supabase.from("locations").select("*", { count: "exact" });
+    if (filters.needsReview) query = query.eq("is_demo", true);
+    else if (filters.publishedOnly) query = query.eq("is_demo", false);
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
+    }
+    if (filters.lifecycle === "archived") query = query.not("archived_at", "is", null).is("trashed_at", null);
+    else if (filters.lifecycle === "trashed") query = query.not("trashed_at", "is", null);
+    else query = query.is("archived_at", null).is("trashed_at", null);
+    return applyAdminSort(query, LOCATION_SORT, sort);
+  }, filters.page ?? 1);
 }
 
 export async function getAdminLocationById(id: string): Promise<AdminLocation | null> {

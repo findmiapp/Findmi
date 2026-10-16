@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { getAdminBusinesses, getAllCategories } from "@/lib/admin/queries";
+import { adminSortOptions, BUSINESS_SORT, parseAdminSort } from "@/lib/admin/list-sort";
+import { adminListScopeKey, parseAdminPage } from "@/lib/admin/list-page";
+import AdminPagination from "@/components/admin/AdminPagination";
 import BusinessesFilterBar from "./BusinessesFilterBar";
 import BusinessBulkListClient from "./BusinessBulkListClient";
 
@@ -12,37 +15,33 @@ const LIFECYCLE_TABS = [
   { value: "trashed", label: "Trash" },
 ] as const;
 
-// Admin Integrity Repair pass — URL-backed sort, same "plain, visible
-// pill links" convention as LIFECYCLE_TABS above rather than a hidden
-// default a visitor has to discover. "newest" is the default (see
-// SORT_OPTIONS' own usage below) — admin operationally needs to see
-// newly-created businesses first, which plain A–Z sorting never
-// surfaced reliably.
-const SORT_OPTIONS = [
-  { value: "newest", label: "Newest" },
-  { value: "updated", label: "Recently Updated" },
-  { value: "az", label: "A–Z" },
-  { value: "oldest", label: "Oldest" },
-] as const;
+// Admin Integrity Repair pass — URL-backed sort; "newest" stays the
+// default (admin operationally needs to see newly-created businesses
+// first). Shared Admin List Foundation — the options now come from the
+// shared BUSINESS_SORT (Newest / Recently Updated / Oldest / A–Z / Z–A).
+const SORT_OPTIONS = adminSortOptions(BUSINESS_SORT);
+const PATH = "/admin/businesses";
 
 export default async function AdminBusinessesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; published?: string; decided?: string; lifecycle?: string; result?: string; sort?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; published?: string; decided?: string; lifecycle?: string; result?: string; sort?: string; page?: string }>;
 }) {
-  const { q, category, published, decided, lifecycle, result, sort } = await searchParams;
+  const params = await searchParams;
+  const { q, category, published, decided, lifecycle, result, sort } = params;
+  const page = parseAdminPage(params.page);
   const publishedFilter =
     published === "public" || published === "demo" || published === "pending_review" ? published : undefined;
   const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value;
-  const sortFilter = SORT_OPTIONS.find((s) => s.value === sort)?.value ?? "newest";
+  const sortFilter = parseAdminSort(sort, BUSINESS_SORT);
   // Admin Content Lifecycle V2 — the lifecycle tabs are ignored while a
   // `published` moderation filter is active (same "two independent
   // dimensions, moderation queue wins the query branch" rule Products
   // V1 established), otherwise default to "active".
   const effectiveLifecycle = publishedFilter ? undefined : (lifecycleTab ?? "active");
 
-  const [businesses, categories] = await Promise.all([
-    getAdminBusinesses({ q, categoryId: category, published: publishedFilter, lifecycle: effectiveLifecycle, sort: sortFilter }),
+  const [list, categories] = await Promise.all([
+    getAdminBusinesses({ q, categoryId: category, published: publishedFilter, lifecycle: effectiveLifecycle, sort: sortFilter, page }),
     getAllCategories("business"),
   ]);
 
@@ -91,12 +90,12 @@ export default async function AdminBusinessesPage({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {LIFECYCLE_TABS.map((tab) => {
           const active = (lifecycleTab ?? "active") === tab.value && !publishedFilter;
-          const params = new URLSearchParams();
-          if (tab.value !== "active") params.set("lifecycle", tab.value);
-          if (q) params.set("q", q);
-          if (category) params.set("category", category);
-          if (sortFilter !== "newest") params.set("sort", sortFilter);
-          const href = `/admin/businesses${params.toString() ? `?${params.toString()}` : ""}`;
+          const tabParams = new URLSearchParams();
+          if (tab.value !== "active") tabParams.set("lifecycle", tab.value);
+          if (q) tabParams.set("q", q);
+          if (category) tabParams.set("category", category);
+          if (sortFilter !== BUSINESS_SORT.defaultKey) tabParams.set("sort", sortFilter);
+          const href = `/admin/businesses${tabParams.toString() ? `?${tabParams.toString()}` : ""}`;
           return (
             <Link
               key={tab.value}
@@ -119,8 +118,22 @@ export default async function AdminBusinessesPage({
         initialLifecycle={lifecycleTab && lifecycleTab !== "active" ? lifecycleTab : undefined}
         initialSort={sortFilter}
         sortOptions={SORT_OPTIONS}
+        defaultSort={BUSINESS_SORT.defaultKey}
       >
-        <BusinessBulkListClient businesses={businesses} view={barView} categories={categories} />
+        <BusinessBulkListClient
+          businesses={list.rows}
+          view={barView}
+          categories={categories}
+          scopeKey={adminListScopeKey(params)}
+          emptyMessage={
+            list.failed
+              ? "Couldn't load Businesses — try again."
+              : q || category || publishedFilter
+              ? "No Businesses match these filters."
+              : "No Businesses in this view."
+          }
+        />
+        <AdminPagination pathname={PATH} params={params} result={list} noun="Businesses" />
       </BusinessesFilterBar>
     </div>
   );

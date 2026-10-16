@@ -226,7 +226,7 @@ test("9, 10 & 11. filters: All Active / Needs Review (Draft) / Published / Archi
   assert.match(q, /if \(lifecycle === "archived"\) query = query\.not\("archived_at", "is", null\)\.is\("trashed_at", null\);\n\s+else if \(lifecycle === "trashed"\) query = query\.not\("trashed_at", "is", null\);\n\s+else query = query\.is\("archived_at", null\)\.is\("trashed_at", null\);/);
   const page = read("src/app/admin/(protected)/locations/page.tsx");
   assert.match(page, /const publishedOnly = !needsReview && published === "1" && lifecycleTab === "active";/);
-  assert.match(page, /getAdminLocations\(q, lifecycleTab, needsReview, publishedOnly\)/);
+  assert.match(page, /getAdminLocationList\(\{ q, lifecycle: lifecycleTab, needsReview, publishedOnly, sort, page \}\)/);
   for (const label of ["All Active", "Archived", "Trash", "Needs Review", "Published"]) assert.ok(page.includes(label), label);
   // A refresh after Publish re-reads the server list, so Needs Review drops published rows.
   assert.match(read("src/app/admin/(protected)/locations/LocationBulkActionBar.tsx"), /router\.refresh\(\);/);
@@ -245,9 +245,10 @@ test("row status badges: PUBLISHED / DRAFT / ARCHIVED / TRASHED from the canonic
 
 test("19. Select All Visible stays scoped to the rows this list was given; refreshes prune hidden ids", () => {
   const list = read("src/components/admin/AdminBulkList.tsx");
-  assert.match(list, /setSelected\(allSelected \? new Set\(\) : new Set\(items\.map\(\(i\) => i\.id\)\)\)/);
+  assert.match(list, /setSelected\(allSelected \? new Set\(\) : selectAllVisible\(items\)\)/);
   assert.match(list, /function keepSelected\(ids: string\[\]\) \{\n\s+const visible = new Set\(items\.map\(\(i\) => i\.id\)\);\n\s+setSelected\(new Set\(ids\.filter\(\(id\) => visible\.has\(id\)\)\)\);/);
-  assert.match(list, /const next = new Set\(\[\.\.\.prev\]\.filter\(\(id\) => visible\.has\(id\)\)\);/);
+  assert.match(list, /setSelected\(\(prev\) => pruneSelection\(prev, items\)\)/);
+  assert.match(read("src/lib/admin/list-page.ts"), /const next = new Set\(\[\.\.\.prev\]\.filter\(\(id\) => visible\.has\(id\)\)\);/);
   assert.match(list, /Select all visible \(\{items\.length\}\)/);
   assert.match(list, /\{selected\.size\} selected/);
 });

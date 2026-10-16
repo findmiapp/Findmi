@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { pruneSelection, selectAllVisible } from "@/lib/admin/list-page";
 
 /** Admin Content Lifecycle + Bulk Management V1 — the shared bulk-selection
  * primitive every entity's admin list can reuse (Products is the first;
@@ -24,6 +25,7 @@ export default function AdminBulkList<T extends { id: string }>({
   renderRow,
   renderBulkBar,
   emptyMessage = "No results for this view.",
+  scopeKey,
 }: {
   items: T[];
   renderRow: (item: T, selected: boolean, toggle: () => void) => React.ReactNode;
@@ -32,17 +34,23 @@ export default function AdminBulkList<T extends { id: string }>({
    * rows selected for a retry). Omit entirely for a read-only list. */
   renderBulkBar?: (selectedIds: string[], clearSelection: () => void, keepSelected: (ids: string[]) => void) => React.ReactNode;
   emptyMessage?: string;
+  /** The list's URL scope (search, filters, view, sort, page — see
+   * adminListScopeKey). Selection is page-local: whenever this changes the
+   * selection is cleared, so a hidden selection can't follow the operator
+   * from page 1 to page 4 or into another view. */
+  scopeKey?: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [scope, setScope] = useState(scopeKey);
+  if (scope !== scopeKey) {
+    setScope(scopeKey);
+    setSelected(new Set());
+  }
   // When the list changes (a refresh after a bulk action, a new filter),
   // drop any selected id that is no longer visible — the selection can
   // never include rows the operator can't see.
   useEffect(() => {
-    setSelected((prev) => {
-      const visible = new Set(items.map((i) => i.id));
-      const next = new Set([...prev].filter((id) => visible.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
+    setSelected((prev) => pruneSelection(prev, items));
   }, [items]);
   const allSelected = items.length > 0 && selected.size === items.length;
 
@@ -56,7 +64,7 @@ export default function AdminBulkList<T extends { id: string }>({
   }
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(items.map((i) => i.id)));
+    setSelected(allSelected ? new Set() : selectAllVisible(items));
   }
 
   function clearSelection() {

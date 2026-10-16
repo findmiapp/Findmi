@@ -1,20 +1,28 @@
 import { getAdminSupabase } from "./supabase-admin";
 import type { Person } from "@/lib/types";
+import { applyAdminSort, PEOPLE_SORT, type AdminSortKey } from "./list-sort";
+import { emptyAdminPage, fetchAdminPage, type AdminPage } from "./list-page";
 
 export interface AdminPersonListFilters {
   q?: string;
+  /** See PEOPLE_SORT — A–Z default; Newest / Oldest read people.created_at. */
+  sort?: AdminSortKey;
+  /** 1-based page (ADMIN_PAGE_SIZE rows per page). */
+  page?: number;
 }
 
-export async function getAdminPeople(filters: AdminPersonListFilters = {}): Promise<Person[]> {
+export async function getAdminPeople(filters: AdminPersonListFilters = {}): Promise<AdminPage<Person>> {
   const supabase = getAdminSupabase();
-  if (!supabase) return [];
-  let query = supabase.from("people").select("*").order("name");
-  if (filters.q) {
-    const term = `%${filters.q}%`;
-    query = query.or(`name.ilike.${term},short_bio.ilike.${term}`);
-  }
-  const { data } = await query;
-  return data ?? [];
+  if (!supabase) return emptyAdminPage<Person>(filters.page ?? 1, true);
+  const sort = filters.sort ?? PEOPLE_SORT.defaultKey;
+  return fetchAdminPage<Person>(() => {
+    let query = supabase.from("people").select("*", { count: "exact" });
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      query = query.or(`name.ilike.${term},short_bio.ilike.${term}`);
+    }
+    return applyAdminSort(query, PEOPLE_SORT, sort);
+  }, filters.page ?? 1);
 }
 
 export async function getAdminPersonById(id: string): Promise<Person | null> {

@@ -12,15 +12,21 @@ export default function BusinessBulkListClient({
   businesses,
   view,
   categories,
+  scopeKey,
+  emptyMessage = "No Businesses in this view.",
 }: {
   businesses: AdminBusiness[];
   view: "active" | "paused" | "archived" | "trashed" | "other";
   categories: Category[];
+  /** The page's URL scope — selection clears when it changes. */
+  scopeKey?: string;
+  emptyMessage?: string;
 }) {
   return (
     <AdminBulkList
       items={businesses}
-      emptyMessage="No businesses in this view."
+      scopeKey={scopeKey}
+      emptyMessage={emptyMessage}
       renderBulkBar={(selectedIds, _clear, keepSelected) => (
         <BusinessBulkActionBar
           view={view}

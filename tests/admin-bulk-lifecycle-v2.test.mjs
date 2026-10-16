@@ -263,7 +263,8 @@ test("B25. Business bulk actions require the Admin session; ids validated server
 
 test("S26. Select All Visible stays bounded to the rendered rows (shared AdminBulkList)", () => {
   const list = read("src/components/admin/AdminBulkList.tsx");
-  assert.match(list, /setSelected\(allSelected \? new Set\(\) : new Set\(items\.map\(\(i\) => i\.id\)\)\)/);
+  // Shared Admin List Foundation — the rule now lives in lib/admin/list-page.ts.
+  assert.match(list, /setSelected\(allSelected \? new Set\(\) : selectAllVisible\(items\)\)/);
   assert.match(list, /const visible = new Set\(items\.map\(\(i\) => i\.id\)\);/);
   for (const f of ["src/app/admin/(protected)/events/EventBulkListClient.tsx", "src/app/admin/(protected)/businesses/BusinessBulkListClient.tsx"]) {
     assert.match(read(f), /<AdminBulkList/);

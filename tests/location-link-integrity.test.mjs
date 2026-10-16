@@ -98,7 +98,7 @@ test("4 + 5. Admin Home counts active, unlisted Locations (Quick Created ones in
 test("6. Admin Locations → Needs Review lists exactly that set, with address and a Draft badge", () => {
   assert.match(QUERIES, /if \(needsReview\) query = query\.eq\("is_demo", true\);/);
   assert.match(LOC_PAGE, /const needsReview = review === "1" && lifecycleTab === "active";/);
-  assert.match(LOC_PAGE, /getAdminLocations\(q, lifecycleTab, needsReview, publishedOnly\)/);
+  assert.match(LOC_PAGE, /getAdminLocationList\(\{ q, lifecycle: lifecycleTab, needsReview, publishedOnly, sort, page \}\)/);
   assert.match(LOC_PAGE, />\n\s+Needs Review\n\s+<\/Link>/);
   const list = read("src/app/admin/(protected)/locations/LocationBulkListClient.tsx");
   // Lifecycle pass: the active unlisted state reads DRAFT (lib/admin/location-lifecycle.ts).
