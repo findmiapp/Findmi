@@ -24,6 +24,9 @@ import {
   adminCreateImportLocation,
   adminEnrichPastedEvent,
   adminLoadBusinessRead,
+  adminEntityMediaStatus,
+  adminFindEntityMedia,
+  adminApplyEntityMedia,
   adminPreviewBusinessRead,
   adminPreviewEventImage,
   adminPrepareBusiness,
@@ -34,6 +37,7 @@ import {
 import { adminPrepareLocation } from "@/app/admin/(protected)/locations/import/actions";
 import { LocationPrepContext, type LocationPrepState } from "@/components/admin/location-import/EventLocationCreate";
 import type { BusinessPrepareResult } from "@/lib/entity-prepare";
+import type { EntityMediaState, FindMediaResult } from "@/lib/entity-media";
 import { businessEvidenceKey } from "@/lib/event-import/operator";
 import { canOfferLocationCreate } from "@/lib/event-import/review";
 import { venueKey, type ReviewPlace } from "@/lib/event-import/types";
@@ -181,7 +185,7 @@ function QuickCreateBusiness({
   idPrefix: string;
   evidence: string | null;
   onCreated: (b: OperatorBusiness) => void;
-  prepared?: { website: string | null; source: "pasted" | "research" | null; sources: { url: string; title: string }[]; note: string | null };
+  prepared?: { website: string | null; source: "pasted" | "research" | "read" | null; sources: { url: string; title: string }[]; note: string | null };
 }) {
   const record = useContext(RecordContext);
   const [open, setOpen] = useState(Boolean(prepared));
@@ -239,7 +243,7 @@ function QuickCreateBusiness({
           {prepared.website && (
             <p className="text-metadata text-secondary">
               Official Website: <span className="font-semibold text-primary">{hostOf(prepared.website)}</span>
-              {prepared.source && <span className="text-muted"> · {prepared.source === "research" ? "Web Research" : "Pasted"}</span>}
+              {prepared.source && <span className="text-muted"> · {prepared.source === "research" ? "Web Research" : prepared.source === "read" ? "Earlier Brand Import Read" : "Pasted"}</span>}
             </p>
           )}
           {prepared.note && <p className="text-microcopy text-muted">{prepared.note}</p>}
@@ -535,7 +539,13 @@ function BusinessField({
       )}
       {!initial && read?.status === "ready" && !existing && (
         <>
-          {researchedSite && <p className="mt-2 text-microcopy text-muted">Official website found by Web Research, read by Brand Import.</p>}
+          {researchedSite && (
+            <p className="mt-2 text-microcopy text-muted">
+              {prepared?.status === "website" && prepared.source === "read"
+                ? `Findmi already read ${hostOf(prepared.website)} with Brand Import — create from that read (its logo / cover included).`
+                : "Official website found by Web Research, read by Brand Import."}
+            </p>
+          )}
           <BrandReviewCard key={read.updatedAt} idPrefix={id} read={read} businessCategories={businessCategories} onCreated={onCreated} />
         </>
       )}
@@ -711,6 +721,193 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
   );
 }
 
+/** Event Image URL — the Event's OWN creative (flyer / hero), supplied by
+ * the operator. Checked through the same verified preview the save path
+ * uses before it is accepted; on Create it is re-hosted by the existing
+ * Event image path (recoverEventImage). Never a Business logo / cover or a
+ * venue photo — this field is the operator's explicit choice only. */
+function EventImageUrlField({ id, review, set }: { id: string; review: EventImportReview; set: (patch: Partial<EventImportReview>) => void }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function use() {
+    const value = url.trim();
+    if (!/^https:\/\//i.test(value)) return setError("Use a full https:// image link.");
+    setBusy(true);
+    setError(null);
+    const state = await limitedPreview(value);
+    eventPreviewCache.set(value, state);
+    setBusy(false);
+    if (state.status !== "ok") return setError(`That image can’t be used: ${state.status === "failed" ? state.reason : "unavailable"}.`);
+    set({ imageUrl: value });
+    setUrl("");
+  }
+  return (
+    <div>
+      <label htmlFor={`${id}-event-image`} className="mb-1 block text-label font-bold uppercase text-subtle">
+        {review.imageUrl ? "Replace Event Image" : "Event Image URL"}
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={`${id}-event-image`}
+          type="url"
+          inputMode="url"
+          autoCapitalize="none"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https:// the Event’s flyer or hero image"
+          className={`${inputClass} min-w-0 flex-1`}
+        />
+        <button type="button" onClick={use} disabled={busy || !url.trim()} className={`${smallPrimary} shrink-0`}>
+          {busy ? "Checking…" : "Use Image"}
+        </button>
+      </div>
+      <p className="mt-1 text-microcopy text-muted">The Event&rsquo;s own creative only — never a Business logo or a venue photo. Every date uses this one image.</p>
+      {error && <p role="alert" className="mt-1 text-microcopy text-red-700">{error}</p>}
+    </div>
+  );
+}
+
+type MediaRef = { kind: "business" | "location"; id: string; website: string | null };
+
+/** Media — what the Event, its Business and its Locations will render with,
+ * BEFORE Create. Informational (never blocks Create); for an existing
+ * Business / Location missing a logo or cover, Find Media looks it up
+ * through the existing readers and applies only what the operator approves,
+ * FILL-ONLY. */
+function MediaCompleteness({ review, business, businessWebsite, eventName }: { review: EventImportReview; business: OperatorBusiness | null; businessWebsite: string | null; eventName: string | null }) {
+  const refs: MediaRef[] = [];
+  if (business) refs.push({ kind: "business", id: business.id, website: businessWebsite });
+  const places = review.sharedPlace ? [review.place] : review.occurrences.map((o) => o.place);
+  for (const p of places) if (p?.useLocationId && !refs.some((r) => r.id === p.useLocationId)) refs.push({ kind: "location", id: p.useLocationId, website: p.website ?? null });
+  const refKey = refs.map((r) => `${r.kind}:${r.id}`).join(",");
+  const [states, setStates] = useState<EntityMediaState[] | null>(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let live = true;
+    if (!refKey) {
+      setStates([]);
+      return;
+    }
+    adminEntityMediaStatus(refKey.split(",").map((k) => ({ kind: k.split(":")[0] as "business" | "location", id: k.split(":")[1] })))
+      .then((r) => live && setStates(r))
+      .catch(() => live && setStates([]));
+    return () => {
+      live = false;
+    };
+  }, [refKey, version]);
+  const Mark = ({ ok, label }: { ok: boolean; label: string }) => (
+    <span className={`text-microcopy font-semibold ${ok ? "text-findmi-700" : "text-amber-900"}`}>
+      {label} {ok ? "✓" : "· Needed"}
+    </span>
+  );
+  return (
+    <section aria-label="Media" className="flex flex-col gap-2 rounded-xl border border-black/[0.08] p-3" data-media-completeness="">
+      <p className="text-label font-bold uppercase text-subtle">Media</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="text-metadata font-semibold text-primary">Event</span>
+        <Mark ok={Boolean(review.imageUrl)} label="Event Image" />
+      </div>
+      {states === null && refs.length > 0 && <p className="text-microcopy text-muted">Checking Business and Location media…</p>}
+      {(states ?? []).map((st) => (
+        <MediaEntityRow key={`${st.kind}:${st.id}`} state={st} websiteHint={refs.find((r) => r.id === st.id)?.website ?? null} eventName={eventName} onApplied={() => setVersion((v) => v + 1)} Mark={Mark} />
+      ))}
+    </section>
+  );
+}
+
+function MediaEntityRow({
+  state,
+  websiteHint,
+  eventName,
+  onApplied,
+  Mark,
+}: {
+  state: EntityMediaState;
+  websiteHint: string | null;
+  eventName: string | null;
+  onApplied: () => void;
+  Mark: (p: { ok: boolean; label: string }) => React.ReactNode;
+}) {
+  const record = useContext(RecordContext);
+  const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState<FindMediaResult | null>(null);
+  const [use, setUse] = useState<{ logo: boolean; cover: boolean }>({ logo: true, cover: true });
+  const [note, setNote] = useState<string | null>(null);
+  const missing = !state.logo || !state.cover;
+  async function find() {
+    setBusy(true);
+    setNote(null);
+    const r = await adminFindEntityMedia({ kind: state.kind, id: state.id, website: websiteHint, eventName }).catch(() => null);
+    setBusy(false);
+    if (!r?.ok) return setNote(r && !r.ok ? r.error : "Couldn’t look for media just now.");
+    setFound(r.result);
+    setUse({ logo: Boolean(r.result.logo), cover: Boolean(r.result.cover) });
+    if (r.result.note) setNote(r.result.note);
+  }
+  async function apply() {
+    if (!found) return;
+    setBusy(true);
+    const r = await adminApplyEntityMedia({
+      kind: state.kind,
+      id: state.id,
+      logoSourceUrl: use.logo ? (found.logo?.sourceUrl ?? null) : null,
+      coverSourceUrl: use.cover ? (found.cover?.sourceUrl ?? null) : null,
+    }).catch(() => null);
+    setBusy(false);
+    if (!r?.ok) return setNote(r && !r.ok ? r.error : "Couldn’t save the media.");
+    setFound(null);
+    setNote(r.applied.length ? `Added: ${r.applied.map((x) => (x === "logo" ? "Logo" : "Cover")).join(", ")}.` : "Nothing was added — the media couldn’t be verified, or it was already set.");
+    if (r.applied.length) {
+      record(state.kind, state.id);
+      onApplied();
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-black/[0.06] pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="min-w-0 truncate text-metadata font-semibold text-primary">{state.name}</span>
+        <span className="flex flex-wrap items-center gap-x-3">
+          <Mark ok={state.logo} label="Logo" />
+          <Mark ok={state.cover} label="Cover" />
+        </span>
+      </div>
+      {missing && !found && (
+        <button type="button" onClick={find} disabled={busy} className="w-fit text-metadata font-semibold text-accent hover:underline disabled:opacity-60">
+          {busy ? "Looking for Media…" : "Find Media"}
+        </button>
+      )}
+      {found && (found.logo || found.cover) && (
+        <div className="flex flex-col gap-2">
+          <p className="text-microcopy text-muted">From {found.website ? hostOf(found.website) : "the website"}{found.websiteSource === "research" ? " (found by Web Research)" : ""}. Only empty fields are filled.</p>
+          <div className="flex flex-wrap gap-3">
+            {(["logo", "cover"] as const).map((role) => {
+              const c = found[role];
+              // Only the server-made, verified data-URI preview (never the remote URL).
+              const verifiedPreview = c ? safePreviewSrc(c.preview) : null;
+              if (!c) return null;
+              return (
+                <label key={role} className="flex items-center gap-2 text-microcopy text-secondary">
+                  <input type="checkbox" checked={use[role]} onChange={(e) => setUse((u) => ({ ...u, [role]: e.target.checked }))} />
+                  {verifiedPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={verifiedPreview} alt="" className={`${role === "logo" ? "h-12 w-12" : "h-12 w-20"} rounded-md border border-black/[0.08] bg-white object-contain`} />
+                  ) : null}
+                  {role === "logo" ? "Logo" : "Cover"}
+                </label>
+              );
+            })}
+          </div>
+          <button type="button" onClick={apply} disabled={busy || (!use.logo && !use.cover)} className={`${smallPrimary} w-fit`}>
+            {busy ? "Saving…" : "Use Selected Media"}
+          </button>
+        </div>
+      )}
+      {note && <p className="text-microcopy text-muted">{note}</p>}
+    </div>
+  );
+}
+
 function EventDetails({
   id,
   candidate,
@@ -764,7 +961,7 @@ function EventDetails({
       )}
       {!review.imageUrl && !candidate.imageUrl && candidate.imageGuard && (
         <p className="rounded-lg border border-black/[0.08] bg-black/[0.02] px-3 py-2 text-microcopy text-secondary" data-image-guard="generic">
-          <span className="font-semibold text-primary">No Event Image Found</span> · Generic Brand/Site Image Ignored. The Event Link&rsquo;s only image is the site&rsquo;s standard {candidate.imageGuard.evidence === "page_logo" ? "logo" : "image"}, not Event creative. Add an Event image later in the Event if you have one.
+          <span className="font-semibold text-primary">No Event Image Found</span> · Generic Brand/Site Image Ignored. The Event Link&rsquo;s only image is the site&rsquo;s standard {candidate.imageGuard.evidence === "page_logo" ? "logo" : "image"}, not Event creative. Add the Event&rsquo;s own flyer below if you have it.
         </p>
       )}
       {!review.imageUrl && candidate.imageUrl && (
@@ -772,6 +969,7 @@ function EventDetails({
           Use the Event Link&rsquo;s Image
         </button>
       )}
+      <EventImageUrlField id={id} review={review} set={set} />
       <div>
         <label htmlFor={`${id}-description`} className="mb-1 block text-label font-bold uppercase text-subtle">
           Description
@@ -787,6 +985,7 @@ function EventDetails({
         />
       </div>
       <AttendanceEditor review={review} set={set} evidence={candidate.attendance} idPrefix={`${id}-`} />
+      <MediaCompleteness review={review} business={business} businessWebsite={s?.businessWebsite ?? null} eventName={candidate.title} />
       {(s?.otherBusinesses?.length ?? 0) > 0 && (
         <p className="text-microcopy text-muted">Also named (Featured / Participating): {s!.otherBusinesses!.join(", ")}. Not linked — add them to the Event afterwards if they take part.</p>
       )}
@@ -950,6 +1149,15 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         }
         setBusinessPreps((prev) => ({ ...prev, [key]: { status: "done", prepared: r.prepared } }));
         // A researched official website goes through the SAME Brand Import read.
+        // An earlier READY Brand Import read of this Business's site: load
+        // that read (verified logo / cover included) — Review offers it
+        // instead of a bare Quick Create.
+        if (r.prepared.status === "website" && r.prepared.source === "read" && r.prepared.priorRead) {
+          const view = await adminLoadBusinessRead(r.prepared.priorRead.batchId, r.prepared.priorRead.candidateId).catch(() => null);
+          const site = r.prepared.website;
+          if (view && runRef.current === run) setReads((prev) => ({ ...prev, [site]: view }));
+          return "done";
+        }
         if (r.prepared.status === "website" && r.prepared.source === "research" && !r.prepared.sameAsFailed) {
           const read = (await readWebsites([r.prepared.website], run))[r.prepared.website];
           const matched = read?.matchedBusiness;
@@ -1147,7 +1355,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
     },
     renderBusinessPicker: ({ id, initial, evidence, website, onSelect, onCreated }) => {
       const prep = businessPreps[businessEvidenceKey(evidence) ?? ""];
-      const researched = prep?.status === "done" && prep.prepared.status === "website" && prep.prepared.source === "research" && !prep.prepared.sameAsFailed ? prep.prepared.website : null;
+      const researched = prep?.status === "done" && prep.prepared.status === "website" && prep.prepared.source !== "pasted" && !prep.prepared.sameAsFailed ? prep.prepared.website : null;
       return (
       <BusinessField
         id={id}

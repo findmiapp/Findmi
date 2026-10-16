@@ -106,7 +106,9 @@ test("6. Review and Review Existing Event render only through the verified previ
   assert.match(CLIENT, /<VerifiedEventImagePreview url=\{review\.imageUrl\}/);
   assert.match(CLIENT, /\{c\.field === "image" && c\.kind !== "same" && <VerifiedEventImagePreview url=\{c\.proposed\}/);
   const imgs = [...CLIENT.matchAll(/<img\s+src=\{([^}]+)\}/g)].map((m) => m[1]);
-  assert.deepEqual(imgs.sort(), ["previews.cover", "previews.logo"], "the only raw <img> tags are Brand Import's verified logo/cover previews");
+  assert.deepEqual(imgs.sort(), ["previews.cover", "previews.logo", "verifiedPreview"], "the only raw <img> tags are verified logo/cover previews (Brand Import's, and Find Media's)");
+  // Find Media's preview is the server-verified data URI, through the same filter.
+  assert.match(CLIENT, /const verifiedPreview = c \? safePreviewSrc\(c\.preview\) : null;/);
   assert.match(CLIENT, /return \(\n\s+<ImagePreviewView/);
 });
 

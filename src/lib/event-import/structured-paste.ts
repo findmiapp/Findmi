@@ -51,7 +51,8 @@ type Field =
   | "rsvp"
   | "register"
   | "tickets"
-  | "programming";
+  | "programming"
+  | "image";
 
 const FIELDS: Record<string, Field> = {
   "event name": "title",
@@ -66,6 +67,14 @@ const FIELDS: Record<string, Field> = {
   "participating business": "participating",
   organizer: "organizer",
   organiser: "organizer",
+  // The Event's own creative (flyer / hero) — an explicit, https-only URL.
+  // Never a Business logo or a venue photo: the operator supplies it.
+  "event image": "image",
+  "event image url": "image",
+  "event flyer": "image",
+  "flyer": "image",
+  "flyer url": "image",
+  "hero image": "image",
   "event link": "eventLink",
   "event url": "eventLink",
   "event page": "eventLink",
@@ -364,12 +373,16 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
   if (finalOccurrences.length > 0) sources.dates = "page";
   if (hasPlace) sources.venue = "page";
   if (organizer) sources.organizer = "page";
+  const eventImageText = first(event, "image");
+  const eventImage = httpsUrl(eventImageText);
+  if (eventImageText && !eventImage) notes.push("Event Image isn't a full https link, so it wasn't used.");
+  if (eventImage) sources.image = "page";
 
   return {
     candidate: {
       title,
       description,
-      imageUrl: null,
+      imageUrl: eventImage,
       sourceUrl: eventLink ?? sourceLink ?? "",
       platform: null,
       origin: "text",

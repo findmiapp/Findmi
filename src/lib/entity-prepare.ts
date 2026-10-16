@@ -33,14 +33,19 @@ export interface BusinessPrepareInput {
 export type BusinessPrepareResult =
   /** Findmi already has it (by website, or exact name + place) — select it. */
   | { status: "existing"; candidates: { id: string; name: string; isPublic: boolean }[] }
-  /** Brand Import reads this website (pasted, or found by research). */
-  | { status: "website"; website: string; source: Exclude<WebsiteSource, null>; research: EntityResearchResult | null; sameAsFailed: boolean }
+  /** Brand Import reads this website (pasted, or found by research) — or,
+   * source "read", Findmi already has a READY Brand Import read of this
+   * Business's official site (its verified logo / cover included): Review
+   * creates from that read instead of a bare Quick Create. */
+  | { status: "website"; website: string; source: Exclude<WebsiteSource, null> | "read"; research: EntityResearchResult | null; sameAsFailed: boolean; priorRead?: { batchId: string; candidateId: string } }
   /** No website: a minimal prepared Business (name, + research provenance). */
   | { status: "no_website"; research: EntityResearchResult | null };
 
 export interface BusinessPrepareDeps {
   findMatches: (input: { name: string; websiteUrl: string | null }) => Promise<{ id: string; name: string; isPublic: boolean; reasons: string[] }[]>;
   research: (input: EntityResearchInput) => Promise<EntityResearchResult>;
+  /** A READY, not-yet-used Brand Import read naming this Business (optional). */
+  findReadyRead?: (name: string) => Promise<{ batchId: string; candidateId: string; website: string } | null>;
 }
 
 export async function prepareBusiness(input: BusinessPrepareInput, deps: BusinessPrepareDeps): Promise<BusinessPrepareResult> {
@@ -49,6 +54,10 @@ export async function prepareBusiness(input: BusinessPrepareInput, deps: Busines
   if (matches.length > 0) return { status: "existing", candidates: matches.slice(0, 3).map(({ id, name: n, isPublic }) => ({ id, name: n, isPublic })) };
   // A supplied website that Brand Import can still read needs no search.
   if (input.website && !input.websiteReadFailed) return { status: "website", website: input.website, source: "pasted", research: null, sameAsFailed: false };
+  // Findmi already read this Business's official site (verified media
+  // included) — reuse that read; no search, no bare Quick Create.
+  const ready = deps.findReadyRead ? await deps.findReadyRead(name).catch(() => null) : null;
+  if (ready) return { status: "website", website: ready.website, source: "read", research: null, sameAsFailed: false, priorRead: { batchId: ready.batchId, candidateId: ready.candidateId } };
   const research = await deps.research({ kind: "business", name, context: { eventName: input.eventName ?? null, triedWebsite: input.website } });
   if (research.status === "found" && research.website) {
     const tried = input.website ? hostOf(input.website) : null;

@@ -37,8 +37,9 @@ import { asOperatorAnalysis } from "@/lib/event-import/operator";
 import { normalizeReview, persistDiscoveryEvent, type SourceEventDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { previewEventImage, recoverEventImage, type EventImagePreview } from "@/lib/event-import/media";
-import { previewBrandCandidateResult, type BrandPreviewResult } from "@/lib/brand-images";
-import { createImportedLocation, defaultLocationImportDeps } from "@/lib/location-import/server";
+import { fetchVerifiedBrandImage, previewBrandCandidateResult, storeBrandImage, type BrandPreviewResult } from "@/lib/brand-images";
+import { createImportedLocation, defaultLocationImportDeps, readLocationWebsite } from "@/lib/location-import/server";
+import { applyEntityMedia, entityMediaState, findEntityMedia, readMatchesBusiness, type EntityMediaKind, type EntityMediaRow, type EntityMediaState, type FindMediaResult } from "@/lib/entity-media";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -150,6 +151,7 @@ export async function adminPrepareBusiness(input: { name: string; website: strin
       {
         findMatches: (q) => findBusinessMatches(admin, { name: q.name, websiteUrl: q.websiteUrl }),
         research: (q) => researchEntity(q, undefined, { log: (entry) => console.info(JSON.stringify({ event: "entity_research", ...entry })) }),
+        findReadyRead: (n) => findReadyBusinessRead(admin, n),
       }
     );
     return { ok: true, prepared };
@@ -490,5 +492,106 @@ export async function adminPreviewBusinessRead(batchId: string, candidateId: str
     return { logo, cover };
   } catch {
     return null;
+  }
+}
+
+// ── Entity Media Completeness V1 ──────────────────────────────────────────
+
+/** A READY Brand Import read (not yet used to create or link a Business)
+ * that names this Business — so Review creates from it (verified logo /
+ * cover included) instead of a bare Quick Create. */
+async function findReadyBusinessRead(admin: SupabaseClient, name: string): Promise<{ batchId: string; candidateId: string; website: string } | null> {
+  const { data } = await admin
+    .from("brand_import_candidates")
+    .select("id, batch_id, normalized_host, proposal")
+    .eq("status", "ready")
+    .is("created_business_id", null)
+    .is("matched_business_id", null)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  for (const row of (data ?? []) as { id: string; batch_id: string; normalized_host: string | null; proposal: { name?: string | null; finalUrl?: string | null } | null }[]) {
+    const website = row.proposal?.finalUrl ?? (row.normalized_host ? `https://${row.normalized_host}/` : null);
+    if (website && readMatchesBusiness(name, { name: row.proposal?.name ?? null, website })) return { batchId: row.batch_id, candidateId: row.id, website };
+  }
+  return null;
+}
+
+const MEDIA_TABLE: Record<EntityMediaKind, "businesses" | "locations"> = { business: "businesses", location: "locations" };
+const MEDIA_SELECT: Record<EntityMediaKind, string> = {
+  business: "id, name, logo_url, cover_image_url, website_url",
+  location: "id, name, logo_url, cover_image_url, website_url, address, city, state, postal_code",
+};
+
+async function loadMediaRow(admin: SupabaseClient, kind: EntityMediaKind, id: string): Promise<EntityMediaRow | null> {
+  if (!UUID.test(String(id))) return null;
+  const { data } = await admin.from(MEDIA_TABLE[kind]).select(MEDIA_SELECT[kind]).eq("id", id).maybeSingle();
+  return (data as EntityMediaRow | null) ?? null;
+}
+
+/** Logo / cover completeness of the Businesses and Locations a Review uses. */
+export async function adminEntityMediaStatus(refs: { kind: EntityMediaKind; id: string }[]): Promise<EntityMediaState[]> {
+  const admin = await adminClient();
+  if (!admin) return [];
+  const out: EntityMediaState[] = [];
+  for (const kind of ["business", "location"] as const) {
+    const ids = [...new Set((Array.isArray(refs) ? refs : []).filter((r) => r?.kind === kind && UUID.test(String(r.id))).map((r) => r.id))].slice(0, 60);
+    if (ids.length === 0) continue;
+    const { data } = await admin.from(MEDIA_TABLE[kind]).select(MEDIA_SELECT[kind]).in("id", ids);
+    for (const row of (data ?? []) as unknown as EntityMediaRow[]) out.push(entityMediaState(kind, row));
+  }
+  return out;
+}
+
+/** Find Media — candidates for the MISSING roles only: the stored website,
+ * else this import's website, else Entity Research; read by the existing
+ * website reader. Verified previews only; nothing is stored here. */
+export async function adminFindEntityMedia(input: { kind: EntityMediaKind; id: string; website?: string | null; eventName?: string | null }): Promise<{ ok: true; result: FindMediaResult } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const kind: EntityMediaKind = input?.kind === "location" ? "location" : "business";
+  try {
+    const row = await loadMediaRow(admin, kind, input?.id);
+    if (!row) return { ok: false, error: "That record is no longer available." };
+    const deps = defaultLocationImportDeps(admin);
+    const result = await findEntityMedia(
+      kind,
+      row,
+      { website: typeof input?.website === "string" ? input.website.slice(0, 500) : null, eventName: typeof input?.eventName === "string" ? input.eventName.slice(0, 200) : null },
+      {
+        research: (q) => researchEntity(q, undefined, { log: (entry) => console.info(JSON.stringify({ event: "entity_research", ...entry })) }),
+        readWebsite: async (url, supplied) => {
+          const read = await readLocationWebsite(url, supplied, deps);
+          return read.ok ? { ok: true, logo: read.logo, cover: read.cover } : { ok: false };
+        },
+      }
+    );
+    return { ok: true, result };
+  } catch {
+    return { ok: false, error: "Couldn't look for media just now. Try again." };
+  }
+}
+
+/** Apply approved media — FILL-ONLY (an existing logo / cover is never
+ * replaced; the write itself only lands while the field is still empty). */
+export async function adminApplyEntityMedia(input: { kind: EntityMediaKind; id: string; logoSourceUrl?: string | null; coverSourceUrl?: string | null }): Promise<{ ok: true; applied: ("logo" | "cover")[]; skipped: ("logo" | "cover")[] } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const kind: EntityMediaKind = input?.kind === "location" ? "location" : "business";
+  try {
+    const result = await applyEntityMedia(kind, input?.id, { logoSourceUrl: input?.logoSourceUrl ?? null, coverSourceUrl: input?.coverSourceUrl ?? null }, {
+      load: (k, id) => loadMediaRow(admin, k, id),
+      store: async (url, role) => {
+        const verified = await fetchVerifiedBrandImage(url, role);
+        return verified.ok ? storeBrandImage(admin, verified.image) : null;
+      },
+      fillIfEmpty: async (k, id, column, url) => {
+        const { data, error } = await admin.from(MEDIA_TABLE[k]).update({ [column]: url }).eq("id", id).is(column, null).select("id");
+        return !error && ((data ?? []) as unknown[]).length > 0;
+      },
+    });
+    if (result.ok && result.applied.length > 0) revalidatePath("/admin/events");
+    return result;
+  } catch {
+    return { ok: false, error: "Couldn't save the media. Nothing was changed." };
   }
 }
