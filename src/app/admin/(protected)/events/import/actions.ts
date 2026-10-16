@@ -36,7 +36,7 @@ import { normalizeReview, persistDiscoveryEvent, type SourceEventDeps } from "@/
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { previewEventImage, recoverEventImage, type EventImagePreview } from "@/lib/event-import/media";
 import { previewBrandCandidateResult, type BrandPreviewResult } from "@/lib/brand-images";
-import { insertInlinePlace } from "@/lib/places/inline-place";
+import { createImportedLocation, defaultLocationImportDeps } from "@/lib/location-import/server";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -111,14 +111,22 @@ export async function adminAnalyzeEventUrl(url: string): Promise<EventImportAnal
   }
 }
 
-/** Missing-Location Quick Create for Admin — the SAME creation rules as the
- * member-facing createInlinePlace (lib/places/inline-place.ts: address
- * required, duplicate check unless forced, unlisted, no membership),
- * authorized by the Admin session instead of Business membership. */
+/** Missing-Location Quick Create for Admin — through Location Import V1
+ * (lib/location-import/server.ts), which creates with the SAME rules as
+ * the member-facing createInlinePlace (lib/places/inline-place.ts: street
+ * address required, duplicate check unless forced, unlisted, no
+ * membership), authorized by the Admin session instead of Business
+ * membership. The Review step itself uses EventLocationCreate. */
 export async function adminCreateImportLocation(formData: FormData): Promise<CreateInlineLocationResult> {
   const admin = await adminClient();
   if (!admin) return { status: "error", error: "Your Admin session has ended. Sign in again." };
-  return insertInlinePlace(admin, formData);
+  const field = (k: string) => (typeof formData.get(k) === "string" ? (formData.get(k) as string) : "");
+  return createImportedLocation(
+    admin,
+    { name: field("name"), address: field("address"), city: field("city"), state: field("state"), postalCode: field("postal_code") || null },
+    defaultLocationImportDeps(admin),
+    { force: field("force") === "1" }
+  );
 }
 
 /** Missing-Business Quick Create — only on the operator's explicit action

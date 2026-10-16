@@ -13,12 +13,36 @@ import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@
  * member-facing createInlinePlace, or the Admin Event Import's admin
  * session) and passes the service-role client it holds. */
 export async function insertInlinePlace(admin: SupabaseClient, formData: FormData): Promise<CreateInlineLocationResult> {
-  const name = str(formData, "name");
-  const address = str(formData, "address");
-  const city = str(formData, "city");
-  const state = str(formData, "state");
-  const postalCode = str(formData, "postal_code");
-  const force = str(formData, "force") === "1";
+  return insertUnlistedPlace(admin, {
+    name: str(formData, "name"),
+    address: str(formData, "address"),
+    city: str(formData, "city"),
+    state: str(formData, "state"),
+    postalCode: str(formData, "postal_code"),
+    force: str(formData, "force") === "1",
+  });
+}
+
+/** Profile values Location Import V1 may add to the SAME unlisted insert —
+ * existing `locations` columns only, each already validated by the caller.
+ * Never is_demo, ownership, membership or a Business relationship. */
+export interface UnlistedPlaceProfile {
+  website_url?: string | null;
+  phone?: string | null;
+  description?: string | null;
+  category_id?: string | null;
+  hours?: unknown;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+/** The one Missing-Location insert rule set (see insertInlinePlace). */
+export async function insertUnlistedPlace(
+  admin: SupabaseClient,
+  input: { name: string | null; address: string | null; city: string | null; state: string | null; postalCode: string | null; force?: boolean; profile?: UnlistedPlaceProfile }
+): Promise<CreateInlineLocationResult> {
+  const { name, address, city, state, postalCode } = input;
+  const force = input.force === true;
 
   if (!name) return { status: "error", error: "Place name is required." };
   // Minimum physical identity for V1: a street address with its city and
@@ -36,9 +60,10 @@ export async function insertInlinePlace(admin: SupabaseClient, formData: FormDat
   if (!baseSlug) return { status: "error", error: "Place name is required to generate a URL." };
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
 
+  const profile = Object.fromEntries(Object.entries(input.profile ?? {}).filter(([, v]) => v !== null && v !== undefined && v !== ""));
   const { data: created, error } = await admin
     .from("locations")
-    .insert({ name, slug, address, city, state, postal_code: postalCode, is_demo: true })
+    .insert({ ...profile, name, slug, address, city, state, postal_code: postalCode, is_demo: true })
     .select("id, slug, name, address, city, state, postal_code")
     .single();
   if (error || !created) {

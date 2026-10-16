@@ -20,6 +20,7 @@ import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ReadMoreText from "@/components/ReadMoreText";
 import SupabaseImage from "@/components/SupabaseImage";
+import { LocationCoverFallback, LocationMonogram } from "@/components/location/LocationFallback";
 import { CategoryPill } from "@/components/Badge";
 import FeaturedLocationHappeningCard from "@/components/FeaturedLocationHappeningCard";
 import LocationHappeningCollection from "@/components/LocationHappeningCollection";
@@ -234,9 +235,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           {heroImages.length > 0 ? (
             <EventCoverLightbox images={heroImages} alt={location.name} />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-ink">
-              <PinGlyph className="h-12 w-12 text-white/15" />
-            </div>
+            // Location Import V1 — a Findmi-styled hero from the place's own
+            // name / category / city (never a fake photo); real media wins.
+            <LocationCoverFallback name={location.name} category={location.category?.name ?? null} city={location.city} state={location.state} />
           )}
           {heroImages.length > 1 && (
             <div className="pointer-events-none absolute right-3 top-3 z-[2] flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
@@ -271,7 +272,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           Composition), so the name gets the column's full width and wraps
           naturally. No logo -> the same column spans the full width. */}
       <div className="px-4 sm:px-0">
-        <div className={location.logo_url ? "flex items-start gap-2.5 sm:gap-4" : ""}>
+        <div className="flex items-start gap-2.5 sm:gap-4">
+          {!location.logo_url && (
+            // Profile fallback — a monogram tile in the same logo slot.
+            <LocationMonogram name={location.name} className="relative -mt-8 h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl border-[3px] border-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-12 sm:h-28 sm:w-28 sm:border-4" />
+          )}
           {location.logo_url && (
             // Small Public UI Polish pass — border-white + subtle ring so a
             // light logo keeps a real edge against the page.
@@ -280,7 +285,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               <ImageZoomTrigger images={[location.logo_url]} alt={location.name} label={`View larger logo for ${location.name}`} />
             </div>
           )}
-          <div className={`min-w-0 flex-1 ${location.logo_url ? "pt-2 sm:pt-3" : ""}`}>
+          <div className="min-w-0 flex-1 pt-2 sm:pt-3">
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
 
             {/* Physical Presence Pass 2 — where this place physically sits

@@ -142,7 +142,7 @@ const reviewsOf = (analysis) => analysis.events.map((e) => ({ key: e.key, review
 test("A. /admin/events/import exists under the protected Admin shell, reachable from Admin → Events", () => {
   assert.ok(existsSync(`${DIR}/page.tsx`), "route: src/app/admin/(protected)/events/import");
   assert.match(PAGE, /if \(!\(await isAdminSession\(\)\)\) redirect\("\/admin\/login"\);/, "an Admin session renders the importer");
-  assert.match(PAGE, /<AdminEventImporter categories=\{categories\} formats=\{formats\} businessCategories=\{businessCategories\} \/>/);
+  assert.match(PAGE, /<AdminEventImporter categories=\{categories\} formats=\{formats\} businessCategories=\{businessCategories\} locationCategories=\{locationCategories\} \/>/);
   assert.match(PAGE, /export const maxDuration = 60;/);
   assert.match(read("src/app/admin/(protected)/events/page.tsx"), /href="\/admin\/events\/import"[\s\S]{0,200}Import Events/, "entry on the Admin Events list");
 });
@@ -305,9 +305,12 @@ test("H. existing Location matching still works per Event in the Admin flow", as
 
 test("I. Quick Create works through the Admin flow — same rules, Admin-session gate, Business auth not weakened", async () => {
   // Wiring: the Admin Review passes its own create action into the existing Quick Create.
-  assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation \}\}/);
+  assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation, render: operator\?\.renderLocationCreate \}\}/);
   assert.match(CLIENT, /createLocation: async \(form\) => \{\n\s+const result = await adminCreateImportLocation\(form\);/);
-  assert.match(ACTIONS, /return insertInlinePlace\(admin, formData\);/);
+  // Location Import V1: Admin creation goes through lib/location-import,
+  // which inserts through the SAME unlisted core as member Quick Create.
+  assert.match(ACTIONS, /return createImportedLocation\(/);
+  assert.match(read("src/lib/location-import/server.ts"), /await insertUnlistedPlace\(admin, \{ name, address, city, state, postalCode, force: opts\.force === true, profile: profileOf\(input, categoryIds\) \}\);/);
   assert.match(LOC_ACTIONS, /return insertInlinePlace\(admin, formData\);/, "member path shares the same core");
   // Same rules: address required; likely duplicate offered (nothing inserted); unlisted on create.
   globalThis.__ADMIN = fakeClient();

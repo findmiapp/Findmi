@@ -74,9 +74,11 @@ test("8. hidden / broad / none / online Events can never Quick Create", () => {
   // Wiring: every place's offer goes through the same check with the
   // review's own visibility and the candidate's online flag.
   assert.match(PARTS, /eligible: canOfferLocationCreate\(place, \{ locationVisibility: review\.locationVisibility, online: quickCreate\.online \}\)/);
-  assert.match(PARTS, /\{!place\.useLocationId && quickCreate\?\.eligible && <QuickCreateLocation /);
+  assert.match(PARTS, /\{!place\.useLocationId && quickCreate\?\.eligible && !quickCreate\.render && <QuickCreateLocation /);
+  // Admin's Location Import V1 step is offered under the SAME eligibility rule.
+  assert.match(PARTS, /\{!place\.useLocationId && quickCreate\?\.eligible && quickCreate\.render \? quickCreate\.render\(/);
   assert.match(IMPORTER, /online: Boolean\(candidate\.online\)/);
-  assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation \}\}/);
+  assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation, render: operator\?\.renderLocationCreate \}\}/);
 });
 
 // ── CREATE / SELECT ───────────────────────────────────────────────────────
@@ -122,9 +124,11 @@ test("10–11. duplicates are offered (Use This Location) and Create Anyway is t
 test("12 & 20. creating a Location never creates the Event, and grants no ownership / membership / Business link", () => {
   const component = PARTS.slice(PARTS.indexOf("export function QuickCreateLocation"));
   assert.doesNotMatch(component, /commitEventImport|persistEventImport|from\("events"\)/);
-  const fn = INLINE_PLACE.slice(INLINE_PLACE.indexOf("export async function insertInlinePlace"));
+  const fn = INLINE_PLACE.slice(INLINE_PLACE.indexOf("export async function insertUnlistedPlace"));
   const body = fn.slice(0, fn.indexOf("\n}\n"));
-  assert.match(body, /\.insert\(\{ name, slug, address, city, state, postal_code: postalCode, is_demo: true \}\)/, "unlisted, never published");
+  // Profile values (Location Import V1) come first; is_demo: true always last, so nothing overrides it.
+  assert.match(body, /\.insert\(\{ \.\.\.profile, name, slug, address, city, state, postal_code: postalCode, is_demo: true \}\)/, "unlisted, never published");
+  assert.match(INLINE_PLACE, /export async function insertInlinePlace[\s\S]*?return insertUnlistedPlace\(admin, \{/, "member Quick Create uses the same core");
   assert.doesNotMatch(body, /location_members"\)\.insert|business_locations|create_owned_location|from\("events"\)/);
 });
 

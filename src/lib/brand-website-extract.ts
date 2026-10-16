@@ -1125,6 +1125,13 @@ export function nameFromTitle(title: string | null, host: string | null): string
   return cleanName(segments[0]);
 }
 
+/** The page's bounded JSON-LD script texts (same collection rules as
+ * extractBrandProfile) — for other readers of the same safely fetched
+ * page, e.g. Location Import's place facts. Untrusted text. */
+export function jsonLdBlocksOf(html: string): string[] {
+  return collect(html).jsonLd;
+}
+
 /** HTML → untrusted brand suggestions. `pageUrl` is the final fetched URL
  * (relative links resolve against it; its host disambiguates JSON-LD). */
 export function extractBrandProfile(html: string, pageUrl: URL): ExtractedBrandProfile {

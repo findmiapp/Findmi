@@ -132,7 +132,10 @@ test("8. Import Complete counts only real outcomes", () => {
   assert.match(CLIENT, /record\("business", result\.business\.id\);\n\s+onCreated\(result\.business\);/);
   assert.match(CLIENT, /if \(!result\.existing\) record\("business", result\.business\.id\);/);
   assert.match(CLIENT, /if \(result\.applied\.length > 0\) record\("event", eventId\);/);
-  assert.equal((CLIENT.match(/record\("/g) ?? []).length, 4, "no other place counts a creation");
+  // Location Import V1's step reports only a Location it actually created.
+  assert.match(CLIENT, /onCreated=\{\(id\) => record\("location", id\)\}/);
+  assert.match(read("src/components/admin/location-import/EventLocationCreate.tsx"), /if \(r\.status === "created"\) \{\n\s+onCreated\(r\.location\.id\);/);
+  assert.equal((CLIENT.match(/record\("/g) ?? []).length, 5, "no other place counts a creation");
   assert.match(MULTI, /<p className="text-card-title font-semibold text-findmi-700">Import Complete<\/p>/);
   for (const label of ["New Events", "Existing Events Reviewed / Skipped", "Existing Events Updated", "Businesses Created · Awaiting Review", "Locations Created · Awaiting Review"]) assert.ok(MULTI.includes(`"${label}"`), label);
   assert.match(MULTI, /href="\/admin\/locations\?review=1" className=\{secondaryButtonClass\}>\n\s+Review Locations/);

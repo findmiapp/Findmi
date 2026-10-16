@@ -400,7 +400,7 @@ test("missing Location: Quick Create in Review; the same place repeated in the b
   const keyA = O.operatorReviewDefaults(a.candidate, a.matches).place.matchKey;
   assert.equal(keyA, O.operatorReviewDefaults(b.candidate, b.matches).place.matchKey, "same normalized place → same key → one Quick Create serves both");
   assert.equal(keyA, T.venueKey({ name: "Pier 57", address: "25 11th Ave" }));
-  assert.match(MULTI, /createAction: operator\?\.createLocation \}\}/);
+  assert.match(MULTI, /createAction: operator\?\.createLocation, render: operator\?\.renderLocationCreate \}\}/);
 });
 
 test("programming stays visible as 'Not Currently Saved To Findmi' evidence", () => {

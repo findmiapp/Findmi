@@ -6,7 +6,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
 import { BATCH_STATUS_LABEL, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
-import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction } from "./ReviewParts";
+import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction, type LocationCreateRenderer } from "./ReviewParts";
 import { businessEvidenceKey, eventBusinessEvidence, operatorImportSummary, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness, type OperatorSessionStats } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
 
@@ -50,6 +50,8 @@ export type OperatorBusiness = { id: string; name: string };
 export interface OperatorImportMode {
   commit: (items: { review: EventImportReview; businessId: string | null }[]) => Promise<Result>;
   createLocation: InlinePlaceAction;
+  /** Location Import V1's missing-Location step (replaces the bare Quick Create). */
+  renderLocationCreate?: LocationCreateRenderer;
   /** Renders the searchable Business picker for one Event. `evidence` is
    * the Business the source names (for Quick Create); `onCreated` reports a
    * Business the operator just created there, offered to every other Event
@@ -525,7 +527,7 @@ export default function MultiEventImport({
                           matches={matchesOf(e)}
                           initialPast={initialPast[e.key] ?? []}
                           idPrefix={`batch-${e.key}-`}
-                          quickCreate={{ online: Boolean(e.candidate.online), onCreated: onLocationCreated, createAction: operator?.createLocation }}
+                          quickCreate={{ online: Boolean(e.candidate.online), onCreated: onLocationCreated, createAction: operator?.createLocation, render: operator?.renderLocationCreate }}
                         />
                       )}
                       {(!joining || operator) && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}

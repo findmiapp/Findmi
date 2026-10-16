@@ -14,13 +14,13 @@ export const maxDuration = 60;
 export default async function AdminEventImportPage() {
   // Middleware already guards /admin; checked again here (fail closed).
   if (!(await isAdminSession())) redirect("/admin/login");
-  const [categories, formats, businessCategories] = await Promise.all([getAllCategories("event"), getAllCategories("event_format"), getAllCategories("business")]);
+  const [categories, formats, businessCategories, locationCategories] = await Promise.all([getAllCategories("event"), getAllCategories("event_format"), getAllCategories("business"), getAllCategories("location")]);
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4">
       <Link href="/admin/events" className="w-fit text-xs font-semibold text-ink/50 hover:text-ink">
         ← Events
       </Link>
-      <AdminEventImporter categories={categories} formats={formats} businessCategories={businessCategories} />
+      <AdminEventImporter categories={categories} formats={formats} businessCategories={businessCategories} locationCategories={locationCategories} />
     </div>
   );
 }

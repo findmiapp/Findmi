@@ -5,6 +5,7 @@ import Link from "next/link";
 import MultiEventImport, { type OperatorBusiness, type OperatorImportMode } from "@/app/(public)/account/business/[id]/import-event/MultiEventImport";
 import { AttendanceEditor, inputClass, sectionClass } from "@/app/(public)/account/business/[id]/import-event/ReviewParts";
 import { RelationField } from "@/components/admin/RelationPicker";
+import EventLocationCreate from "@/components/admin/location-import/EventLocationCreate";
 import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type EventImportReview, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
 import { fillReviewGaps, operatorReviewDefaults, segmentTextByKey } from "@/lib/event-import/operator";
@@ -703,7 +704,7 @@ function withWebsiteBusiness(events: SourceEventAnalysis[], website: string, bus
 
 type Result = { source: ImportSource; events: SourceEventAnalysis[]; warnings: string[]; run: number };
 
-export default function AdminEventImporter({ categories, formats, businessCategories }: { categories: Category[]; formats: Category[]; businessCategories: Category[] }) {
+export default function AdminEventImporter({ categories, formats, businessCategories, locationCategories = [] }: { categories: Category[]; formats: Category[]; businessCategories: Category[]; locationCategories?: Category[] }) {
   const [method, setMethod] = useState<Method>("text");
   const [pasted, setPasted] = useState("");
   const [url, setUrl] = useState("");
@@ -913,6 +914,13 @@ export default function AdminEventImporter({ categories, formats, businessCatego
       if (result.status === "created") record("location", result.location.id);
       return result;
     },
+    // Location Import V1 — the missing-Location step (match before create,
+    // the Location's own website, review), the same pipeline as Admin →
+    // Locations → Import Locations. A created Location is reported back by
+    // place key, so every matching date / Event in this batch reuses it.
+    renderLocationCreate: ({ idPrefix, place, placeKey, onSelected }) => (
+      <EventLocationCreate idPrefix={idPrefix} place={place} placeKey={placeKey} categories={locationCategories} onSelected={onSelected} onCreated={(id) => record("location", id)} />
+    ),
     stats: {
       businessesCreated: Object.keys(created.business).length,
       locationsCreated: Object.keys(created.location).length,

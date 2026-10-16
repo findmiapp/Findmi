@@ -47,7 +47,7 @@ export function WhenWhereEditor({
   /** Missing-Location Quick Create: `online` feeds the eligibility check;
    * `onCreated` lets the parent show the new Location as a match and reuse
    * it for the same place elsewhere (other Events in a batch). */
-  quickCreate?: { online: boolean; onCreated: (location: ReviewCreatedLocation) => void; createAction?: InlinePlaceAction };
+  quickCreate?: { online: boolean; onCreated: (location: ReviewCreatedLocation) => void; createAction?: InlinePlaceAction; render?: LocationCreateRenderer };
 }) {
   const [open, setOpen] = useState<Set<string>>(() => initiallyOpen(review.occurrences));
   const [pastDates, setPastDates] = useState<ReviewOccurrence[]>(initialPast);
@@ -87,6 +87,7 @@ export function WhenWhereEditor({
             quickCreate.onCreated(location);
           },
           createAction: quickCreate.createAction,
+          render: quickCreate.render,
         }
       : undefined;
 
@@ -360,7 +361,11 @@ export function PlaceFields({
           </div>
         </div>
       )}
-      {!place.useLocationId && quickCreate?.eligible && <QuickCreateLocation idPrefix={idPrefix} place={place} onSelected={quickCreate.onSelected} createAction={quickCreate.createAction} />}
+      {!place.useLocationId && quickCreate?.eligible && !quickCreate.render && <QuickCreateLocation idPrefix={idPrefix} place={place} onSelected={quickCreate.onSelected} createAction={quickCreate.createAction} />}
+      {/* Admin Event Import: Location Import V1's create step (match before
+          create, website enrichment, review) — under the SAME eligibility
+          rule as Quick Create (no vague, hidden, online or linked place). */}
+      {!place.useLocationId && quickCreate?.eligible && quickCreate.render ? quickCreate.render({ idPrefix, place, placeKey: placeKeyFor(place), onSelected: quickCreate.onSelected }) : null}
     </>
   );
 }
@@ -374,7 +379,19 @@ export interface PlaceQuickCreate {
   eligible: boolean;
   onSelected: (location: ReviewCreatedLocation) => void;
   createAction?: InlinePlaceAction;
+  /** Replaces the bare Quick Create (Admin Event Import → Location Import V1). */
+  render?: LocationCreateRenderer;
 }
+
+/** Renders a caller's own missing-Location step for one place. It reports
+ * the chosen/created Location keyed by `placeKey`, so every other place
+ * with the same key in this Review (and batch) reuses it. */
+export type LocationCreateRenderer = (props: {
+  idPrefix: string;
+  place: ReviewPlace;
+  placeKey: string;
+  onSelected: (location: ReviewCreatedLocation) => void;
+}) => React.ReactNode;
 
 const toCreated = (key: string, l: SelectedLocationDetail): ReviewCreatedLocation => ({
   key,

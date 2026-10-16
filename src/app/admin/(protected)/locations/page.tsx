@@ -31,12 +31,20 @@ export default async function AdminLocationsPage({
     <div>
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Locations</h1>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/admin/locations/import"
+          className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:border-black/20"
+        >
+          Import Locations
+        </Link>
         <Link
           href="/admin/locations/new"
           className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
         >
           Add Location
         </Link>
+        </div>
       </div>
 
       {result && (
