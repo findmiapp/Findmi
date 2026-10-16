@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { Category } from "@/lib/types";
 import LifecycleBulkActionBar from "@/components/admin/LifecycleBulkActionBar";
+import BulkLifecycleToolbar, { pillClass } from "@/components/admin/BulkLifecycleToolbar";
+import { businessEligibility, type BusinessTransition } from "@/lib/admin/lifecycle-eligibility";
 import {
   bulkArchiveBusinesses,
   bulkPauseBusinesses,
@@ -11,6 +13,7 @@ import {
   bulkResumeBusinesses,
   bulkRestoreBusinessesFromArchive,
   bulkRestoreBusinessesFromTrash,
+  bulkTransitionBusinesses,
   bulkTrashBusinesses,
 } from "./lifecycle-actions";
 
@@ -22,7 +25,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
         type="button"
         disabled={ids.length === 0}
         onClick={() => setOpen(true)}
-        className="rounded-full border border-black/15 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-black/25 disabled:cursor-not-allowed disabled:opacity-40"
+        className={`${pillClass} col-span-2 border border-black/15 text-ink/70 hover:border-black/25 sm:col-span-1`}
       >
         Quick Edit{ids.length > 0 ? ` (${ids.length})` : ""}
       </button>
@@ -31,7 +34,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   return (
     <form
       action={bulkQuickEditBusinesses}
-      className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
+      className="col-span-2 flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
     >
       {ids.map((id) => (
         <input key={id} type="hidden" name="ids" value={id} />
@@ -71,30 +74,63 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   );
 }
 
+export type BusinessRowState = { id: string; publication_status?: string | null; archived_at?: string | null; trashed_at?: string | null };
+
+const plural = (n: number) => `${n} ${n === 1 ? "Business" : "Businesses"}`;
+
 export default function BusinessBulkActionBar({
   view,
   selectedIds,
   categories,
+  selectedRows = [],
+  keepSelected,
 }: {
   view: "active" | "paused" | "archived" | "trashed" | "other";
   selectedIds: string[];
   categories: Category[];
+  /** The selected rows' current states (for per-action eligible counts). */
+  selectedRows?: BusinessRowState[];
+  keepSelected?: (ids: string[]) => void;
 }) {
+  // Archived / Trash views keep the existing shared bar (Restore, Trash,
+  // Permanent Delete) unchanged.
+  if (view === "archived" || view === "trashed") {
+    return (
+      <LifecycleBulkActionBar
+        view={view}
+        selectedIds={selectedIds}
+        entityNoun="business"
+        actions={{
+          pause: bulkPauseBusinesses,
+          resume: bulkResumeBusinesses,
+          archive: bulkArchiveBusinesses,
+          restoreFromArchive: bulkRestoreBusinessesFromArchive,
+          trash: bulkTrashBusinesses,
+          restoreFromTrash: bulkRestoreBusinessesFromTrash,
+          permanentDelete: bulkPermanentDeleteBusinesses,
+        }}
+      />
+    );
+  }
+  const eligible = (op: BusinessTransition) => selectedRows.filter((r) => businessEligibility(op, r) === "change").length;
+  // Approve / Reject apply to Pending Review rows, Pause to Active ones,
+  // Resume to Paused ones — each appears only when the selection has a row
+  // it applies to, and mixed selections are safe (others are skipped).
   return (
-    <LifecycleBulkActionBar
-      view={view}
+    <BulkLifecycleToolbar
       selectedIds={selectedIds}
-      entityNoun="business"
-      actions={{
-        pause: bulkPauseBusinesses,
-        resume: bulkResumeBusinesses,
-        archive: bulkArchiveBusinesses,
-        restoreFromArchive: bulkRestoreBusinessesFromArchive,
-        trash: bulkTrashBusinesses,
-        restoreFromTrash: bulkRestoreBusinessesFromTrash,
-        permanentDelete: bulkPermanentDeleteBusinesses,
-      }}
-      quickEdit={(ids) => <QuickEditForm ids={ids} categories={categories} />}
+      keepSelected={keepSelected}
+      transitions={[
+        { key: "approve", label: "Approve", tone: "primary", eligible: eligible("approve"), confirm: (n) => `Approve ${plural(n)}?\n\nPending Review Businesses go live on Findmi and their team members are notified. Nothing else changes.`, run: (ids) => bulkTransitionBusinesses(ids, "approve") },
+        { key: "resume", label: "Resume", tone: "primary", eligible: eligible("resume"), confirm: (n) => `Resume ${plural(n)}?\n\nPaused Businesses become visible on Findmi again and their team members are notified.`, run: (ids) => bulkTransitionBusinesses(ids, "resume") },
+        { key: "pause", label: "Pause", tone: "secondary", eligible: eligible("pause"), confirm: (n) => `Pause ${plural(n)}?\n\nActive Businesses stop showing on Findmi until resumed and their team members are notified. Nothing is deleted.`, run: (ids) => bulkTransitionBusinesses(ids, "pause") },
+        { key: "reject", label: "Reject", tone: "destructive", eligible: eligible("reject"), confirm: (n) => `Reject ${plural(n)}?\n\nPending Review Businesses are marked Rejected (not public) and their team members are notified. Records are kept.`, run: (ids) => bulkTransitionBusinesses(ids, "reject") },
+      ]}
+      formActions={[
+        { key: "archive", label: "Archive", tone: "secondary", action: bulkArchiveBusinesses },
+        { key: "trash", label: "Trash", tone: "destructive", action: bulkTrashBusinesses, confirm: (n) => `Move ${n} business(es) to Trash? They'll be hidden everywhere until restored.` },
+      ]}
+      quickEdit={<QuickEditForm ids={selectedIds} categories={categories} />}
     />
   );
 }

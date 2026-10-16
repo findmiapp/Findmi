@@ -41,13 +41,21 @@ export default function EventBulkListClient({
     <AdminBulkList
       items={events}
       emptyMessage={oversight ? "No Events created in the last few days." : "No events in this view."}
-      renderBulkBar={(selectedIds) => <EventBulkActionBar view={oversight ? "other" : view} selectedIds={selectedIds} categories={categories} />}
+      renderBulkBar={(selectedIds, _clear, keepSelected) => (
+        <EventBulkActionBar
+          view={oversight ? "other" : view}
+          selectedIds={selectedIds}
+          categories={categories}
+          selectedRows={events.filter((e) => selectedIds.includes(e.id))}
+          keepSelected={keepSelected}
+        />
+      )}
       renderRow={(e, selected, toggle) => {
         const badge = eventStatusBadge(e);
         const visibility = eventVisibility(e);
         return (
           <div key={e.id} className="flex items-start gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10">
-            <input type="checkbox" checked={selected} onChange={toggle} className="mt-0.5 h-4 w-4 shrink-0" aria-label={`Select ${e.name}`} />
+            <input type="checkbox" checked={selected} onChange={toggle} className="mt-0.5 h-5 w-5 shrink-0" aria-label={`Select ${e.name}`} />
             <div className="min-w-0 flex-1">
               <Link href={`/admin/events/${e.id}`} className="block min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">{e.name}</p>

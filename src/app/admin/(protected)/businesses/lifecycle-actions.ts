@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { str } from "@/lib/admin/form-helpers";
+import { cleanBusinessIds, describeBusinessTransition, transitionBusinesses, type BusinessTransition, type BusinessTransitionResult } from "@/lib/admin/business-lifecycle";
 
 /** Admin Content Lifecycle + Bulk Management V2 — Businesses.
  *
@@ -31,40 +32,55 @@ function revalidateAfterLifecycleChange(slugsOrIds: string[] = []) {
 }
 
 // ── Pause / Resume — the EXISTING publication_status='paused' value. ────
+// Bulk Lifecycle V2: through the ONE shared implementation
+// (lib/admin/business-lifecycle.ts) — the same guard (live → paused /
+// paused → live only) and the same owner notification as the single
+// Business Pause / Restore. Previously bulk Pause paused ANY state and
+// neither notified owners; that drift is gone.
+
+async function formTransition(formData: FormData, op: BusinessTransition) {
+  const supabase = await requireAdminSupabase();
+  const ids = cleanBusinessIds(parseIds(formData));
+  if (ids.length === 0) redirect(resultRedirectUrl(BUSINESSES_LIST, "No businesses selected."));
+  const r = await transitionBusinesses(supabase, ids, op);
+  revalidateAfterLifecycleChange(r.changedSlugs);
+  redirect(resultRedirectUrl(BUSINESSES_LIST, describeBusinessTransition(r)));
+}
 
 export async function bulkPauseBusinesses(formData: FormData) {
-  const supabase = await requireAdminSupabase();
-  const ids = parseIds(formData);
-  if (ids.length === 0) redirect(resultRedirectUrl(BUSINESSES_LIST, "No businesses selected."));
-  const { data, error } = await supabase
-    .from("businesses")
-    .update({ publication_status: "paused" })
-    .in("id", ids)
-    .select("id");
-  const changed = error ? 0 : (data?.length ?? 0);
-  revalidateAfterLifecycleChange();
-  redirect(resultRedirectUrl(BUSINESSES_LIST, error ? "Couldn't pause the selected businesses." : `${changed} business${changed === 1 ? "" : "es"} paused.`));
+  await formTransition(formData, "pause");
 }
 
 export async function bulkResumeBusinesses(formData: FormData) {
-  const supabase = await requireAdminSupabase();
-  const ids = parseIds(formData);
-  if (ids.length === 0) redirect(resultRedirectUrl(BUSINESSES_LIST, "No businesses selected."));
-  const { data, error } = await supabase
-    .from("businesses")
-    .update({ publication_status: "live" })
-    .in("id", ids)
-    .eq("publication_status", "paused")
-    .select("id");
-  const changed = error ? 0 : (data?.length ?? 0);
-  const skipped = ids.length - changed;
-  revalidateAfterLifecycleChange();
-  redirect(
-    resultRedirectUrl(
-      BUSINESSES_LIST,
-      `${changed} business${changed === 1 ? "" : "es"} resumed.` + (skipped > 0 ? ` ${skipped} skipped (not paused).` : "")
-    )
-  );
+  await formTransition(formData, "resume");
+}
+
+/** Bulk Approve / Reject / Pause / Resume — per-id outcome (no redirect)
+ * so failed rows can stay selected. Admin session verified first; ids
+ * validated and re-read; idempotent. */
+export async function bulkTransitionBusinesses(
+  ids: string[],
+  op: BusinessTransition
+): Promise<{ ok: true; result: BusinessTransitionResult; message: string } | { ok: false; error: string }> {
+  let supabase: SupabaseClient;
+  try {
+    supabase = await requireAdminSupabase();
+  } catch {
+    return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  }
+  if (op !== "approve" && op !== "reject" && op !== "pause" && op !== "resume") return { ok: false, error: "Unknown action." };
+  const clean = cleanBusinessIds(ids);
+  if (clean.length === 0) return { ok: false, error: "No businesses selected." };
+  try {
+    const result = await transitionBusinesses(supabase, clean, op);
+    if (result.changed.length > 0) {
+      revalidateAfterLifecycleChange(result.changedSlugs);
+      revalidatePath("/admin");
+    }
+    return { ok: true, result, message: describeBusinessTransition(result) };
+  } catch {
+    return { ok: false, error: "Couldn't update these Businesses. Nothing was reported as changed — try again." };
+  }
 }
 
 // ── Archive / Restore from Archive ──────────────────────────────────────

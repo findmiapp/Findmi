@@ -4,12 +4,15 @@ import { useState } from "react";
 import type { Category } from "@/lib/types";
 import { groupEventCategories } from "@/lib/event-categories";
 import LifecycleBulkActionBar from "@/components/admin/LifecycleBulkActionBar";
+import BulkLifecycleToolbar, { pillClass } from "@/components/admin/BulkLifecycleToolbar";
+import { eventEligibility, type EventTransition } from "@/lib/admin/lifecycle-eligibility";
 import {
   bulkArchiveEvents,
   bulkPermanentDeleteEvents,
   bulkQuickEditEvents,
   bulkRestoreEventsFromArchive,
   bulkRestoreEventsFromTrash,
+  bulkTransitionEvents,
   bulkTrashEvents,
 } from "./lifecycle-actions";
 
@@ -21,7 +24,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
         type="button"
         disabled={ids.length === 0}
         onClick={() => setOpen(true)}
-        className="rounded-full border border-black/15 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-black/25 disabled:cursor-not-allowed disabled:opacity-40"
+        className={`${pillClass} col-span-2 border border-black/15 text-ink/70 hover:border-black/25 sm:col-span-1`}
       >
         Quick Edit{ids.length > 0 ? ` (${ids.length})` : ""}
       </button>
@@ -30,7 +33,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   return (
     <form
       action={bulkQuickEditEvents}
-      className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
+      className="col-span-2 flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
     >
       {ids.map((id) => (
         <input key={id} type="hidden" name="ids" value={id} />
@@ -81,30 +84,60 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   );
 }
 
+export type EventRowState = { id: string; is_demo: boolean; publication_status?: string | null; archived_at?: string | null; trashed_at?: string | null };
+
+const plural = (n: number) => `${n} Event${n === 1 ? "" : "s"}`;
+
 export default function EventBulkActionBar({
   view,
   selectedIds,
   categories,
+  selectedRows = [],
+  keepSelected,
 }: {
   // No "paused" view — see lifecycle-actions.ts's note: events have no
   // Pause concept (DB CHECK constraint), unlike Businesses/Products.
   view: "active" | "archived" | "trashed" | "other";
   selectedIds: string[];
   categories: Category[];
+  /** The selected rows' current states (for per-action eligible counts). */
+  selectedRows?: EventRowState[];
+  keepSelected?: (ids: string[]) => void;
 }) {
+  // Archived (Shut Down) / Trash views keep the existing shared bar:
+  // Restore, Move to Trash, Permanent Delete — unchanged.
+  if (view === "archived" || view === "trashed") {
+    return (
+      <LifecycleBulkActionBar
+        view={view}
+        selectedIds={selectedIds}
+        entityNoun="event"
+        actions={{
+          archive: bulkArchiveEvents,
+          restoreFromArchive: bulkRestoreEventsFromArchive,
+          trash: bulkTrashEvents,
+          restoreFromTrash: bulkRestoreEventsFromTrash,
+          permanentDelete: bulkPermanentDeleteEvents,
+        }}
+      />
+    );
+  }
+  const eligible = (op: EventTransition) => selectedRows.filter((r) => eventEligibility(op, r) === "change").length;
+  // Shut Down IS the Archive change (archived_at) — one button, the
+  // Event's own wording; no separate duplicate "Archive".
   return (
-    <LifecycleBulkActionBar
-      view={view}
+    <BulkLifecycleToolbar
       selectedIds={selectedIds}
-      entityNoun="event"
-      actions={{
-        archive: bulkArchiveEvents,
-        restoreFromArchive: bulkRestoreEventsFromArchive,
-        trash: bulkTrashEvents,
-        restoreFromTrash: bulkRestoreEventsFromTrash,
-        permanentDelete: bulkPermanentDeleteEvents,
-      }}
-      quickEdit={(ids) => <QuickEditForm ids={ids} categories={categories} />}
+      keepSelected={keepSelected}
+      transitions={[
+        { key: "live", label: "Make Live", tone: "primary", eligible: eligible("live"), confirm: (n) => `Make ${plural(n)} Live?\n\nThey'll be public on Findmi (Event pages, Events, Location and Business activity).`, run: (ids) => bulkTransitionEvents(ids, "live") },
+        { key: "hide", label: "Hide", tone: "secondary", eligible: eligible("hide"), confirm: (n) => `Hide ${plural(n)}?\n\nThey leave public pages and listings. Nothing is deleted — dates, places and Businesses are kept, and Make Live brings them back.`, run: (ids) => bulkTransitionEvents(ids, "hide") },
+        { key: "shutdown", label: "Shut Down", tone: "destructive", eligible: eligible("shutdown"), confirm: (n) => `Shut Down ${plural(n)}?\n\nThey're hidden everywhere along with their dates and linked schedule items, and move to Archived. Records are kept; Restore reopens them.`, run: (ids) => bulkTransitionEvents(ids, "shutdown") },
+      ]}
+      formActions={[
+        { key: "trash", label: "Trash", tone: "destructive", action: bulkTrashEvents, confirm: (n) => `Move ${n} event(s) to Trash? They'll be hidden everywhere until restored.` },
+      ]}
+      quickEdit={<QuickEditForm ids={selectedIds} categories={categories} />}
     />
   );
 }

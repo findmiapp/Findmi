@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { str } from "@/lib/admin/form-helpers";
+import { cleanEventIds, describeEventTransition, transitionEvents, type EventTransition, type EventTransitionResult } from "@/lib/admin/event-lifecycle";
 
 /** Admin Content Lifecycle + Bulk Management V2 — Events. archived_at/
  * trashed_at are additive, same model as Products/Businesses. Unlike
@@ -251,38 +252,29 @@ function withResult(path: string, message: string): string {
   return `${path}${path.includes("?") ? "&" : "?"}result=${encodeURIComponent(message)}`;
 }
 
-export async function hideEvent(eventId: string, returnTo: string | null = null) {
+// The single-Event controls and the bulk toolbar share ONE implementation
+// (lib/admin/event-lifecycle.ts) — same patches, same guards.
+
+async function oneEvent(eventId: string, op: EventTransition): Promise<{ supabase: SupabaseClient; r: EventTransitionResult }> {
   const supabase = await requireAdminSupabase();
-  const { data } = await supabase.from("events").update({ is_demo: true }).eq("id", eventId).select("id").maybeSingle();
+  const r = await transitionEvents(supabase, [eventId], op);
   await afterVisibilityChange(supabase, eventId);
-  redirect(withResult(backTo(returnTo, eventId), data ? "Event hidden from the public." : "Event not found."));
+  return { supabase, r };
+}
+
+export async function hideEvent(eventId: string, returnTo: string | null = null) {
+  const { r } = await oneEvent(eventId, "hide");
+  redirect(withResult(backTo(returnTo, eventId), r.changed.length || r.already.length ? "Event hidden from the public." : "Event not found (or shut down / in Trash)."));
 }
 
 export async function publishEvent(eventId: string, returnTo: string | null = null) {
-  const supabase = await requireAdminSupabase();
-  const { data } = await supabase
-    .from("events")
-    .update({ is_demo: false, publication_status: "live" })
-    .eq("id", eventId)
-    .is("trashed_at", null)
-    .select("id")
-    .maybeSingle();
-  await afterVisibilityChange(supabase, eventId);
-  redirect(withResult(backTo(returnTo, eventId), data ? "Event is live." : "Event not found (or in Trash)."));
+  const { r } = await oneEvent(eventId, "live");
+  redirect(withResult(backTo(returnTo, eventId), r.changed.length || r.already.length ? "Event is live." : "Event not found (or shut down / in Trash)."));
 }
 
 export async function shutDownEvent(eventId: string, returnTo: string | null = null) {
-  const supabase = await requireAdminSupabase();
-  const { data } = await supabase
-    .from("events")
-    .update({ archived_at: new Date().toISOString() })
-    .eq("id", eventId)
-    .is("archived_at", null)
-    .is("trashed_at", null)
-    .select("id")
-    .maybeSingle();
-  await afterVisibilityChange(supabase, eventId);
-  redirect(withResult(backTo(returnTo, eventId), data ? "Event shut down — hidden everywhere, record kept (Archived)." : "Event was already shut down."));
+  const { r } = await oneEvent(eventId, "shutdown");
+  redirect(withResult(backTo(returnTo, eventId), r.changed.length ? "Event shut down — hidden everywhere, record kept (Archived)." : "Event was already shut down."));
 }
 
 export async function restoreEvent(eventId: string, returnTo: string | null = null) {
@@ -290,4 +282,34 @@ export async function restoreEvent(eventId: string, returnTo: string | null = nu
   const { data } = await supabase.from("events").update({ archived_at: null }).eq("id", eventId).not("archived_at", "is", null).select("id").maybeSingle();
   await afterVisibilityChange(supabase, eventId);
   redirect(withResult(backTo(returnTo, eventId), data ? "Event restored from Archive." : "Event wasn't shut down."));
+}
+
+/** Bulk Make Live / Hide / Shut Down — the same transitions as the single
+ * Event controls, per-id outcome (no redirect) so failed rows can stay
+ * selected. Admin session verified first; ids validated and re-read. */
+export async function bulkTransitionEvents(
+  ids: string[],
+  op: EventTransition
+): Promise<{ ok: true; result: EventTransitionResult; message: string } | { ok: false; error: string }> {
+  let supabase: SupabaseClient;
+  try {
+    supabase = await requireAdminSupabase();
+  } catch {
+    return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  }
+  if (op !== "live" && op !== "hide" && op !== "shutdown") return { ok: false, error: "Unknown action." };
+  const clean = cleanEventIds(ids);
+  if (clean.length === 0) return { ok: false, error: "No events selected." };
+  try {
+    const result = await transitionEvents(supabase, clean, op);
+    if (result.changed.length > 0) {
+      revalidatePath("/", "layout");
+      revalidatePath(EVENTS_LIST);
+      revalidatePath("/admin");
+      for (const slug of result.changedSlugs) revalidatePath(`/event/${slug}`);
+    }
+    return { ok: true, result, message: describeEventTransition(result) };
+  } catch {
+    return { ok: false, error: "Couldn't update these Events. Nothing was reported as changed — try again." };
+  }
 }

@@ -36,7 +36,7 @@ const CORGI_NYC = "660d3744-dc88-4e91-856c-c0a296c9e776";
 const LIVE = { is_demo: false, publication_status: "live" };
 
 /** Records every write; update chains support eq/is/not/select/maybeSingle. */
-function fakeAdmin({ appearance = null, updateHits = true } = {}) {
+function fakeAdmin({ appearance = null, updateHits = true, eventRow = null } = {}) {
   const ops = [];
   let n = 0;
   const builder = (table) => {
@@ -54,7 +54,8 @@ function fakeAdmin({ appearance = null, updateHits = true } = {}) {
                 ? { slug: "qsbs" }
                 : null,
       }),
-      then: (resolve) => resolve({ data: [] }),
+      // The shared lifecycle helper re-reads the Event first (Bulk Lifecycle V2).
+      then: (resolve) => resolve({ data: table === "events" && eventRow ? [eventRow] : [] }),
       insert: (input) => {
         const rows = Array.isArray(input) ? input : [input];
         ops.push({ op: "insert", table, rows });
@@ -66,12 +67,13 @@ function fakeAdmin({ appearance = null, updateHits = true } = {}) {
         const rec = { op: "update", table, patch, where: [] };
         ops.push(rec);
         const chain = {
+          in: (k, v) => (rec.where.push(["in", k, v]), chain),
           eq: (k, v) => (rec.where.push(["eq", k, v]), chain),
           is: (k, v) => (rec.where.push(["is", k, v]), chain),
           not: (k, o, v) => (rec.where.push(["not", k, v]), chain),
           select: () => chain,
           maybeSingle: async () => ({ data: updateHits ? { id: "ev" } : null, error: null }),
-          then: (r) => r({ error: null }),
+          then: (r) => r(updateHits ? { data: rec.where.find((w) => w[0] === "in")?.[2]?.map((id) => ({ id })) ?? [], error: null } : { error: null }),
         };
         return chain;
       },
@@ -245,7 +247,7 @@ test("visibility wording", () => {
 
 // ── 10–13: Admin authority; nothing deleted ──────────────────────────────
 async function runAction(fn, ...args) {
-  const { client, ops } = fakeAdmin();
+  const { client, ops } = fakeAdmin({ eventRow: { ...EVENT_ROW, ...(runAction.row ?? {}) } });
   globalThis.__admin = client;
   globalThis.__revalidated = [];
   try {
@@ -257,11 +259,14 @@ async function runAction(fn, ...args) {
   assert.fail("the action must redirect");
 }
 
+const EVENT_ROW = { id: "ev-1", slug: "qsbs", is_demo: false, publication_status: "live", archived_at: null, trashed_at: null };
+
 test("10 + 11: Hide → is_demo true (Event page, listings, Location dates stop showing it); site-wide revalidation", async () => {
   const r = await runAction(L.hideEvent, "ev-1", "/admin/events?new=1");
   const upd = r.ops.find((o) => o.op === "update");
   assert.deepEqual(upd.patch, { is_demo: true });
-  assert.deepEqual(upd.where, [["eq", "id", "ev-1"]]);
+  // Bulk Lifecycle V2: through the shared helper — the same guards as the bulk toolbar.
+  assert.deepEqual(upd.where, [["in", "id", ["ev-1"]], ["is", "trashed_at", null], ["is", "archived_at", null]]);
   assert.ok(r.revalidated.some((a) => a[0] === "/" && a[1] === "layout"), "every public page re-reads it");
   assert.ok(r.revalidated.some((a) => a[0] === "/event/qsbs"));
   assert.match(r.url, /^\/admin\/events\?new=1&result=Event%20hidden/);
@@ -271,17 +276,20 @@ test("10 + 11: Shut Down → archived (restrictive RLS hides the Event, its date
   const down = await runAction(L.shutDownEvent, "ev-1", null);
   const upd = down.ops.find((o) => o.op === "update");
   assert.deepEqual(Object.keys(upd.patch), ["archived_at"]);
-  assert.deepEqual(upd.where, [["eq", "id", "ev-1"], ["is", "archived_at", null], ["is", "trashed_at", null]]);
+  assert.deepEqual(upd.where, [["in", "id", ["ev-1"]], ["is", "trashed_at", null], ["is", "archived_at", null]]);
   assert.match(down.url, /^\/admin\/events\/ev-1\?result=/);
   const up = await runAction(L.restoreEvent, "ev-1", null);
   assert.deepEqual(up.ops.find((o) => o.op === "update").patch, { archived_at: null });
 });
 
 test("Publish → live again (also publishes an older pending/rejected Event), never out of Trash", async () => {
+  runAction.row = { is_demo: true, publication_status: "pending_review" };
   const r = await runAction(L.publishEvent, "ev-1", null);
+  runAction.row = null;
   const upd = r.ops.find((o) => o.op === "update");
   assert.deepEqual(upd.patch, LIVE);
-  assert.deepEqual(upd.where, [["eq", "id", "ev-1"], ["is", "trashed_at", null]]);
+  // Never out of Trash, and (as the Edit Event page only offers it) never a Shut Down Event — Restore first.
+  assert.deepEqual(upd.where, [["in", "id", ["ev-1"]], ["is", "trashed_at", null], ["is", "archived_at", null]]);
 });
 
 test("12: no oversight action deletes anything; the return path can't leave Admin Events", async () => {
@@ -293,7 +301,10 @@ test("12: no oversight action deletes anything; the return path can't leave Admi
   const src = read("src/app/admin/(protected)/events/lifecycle-actions.ts");
   const oversight = src.slice(src.indexOf("// ── Event Publication"));
   assert.doesNotMatch(oversight, /\.delete\(/);
-  assert.equal((oversight.match(/await requireAdminSupabase\(\)/g) ?? []).length, 4, "each action is Admin-only");
+  // Hide / Publish / Shut Down share oneEvent (Admin session first); Restore and the bulk action check it too.
+  assert.match(oversight, /async function oneEvent\(eventId: string, op: EventTransition\)[^\n]*\n\s+const supabase = await requireAdminSupabase\(\);/);
+  for (const [fn, op] of [["hideEvent", "hide"], ["publishEvent", "live"], ["shutDownEvent", "shutdown"]]) assert.match(oversight, new RegExp(`export async function ${fn}[^]*?await oneEvent\\(eventId, "${op}"\\)`), fn);
+  assert.equal((oversight.match(/await requireAdminSupabase\(\)/g) ?? []).length, 3, "each action is Admin-only");
 });
 
 test("13: rejected / archived / trashed stay non-public; joining a hidden Event stays unavailable", () => {
