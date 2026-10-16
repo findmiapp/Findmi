@@ -1,6 +1,6 @@
 "use client";
 
-import { LOCATION_WEEKDAYS, formatDayHoursCompact, hasAnyHours } from "@/lib/locationHours";
+import { LOCATION_WEEKDAYS, dayHoursState, formatDayHoursCompact, hasAnyHours } from "@/lib/locationHours";
 import type { Category } from "@/lib/types";
 import type { LocationCreateInput, LocationField, LocationProposal } from "@/lib/location-import/types";
 
@@ -169,7 +169,7 @@ export default function LocationProposalEditor({
         <fieldset className="rounded-xl border border-black/[0.08] p-3">
           <legend className="px-1 text-label font-bold uppercase text-subtle">Hours · From Website</legend>
           <ul className="grid grid-cols-2 gap-x-3 text-metadata text-secondary">
-            {LOCATION_WEEKDAYS.filter(({ key }) => draft.hours?.[key]).map(({ key, short }) => (
+            {LOCATION_WEEKDAYS.filter(({ key }) => dayHoursState(draft.hours?.[key]) !== "unset").map(({ key, short }) => (
               <li key={key}>
                 <span className="font-semibold text-primary">{short}</span> {formatDayHoursCompact(draft.hours?.[key])}
               </li>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { LocationDayHours, LocationHours, LocationWeekday } from "@/lib/types";
-import { LOCATION_WEEKDAYS, copyDayHours, isAllDay, looksLikeAllDay, setAllDaysOpen24 } from "@/lib/locationHours";
+import { HOURS_NOT_SET, LOCATION_WEEKDAYS, copyDayHours, dayHoursState, hasAnyHours, looksLikeAllDay, setAllDaysOpen24 } from "@/lib/locationHours";
 
 /** Location V2 — compact weekly hours editor. Standard 7-day week, each
  * day Closed, a single open/close window, or Open 24 Hours (no split
@@ -28,9 +28,11 @@ const MODES: { key: Mode; label: string }[] = [
 const timeInputClass =
   "w-full min-w-0 rounded-lg border border-black/10 bg-white px-2.5 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none";
 
-function modeOf(day: LocationDayHours | undefined): Mode {
-  if (!day || day.closed) return "closed";
-  return isAllDay(day) ? "allDay" : "hours";
+/** null = this day has no usable hours yet ("Not Set") — never shown as
+ * Closed: only an explicit Closed choice is closed. */
+function modeOf(day: LocationDayHours | undefined): Mode | null {
+  const state = dayHoursState(day);
+  return state === "unset" ? null : state;
 }
 
 export default function LocationHoursField({
@@ -82,7 +84,10 @@ export default function LocationHoursField({
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="block text-sm font-medium text-ink">Hours of Operation</span>
+        <span className="flex items-center gap-2 text-sm font-medium text-ink">
+          Hours of Operation
+          {!hasAnyHours(hours) && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{HOURS_NOT_SET}</span>}
+        </span>
         <button
           type="button"
           onClick={() => setHours((prev) => setAllDaysOpen24(prev))}
@@ -120,7 +125,10 @@ export default function LocationHoursField({
           return (
             <div key={key} className="flex flex-col gap-2 bg-white px-3 py-2.5" data-day={key}>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-ink">{label}</span>
+                <span className="text-sm font-medium text-ink">
+                  {label}
+                  {mode === null && <span className="ml-2 text-xs font-normal text-ink/40">Not Set</span>}
+                </span>
                 <button
                   type="button"
                   onClick={() => startCopy(key)}

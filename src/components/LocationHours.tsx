@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import ChevronIcon from "./ChevronIcon";
-import { LOCATION_WEEKDAYS, formatDayHoursCompact, getHoursStatus, weekdayKeyFor } from "@/lib/locationHours";
+import { LOCATION_WEEKDAYS, dayHoursState, formatDayHoursCompact, getHoursStatus, weekdayKeyFor } from "@/lib/locationHours";
 import type { LocationHours as LocationHoursValue } from "@/lib/types";
 
 /** The visitor's own clock, read after mount — never the server's (the
@@ -54,7 +54,9 @@ export function LocationHoursStatus({ hours }: { hours: LocationHoursValue | nul
 
       {expanded && (
         <dl id={panelId} aria-label="Hours" className="mt-1.5 flex flex-col gap-0.5 rounded-xl border border-black/10 bg-white px-3.5 py-2">
-          {LOCATION_WEEKDAYS.map(({ key, label: dayLabel }) => {
+          {/* Only days with real hours or an explicit Closed — a day with
+              nothing set is left out, never listed as "Closed". */}
+          {LOCATION_WEEKDAYS.filter(({ key }) => dayHoursState(hours?.[key]) !== "unset").map(({ key, label: dayLabel }) => {
             const isToday = key === todayKey;
             return (
               <div

@@ -13,12 +13,30 @@ export const LOCATION_WEEKDAYS: { key: LocationWeekday; label: string; short: st
   { key: "sun", label: "Sunday", short: "Sun" },
 ];
 
-/** Whether `hours` has at least one real entry — the "hide the whole
- * section" gate the public page and Location Manager preview both use. A
- * null column or an empty object are treated identically. */
-export function hasAnyHours(hours: LocationHours | null | undefined): boolean {
-  return Boolean(hours && Object.keys(hours).length > 0);
+const HHMM_VALUE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** One day's USABLE state: explicitly closed, Open 24 Hours, or a real
+ * open/close window. Anything else (missing, {}, times missing or
+ * malformed) is NOT SET — never "Closed". */
+export function dayHoursState(day: unknown): "closed" | "allDay" | "hours" | "unset" {
+  if (!day || typeof day !== "object" || Array.isArray(day)) return "unset";
+  const d = day as Record<string, unknown>;
+  if (d.closed === true) return "closed";
+  if (d.allDay === true) return "allDay";
+  return typeof d.open === "string" && typeof d.close === "string" && HHMM_VALUE.test(d.open) && HHMM_VALUE.test(d.close) ? "hours" : "unset";
 }
+
+/** Whether `hours` holds at least one USABLE day — the "hide the whole
+ * section" gate the public page and Location Manager both use. null,
+ * undefined, {}, [], a non-object, or days without usable values are all
+ * "Hours Not Set": never Open, never Closed. */
+export function hasAnyHours(hours: LocationHours | null | undefined): boolean {
+  if (!hours || typeof hours !== "object" || Array.isArray(hours)) return false;
+  return LOCATION_WEEKDAYS.some(({ key }) => dayHoursState((hours as Record<string, unknown>)[key]) !== "unset");
+}
+
+/** Admin / editing label for a Location with no usable hours. */
+export const HOURS_NOT_SET = "Hours Not Set";
 
 /** Location Hours UX — a day explicitly marked "Open 24 Hours". Only the
  * explicit flag counts: a stored 12:00 AM – 11:59 PM window is NOT
@@ -106,16 +124,23 @@ export function formatClockCompact(hhmm: string): string {
   return full.replace(/:00 (AM|PM)$/, " $1");
 }
 
-/** "7 AM – 4 PM" / "Closed" — compact companion to formatDayHours. */
+/** "7 AM – 4 PM" / "Closed" — compact companion to formatDayHours.
+ * "Closed" only for a day explicitly marked closed; a day with no usable
+ * entry is "Hours Not Set" (public lists leave such days out). */
 export function formatDayHoursCompact(day: LocationDayHours | undefined): string {
-  if (isAllDay(day)) return "Open 24 Hours";
-  if (!day || day.closed || !day.open || !day.close) return "Closed";
-  return `${formatClockCompact(day.open)} – ${formatClockCompact(day.close)}`;
+  const state = dayHoursState(day);
+  if (state === "allDay") return "Open 24 Hours";
+  if (state === "closed") return "Closed";
+  if (state === "unset") return HOURS_NOT_SET;
+  return `${formatClockCompact(day!.open!)} – ${formatClockCompact(day!.close!)}`;
 }
 
 export function formatDayHours(day: LocationDayHours | undefined): string {
-  if (isAllDay(day)) return "Open 24 Hours";
-  if (!day || day.closed || !day.open || !day.close) return "Closed";
+  const state = dayHoursState(day);
+  if (state === "allDay") return "Open 24 Hours";
+  if (state === "closed") return "Closed";
+  if (state === "unset") return HOURS_NOT_SET;
+  if (!day?.open || !day.close) return HOURS_NOT_SET;
   // Standard hyphen with surrounding spaces (not an en dash) — the exact
   // public presentation standard: "9:00 AM - 6:00 PM".
   return `${formatClock(day.open)} - ${formatClock(day.close)}`;
@@ -180,12 +205,16 @@ export function getHoursStatus(hours: LocationHours | null | undefined, now: Dat
   return { open: false, detail: valid(tomorrow) ? `Opens ${formatClockCompact(tomorrow.open)} Tomorrow` : null };
 }
 
+/** true = Open, false = Closed, null = UNKNOWN (no usable hours at all, or
+ * none set for today) — unknown is never reported as Closed. */
 function isOpenNowAt(hours: LocationHours | null | undefined, now: Date): boolean | null {
   if (!hasAnyHours(hours)) return null;
   const today = hours![weekdayKeyFor(now)];
+  const state = dayHoursState(today);
   // Open 24 Hours: open at every minute of that day, midnight included.
-  if (isAllDay(today)) return true;
-  if (!today || today.closed || !today.open || !today.close) return false;
+  if (state === "allDay") return true;
+  if (state === "closed") return false;
+  if (state === "unset" || !today?.open || !today.close) return null;
   const [openH, openM] = today.open.split(":").map(Number);
   const [closeH, closeM] = today.close.split(":").map(Number);
   const minutesNow = now.getHours() * 60 + now.getMinutes();
