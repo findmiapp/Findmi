@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // No "Paused" tab — Locations have no Pause concept at all (V1's audit
 // finding, reconfirmed in V2 — no column exists to pause one).
 const LIFECYCLE_TABS = [
-  { value: "active", label: "Active" },
+  { value: "active", label: "All Active" },
   { value: "archived", label: "Archived" },
   { value: "trashed", label: "Trash" },
 ] as const;
@@ -15,15 +15,17 @@ const LIFECYCLE_TABS = [
 export default async function AdminLocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string }>;
+  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string; published?: string }>;
 }) {
-  const { q, lifecycle, result, review } = await searchParams;
+  const { q, lifecycle, result, review, published } = await searchParams;
   const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value ?? "active";
-  // "Needs Review": active Locations not publicly listed yet (Admin Home's queue).
+  // "Needs Review": active Locations not publicly listed yet (Admin Home's
+  // queue) — their rows read DRAFT. "Published": active and publicly listed.
   const needsReview = review === "1" && lifecycleTab === "active";
+  const publishedOnly = !needsReview && published === "1" && lifecycleTab === "active";
 
   const [locations, categories] = await Promise.all([
-    getAdminLocations(q, lifecycleTab, needsReview),
+    getAdminLocations(q, lifecycleTab, needsReview, publishedOnly),
     getAllCategories("location"),
   ]);
 
@@ -57,7 +59,7 @@ export default async function AdminLocationsPage({
           Events, minus the Paused tab which doesn't apply here. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {LIFECYCLE_TABS.map((tab) => {
-          const active = lifecycleTab === tab.value && !needsReview;
+          const active = lifecycleTab === tab.value && !needsReview && !publishedOnly;
           const params = new URLSearchParams();
           if (tab.value !== "active") params.set("lifecycle", tab.value);
           if (q) params.set("q", q);
@@ -82,17 +84,26 @@ export default async function AdminLocationsPage({
         >
           Needs Review
         </Link>
+        <Link
+          href={`/admin/locations?published=1${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+            publishedOnly ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+          }`}
+        >
+          Published
+        </Link>
       </div>
       {needsReview && (
         <p className="mt-3 text-sm text-ink/60">
-          Not publicly listed yet — no public Location page, so Events show these by name and address only. Open one, check it, and turn on
-          &ldquo;Published&rdquo; to list it.
+          Draft — not publicly listed yet, so Events show these by name and address only. Select the ones that are ready and Publish them
+          together (or open one to check it first).
         </p>
       )}
 
       <form method="get" className="mt-4">
         {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
         {needsReview && <input type="hidden" name="review" value="1" />}
+        {publishedOnly && <input type="hidden" name="published" value="1" />}
         <input autoCapitalize="none"
           type="text"
           name="q"

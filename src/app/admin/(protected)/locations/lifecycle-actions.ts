@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { str } from "@/lib/admin/form-helpers";
+import { cleanLocationIds, describeLocationPublication, setLocationPublication, type LocationPublicationResult } from "@/lib/admin/location-publication";
 
 /** Admin Content Lifecycle + Bulk Management V2 — Locations. Same
  * archived_at/trashed_at model as Products/Businesses/Events. Locations
@@ -27,6 +28,36 @@ function revalidateAfterLifecycleChange() {
   revalidatePath(LOCATIONS_LIST);
   revalidatePath("/locations");
   revalidatePath("/");
+}
+
+/** Bulk Publish / Unpublish → Draft — the SAME canonical change as the
+ * single editor's "Published" control (lib/admin/location-publication.ts:
+ * is_demo, manager notification on a real transition). Active Locations
+ * only; idempotent; per-id outcome returned (no redirect) so the list can
+ * keep failed rows selected for a retry. Admin session verified first. */
+export async function bulkSetLocationsPublished(
+  ids: string[],
+  publish: boolean
+): Promise<{ ok: true; result: LocationPublicationResult; message: string } | { ok: false; error: string }> {
+  let supabase: SupabaseClient;
+  try {
+    supabase = await requireAdminSupabase();
+  } catch {
+    return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  }
+  const clean = cleanLocationIds(ids);
+  if (clean.length === 0) return { ok: false, error: "No locations selected." };
+  try {
+    const result = await setLocationPublication(supabase, clean, publish === true);
+    if (result.changed.length > 0) {
+      revalidateAfterLifecycleChange();
+      revalidatePath("/admin");
+      for (const slug of result.changedSlugs) revalidatePath(`/location/${slug}`);
+    }
+    return { ok: true, result, message: describeLocationPublication(result) };
+  } catch {
+    return { ok: false, error: "Couldn't update these Locations. Nothing was reported as changed — try again." };
+  }
 }
 
 export async function bulkArchiveLocations(formData: FormData) {

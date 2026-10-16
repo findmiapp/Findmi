@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /** Admin Content Lifecycle + Bulk Management V1 — the shared bulk-selection
  * primitive every entity's admin list can reuse (Products is the first;
@@ -27,12 +27,23 @@ export default function AdminBulkList<T extends { id: string }>({
 }: {
   items: T[];
   renderRow: (item: T, selected: boolean, toggle: () => void) => React.ReactNode;
-  /** Receives the live selected-id array and a clear-selection callback.
-   * Omit entirely for a read-only list with no bulk actions available. */
-  renderBulkBar?: (selectedIds: string[], clearSelection: () => void) => React.ReactNode;
+  /** Receives the live selected-id array, a clear-selection callback and a
+   * setter that can only keep ids this list was handed (e.g. leave failed
+   * rows selected for a retry). Omit entirely for a read-only list. */
+  renderBulkBar?: (selectedIds: string[], clearSelection: () => void, keepSelected: (ids: string[]) => void) => React.ReactNode;
   emptyMessage?: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // When the list changes (a refresh after a bulk action, a new filter),
+  // drop any selected id that is no longer visible — the selection can
+  // never include rows the operator can't see.
+  useEffect(() => {
+    setSelected((prev) => {
+      const visible = new Set(items.map((i) => i.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
   const allSelected = items.length > 0 && selected.size === items.length;
 
   function toggle(id: string) {
@@ -52,6 +63,12 @@ export default function AdminBulkList<T extends { id: string }>({
     setSelected(new Set());
   }
 
+  // Never selects anything outside the items this list was given.
+  function keepSelected(ids: string[]) {
+    const visible = new Set(items.map((i) => i.id));
+    setSelected(new Set(ids.filter((id) => visible.has(id))));
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {renderBulkBar && items.length > 0 && (
@@ -68,7 +85,7 @@ export default function AdminBulkList<T extends { id: string }>({
               </span>
             )}
           </label>
-          {renderBulkBar(Array.from(selected), clearSelection)}
+          {renderBulkBar(Array.from(selected), clearSelection, keepSelected)}
         </div>
       )}
 

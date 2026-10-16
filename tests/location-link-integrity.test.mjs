@@ -95,13 +95,14 @@ test("4 + 5. Admin Home counts active, unlisted Locations (Quick Created ones in
   assert.match(HOME, /const activeAttentionItems = attentionQueue\.filter\(\(item\) => item\.count > 0\);/);
 });
 
-test("6. Admin Locations → Needs Review lists exactly that set, with address and a Not Listed badge", () => {
+test("6. Admin Locations → Needs Review lists exactly that set, with address and a Draft badge", () => {
   assert.match(QUERIES, /if \(needsReview\) query = query\.eq\("is_demo", true\);/);
   assert.match(LOC_PAGE, /const needsReview = review === "1" && lifecycleTab === "active";/);
-  assert.match(LOC_PAGE, /getAdminLocations\(q, lifecycleTab, needsReview\)/);
+  assert.match(LOC_PAGE, /getAdminLocations\(q, lifecycleTab, needsReview, publishedOnly\)/);
   assert.match(LOC_PAGE, />\n\s+Needs Review\n\s+<\/Link>/);
   const list = read("src/app/admin/(protected)/locations/LocationBulkListClient.tsx");
-  assert.match(list, /\{l\.is_demo \? "Not Listed" : "Public"\}/);
+  // Lifecycle pass: the active unlisted state reads DRAFT (lib/admin/location-lifecycle.ts).
+  assert.match(list, /\{LOCATION_LIFECYCLE_LABEL\[locationLifecycleState\(l\)\]\}/);
   assert.match(list, /\[l\.address, cityState\(l\.city, l\.state\)\]/);
 });
 

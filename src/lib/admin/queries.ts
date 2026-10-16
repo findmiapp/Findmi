@@ -675,12 +675,15 @@ export async function getAdminLocations(
   lifecycle: "active" | "archived" | "trashed" = "active",
   /** Only Locations awaiting review: active and not publicly listed
    * (is_demo = true) — the same set Admin Home counts. */
-  needsReview = false
+  needsReview = false,
+  /** Only Published Locations (active and publicly listed, is_demo = false). */
+  publishedOnly = false
 ): Promise<AdminLocation[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
   let query = supabase.from("locations").select("*").order("name");
   if (needsReview) query = query.eq("is_demo", true);
+  else if (publishedOnly) query = query.eq("is_demo", false);
   if (q) {
     const term = `%${q}%`;
     query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
