@@ -407,11 +407,13 @@ test("Event Import: the missing-Location step IS Location Import V1 (same action
   const client = read("src/app/admin/(protected)/events/import/AdminEventImporter.tsx");
   assert.match(client, /renderLocationCreate: \(\{ idPrefix, place, placeKey, onSelected \}\) => \(\n\s+<EventLocationCreate /);
   const step = read("src/components/admin/location-import/EventLocationCreate.tsx");
-  for (const a of ["adminResolveLocationEvidence", "adminReadLocationWebsite", "adminCreateImportedLocation"]) assert.match(step, new RegExp(`await ${a}\\(`), a);
-  assert.match(step, /import \{ adminCreateImportedLocation, adminReadLocationWebsite, adminResolveLocationEvidence \} from "@\/app\/admin\/\(protected\)\/locations\/import\/actions";/);
+  for (const a of ["adminReadLocationWebsite", "adminCreateImportedLocation"]) assert.match(step, new RegExp(`await ${a}\\(`), a);
+  assert.match(step, /import \{ adminCreateImportedLocation, adminReadLocationWebsite \} from "@\/app\/admin\/\(protected\)\/locations\/import\/actions";/);
+  // Orchestration completion: the match-first preparation runs without a click, once per place (the importer's adminPrepareLocation).
+  assert.match(client, /const r = await adminPrepareLocation\(/);
   assert.match(step, /onSelected\(toCreated\(placeKey, r\.location\)\)/, "keyed by place → reused across the batch");
-  // Match before create: start() resolves first; Create needs "new" or an explicit force.
-  assert.match(step, /const canCreate = resolution\?\.kind === "new" \|\| force;/);
+  // Match before create: the prepared resolution comes first; Create needs "new" or an explicit force.
+  assert.match(step, /const isNew = resolution\.kind === "new" \|\| force;/);
   const parts = read("src/app/(public)/account/business/[id]/import-event/ReviewParts.tsx");
   assert.match(parts, /quickCreate\?\.eligible && quickCreate\.render \? quickCreate\.render\(/);
   assert.match(read("src/app/admin/(protected)/events/import/actions.ts"), /return createImportedLocation\(/);
@@ -445,7 +447,8 @@ test("Event Import reuse: 4 dates at one new Location; 3 different Locations; 2 
 test("no inferred ownership: an Event's Business never becomes the Location's operator, website or logo", () => {
   const step = read("src/components/admin/location-import/EventLocationCreate.tsx");
   assert.doesNotMatch(step, /businessId|organizerBusiness|structured\.businessWebsite/, "no Business evidence is passed in");
-  assert.match(step, /adminResolveLocationEvidence\(\{ name: place\.venueName, address: place\.address, city: place\.city, state: place\.state, postalCode: place\.postalCode \}\)/, "only the place itself — no website from the Business");
+  // Only the place itself (its own Location Website at most) — never the Business's website.
+  assert.match(read("src/app/admin/(protected)/events/import/AdminEventImporter.tsx"), /adminPrepareLocation\(\{ name: place\.venueName, address: place\.address, city: place\.city, state: place\.state, postalCode: place\.postalCode, website: place\.website \?\? null, eventName: place\.eventName \?\? null \}\)/, "only the place itself — no website from the Business");
   assert.doesNotMatch(read("src/app/admin/(protected)/locations/import/actions.ts"), /business_locations|from\("businesses"\)/);
 });
 

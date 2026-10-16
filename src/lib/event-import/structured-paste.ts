@@ -36,6 +36,7 @@ type Field =
   | "description"
   | "location"
   | "locationName"
+  | "locationWebsite"
   | "street"
   | "city"
   | "state"
@@ -73,6 +74,8 @@ const FIELDS: Record<string, Field> = {
   "location name": "locationName",
   venue: "locationName",
   "venue name": "locationName",
+  "location website": "locationWebsite",
+  "venue website": "locationWebsite",
   "street address": "street",
   address: "street",
   city: "city",
@@ -164,6 +167,8 @@ function venueFrom(b: Block): ImportedVenue {
   venue.state = state ? (usStateCode(state) ?? cleanText(state, 40)) : null;
   const zip = first(b, "zip");
   venue.postalCode = zip && /^[A-Za-z0-9 -]{3,12}$/.test(zip) ? zip : null;
+  const site = websiteOrNull(first(b, "locationWebsite"));
+  if (site) venue.website = site;
   return venue;
 }
 
@@ -261,7 +266,10 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
     // Event-level place. A block that names its place never takes the
     // Event's (only a missing city / state is completed from it).
     const ownPlace = blockHasPlace(block) ? venueFrom(block) : null;
-    const place = ownPlace ? (!ownPlace.city && !ownPlace.state ? { ...ownPlace, city: venue.city, state: venue.state } : ownPlace) : venue;
+    // Location Website: an Occurrence's own wins for it; the Event-level one
+    // applies only to Occurrences at the Event-level place.
+    const ownSite = websiteOrNull(first(block, "locationWebsite"));
+    const place = ownPlace ? (!ownPlace.city && !ownPlace.state ? { ...ownPlace, city: venue.city, state: venue.state } : ownPlace) : ownSite ? { ...venue, website: ownSite } : venue;
     add(dates, own ?? eventTimes, dateText!, place, cleanDetails(all(block, "programming")));
     dates.forEach((d) => covered.add(d));
   }

@@ -26,10 +26,17 @@ import {
   adminLoadBusinessRead,
   adminPreviewBusinessRead,
   adminPreviewEventImage,
+  adminPrepareBusiness,
   adminProcessBusinessRead,
   adminStartBusinessReads,
   type BusinessReadView,
 } from "./actions";
+import { adminPrepareLocation } from "@/app/admin/(protected)/locations/import/actions";
+import { LocationPrepContext, type LocationPrepState } from "@/components/admin/location-import/EventLocationCreate";
+import type { BusinessPrepareResult } from "@/lib/entity-prepare";
+import { businessEvidenceKey } from "@/lib/event-import/operator";
+import { canOfferLocationCreate } from "@/lib/event-import/review";
+import { venueKey, type ReviewPlace } from "@/lib/event-import/types";
 
 /** Admin Event Import — the operator orchestration over Findmi's existing
  * import systems:
@@ -53,6 +60,11 @@ const PASTE_DRAFT_KEY = "findmi:admin-event-import:paste";
 const EVENT_SOURCE_CONCURRENCY = 3;
 /** Business website reads in flight (Brand Import's own runner setting). */
 const BUSINESS_READ_CONCURRENCY = 2;
+/** Entity preparation (match → website → research), a few at a time. */
+const PREPARE_CONCURRENCY = 2;
+
+/** One Primary Business's preparation for Review (keyed by its name). */
+export type BusinessPrepState = { status: "pending" } | { status: "done"; prepared: BusinessPrepareResult } | { status: "error"; error: string };
 const PENDING_READ = new Set(["queued", "processing"]);
 
 const primaryButtonClass =
@@ -157,12 +169,24 @@ function VerifiedEventImagePreview({ url, className, compact = false }: { url: s
 
 // ── Business ───────────────────────────────────────────────────────────────
 
-/** Missing-Business Quick Create without a website: the minimal record. */
-function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: string; evidence: string | null; onCreated: (b: OperatorBusiness) => void }) {
+/** Missing-Business Quick Create without a readable website: the minimal
+ * record. `prepared` opens it already filled in ("New Business · Ready For
+ * Review"), with where the website came from — the operator still creates. */
+function QuickCreateBusiness({
+  idPrefix,
+  evidence,
+  onCreated,
+  prepared,
+}: {
+  idPrefix: string;
+  evidence: string | null;
+  onCreated: (b: OperatorBusiness) => void;
+  prepared?: { website: string | null; source: "pasted" | "research" | null; sources: { url: string; title: string }[]; note: string | null };
+}) {
   const record = useContext(RecordContext);
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [website, setWebsite] = useState("");
+  const [open, setOpen] = useState(Boolean(prepared));
+  const [name, setName] = useState(prepared ? evidence ?? "" : "");
+  const [website, setWebsite] = useState(prepared?.website ?? "");
   const [duplicates, setDuplicates] = useState<{ id: string; name: string; isPublic: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -208,6 +232,33 @@ function QuickCreateBusiness({ idPrefix, evidence, onCreated }: { idPrefix: stri
   }
   return (
     <div className="mt-2 flex flex-col gap-2 rounded-xl border border-black/[0.08] bg-black/[0.02] p-3">
+      {prepared && (
+        <div className="flex flex-col gap-1">
+          <p className="text-body font-semibold text-primary">{evidence}</p>
+          <p className="text-[11px] font-bold uppercase text-findmi-700">New Business · Ready For Review</p>
+          {prepared.website && (
+            <p className="text-metadata text-secondary">
+              Official Website: <span className="font-semibold text-primary">{hostOf(prepared.website)}</span>
+              {prepared.source && <span className="text-muted"> · {prepared.source === "research" ? "Web Research" : "Pasted"}</span>}
+            </p>
+          )}
+          {prepared.note && <p className="text-microcopy text-muted">{prepared.note}</p>}
+          {prepared.sources.length > 0 && (
+            <details className="text-microcopy text-secondary">
+              <summary className="cursor-pointer font-semibold">Web Research Sources</summary>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {prepared.sources.slice(0, 5).map((src) => (
+                  <li key={src.url} className="truncate">
+                    <a href={src.url} target="_blank" rel="noreferrer noopener" className="text-findmi-700 hover:underline">
+                      {src.title || src.url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
       <p className="text-microcopy text-muted">Adds the Business to Findmi for review (not public yet). No one is made its owner.</p>
       <label htmlFor={`${idPrefix}-new-name`} className={labelText}>
         Business Name
@@ -406,7 +457,9 @@ function BusinessField({
   initial,
   evidence,
   website,
-  read,
+  read: pastedRead,
+  prep,
+  researchedRead,
   businessCategories,
   onSelect,
   onCreated,
@@ -417,6 +470,10 @@ function BusinessField({
   evidence: string | null;
   website: string | null;
   read: BusinessReadView | undefined;
+  /** Orchestration: this Primary Business's preparation (match → website → research). */
+  prep?: BusinessPrepState;
+  /** Brand Import's read of the website research found (when it differs from the pasted one). */
+  researchedRead?: BusinessReadView;
   businessCategories: Category[];
   onSelect: (b: OperatorBusiness | null) => void;
   onCreated: (b: OperatorBusiness) => void;
@@ -425,6 +482,11 @@ function BusinessField({
 }) {
   const [retrying, setRetrying] = useState(false);
   const [retryNote, setRetryNote] = useState<string | null>(null);
+  // A researched official website's Brand Import read takes over once it
+  // is usable (the pasted one failed or was absent).
+  const read = researchedRead && (researchedRead.status !== "failed" || !pastedRead) ? researchedRead : pastedRead;
+  const researchedSite = researchedRead ? researchedRead === read : false;
+  const prepared = prep?.status === "done" ? prep.prepared : null;
   // The website already belongs to a Business on Findmi (Brand Import's
   // match-first step): select it — never recreate it.
   const applied = useRef(false);
@@ -449,14 +511,35 @@ function BusinessField({
         initial={initial ? { value: initial.id, label: initial.name } : null}
         onSelect={(r) => onSelect(r ? { id: r.value, name: r.label } : null)}
       />
-      {!initial && website && !existing && read && PENDING_READ.has(read.status) && (
-        <p className="mt-1 text-microcopy text-muted">Reading {hostOf(website)} with Brand Import…</p>
+      {!initial && !existing && read && PENDING_READ.has(read.status) && (
+        <p className="mt-1 text-microcopy text-muted">Reading {researchedSite && prepared?.status === "website" ? hostOf(prepared.website) : hostOf(website ?? "")} with Brand Import…</p>
       )}
       {!initial && website && !existing && !read && <p className="mt-1 text-microcopy text-muted">Waiting to read {hostOf(website)}…</p>}
-      {!initial && read?.status === "ready" && !existing && (
-        <BrandReviewCard key={read.updatedAt} idPrefix={id} read={read} businessCategories={businessCategories} onCreated={onCreated} />
+      {!initial && !existing && prep?.status === "pending" && <p className="mt-1 text-microcopy text-muted">Preparing {evidence} for Review…</p>}
+      {/* Findmi already has this Business (website or exact name + place): select it. */}
+      {!initial && !existing && prepared?.status === "existing" && (
+        <div className="mt-2 flex flex-col gap-1.5 rounded-xl border border-black/[0.08] bg-white p-3">
+          <p className="text-label font-bold uppercase text-subtle">On Findmi · Existing Findmi Data</p>
+          {prepared.candidates.map((c) => (
+            <div key={c.id} className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-metadata text-primary">
+                {c.name}
+                {!c.isPublic && <span className="text-muted"> · Not public</span>}
+              </span>
+              <button type="button" onClick={() => onCreated({ id: c.id, name: c.name })} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
+                Use This Business
+              </button>
+            </div>
+          ))}
+        </div>
       )}
-      {!initial && read?.status === "failed" && (
+      {!initial && read?.status === "ready" && !existing && (
+        <>
+          {researchedSite && <p className="mt-2 text-microcopy text-muted">Official website found by Web Research, read by Brand Import.</p>}
+          <BrandReviewCard key={read.updatedAt} idPrefix={id} read={read} businessCategories={businessCategories} onCreated={onCreated} />
+        </>
+      )}
+      {!initial && read?.status === "failed" && !researchedSite && (
         <div className="mt-1 flex flex-col gap-1">
           <p className="text-microcopy text-amber-900">
             Couldn&rsquo;t read {hostOf(website)} ({read.failureCode ?? "unavailable"}). Retry, or create the Business without it:
@@ -481,9 +564,41 @@ function BusinessField({
           )}
         </div>
       )}
-      {!initial && (!website || read?.status === "failed") && <QuickCreateBusiness idPrefix={id} evidence={evidence} onCreated={onCreated} />}
+      {/* Never a dead end: a prepared minimal Business (name + any official
+          website), unless Brand Import has a richer candidate or Findmi
+          already has it. */}
+      {!initial && !existing && prep?.status !== "pending" && prepared?.status !== "existing" && read?.status !== "ready" && !(read && PENDING_READ.has(read.status)) && (!website || read?.status === "failed") && (
+        <QuickCreateBusiness
+          key={prepared ? "prepared" : "manual"}
+          idPrefix={id}
+          evidence={evidence}
+          onCreated={onCreated}
+          prepared={
+            prepared && evidence
+              ? {
+                  website: prepared.status === "website" ? prepared.website : website,
+                  source: prepared.status === "website" ? prepared.source : website ? "pasted" : null,
+                  sources: prepared.research?.sources ?? [],
+                  note: researchNote(prepared),
+                }
+              : undefined
+          }
+        />
+      )}
     </>
   );
+}
+
+/** One honest line about what research did for a prepared Business. */
+function researchNote(prepared: BusinessPrepareResult): string | null {
+  if (prepared.status === "existing") return null;
+  const r = prepared.research;
+  if (!r) return null;
+  if (prepared.status === "website" && prepared.sameAsFailed) return "Web Research confirms this is the official website, but Brand Import couldn’t read it — review the name and create.";
+  if (r.status === "ambiguous") return `Web Research couldn’t confirm the official website${r.suggestions.length ? ` (possible: ${r.suggestions.join(", ")})` : ""}. Add it if you know it.`;
+  if (r.status === "not_found") return "Web Research didn’t find an official website. Add it if you know it.";
+  if (r.status === "failed" || r.status === "budget_exhausted") return "Web Research wasn’t available just now — create from the name, or add the website.";
+  return null;
 }
 
 // ── Event details: source evidence + Review Existing Event ─────────────────
@@ -694,6 +809,16 @@ function EventDetails({
 /** A website Brand Import matched to an existing Business → that Business
  * is the suggestion for every Event with that Business Website (unless
  * the Event already has one). */
+/** The Primary Business an Event names (the only Business eligible for
+ * automatic preparation — never participating / featured names). */
+function primaryBusinessOf(e: SourceEventAnalysis): string | null {
+  return e.candidate.structured?.business ?? null;
+}
+
+function withNamedBusiness(events: SourceEventAnalysis[], key: string, business: OperatorBusiness): SourceEventAnalysis[] {
+  return events.map((e) => (!e.matches.organizerBusiness && businessEvidenceKey(primaryBusinessOf(e)) === key ? { ...e, matches: { ...e.matches, organizerBusiness: business } } : e));
+}
+
 function withWebsiteBusiness(events: SourceEventAnalysis[], website: string, business: OperatorBusiness): SourceEventAnalysis[] {
   return events.map((e) =>
     e.candidate.structured?.businessWebsite === website && !e.matches.organizerBusiness ? { ...e, matches: { ...e.matches, organizerBusiness: business } } : e
@@ -718,6 +843,9 @@ export default function AdminEventImporter({ categories, formats, businessCatego
   }, []);
   const [analyzing, startAnalyze] = useTransition();
   const runRef = useRef(0);
+  const [businessPreps, setBusinessPreps] = useState<Record<string, BusinessPrepState>>({});
+  const [placePreps, setPlacePreps] = useState<Record<string, LocationPrepState>>({});
+  const placeAsked = useRef<Set<string>>(new Set());
 
   // Durability (phone sleep / accidental refresh): the pasted text is kept
   // in this tab's sessionStorage, so a reload never loses the paste itself
@@ -752,12 +880,19 @@ export default function AdminEventImporter({ categories, formats, businessCatego
   }, [inProgress]);
 
   /** Brand Import for every Business website whose Business isn't matched. */
-  async function readBusinesses(events: SourceEventAnalysis[], run: number) {
+  async function readBusinesses(events: SourceEventAnalysis[], run: number): Promise<Record<string, BusinessReadView>> {
     const websites = [...new Set(events.flatMap((e) => (!e.matches.organizerBusiness && e.candidate.structured?.businessWebsite ? [e.candidate.structured.businessWebsite] : [])))];
-    if (websites.length === 0) return;
+    return readWebsites(websites, run);
+  }
+
+  /** The existing Brand Import read for these websites (one candidate each). */
+  async function readWebsites(websites: string[], run: number): Promise<Record<string, BusinessReadView>> {
+    const final: Record<string, BusinessReadView> = {};
+    if (websites.length === 0) return final;
     const started = await adminStartBusinessReads(websites).catch(() => null);
-    if (!started?.ok || runRef.current !== run) return;
-    setReads(Object.fromEntries(started.reads.map((r) => [r.website, r])));
+    if (!started?.ok || runRef.current !== run) return final;
+    for (const r of started.reads) final[r.website] = r;
+    setReads((prev) => ({ ...prev, ...Object.fromEntries(started.reads.map((r) => [r.website, r])) }));
     const byCandidate = new Map(started.reads.map((r) => [r.candidateId, r]));
     await runWithConcurrency(
       started.reads.filter((r) => r.status === "queued").map((r) => r.candidateId),
@@ -767,6 +902,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         if (outcome.outcome === "busy") return "retry_later";
         const r = byCandidate.get(candidateId)!;
         const view = await adminLoadBusinessRead(r.batchId, candidateId);
+        if (view) final[r.website] = view;
         if (view && runRef.current === run) {
           setReads((prev) => ({ ...prev, [r.website]: { ...view } }));
           // The website already belongs to a Business on Findmi: it becomes
@@ -777,6 +913,86 @@ export default function AdminEventImporter({ categories, formats, businessCatego
       },
       { shouldStop: () => runRef.current !== run }
     );
+    return final;
+  }
+
+  /** Orchestration completion: after the Business websites are read,
+   * prepare every distinct unresolved Primary Business and every distinct
+   * missing place for Review — each entity ONCE per batch (5 Events naming
+   * one Business → one preparation, at most one research request). */
+  async function prepareEntities(events: SourceEventAnalysis[], run: number) {
+    void preparePlaces(events, run);
+    const views = await readBusinesses(events, run);
+    if (runRef.current !== run) return;
+    const todo = new Map<string, { name: string; website: string | null; failed: boolean; eventName: string | null }>();
+    for (const e of events) {
+      const name = primaryBusinessOf(e);
+      const key = businessEvidenceKey(name);
+      if (!name || !key || e.matches.organizerBusiness || todo.has(key)) continue;
+      const website = e.candidate.structured?.businessWebsite ?? null;
+      const view = website ? views[website] : undefined;
+      // Brand Import already prepared (or matched) it: nothing more to do.
+      if (view && (view.status === "ready" || view.matchedBusiness || view.createdBusiness)) continue;
+      todo.set(key, { name, website, failed: Boolean(website && (!view || view.status === "failed")), eventName: e.candidate.title });
+    }
+    if (todo.size === 0) return;
+    setBusinessPreps((prev) => ({ ...prev, ...Object.fromEntries([...todo.keys()].map((k) => [k, { status: "pending" as const }])) }));
+    await runWithConcurrency(
+      [...todo.keys()],
+      PREPARE_CONCURRENCY,
+      async (key) => {
+        const item = todo.get(key)!;
+        const r = await adminPrepareBusiness({ name: item.name, website: item.website, websiteReadFailed: item.failed, eventName: item.eventName }).catch(() => null);
+        if (runRef.current !== run) return "done";
+        if (!r?.ok) {
+          setBusinessPreps((prev) => ({ ...prev, [key]: { status: "error", error: r && !r.ok ? r.error : "Couldn’t prepare this Business." } }));
+          return "done";
+        }
+        setBusinessPreps((prev) => ({ ...prev, [key]: { status: "done", prepared: r.prepared } }));
+        // A researched official website goes through the SAME Brand Import read.
+        if (r.prepared.status === "website" && r.prepared.source === "research" && !r.prepared.sameAsFailed) {
+          const read = (await readWebsites([r.prepared.website], run))[r.prepared.website];
+          const matched = read?.matchedBusiness;
+          if (matched && runRef.current === run) setResult((prev) => (prev && prev.run === run ? { ...prev, events: withNamedBusiness(prev.events, key, matched) } : prev));
+        }
+        return "done";
+      },
+      { shouldStop: () => runRef.current !== run }
+    );
+  }
+
+  /** Every distinct place across the batch that Findmi doesn't strongly
+   * match and that passes the specific-address rule: prepared once each. */
+  function placeJobs(events: SourceEventAnalysis[]): Map<string, ReviewPlace & { eventName: string | null }> {
+    const jobs = new Map<string, ReviewPlace & { eventName: string | null }>();
+    for (const e of events) {
+      for (const v of [...e.candidate.occurrences.map((o) => o.venue), ...(e.candidate.place ? [e.candidate.place] : [])]) {
+        const key = venueKey(v);
+        if (!key || jobs.has(key)) continue;
+        if (e.matches.locations.some((l) => l.key === key && l.confidence === "strong")) continue;
+        const place: ReviewPlace = { venueName: v.name, address: v.address, city: v.city, state: v.state, postalCode: v.postalCode, useLocationId: null, matchKey: key, ...(v.website ? { website: v.website } : {}) };
+        if (!canOfferLocationCreate(place, { locationVisibility: e.candidate.locationVisibility ?? null, online: Boolean(e.candidate.online) })) continue;
+        jobs.set(key, { ...place, eventName: e.candidate.title });
+      }
+    }
+    return jobs;
+  }
+
+  async function preparePlaces(events: SourceEventAnalysis[], run: number) {
+    const jobs = placeJobs(events);
+    await runWithConcurrency([...jobs.keys()], PREPARE_CONCURRENCY, async (key) => {
+      await runPlacePrep(key, jobs.get(key)!, run);
+      return "done";
+    }, { shouldStop: () => runRef.current !== run });
+  }
+
+  async function runPlacePrep(key: string, place: ReviewPlace & { eventName?: string | null }, run: number) {
+    if (placeAsked.current.has(key)) return;
+    placeAsked.current.add(key);
+    setPlacePreps((prev) => ({ ...prev, [key]: { status: "pending" } }));
+    const r = await adminPrepareLocation({ name: place.venueName, address: place.address, city: place.city, state: place.state, postalCode: place.postalCode, website: place.website ?? null, eventName: place.eventName ?? null }).catch(() => null);
+    if (runRef.current !== run) return;
+    setPlacePreps((prev) => ({ ...prev, [key]: r?.ok ? { status: "done", prepared: r.prepared } : { status: "error", error: r && !r.ok ? r.error : "Couldn’t prepare this place." } }));
   }
 
   /** Each Event with an Event Link: read through the existing Event URL
@@ -827,7 +1043,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
     );
     setProgress(null);
     setResult({ ...base, events, warnings: [...base.warnings, ...sourceWarnings] });
-    void readBusinesses(events, run);
+    void prepareEntities(events, run);
   }
 
   /** Retry Event Link — ONE Event, the same server action as the batch
@@ -883,12 +1099,15 @@ export default function AdminEventImporter({ categories, formats, businessCatego
     }
     const run = (runRef.current += 1);
     setReads({});
+    setBusinessPreps({});
+    setPlacePreps({});
+    placeAsked.current = new Set();
     setCreated(NO_RECORDS);
     const base: Result = { source: a.source, events: a.events, warnings: a.warnings, run };
     if (text) void enrich(base, text);
     else {
       setResult(base);
-      void readBusinesses(base.events, run);
+      void prepareEntities(base.events, run);
     }
   }
 
@@ -926,12 +1145,17 @@ export default function AdminEventImporter({ categories, formats, businessCatego
       locationsCreated: Object.keys(created.location).length,
       existingEventsUpdated: Object.keys(created.event).length,
     },
-    renderBusinessPicker: ({ id, initial, evidence, website, onSelect, onCreated }) => (
+    renderBusinessPicker: ({ id, initial, evidence, website, onSelect, onCreated }) => {
+      const prep = businessPreps[businessEvidenceKey(evidence) ?? ""];
+      const researched = prep?.status === "done" && prep.prepared.status === "website" && prep.prepared.source === "research" && !prep.prepared.sameAsFailed ? prep.prepared.website : null;
+      return (
       <BusinessField
         id={id}
         initial={initial}
         evidence={evidence}
         website={website}
+        prep={prep}
+        researchedRead={researched ? reads[researched] : undefined}
         read={website ? reads[website] : undefined}
         businessCategories={businessCategories}
         onSelect={onSelect}
@@ -942,7 +1166,8 @@ export default function AdminEventImporter({ categories, formats, businessCatego
           if (website) setReads((prev) => (prev[website] ? { ...prev, [website]: { ...prev[website], createdBusiness: b } } : prev));
         }}
       />
-    ),
+      );
+    },
     renderEventDetails: (props) => <EventDetails {...props} onRetrySource={() => retrySource(props.eventKey, props.review, props.set, Boolean(props.candidate.imageUrl))} />,
     renderThumbnail: (url) => <VerifiedEventImagePreview url={url} compact className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />,
     doneHref: "/admin/events?new=1",
@@ -977,6 +1202,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
   if (result) {
     return (
       <RecordContext.Provider value={record}>
+      <LocationPrepContext.Provider value={{ preps: placePreps, ensure: (key, place) => void runPlacePrep(key, place, result.run) }}>
       <MultiEventImport
         key={result.run}
         businessId=""
@@ -997,6 +1223,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         formats={formats}
         operator={operator}
       />
+      </LocationPrepContext.Provider>
       </RecordContext.Provider>
     );
   }

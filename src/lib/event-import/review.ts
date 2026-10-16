@@ -56,6 +56,7 @@ export function placeFromVenue(v: ImportedVenue, matches: EventImportMatches): R
   const match = key ? matches.locations.find((l) => l.key === key) : undefined;
   return {
     venueName: v.name,
+    ...(v.website ? { website: v.website } : {}),
     address: v.address,
     city: v.city,
     state: v.state,
@@ -310,6 +311,16 @@ export function canOfferLocationCreate(
   if (!NUMBERED_STREET.test(address) || INTERSECTION.test(address)) return false;
   if (!place.city?.trim() || !place.state?.trim()) return false;
   return true;
+}
+
+/** Whether this Review's dates REALLY are at different places — by the
+ * linked Location when there is one, else by normalized place evidence
+ * (name + street), so it works before any Location exists. One shared
+ * place, or every date at the same place, is never "different". */
+export function placesDiffer(review: Pick<EventImportReview, "sharedPlace" | "occurrences">): boolean {
+  if (review.sharedPlace || review.occurrences.length < 2) return false;
+  const keys = new Set(review.occurrences.map((o) => (o.place.useLocationId ? `loc:${o.place.useLocationId}` : `ev:${venueKey({ name: o.place.venueName, address: o.place.address })}`)));
+  return keys.size > 1;
 }
 
 /** The place's identity key: its page key, or (for a place typed in

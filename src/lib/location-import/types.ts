@@ -76,6 +76,8 @@ export interface LocationConflict {
   field: LocationField;
   provided: string;
   website: string;
+  /** Where the conflicting value came from (default: the official website). */
+  from?: "website" | "research";
 }
 
 /** The reviewable profile for a NEW Location: supplied values win; the
@@ -94,7 +96,7 @@ export interface LocationProposal {
   latitude: number | null;
   longitude: number | null;
   /** Where each filled value came from. */
-  sources: Partial<Record<LocationField, "provided" | "website">>;
+  sources: Partial<Record<LocationField, "provided" | "website" | "research">>;
   conflicts: LocationConflict[];
   notes: string[];
   logo: LocationMediaChoice | null;

@@ -81,7 +81,11 @@ const FIELD_LABEL: Record<LocationField, string> = {
 };
 
 function Source({ draft, field }: { draft: LocationDraft; field: LocationField }) {
-  return draft.sources[field] === "website" ? <span className="ml-1 text-[11px] font-semibold text-findmi-700">From Website</span> : null;
+  const src = draft.sources[field];
+  if (src === "website") return <span className="ml-1 text-[11px] font-semibold text-findmi-700">Official Website</span>;
+  if (src === "research") return <span className="ml-1 text-[11px] font-semibold text-findmi-700">Web Research</span>;
+  if (src === "provided") return <span className="ml-1 text-[11px] font-semibold text-muted">Pasted</span>;
+  return null;
 }
 
 export default function LocationProposalEditor({
@@ -100,7 +104,7 @@ export default function LocationProposalEditor({
     <div className={span}>
       <label htmlFor={`${idPrefix}-${field}`} className={labelClass}>
         {label}
-        {field !== "website" && <Source draft={draft} field={field} />}
+        <Source draft={draft} field={field} />
       </label>
       <input
         id={`${idPrefix}-${field}`}
@@ -119,7 +123,7 @@ export default function LocationProposalEditor({
         <ul className="flex flex-col gap-1.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
           {draft.conflicts.map((c) => (
             <li key={c.field} className="text-metadata text-amber-900">
-              <span className="font-semibold">{FIELD_LABEL[c.field]}:</span> you entered “{c.provided}” — the website says “{c.website}”.{" "}
+              <span className="font-semibold">{FIELD_LABEL[c.field]}:</span> you entered “{c.provided}” — {c.from === "research" ? "web research says" : "the website says"} “{c.website}”.{" "}
               {c.field !== "name" && c.field !== "address" && (
                 <button type="button" onClick={() => onChange({ [c.field]: c.website } as Partial<LocationDraft>)} className="font-semibold text-findmi-700 hover:underline">
                   Use Website Value

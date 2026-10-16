@@ -9,6 +9,8 @@ import { resolveLocationBatch } from "@/lib/location-import/resolve";
 import { buildLocationProposal, type LocationCategoryOption } from "@/lib/location-import/website";
 import { createImportedLocation, defaultLocationImportDeps, readLocationWebsite, type ImportedLocationResult } from "@/lib/location-import/server";
 import type { LocationCreateInput, LocationEvidence, LocationProposal, LocationResolution } from "@/lib/location-import/types";
+import { researchEntity } from "@/lib/entity-research";
+import { prepareLocation, type PreparedLocation } from "@/lib/entity-prepare";
 
 /** Location Import V1 — Admin entry points. Every action verifies the
  * founder Admin session first (requireAdminSupabase, the same check the
@@ -72,6 +74,44 @@ export async function adminResolveLocationEvidence(input: { name: string | null;
     return { ok: true, row: { evidence, resolution: resolutions.get(evidence.key)!, proposal: buildLocationProposal(evidence, null, categories) } };
   } catch {
     return { ok: false, error: "Couldn't check this place against Findmi. Please try again." };
+  }
+}
+
+/** Admin Event Import — PREPARE one missing place for Review, without a
+ * click: match first (an existing / possible Location needs no research);
+ * a new place's pasted Location Website is read first; only when it is
+ * absent or unreadable does contextual web research look for the place's
+ * official site, which is then read by the same Location Import reader.
+ * Writes nothing. The client asks once per distinct place per batch. */
+export async function adminPrepareLocation(input: { name: string | null; address: string | null; city: string | null; state: string | null; postalCode: string | null; website?: string | null; eventName?: string | null }): Promise<{ ok: true; prepared: PreparedLocation } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const t = (v: unknown, max = 300) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+  const base = { name: t(input?.name, 160), address: t(input?.address), city: t(input?.city, 80), state: t(input?.state, 40), postalCode: t(input?.postalCode, 12) };
+  const evidence: LocationEvidence = { ...base, key: locationEvidenceKey(base), labels: ["This place"], website: normalizeLocationWebsite(t(input?.website, 500)), phone: null, category: null, description: null, warnings: [] };
+  try {
+    const deps = defaultLocationImportDeps(admin);
+    const prepared = await prepareLocation(
+      evidence,
+      {
+        findCandidates: (e) => deps.findCandidates(e),
+        readWebsite: async (url, supplied) => {
+          const release = tryAcquireWebsiteFetchSlot();
+          if (!release) return { ok: false, code: "fetch_failed", detail: "Findmi is reading other websites — try again in a moment." };
+          try {
+            return await readLocationWebsite(url, supplied, deps);
+          } finally {
+            release();
+          }
+        },
+        research: (q) => researchEntity(q, undefined, { log: (entry) => console.info(JSON.stringify({ event: "entity_research", ...entry })) }),
+        categories: () => locationCategories(admin),
+      },
+      { eventName: t(input?.eventName, 200) }
+    );
+    return { ok: true, prepared };
+  } catch {
+    return { ok: false, error: "Couldn't prepare this place. You can still review and create it." };
   }
 }
 

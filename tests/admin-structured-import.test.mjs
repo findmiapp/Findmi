@@ -236,7 +236,8 @@ test("5â€“6. a missing Business is created ONLY by explicit Admin Quick Create â
   // UI: only on the Admin's click, prefilled from the source's Business name.
   assert.match(CLIENT, /\+ Create New Business/);
   assert.match(CLIENT, /setName\(evidence \?\? ""\);/);
-  assert.match(CLIENT, /\{!initial && \(!website \|\| read\?\.status === "failed"\) && <QuickCreateBusiness idPrefix=\{id\} evidence=\{evidence\} onCreated=\{onCreated\} \/>\}/);
+  // Orchestration completion: the fallback is now a PREPARED minimal Business (never a dead end).
+  assert.match(CLIENT, /\{!initial && !existing && prep\?\.status !== "pending" && prepared\?\.status !== "existing" && read\?\.status !== "ready" && !\(read && PENDING_READ\.has\(read\.status\)\) && \(!website \|\| read\?\.status === "failed"\) && \(\n\s+<QuickCreateBusiness/);
 });
 
 test("7. a Business created for one Event is reused for the same Business named elsewhere in the batch", () => {

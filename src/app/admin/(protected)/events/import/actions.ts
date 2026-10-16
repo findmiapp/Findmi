@@ -29,6 +29,8 @@ import {
   type FieldComparison,
 } from "@/lib/event-import/existing-event";
 import { findBusinessMatches } from "@/lib/business-matching";
+import { researchEntity } from "@/lib/entity-research";
+import { prepareBusiness, type BusinessPrepareResult } from "@/lib/entity-prepare";
 import { insertInlineBusiness, type InlineBusinessResult } from "@/lib/admin/inline-business";
 import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { asOperatorAnalysis } from "@/lib/event-import/operator";
@@ -127,6 +129,33 @@ export async function adminCreateImportLocation(formData: FormData): Promise<Cre
     defaultLocationImportDeps(admin),
     { force: field("force") === "1" }
   );
+}
+
+/** Admin Event Import — PREPARE a Primary Business that isn't linked, so
+ * Review shows a ready candidate instead of a dead end. Findmi's own match
+ * first (zero research); a pasted Business Website that Brand Import can
+ * read needs no search; only a missing website — or one Brand Import
+ * couldn't read — triggers contextual web research, whose official site
+ * then goes back through Brand Import. Writes nothing; never creates. The
+ * client asks once per distinct Business per batch. */
+export async function adminPrepareBusiness(input: { name: string; website: string | null; websiteReadFailed: boolean; eventName?: string | null }): Promise<{ ok: true; prepared: BusinessPrepareResult } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const name = typeof input?.name === "string" ? input.name.trim().slice(0, 160) : "";
+  if (!name) return { ok: false, error: "No Business name to prepare." };
+  const website = typeof input?.website === "string" && /^https:\/\//i.test(input.website) ? input.website.slice(0, 500) : null;
+  try {
+    const prepared = await prepareBusiness(
+      { name, website, websiteReadFailed: input?.websiteReadFailed === true, eventName: typeof input?.eventName === "string" ? input.eventName.slice(0, 200) : null },
+      {
+        findMatches: (q) => findBusinessMatches(admin, { name: q.name, websiteUrl: q.websiteUrl }),
+        research: (q) => researchEntity(q, undefined, { log: (entry) => console.info(JSON.stringify({ event: "entity_research", ...entry })) }),
+      }
+    );
+    return { ok: true, prepared };
+  } catch {
+    return { ok: false, error: "Couldn't prepare this Business. You can still create it from the name." };
+  }
 }
 
 /** Missing-Business Quick Create — only on the operator's explicit action

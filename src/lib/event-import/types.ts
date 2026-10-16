@@ -44,6 +44,9 @@ export interface ImportedVenue {
   city: string | null;
   state: string | null;
   postalCode: string | null;
+  /** "Location Website:" — the PLACE's own official website (never the
+   * Business's). Location Import evidence only; not an Event field. */
+  website?: string | null;
 }
 
 /** One dated instance of the Event, kept together with ITS OWN place —
@@ -239,6 +242,9 @@ export const EVENT_IMPORT_FAILURE_COPY: Record<EventImportFailure, string> = {
 
 export interface ReviewPlace {
   venueName: string | null;
+  /** The place's own website ("Location Website:") — evidence for
+   * Location Import V1 when this place isn't on Findmi yet. */
+  website?: string | null;
   address: string | null;
   city: string | null;
   state: string | null;

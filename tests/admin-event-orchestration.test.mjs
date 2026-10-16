@@ -304,7 +304,8 @@ test("Business website failure → that Business falls back to minimal Quick Cre
   const h = brandHarness({ html: null });
   h.add("cand-down", "down.example.com");
   assert.deepEqual(await h.run("cand-down"), { outcome: "processed", status: "failed" });
-  assert.match(CLIENT, /\{!initial && \(!website \|\| read\?\.status === "failed"\) && <QuickCreateBusiness/);
+  // Orchestration completion: the fallback is now a PREPARED minimal Business (never a dead end).
+  assert.match(CLIENT, /\{!initial && !existing && prep\?\.status !== "pending" && prepared\?\.status !== "existing" && read\?\.status !== "ready" && !\(read && PENDING_READ\.has\(read\.status\)\) && \(!website \|\| read\?\.status === "failed"\) && \(\n\s+<QuickCreateBusiness/);
   assert.match(CLIENT, /if \(outcome\.outcome === "busy"\) return "retry_later";/, "server busy → retried, not dropped");
 });
 

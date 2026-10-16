@@ -17,6 +17,7 @@ import {
   emptyReviewOccurrence,
   occurrenceSummary,
   placeKeyFor,
+  placesDiffer,
   selectCreatedLocation,
   type ReviewCreatedLocation,
 } from "@/lib/event-import/review";
@@ -100,9 +101,13 @@ export function WhenWhereEditor({
                 {review.sharedPlace ? "When" : "When & Where"}
                 {many ? ` · ${review.occurrences.length} Dates` : ""}
               </h2>
+              {/* "Different Place Each Date" is a STATUS shown only when the
+                  dates really are at different places; switching layouts is
+                  a separate, plainly worded action. */}
+              {many && placesDiffer(review) && <span className="text-metadata font-semibold text-secondary">Different Place Each Date</span>}
               {many && (
                 <button type="button" onClick={review.sharedPlace ? usePlacePerDate : useOnePlace} className="text-metadata font-semibold text-accent hover:underline">
-                  {review.sharedPlace ? "Different Place Each Date" : "Same Place for All Dates"}
+                  {review.sharedPlace ? "Set a Place per Date" : "Same Place for All Dates"}
                 </button>
               )}
             </div>
