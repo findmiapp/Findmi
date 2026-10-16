@@ -17,7 +17,8 @@ import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import { eventMatchesAccess, isEventHappeningNow, type EventAccess } from "./event-filter";
-import { calendarDate, calendarEndDate, compareChronological, eventUpcomingOr, eventWindowOr, hasEnded, occurrenceUpcomingOr, occurrenceWindowOr, todayIn, windowDates } from "./event-time";
+import { calendarDate, calendarEndDate, compareChronological, compareScheduleOccurrences, eventUpcomingOr, eventWindowOr, hasEnded, occurrenceUpcomingOr, occurrenceWindowOr, todayIn, windowDates } from "./event-time";
+import { eventHref } from "./event-links";
 import { eventCategoryFilterIds, primaryEventCategoryId } from "./event-categories";
 import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
 import {
@@ -2482,7 +2483,9 @@ export async function getUpcomingOccurrencesForEvent(
     for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
   }
 
-  const withLocations = occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+  const withLocations = occurrences
+    .map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }))
+    .sort(compareScheduleOccurrences((o) => o.location?.name ?? o.venue_name));
   return applyEventLocationPrivacy(supabase, withLocations, () => eventId);
 }
 
@@ -2518,7 +2521,9 @@ export async function getAllOccurrencesForEvent(eventId: string, limit = 60): Pr
     for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
   }
 
-  const withLocations = occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+  const withLocations = occurrences
+    .map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }))
+    .sort(compareScheduleOccurrences((o) => o.location?.name ?? o.venue_name));
   return applyEventLocationPrivacy(supabase, withLocations, () => eventId);
 }
 
@@ -4588,6 +4593,9 @@ export interface LocationHappening {
    * page never implies it happens at the parent itself. Always absent on
    * exact-match items from getUpcomingAtLocation. */
   at?: { id: string; name: string; slug: string };
+  /** An Event date with its own non-empty details (event_occurrences.details)
+   * — cards show a small "Details" hint; the link opens on that date. */
+  hasDetails?: boolean;
 }
 
 /** Location Detail V1 — Events and standalone Appearances at a Location,
@@ -4649,7 +4657,7 @@ async function queryUpcomingHappenings(
   const [{ data: rawOccurrenceRows }, { data: linkedAppearances }, galleryImages] = await Promise.all([
     supabase
       .from("event_occurrences")
-      .select("location_id, event_id, occurrence_date, timezone, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
+      .select("id, details, location_id, event_id, occurrence_date, timezone, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
       .in("location_id", locationIds)
       .eq("status", "scheduled")
       // Not over yet — a date with no published end stays through its day.
@@ -4710,7 +4718,9 @@ async function queryUpcomingHappenings(
       end_at: row.end_at,
       date: calendarDate(row) ?? (row.occurrence_date as string),
       timezone: (row.timezone as string | null) ?? null,
-      href: `/event/${e.slug}`,
+      // This row IS one Event date — open the Event on it.
+      href: eventHref(e.slug, row.id as string),
+      hasDetails: Boolean((row.details as string | null)?.trim()),
       imageUrl: resolveAppearanceDisplayImage({
         appearanceId: `occurrence-${e.id}-${occurrenceKey}`,
         specificImageUrl: e.cover_image_url,

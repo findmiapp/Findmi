@@ -12,6 +12,7 @@ import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
+import { eventHref } from "@/lib/event-links";
 
 // Appearances — Click Behavior pass: one deterministic primary click per
 // card, in this exact order —
@@ -205,7 +206,7 @@ export default function AppearanceCard({
 
   if (hasEvent) {
     return (
-      <Link href={`/event/${eventSlug}`} className="group block" aria-label={ariaLabel} onClick={trackClick}>
+      <Link href={eventHref(eventSlug!, appearance.event_occurrence_id)} className="group block" aria-label={ariaLabel} onClick={trackClick}>
         {content}
       </Link>
     );

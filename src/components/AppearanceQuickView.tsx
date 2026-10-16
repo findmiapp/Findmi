@@ -11,6 +11,7 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { trackEvent } from "@/lib/analytics/track";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
+import { eventHref } from "@/lib/event-links";
 
 /** Appearance Quick View — Pass 1: the reusable consumer detail surface for
  * an Appearance, opened from a card instead of defaulting straight to GPS/
@@ -40,6 +41,9 @@ export interface AppearanceQuickViewAppearance {
   state: string | null;
   external_url: string | null;
   event_id: string | null;
+  /** The specific Event date this appearance mirrors, when it does — its
+   * Event links open on that date (lib/event-links). */
+  event_occurrence_id?: string | null;
   location_id: string | null;
   location?: { name: string; slug: string } | null;
   /** Parent Event hides its address (lib/event-location-privacy). */
@@ -228,7 +232,7 @@ export default function AppearanceQuickView({
             <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Part of</p>
             <p className="mt-0.5 text-sm font-semibold text-ink">{appearance.event!.name ?? "This Event"}</p>
             <Link
-              href={`/event/${appearance.event!.slug}`}
+              href={eventHref(appearance.event!.slug, appearance.event_occurrence_id)}
               className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-findmi-700"
               onClick={() => trackAction("view_event")}
             >
@@ -241,7 +245,7 @@ export default function AppearanceQuickView({
         <div className="mt-5 flex flex-col gap-2">
           {hasEvent && (
             <Link
-              href={`/event/${appearance.event!.slug}`}
+              href={eventHref(appearance.event!.slug, appearance.event_occurrence_id)}
               className="flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               onClick={() => trackAction("view_event")}
             >

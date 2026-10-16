@@ -15,6 +15,7 @@ import LiveDot from "./LiveDot";
 import SupabaseImage from "./SupabaseImage";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 import { calendarDate, formatCalendarDate, isHappeningNow } from "@/lib/event-time";
+import OccurrenceDetailsHint from "./OccurrenceDetailsHint";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -212,9 +213,11 @@ export default function EventOccurrenceCard({
         {cancelled ? (
           <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Cancelled</p>
         ) : (
-          <p className="text-xs font-medium text-ink/55">{timeLabel}</p>
+          // A date with no published time shows no time line at all.
+          timeLabel && <p className="text-xs font-medium text-ink/55">{timeLabel}</p>
         )}
         {venueLabel && <p className="line-clamp-2 text-xs leading-snug text-ink/45">{venueLabel}</p>}
+        <OccurrenceDetailsHint details={occurrence.details} className="mt-1" />
       </div>
     </button>
   );

@@ -305,6 +305,10 @@ test("J. Business Upcoming Schedule stays date-based; Featured uses presentation
   const view = readFileSync("src/app/(public)/business/[slug]/BusinessPublicView.tsx", "utf8");
   assert.match(view, /const appearances = collapseEventDates\(activity\.upcoming\);/);
   assert.match(view, /appearances=\{scheduleAppearances\}/);
+  // Featured is promotion only: the schedule is EVERY upcoming date — the
+  // live date the Featured card shows is never removed from it.
+  assert.match(view, /const scheduleAppearances = activity\.upcoming;/);
+  assert.doesNotMatch(view, /activity\.upcoming\.filter\(\(a\) => a\.id !== featuredAppearance/);
   const section = readFileSync("src/components/AppearanceFindMiHere.tsx", "utf8");
   assert.match(section, />Upcoming Schedule<\/h2>/);
   assert.match(section, /total=\{appearances\.length\}/);

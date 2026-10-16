@@ -166,6 +166,32 @@ export function compareChronological(a: DatedTimes & { id?: string }, b: DatedTi
   return (a.id ?? "").localeCompare(b.id ?? "");
 }
 
+/** One Event's schedule order: calendar date, then known start (timed
+ * before untimed — compareChronological's rule), then — for dates with the
+ * same (or no) start, e.g. one festival day at several Locations — the
+ * place name A–Z, then id. Never invents a time to order by. */
+export function compareScheduleOccurrences<T extends DatedTimes & { id?: string }>(placeName: (o: T) => string | null | undefined) {
+  return (a: T, b: T): number => {
+    const da = calendarDate(a) ?? "";
+    const db = calendarDate(b) ?? "";
+    if (da !== db) return da < db ? -1 : 1;
+    const sa = a.start_at ? Date.parse(a.start_at) : null;
+    const sb = b.start_at ? Date.parse(b.start_at) : null;
+    if (sa !== null && sb !== null && sa !== sb) return sa - sb;
+    if (sa !== null && sb === null) return -1;
+    if (sa === null && sb !== null) return 1;
+    const pa = (placeName(a) ?? "").trim();
+    const pb = (placeName(b) ?? "").trim();
+    if (pa !== pb) {
+      if (!pa) return 1;
+      if (!pb) return -1;
+      const byName = pa.localeCompare(pb, "en", { sensitivity: "base" });
+      if (byName !== 0) return byName;
+    }
+    return (a.id ?? "").localeCompare(b.id ?? "");
+  };
+}
+
 // ── PostgREST filters (event_occurrences) ──────────────────────────────
 
 /** `.or(...)` filter: occurrences in an instant window [startIso, endIso)

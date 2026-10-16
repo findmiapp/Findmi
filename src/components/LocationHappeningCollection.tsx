@@ -7,6 +7,7 @@ import type { LocationHappening } from "@/lib/data";
 import LiveDot from "./LiveDot";
 import SupabaseImage from "./SupabaseImage";
 import { happeningDateLine, happeningDay, happeningMonth, happeningTemporal } from "@/lib/event-time";
+import OccurrenceDetailsHint from "./OccurrenceDetailsHint";
 
 type ViewMode = "cards" | "list";
 
@@ -155,6 +156,7 @@ function LocationMomentCardBody({ item, className }: { item: LocationHappening; 
         {item.subtitle && <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{item.subtitle}</p>}
         <p className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{item.title}</p>
         <p className="mt-1 truncate text-xs text-ink/45">{happeningDateLine(item, item.description)}</p>
+        <OccurrenceDetailsHint show={Boolean(item.hasDetails)} className="mt-1.5" />
       </div>
     </Link>
   );
@@ -234,6 +236,7 @@ function LocationMomentRowLink({ item, label, live }: { item: LocationHappening;
           <p className="mt-0.5 truncate text-xs text-ink/50">
             {happeningDateLine(item, item.description)}
           </p>
+          <OccurrenceDetailsHint show={Boolean(item.hasDetails)} className="mt-1" />
         </div>
 
         <ArrowGlyph className="h-3.5 w-3.5 shrink-0 text-ink/30" />

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { EventOccurrenceWithLocation } from "@/lib/data";
 import { hasEnded, isHappeningNow } from "@/lib/event-time";
+import { requestedOccurrence } from "@/lib/event-links";
 
 // Recurring Events V2 — the single shared selectedOccurrence controller.
 // Per the pass spec: no individual component (hero, Directions/Add to
@@ -103,6 +104,20 @@ export function EventOccurrenceProvider({
       setSelectedId(initial.occurrence?.id ?? null);
     }
   }, [initial, hasManualSelection]);
+
+  // A link that stands for one specific date (/event/<slug>?occurrence=<id>,
+  // lib/event-links) opens on THAT date — read once on mount, honored only
+  // when it is one of this Event's own listed dates (anything else keeps
+  // the live / next default above). It counts as the visitor's own pick, so
+  // the live default never pulls the page away from it.
+  useEffect(() => {
+    const requested = requestedOccurrence(window.location.search, occurrences);
+    if (!requested) return;
+    setHasManualSelection(true);
+    setSelectedId(requested.id);
+    // Only on first load: the occurrence list for a page is fixed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Re-evaluate the moment the current/next occurrence's own start_at
   // (if NEXT, becoming CURRENT) or end_at (if CURRENT, ending) arrives —

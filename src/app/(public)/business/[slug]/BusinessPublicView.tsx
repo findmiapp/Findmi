@@ -60,6 +60,7 @@ import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { collapseEventDates } from "@/lib/findmi-here";
 import { resolveBusinessHero } from "@/lib/business-hero";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
+import { eventHref } from "@/lib/event-links";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -298,12 +299,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     ? getTemporalLabel(featuredAppearance.start_at, featuredAppearance.end_at)
     : null;
   const featuredIsEvent = Boolean(featuredAppearance?.event?.slug);
-  // Findmi Here schedule: every upcoming date/appearance. The one date the
-  // Featured card is already showing as live (Happening Now) isn't
-  // repeated; all future dates stay visible.
-  const scheduleAppearances = featuredTemporal?.live
-    ? activity.upcoming.filter((a) => a.id !== featuredAppearance?.id)
-    : activity.upcoming;
+  // Findmi Here schedule: every upcoming date/appearance, always. Featured
+  // is promotion only — the date it shows (live or not) stays in its place
+  // in the canonical chronological schedule.
+  const scheduleAppearances = activity.upcoming;
   // Image Fallback Refinement pass — precedence is now: the most specific
   // real image already attached to this appearance (its own flyer image,
   // else its linked Event's own cover image when event-backed — never
@@ -327,7 +326,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // a new /appearance/[id] route.
   const featuredHref = featuredAppearance
     ? featuredIsEvent
-      ? `/event/${featuredAppearance.event!.slug}`
+      ? eventHref(featuredAppearance.event!.slug, featuredAppearance.event_occurrence_id)
       : featuredAppearance.location?.slug && !featuredAppearance.location_hidden
         ? `/location/${featuredAppearance.location.slug}`
         : "#findmi-here"

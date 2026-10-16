@@ -15,6 +15,7 @@ import EventOccurrenceQuickView from "./EventOccurrenceQuickView";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import { ProgressiveListFooter, useProgressiveReveal } from "./ProgressiveList";
 import { pickTodayOccurrence } from "@/lib/schedule-time";
+import OccurrenceDetailsHint from "./OccurrenceDetailsHint";
 
 const VISIBLE_COUNT = 10;
 const VIEW_STORAGE_KEY = "findmi:event-dates-view";
@@ -280,7 +281,7 @@ function OccurrenceListRow({
         {cancelled ? (
           <span className="mt-0.5 block text-metadata font-semibold uppercase tracking-wide text-red-600">Cancelled</span>
         ) : (
-          <span className="mt-0.5 block truncate text-metadata text-secondary">{timeLabel}</span>
+          timeLabel && <span className="mt-0.5 block truncate text-metadata text-secondary">{timeLabel}</span>
         )}
         {venueLabel && (
           <span className="mt-0.5 flex items-center gap-1 text-metadata text-muted">
@@ -291,6 +292,7 @@ function OccurrenceListRow({
             <span className="truncate">{venueLabel}</span>
           </span>
         )}
+        <OccurrenceDetailsHint details={occurrence.details} className="mt-1" />
       </span>
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4 shrink-0 text-ink/25">
         <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
