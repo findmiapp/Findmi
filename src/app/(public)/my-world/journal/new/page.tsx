@@ -1,3 +1,5 @@
+import { getServerSupabase } from "@/lib/supabase/server";
+import { buildPostedBy } from "@/lib/moment-authorship";
 import MomentComposer from "@/components/journal/MomentComposer";
 import { getSupabase } from "@/lib/supabase";
 import { emptyMomentInitial, type MomentPick } from "@/lib/moment-composer";
@@ -91,9 +93,17 @@ async function resolvePrefillEvent(id: string | undefined): Promise<{ result: Jo
 export default async function NewJournalEntryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ location?: string; business?: string; product?: string; event?: string }>;
+  searchParams: Promise<{ location?: string; business?: string; product?: string; event?: string; postAs?: string }>;
 }) {
   const params = await searchParams;
+  // Identity V1 — Posted By. Opened from a Business manager (?postAs=<id>)
+  // the default author is that Business, but only when the signed-in
+  // person is CURRENTLY its owner/manager; otherwise Personal.
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const postedBy = user ? await buildPostedBy(supabase, user.id, { fromBusinessId: params.postAs ?? null }) : null;
   const [locationPrefill, businessPrefill, productPrefill, eventPrefill] = await Promise.all([
     resolvePrefillLocation(params.location),
     resolvePrefillBusiness(params.business),
@@ -108,6 +118,7 @@ export default async function NewJournalEntryPage({
   // Moments V2 — every contextual start is a PREFILL of the same composer,
   // never a separate workflow; everything prefilled stays removable.
   const initial = emptyMomentInitial();
+  initial.postedBy = postedBy;
   if (locationPrefill) initial.location = locationPrefill.result;
   if (businessPrefill) initial.businesses.push(businessPrefill.result);
   if (productPrefill) initial.products.push(productPrefill.result);

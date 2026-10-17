@@ -6,6 +6,16 @@
 import type { JournalEntryWithRelations, JournalOccurrenceRef } from "./journal";
 import type { JournalEntrySectionRow } from "./journal-sections";
 import type { JournalInitialPhoto } from "@/components/journal/useJournalPhotoUpload";
+import type { PostedByOption } from "./moment-author";
+
+/** Identity V1 — the Posted By control's server-built state. `value` is
+ * the author Business id (null = the creator's Personal identity). */
+export interface MomentPostedByInitial {
+  value: string | null;
+  options: PostedByOption[];
+  /** Admin only: may search and assign any Business. */
+  adminSearch: boolean;
+}
 
 /** One real Findmi object picked into a Moment. */
 export interface MomentPick {
@@ -58,6 +68,8 @@ export interface MomentComposerInitial {
   products: MomentPick[];
   photos: JournalInitialPhoto[];
   sections: JournalEntrySectionRow[];
+  /** null = no Posted By control (Personal only, nothing to choose). */
+  postedBy: MomentPostedByInitial | null;
 }
 
 export function emptyMomentInitial(): MomentComposerInitial {
@@ -76,6 +88,7 @@ export function emptyMomentInitial(): MomentComposerInitial {
     products: [],
     photos: [],
     sections: [],
+    postedBy: null,
   };
 }
 
@@ -119,5 +132,6 @@ export function momentInitialFromEntry(entry: JournalEntryWithRelations): Moment
     products: entry.products.map((p) => ({ value: p.id, label: p.name, sublabel: p.business?.name, image_url: p.image_url })),
     photos: entry.media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover, sectionId: m.section_id ?? null, caption: m.caption })),
     sections: entry.sections,
+    postedBy: null,
   };
 }

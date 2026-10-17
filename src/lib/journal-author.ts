@@ -9,12 +9,8 @@
 // or user id.
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { getSupabase } from "./supabase";
-
-/** A display name that looks like an email address is never shown. */
-function safeName(name: string | null | undefined): string | null {
-  const n = name?.trim();
-  return n && !n.includes("@") ? n : null;
-}
+import { authorColumn } from "./moment-authorship";
+import { safeAuthorName as safeName } from "./moment-author";
 
 export async function resolveJournalAuthorNames(userIds: (string | null | undefined)[]): Promise<Map<string, string>> {
   const ids = [...new Set(userIds.filter((id): id is string => Boolean(id)))];
@@ -43,12 +39,13 @@ export async function resolvePublicJournalAuthor(entryId: string): Promise<{ use
   if (!supabase || !/^[0-9a-f-]{36}$/i.test(entryId)) return null;
   const { data } = await supabase
     .from("journal_entries")
-    .select("user_id, author_label")
+    .select("user_id, author_label" + (await authorColumn()))
     .eq("id", entryId)
     .eq("visibility", "public")
     .eq("status", "published")
-    .maybeSingle<{ user_id: string; author_label: string | null }>();
-  if (!data?.user_id) return null;
+    .maybeSingle<{ user_id: string; author_label: string | null; author_business_id?: string | null }>();
+  // A Business-authored Moment is never a key into a Person's journal.
+  if (!data?.user_id || data.author_business_id) return null;
   const names = await resolveJournalAuthorNames([data.user_id]);
   return { userId: data.user_id, name: journalByline(names.get(data.user_id), data.author_label) };
 }

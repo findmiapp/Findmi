@@ -73,7 +73,7 @@ test("F. no migration: existing columns default to visible, so current public Ar
   const files = readdirSync("supabase/migrations");
   assert.match(read(`supabase/migrations/${files.find((f) => f.includes("area_picker_and_market_requests"))}`), /add column if not exists consumer_visible boolean not null default true;/);
   assert.match(read(`supabase/migrations/${files.find((f) => f.includes("market_areas_and_request_resolution"))}`), /consumer_visible boolean not null default true,/);
-  assert.equal(files.filter((f) => f.endsWith(".sql")).sort().at(-1), "20261019000000_event_date_time_precision.sql" /* later passes (… Event Occurrence details, Event date/time precision) */, "this pass adds no migration");
+  assert.equal(files.filter((f) => f.endsWith(".sql")).sort().at(-1), "20261020000000_moment_authorship_and_access_history.sql" /* later passes (… Event date/time precision, Identity & Authorship V1) */, "this pass adds no migration");
 });
 
 test("G/H/I. creation never depends on visibility: pickers list ACTIVE geography and the database checks `active` only", () => {

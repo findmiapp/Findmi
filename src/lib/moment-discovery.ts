@@ -1,8 +1,7 @@
 import "server-only";
 import { getSupabase } from "./supabase";
-import { getAdminSupabase } from "./admin/supabase-admin";
 import { resolveSignedUrls } from "./journal";
-import { journalByline } from "./journal-author";
+import { authorColumn, resolveMomentAuthors } from "./moment-authorship";
 import { MAX_COLLAGE_REGIONS, orderPreviewMedia } from "./moment-collage";
 import { momentCategoryTags, type MomentFilterKey, type MomentFollowKeys } from "./moment-filters";
 
@@ -28,7 +27,9 @@ export interface MomentFeedCard {
   contextLabel: string | null;
   media: { kind: "image"; url: string }[];
   photoCount: number;
-  author: { name: string; avatarUrl: string | null } | null;
+  /** The PUBLIC author (lib/moment-authorship resolveMomentAuthors): a
+   * Person (avatar) or a Business (logo). */
+  author: { name: string; avatarUrl: string | null; kind: "person" | "business" } | null;
   /** Category filters this Moment belongs to (real relationships only). */
   tags: MomentFilterKey[];
   /** Public keys for the "Following" filter (matched on this device). */
@@ -51,10 +52,6 @@ function parseCursor(cursor: string | null | undefined): { date: string; id: str
 }
 
 const one = <T>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
-const safeName = (n: string | null | undefined) => {
-  const t = n?.trim();
-  return t && !t.includes("@") ? t : null;
-};
 
 type EntryRow = {
   id: string;
@@ -62,6 +59,7 @@ type EntryRow = {
   title: string;
   entry_date: string;
   author_label: string | null;
+  author_business_id?: string | null;
   location: { id: string; name: string; category: { slug: string } | { slug: string }[] | null } | { id: string; name: string; category: unknown }[] | null;
   journal_entry_connections: { business_id: string | null; event_id: string | null; event_occurrence_id: string | null }[] | null;
 };
@@ -75,7 +73,9 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
   let query = supabase
     .from("journal_entries")
     .select(
-      "id, user_id, title, entry_date, author_label, location:locations(id, name, category:categories(slug)), journal_entry_connections(business_id, event_id, event_occurrence_id)"
+      "id, user_id, title, entry_date, author_label" +
+        (await authorColumn()) +
+        ", location:locations(id, name, category:categories(slug)), journal_entry_connections(business_id, event_id, event_occurrence_id)"
     )
     .eq("visibility", "public")
     .eq("status", "published");
@@ -130,7 +130,7 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
   const previewPaths = new Map<string, string[]>();
   for (const [entryId, list] of mediaByEntry) previewPaths.set(entryId, orderPreviewMedia(list).slice(0, MAX_COLLAGE_REGIONS).map((m) => m.storage_path));
 
-  const [signed, authors] = await Promise.all([resolveSignedUrls([...previewPaths.values()].flat(), "card"), resolveAuthors(page.map((r) => r.user_id))]);
+  const [signed, authors] = await Promise.all([resolveSignedUrls([...previewPaths.values()].flat(), "card"), resolveMomentAuthors(page)]);
 
   const cards: MomentFeedCard[] = page.map((r) => {
     const location = one(r.location as EntryRow["location"]) as { id: string; name: string; category: unknown } | null;
@@ -142,8 +142,7 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
     ];
     const rEvents = rEventIds.map((id) => events.get(id)).filter((e): e is NonNullable<typeof e> => Boolean(e));
     const cats = [...rBiz.flatMap((b) => b.cats), ...rEvents.flatMap((e) => e.cats), ...(locationCat ? [locationCat] : [])];
-    const author = authors.get(r.user_id);
-    const name = journalByline(author?.name, r.author_label);
+    const author = authors.get(r.id);
     return {
       id: r.id,
       title: r.title,
@@ -152,7 +151,7 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
       contextLabel: location?.name ?? rEvents[0]?.name ?? rBiz[0]?.name ?? null,
       media: (previewPaths.get(r.id) ?? []).map((p) => signed.get(p)).filter((u): u is string => Boolean(u)).map((url) => ({ kind: "image" as const, url })),
       photoCount: mediaByEntry.get(r.id)?.length ?? 0,
-      author: name ? { name, avatarUrl: author?.avatarUrl ?? null } : null,
+      author: author ? { name: author.name, avatarUrl: author.imageUrl, kind: author.kind } : null,
       tags: momentCategoryTags(cats),
       follow: { businessSlugs: rBiz.map((b) => b.slug), eventIds: rEventIds, locationIds: location ? [location.id] : [] },
     };
@@ -160,18 +159,4 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
 
   const last = page[page.length - 1];
   return { cards, nextCursor: hasMore ? `${last.entry_date}_${last.id}` : null };
-}
-
-/** Author display name + public avatar (profiles has no anon read; only
- * the public display fields leave this function — never ids or emails). */
-async function resolveAuthors(userIds: string[]): Promise<Map<string, { name: string | null; avatarUrl: string | null }>> {
-  const map = new Map<string, { name: string | null; avatarUrl: string | null }>();
-  const admin = getAdminSupabase();
-  const unique = [...new Set(userIds)];
-  if (!admin || unique.length === 0) return map;
-  const { data } = await admin.from("profiles").select("id, display_name, avatar_url").in("id", unique);
-  for (const p of (data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]) {
-    map.set(p.id, { name: safeName(p.display_name), avatarUrl: p.avatar_url && /^https?:\/\//.test(p.avatar_url) ? p.avatar_url : null });
-  }
-  return map;
 }

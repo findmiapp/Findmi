@@ -82,7 +82,7 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
       label: "Add a Moment",
       description: "Document something your Business experienced.",
       detail: "Document something your Business experienced.",
-      href: `/my-world/journal/new?business=${id}`,
+      href: `/my-world/journal/new?business=${id}&postAs=${id}`,
       icon: "moment",
     },
     qr: {

@@ -156,6 +156,8 @@ export interface AdminCurrentAccessMember {
   /** business_members/event_members row id — the identifier every
    * role-change/remove action below operates on, never the claim id. */
   id: string;
+  /** When this access row was granted. */
+  createdAt?: string | null;
   user_id: string;
   role: MemberRole;
   displayName: string | null;
@@ -217,8 +219,8 @@ export async function getCurrentAccessByEntity(
 
   const table = MEMBER_TABLE[entityType];
   const column = MEMBER_ENTITY_COLUMN[entityType];
-  const { data } = await supabase.from(table).select(`id, user_id, role, ${column}`).in(column, entityIds);
-  const rows = (data ?? []) as { id: string; user_id: string; role: MemberRole; [key: string]: unknown }[];
+  const { data } = await supabase.from(table).select(`id, user_id, role, created_at, ${column}`).in(column, entityIds);
+  const rows = (data ?? []) as { id: string; user_id: string; role: MemberRole; created_at?: string | null; [key: string]: unknown }[];
   if (rows.length === 0) return map;
 
   const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
@@ -242,6 +244,7 @@ export async function getCurrentAccessByEntity(
       displayName: displayNameByUser.get(row.user_id) ?? null,
       email: emailByUser.get(row.user_id) ?? null,
       emailVerifiedAt: emailVerifiedAtByUser.get(row.user_id) ?? null,
+      createdAt: row.created_at ?? null,
     };
     map.set(entityId, [...(map.get(entityId) ?? []), member]);
   }

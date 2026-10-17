@@ -23,7 +23,7 @@
 // signed, server-side, via the existing batched resolveSignedUrls.
 import { getSupabase } from "./supabase";
 import { resolveSignedUrls } from "./journal";
-import { journalByline, resolveJournalAuthorNames } from "./journal-author";
+import { authorColumn, hasMomentAuthorship, resolveMomentAuthors } from "./moment-authorship";
 
 export type JournalSubjectType = "business" | "event" | "location" | "product";
 
@@ -104,7 +104,9 @@ export async function getPublicJournalCollection({
 
   const viaConnection = subjectType !== "location" && subjectType !== "author";
   const columns =
-    "id, user_id, title, entry_date, entry_time, notes, author_label, location:locations(name)" +
+    "id, user_id, title, entry_date, entry_time, notes, author_label" +
+    (await authorColumn()) +
+    ", location:locations(name)" +
     (viaConnection ? ", journal_entry_connections!inner(id)" : "");
 
   let query = supabase
@@ -114,7 +116,10 @@ export async function getPublicJournalCollection({
     .eq("status", "published");
 
   if (subjectType === "author") {
+    // A Person's public journal holds only Moments they post AS
+    // themselves — never Business Moments they happened to create.
     query = query.eq("user_id", subjectId);
+    if (await hasMomentAuthorship()) query = query.is("author_business_id", null);
   } else if (subjectType === "location") {
     query = query.eq("location_id", subjectId);
   } else if (subjectType === "occurrence") {
@@ -148,6 +153,7 @@ export async function getPublicJournalCollection({
     entry_time: string | null;
     notes: string | null;
     author_label: string | null;
+    author_business_id?: string | null;
     location: { name: string } | { name: string }[] | null;
   };
   const seen = new Set<string>();
@@ -178,7 +184,7 @@ export async function getPublicJournalCollection({
   }
   const [signed, authorNames] = await Promise.all([
     resolveSignedUrls([...coverPathByEntry.values()], "card"),
-    resolveJournalAuthorNames(pageRows.map((r) => r.user_id)),
+    resolveMomentAuthors(pageRows),
   ]);
 
   const entries: PublicJournalCard[] = pageRows.map((r) => {
@@ -190,7 +196,7 @@ export async function getPublicJournalCollection({
       entryDate: r.entry_date,
       entryTime: r.entry_time,
       excerpt: toExcerpt(r.notes),
-      authorLabel: journalByline(authorNames.get(r.user_id), r.author_label),
+      authorLabel: authorNames.get(r.id)?.name ?? null,
       coverUrl: coverPath ? (signed.get(coverPath) ?? null) : null,
       photoCount: mediaByEntry.get(r.id)?.length ?? 0,
       locationName: location?.name ?? null,

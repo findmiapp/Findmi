@@ -168,9 +168,10 @@ test("route integrity: every creation destination is an existing Business-scoped
   assert.match(PAGE, /addOpen=\{addParam === "1"\}/);
   assert.equal(a.product.href, "/account/business/biz?tab=products&compose=1");
   assert.match(PAGE, /<details className="group" open=\{addProductHasDraft \|\| composeOpen\}>/);
-  assert.equal(a.moment.href, "/my-world/journal/new?business=biz");
+  assert.equal(a.moment.href, "/my-world/journal/new?business=biz&postAs=biz");
   const journal = read("src/app/(public)/my-world/journal/new/page.tsx");
   assert.match(journal, /resolvePrefillBusiness\(params\.business\)/);
+  assert.match(journal, /fromBusinessId: params\.postAs \?\? null/);
   assert.equal(a.qr.href, "/account/business/biz/qr/new");
   assert.ok(existsSync(`${B}/qr/new/page.tsx`));
   assert.match(read(`${B}/qr/new/page.tsx`), /await requireBusinessMember\(id\);/);

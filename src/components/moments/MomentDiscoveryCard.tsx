@@ -71,7 +71,14 @@ export default function MomentDiscoveryCard({
             {moment.author && (
               <>
                 {moment.author.avatarUrl ? (
-                  <Image src={moment.author.avatarUrl} alt="" width={22} height={22} unoptimized className="h-[22px] w-[22px] shrink-0 rounded-full object-cover" />
+                  <Image
+                    src={moment.author.avatarUrl}
+                    alt=""
+                    width={22}
+                    height={22}
+                    unoptimized
+                    className={`h-[22px] w-[22px] shrink-0 ${moment.author.kind === "business" ? "rounded-md border border-black/5 bg-white object-contain" : "rounded-full object-cover"}`}
+                  />
                 ) : (
                   <span aria-hidden className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-findmi-50 text-[11px] font-bold text-findmi-700">
                     {initial}

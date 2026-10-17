@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
@@ -15,6 +16,9 @@ import { isVariantPath } from "@/lib/image-variants";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { calendarDate } from "@/lib/event-time";
 import { planMediaLayout } from "@/lib/moment-media-order";
+import { authorizeAuthorChoice, canManageMoment, canPostAsBusinessRole, type MomentActor } from "@/lib/moment-author";
+import { authorColumn, getViewerAuthorContext, hasMomentAuthorship } from "@/lib/moment-authorship";
+import { recordAccessEvents } from "@/lib/access-history";
 import {
   isJournalSectionType,
   JOURNAL_PHOTO_CAPTION_MAX,
@@ -60,20 +64,45 @@ async function requireUser() {
  * groups by the entry's TRUE owner, never the editing admin. Every
  * existing consumer owner-path call and behavior below is unchanged. */
 async function requireOwnEntry(entryId: string) {
+  const ctx = await requireManagedEntry(entryId);
+  return { admin: ctx.admin, userId: ctx.userId };
+}
+
+type ManagedEntry = {
+  admin: SupabaseClient;
+  /** The entry's creator (journal_entries.user_id) — storage paths group by it. */
+  userId: string;
+  entry: { id: string; user_id: string; author_business_id: string | null };
+  actor: MomentActor;
+};
+
+/** Identity, Authorship & Entity Access V1 — who may manage a Moment is
+ * derived from CURRENT state (lib/moment-author canManageMoment): a
+ * Personal Moment → its creator; a Business Moment → a current owner/
+ * manager of that Business (a removed manager loses it at once; the
+ * creator keeps nothing from user_id alone); Admin → any. The entry is
+ * read with the service role and the viewer's memberships through their
+ * own RLS-scoped session, so nothing here trusts the client. */
+async function requireManagedEntry(entryId: string): Promise<ManagedEntry> {
+  const cols = "id, user_id" + (await authorColumn());
   if (await isAdminSession()) {
     const admin = await requireAdminSupabase();
-    const { data: entry } = await admin.from("journal_entries").select("id, user_id").eq("id", entryId).maybeSingle();
+    const { data } = await admin.from("journal_entries").select(cols).eq("id", entryId).maybeSingle();
+    const entry = data as unknown as { id: string; user_id: string; author_business_id?: string | null } | null;
     if (!entry) throw new Error("That Moment doesn't exist.");
-    return { admin, userId: entry.user_id as string };
+    return { admin, userId: entry.user_id, entry: { ...entry, author_business_id: entry.author_business_id ?? null }, actor: { kind: "admin" } };
   }
 
   const user = await requireUser();
-  const supabase = await getServerSupabase();
-  const { data: entry } = await supabase.from("journal_entries").select("id, user_id").eq("id", entryId).maybeSingle();
-  if (!entry || entry.user_id !== user.id) throw new Error("That Moment doesn't exist or isn't yours.");
   const admin = getAdminSupabase();
   if (!admin) throw new Error("Server isn't configured.");
-  return { admin, userId: user.id };
+  const { data } = await admin.from("journal_entries").select(cols).eq("id", entryId).maybeSingle();
+  const row = data as unknown as { id: string; user_id: string; author_business_id?: string | null } | null;
+  const entry = row ? { ...row, author_business_id: row.author_business_id ?? null } : null;
+  const roles = entry?.author_business_id ? (await getViewerAuthorContext(await getServerSupabase(), user.id)).roles : new Map<string, string>();
+  const actor: MomentActor = { kind: "user", userId: user.id, roles };
+  if (!entry || !canManageMoment(entry, actor)) throw new Error("That Moment doesn't exist or isn't yours.");
+  return { admin, userId: entry.user_id, entry, actor };
 }
 
 function str(formData: FormData, key: string): string | null {
@@ -90,20 +119,90 @@ function str(formData: FormData, key: string): string | null {
  * overwritten by saveJournalBasics on the first real "Next" tap; never
  * shown to anyone but the owner (draft rows are excluded from the Index
  * and from every public/other-user RLS read). */
-export async function startJournalDraft(): Promise<{ id: string } | { error: string }> {
+export async function startJournalDraft(options?: { authorBusinessId?: string | null }): Promise<{ id: string } | { error: string }> {
   try {
     const user = await requireUser();
     const admin = getAdminSupabase();
     if (!admin) return { error: "Server isn't configured." };
+    // Posting As a Business on create: ONLY with a real owner/manager row
+    // for it (never an Admin session, never a client claim). The creator
+    // is always the signed-in user.
+    const authorBusinessId = options?.authorBusinessId ?? null;
+    if (authorBusinessId) {
+      if (!(await hasMomentAuthorship())) return { error: "Posting as a Business isn't available yet." };
+      const { roles } = await getViewerAuthorContext(await getServerSupabase(), user.id);
+      if (!canPostAsBusinessRole(roles.get(authorBusinessId))) return { error: "You can only post as a Business you manage." };
+    }
     const { data, error } = await admin
       .from("journal_entries")
-      .insert({ user_id: user.id, title: "", entry_date: new Date().toISOString().slice(0, 10) })
+      .insert({
+        user_id: user.id,
+        title: "",
+        entry_date: new Date().toISOString().slice(0, 10),
+        ...(authorBusinessId ? { author_business_id: authorBusinessId } : {}),
+      })
       .select("id")
       .single();
     if (error || !data) return { error: error?.message ?? "Couldn't start a new entry." };
+    if (authorBusinessId) {
+      await recordAccessEvents(admin, [
+        {
+          entityType: "moment",
+          entityId: data.id,
+          action: "author_changed",
+          actor: { kind: "user", userId: user.id },
+          subjectUserId: user.id,
+          detail: { from_business_id: null, to_business_id: authorBusinessId, on_create: true },
+        },
+      ]);
+    }
     return { id: data.id };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't start a new entry." };
+  }
+}
+
+/** Edit Moment → Posted By. Changes ONLY the public author
+ * (author_business_id); journal_entries.user_id — the creator — is never
+ * touched, nor media, order, sections, visibility or cover. Normal users:
+ * Personal only for the creator, a Business only with a real owner/manager
+ * row. Admin: the creator's Personal identity or any existing Business. */
+export async function setJournalAuthor(entryId: string, authorBusinessId: string | null): Promise<{ ok: true } | { error: string }> {
+  try {
+    const ctx = await requireManagedEntry(entryId);
+    const requested = authorBusinessId || null;
+    if (requested === ctx.entry.author_business_id) return { ok: true };
+    if (!(await hasMomentAuthorship())) return { error: "Posting as a Business isn't available yet." };
+
+    let actor = ctx.actor;
+    if (actor.kind === "user" && requested) {
+      // The current author's roles were enough to manage; the TARGET needs
+      // its own real owner/manager row.
+      actor = { ...actor, roles: (await getViewerAuthorContext(await getServerSupabase(), actor.userId)).roles };
+    }
+    const allowed = authorizeAuthorChoice(ctx.entry, actor, requested);
+    if ("error" in allowed) return allowed;
+    if (requested) {
+      const { data: business } = await ctx.admin.from("businesses").select("id").eq("id", requested).maybeSingle();
+      if (!business) return { error: "That Business doesn't exist." };
+    }
+
+    const { error } = await ctx.admin.from("journal_entries").update({ author_business_id: requested }).eq("id", entryId);
+    if (error) return { error: error.message };
+    await recordAccessEvents(ctx.admin, [
+      {
+        entityType: "moment",
+        entityId: entryId,
+        action: "author_changed",
+        actor: actor.kind === "admin" ? { kind: "admin" } : { kind: "user", userId: actor.userId },
+        subjectUserId: ctx.entry.user_id,
+        detail: { from_business_id: ctx.entry.author_business_id, to_business_id: requested },
+      },
+    ]);
+    revalidatePath(`/journal/${entryId}`);
+    return { ok: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't change who posted this." };
   }
 }
 

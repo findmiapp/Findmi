@@ -7,6 +7,7 @@ import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import type { ClaimEntityType } from "@/lib/admin/claim-queries";
 import { getAccountEmail } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import { recordAccessEvents } from "@/lib/access-history";
 
 const ENTITY_TABLE: Record<ClaimEntityType, "businesses" | "events" | "locations"> = {
   business: "businesses",
@@ -127,7 +128,7 @@ export async function approveClaim(entityType: ClaimEntityType, claimId: string)
 
   const { data: claim } = await supabase
     .from(CLAIM_TABLE[entityType])
-    .select("payment_status")
+    .select("*")
     .eq("id", claimId)
     .maybeSingle();
   if (!claim) {
@@ -139,6 +140,13 @@ export async function approveClaim(entityType: ClaimEntityType, claimId: string)
   if (error) {
     const message = FRIENDLY_ERROR[error.message] ?? "Couldn't approve this claim.";
     redirect(errorRedirectUrl("/admin/claims", message));
+  }
+
+  if (entityType === "business" && claim) {
+    const c = claim as { business_id: string; user_id: string };
+    await recordAccessEvents(supabase, [
+      { entityType: "business", entityId: c.business_id, action: "claim_approved", actor: { kind: "admin" }, subjectUserId: c.user_id, detail: { claim_id: claimId, role: "owner" } },
+    ]);
   }
 
   await notifyClaimant(supabase, entityType, claimId, "approved");
@@ -191,10 +199,17 @@ const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members"
   event: "event_members",
   location: "location_members",
 };
+const MEMBER_ENTITY_COLUMN: Record<ClaimEntityType, "business_id" | "event_id" | "location_id"> = {
+  business: "business_id",
+  event: "event_id",
+  location: "location_id",
+};
 
 const VALID_NON_OWNER_ROLES = ["manager", "staff"];
 
-export async function updateMemberRole(entityType: ClaimEntityType, memberId: string, role: string) {
+/** Scoped by BOTH the member row id and its entity id — a member id from
+ * another business/event/location matches nothing. */
+export async function updateMemberRole(entityType: ClaimEntityType, entityId: string, memberId: string, role: string) {
   const supabase = await requireAdminSupabase();
   if (!VALID_NON_OWNER_ROLES.includes(role)) {
     redirect(errorRedirectUrl("/admin/claims", "Invalid role."));
@@ -204,12 +219,18 @@ export async function updateMemberRole(entityType: ClaimEntityType, memberId: st
     .from(MEMBER_TABLE[entityType])
     .update({ role })
     .eq("id", memberId)
+    .eq(MEMBER_ENTITY_COLUMN[entityType], entityId)
     .neq("role", "owner")
     .select()
     .maybeSingle();
 
   if (error || !data) {
     redirect(errorRedirectUrl("/admin/claims", "Couldn't update that member's role — they may no longer be a member."));
+  }
+  if (entityType === "business") {
+    await recordAccessEvents(supabase, [
+      { entityType: "business", entityId, action: "role_changed", actor: { kind: "admin" }, subjectUserId: (data as { user_id: string }).user_id, detail: { role } },
+    ]);
   }
 
   revalidatePath("/admin/claims");
@@ -221,19 +242,26 @@ export async function updateMemberRole(entityType: ClaimEntityType, memberId: st
  * through remove_business_owner()/remove_event_owner() instead; this
  * action's own `.neq("role", "owner")` guard makes sure it can never be
  * used for that even by accident. */
-export async function removeMember(entityType: ClaimEntityType, memberId: string) {
+export async function removeMember(entityType: ClaimEntityType, entityId: string, memberId: string) {
   const supabase = await requireAdminSupabase();
 
   const { data, error } = await supabase
     .from(MEMBER_TABLE[entityType])
     .delete()
     .eq("id", memberId)
+    .eq(MEMBER_ENTITY_COLUMN[entityType], entityId)
     .neq("role", "owner")
     .select()
     .maybeSingle();
 
   if (error || !data) {
     redirect(errorRedirectUrl("/admin/claims", "Couldn't remove that member — they may no longer be a member."));
+  }
+  if (entityType === "business") {
+    const removed = data as { user_id: string; role: string };
+    await recordAccessEvents(supabase, [
+      { entityType: "business", entityId, action: "manager_removed", actor: { kind: "admin" }, subjectUserId: removed.user_id, detail: { role: removed.role } },
+    ]);
   }
 
   revalidatePath("/admin/claims");
@@ -299,6 +327,12 @@ export async function transferOwnership(entityType: ClaimEntityType, entityId: s
   if (error) {
     redirect(errorRedirectUrl("/admin/claims", OWNERSHIP_FRIENDLY_ERROR[error.message] ?? "Couldn't transfer ownership."));
   }
+  if (entityType === "business") {
+    const { data: target } = await supabase.from("business_members").select("user_id").eq("id", targetMemberId).maybeSingle();
+    await recordAccessEvents(supabase, [
+      { entityType: "business", entityId, action: "ownership_transferred", actor: { kind: "admin" }, subjectUserId: (target as { user_id: string } | null)?.user_id ?? null, detail: {} },
+    ]);
+  }
 
   revalidatePath("/admin/claims");
   redirect("/admin/claims?member_updated=1");
@@ -311,12 +345,21 @@ export async function transferOwnership(entityType: ClaimEntityType, entityId: s
 export async function removeOwner(entityType: ClaimEntityType, entityId: string) {
   const supabase = await requireAdminSupabase();
 
+  const { data: owner } =
+    entityType === "business"
+      ? await supabase.from("business_members").select("user_id").eq("business_id", entityId).eq("role", "owner").maybeSingle()
+      : { data: null };
   const { error } = await supabase.rpc(REMOVE_OWNER_RPC[entityType], {
     [ENTITY_ID_PARAM[entityType]]: entityId,
   });
 
   if (error) {
     redirect(errorRedirectUrl("/admin/claims", OWNERSHIP_FRIENDLY_ERROR[error.message] ?? "Couldn't remove the owner."));
+  }
+  if (entityType === "business") {
+    await recordAccessEvents(supabase, [
+      { entityType: "business", entityId, action: "owner_removed", actor: { kind: "admin" }, subjectUserId: (owner as { user_id: string } | null)?.user_id ?? null, detail: {} },
+    ]);
   }
 
   revalidatePath("/admin/claims");

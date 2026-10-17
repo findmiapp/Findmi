@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getJournalEntryWithRelationsForAdmin } from "@/lib/journal";
+import { buildAdminPostedBy } from "@/lib/moment-authorship";
 import MomentComposer from "@/components/journal/MomentComposer";
 import { momentInitialFromEntry } from "@/lib/moment-composer";
 
@@ -31,5 +32,9 @@ export default async function AdminJournalEntryEditPage({ params }: { params: Pr
   const entry = await getJournalEntryWithRelationsForAdmin(id);
   if (!entry) notFound();
 
-  return <MomentComposer mode="edit" initial={momentInitialFromEntry(entry)} cancelHref={`/journal/${id}`} />;
+  // Identity V1 — Admin Posted By: the creator's Personal identity or any
+  // Business (Admin authority, never a membership).
+  const initial = momentInitialFromEntry(entry);
+  initial.postedBy = await buildAdminPostedBy(entry.entry);
+  return <MomentComposer mode="edit" initial={initial} cancelHref={`/journal/${id}`} />;
 }

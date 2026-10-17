@@ -6,7 +6,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJournalEntryWithRelations } from "@/lib/journal";
 import { isAdminSession } from "@/lib/admin/auth";
-import { journalAuthorHref, journalByline, resolveJournalAuthorNames } from "@/lib/journal-author";
+import { journalAuthorHref } from "@/lib/journal-author";
+import { resolveMomentAuthors } from "@/lib/moment-authorship";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
 import JournalMomentGallery from "@/components/journal/JournalMomentGallery";
 import { JournalMediaViewerRoot, JournalPhotoTrigger } from "@/components/journal/JournalMediaViewer";
@@ -56,11 +57,13 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const [result, isAuthorizedAdmin] = await Promise.all([getJournalEntryWithRelations(id), isAdminSession()]);
   if (!result) notFound();
   const { entry, media, location, businesses, products, events, occurrences, sections, isOwner } = result;
-  // Recovery pass — the byline names the real author (profile display
-  // name), not the stale "Findmi" label an admin-cookie capture stamped.
-  const authorNames = await resolveJournalAuthorNames([entry.user_id]);
-  const authorLabel = journalByline(authorNames.get(entry.user_id), entry.author_label);
+  // Identity V1 — the byline is the PUBLIC author from the one shared
+  // resolver: a Person (display name, avatar, their public Moments) or a
+  // Business (name, logo, Business profile).
   const isPublicEntry = entry.visibility === "public" && entry.status === "published";
+  const author = (await resolveMomentAuthors([entry], () => (isPublicEntry ? journalAuthorHref(entry.id) : null))).get(entry.id) ?? null;
+  const authorLabel = author?.name ?? null;
+  const authorHref = isPublicEntry ? (author?.href ?? null) : null;
 
   // Journal Experience Date repair — an Event connection's displayed date
   // must be the specific attended Event Occurrence (category B: EVENT
@@ -234,14 +237,26 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           <p className="text-sm font-medium text-white/80">{dateLabel}</p>
           {(authorLabel || firstPhotosAnchor) && (
             <div className="mt-0.5 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-white/70">
-              {authorLabel ? (
-                isPublicEntry ? (
-                  <Link href={journalAuthorHref(entry.id)} className="pointer-events-auto min-w-0 truncate underline-offset-2 hover:text-white hover:underline">
-                    By {authorLabel}
-                  </Link>
-                ) : (
-                  <span className="min-w-0 truncate">By {authorLabel}</span>
-                )
+              {author && authorLabel ? (
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {author.imageUrl && (
+                    <Image
+                      src={author.imageUrl}
+                      alt=""
+                      width={18}
+                      height={18}
+                      unoptimized
+                      className={`h-[18px] w-[18px] shrink-0 ${author.kind === "business" ? "rounded bg-white object-contain" : "rounded-full object-cover"}`}
+                    />
+                  )}
+                  {authorHref ? (
+                    <Link href={authorHref} className="pointer-events-auto min-w-0 truncate underline-offset-2 hover:text-white hover:underline">
+                      By {authorLabel}
+                    </Link>
+                  ) : (
+                    <span className="min-w-0 truncate">By {authorLabel}</span>
+                  )}
+                </span>
               ) : (
                 <span />
               )}

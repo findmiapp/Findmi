@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { businessManagementState, type BusinessManagementState } from "@/lib/moment-author";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -102,7 +103,22 @@ export async function GET(request: NextRequest) {
   // enforce at most one 'owner' row, so any row here means it's already
   // claimed. Scoped to business/location only — event claim eligibility
   // is untouched.
-  if (type === "business" || type === "location") {
+  // Identity V1 — Businesses use the ONE shared management state
+  // (lib/moment-author businessManagementState): Managed = any REAL
+  // business_members row; Findmi Admin access never creates one, so an
+  // Admin-maintained Business with no external managers stays claimable.
+  let businessState: BusinessManagementState | null = null;
+  if (type === "business") {
+    const admin = getAdminSupabase();
+    if (admin) {
+      const [{ count: memberCount }, { count: pendingClaimCount }] = await Promise.all([
+        admin.from("business_members").select("id", { count: "exact", head: true }).eq("business_id", entityId),
+        admin.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("business_id", entityId).eq("status", "pending"),
+      ]);
+      businessState = businessManagementState({ memberCount: memberCount ?? 0, pendingClaimCount: pendingClaimCount ?? 0 });
+      if (businessState === "managed") return NextResponse.json({ state: "member" });
+    }
+  } else if (type === "location") {
     const admin = getAdminSupabase();
     if (admin) {
       const { data: anyMember } = await admin.from(memberTable).select("id").eq(column, entityId).limit(1).maybeSingle();
@@ -139,7 +155,8 @@ export async function GET(request: NextRequest) {
   // foundation migration). Never expose that claimant's contact info to
   // anyone else; just stop offering a competing CTA. Scoped to business/
   // location only — event claim eligibility is untouched.
-  if (type === "business" || type === "location") {
+  if (type === "business" && businessState === "claim_pending") return NextResponse.json({ state: "member" });
+  if (type === "location") {
     const admin = getAdminSupabase();
     if (admin) {
       const { data: pendingAny } = await admin

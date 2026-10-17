@@ -274,6 +274,7 @@ export default async function AdminClaimsPage({
                                   action={updateMemberRole.bind(
                                     null,
                                     c.entityType,
+                                    entityId,
                                     m.id,
                                     m.role === "manager" ? "staff" : "manager"
                                   )}
@@ -285,7 +286,7 @@ export default async function AdminClaimsPage({
                                     Make {m.role === "manager" ? "Staff" : "Manager"}
                                   </button>
                                 </form>
-                                <form action={removeMember.bind(null, c.entityType, m.id)}>
+                                <form action={removeMember.bind(null, c.entityType, entityId, m.id)}>
                                   <button
                                     type="submit"
                                     className="rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-50"

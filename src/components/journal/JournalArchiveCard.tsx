@@ -73,6 +73,7 @@ export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry
           {entry.location ? ` · ${entry.location.name}` : ""}
         </p>
         {metaParts.length > 0 && <p className="truncate text-xs text-ink/45">{metaParts.join(" · ")}</p>}
+        {entry.postedAs && <p className="truncate text-xs font-semibold text-findmi-700">Posted As {entry.postedAs}</p>}
       </div>
     </Link>
   );

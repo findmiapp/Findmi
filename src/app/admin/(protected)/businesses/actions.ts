@@ -1,5 +1,6 @@
 "use server";
 
+import { recordAccessEvents } from "@/lib/access-history";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -851,6 +852,9 @@ export async function assignBusinessMember(businessId: string, formData: FormDat
   if (insertError) {
     redirect(appendQuery(editPath, { error: "Couldn't assign that member. Please try again." }));
   }
+  await recordAccessEvents(supabase, [
+    { entityType: "business", entityId: businessId, action: "manager_added", actor: { kind: "admin" }, subjectUserId: userId as string, detail: { role: "manager" } },
+  ]);
 
   revalidatePath(editPath);
   redirect(appendQuery(editPath, { member_updated: "1" }));
@@ -878,6 +882,10 @@ export async function removeBusinessMember(businessId: string, memberId: string)
   if (error || !data) {
     redirect(appendQuery(editPath, { error: "Couldn't remove that member — they may no longer be a member." }));
   }
+  const removed = data as { user_id: string; role: string };
+  await recordAccessEvents(supabase, [
+    { entityType: "business", entityId: businessId, action: "manager_removed", actor: { kind: "admin" }, subjectUserId: removed.user_id, detail: { role: removed.role } },
+  ]);
 
   revalidatePath(editPath);
   redirect(appendQuery(editPath, { member_updated: "1" }));

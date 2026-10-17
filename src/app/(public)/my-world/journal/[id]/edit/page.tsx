@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getOwnJournalEntryOrNull } from "@/lib/journal";
+import { buildPostedBy } from "@/lib/moment-authorship";
 import MomentComposer from "@/components/journal/MomentComposer";
 import { momentInitialFromEntry } from "@/lib/moment-composer";
 
@@ -22,5 +23,8 @@ export default async function EditJournalEntryPage({ params }: { params: Promise
   const result = await getOwnJournalEntryOrNull(id, user.id);
   if (!result) notFound();
 
-  return <MomentComposer mode="edit" initial={momentInitialFromEntry(result)} cancelHref={`/journal/${id}`} />;
+  // Identity V1 — Posted By, from this viewer's REAL memberships.
+  const initial = momentInitialFromEntry(result);
+  initial.postedBy = await buildPostedBy(supabase, user.id, { entry: result.entry });
+  return <MomentComposer mode="edit" initial={initial} cancelHref={`/journal/${id}`} />;
 }

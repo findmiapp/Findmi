@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import MomentContextStage from "./MomentContextStage";
 import MomentPhotosStage from "./MomentPhotosStage";
 import MomentSheet from "./MomentSheet";
+import MomentPostedBy from "./MomentPostedBy";
 import TimeSelect from "@/components/scheduling/TimeSelect";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
 import {
@@ -14,6 +15,7 @@ import {
   saveJournalConnections,
   publishJournalEntry,
   saveJournalAsDraft,
+  setJournalAuthor,
   type JournalOccurrenceOption,
 } from "@/app/(public)/my-world/journal/actions";
 import type { JournalOccurrenceRef } from "@/lib/journal";
@@ -66,6 +68,11 @@ export default function MomentComposer({
 
   const isPublished = initial.status === "published" && initial.visibility === "public";
 
+  // Identity V1 — Posted By (public author). Changes only authorship.
+  const [authorBusinessId, setAuthorBusinessId] = useState<string | null>(initial.postedBy?.value ?? null);
+  const authorRef = useRef(authorBusinessId);
+  authorRef.current = authorBusinessId;
+
   const entryIdRef = useRef(entryId);
   entryIdRef.current = entryId;
   const draftPromise = useRef<Promise<string | null> | null>(null);
@@ -75,7 +82,7 @@ export default function MomentComposer({
   const ensureEntryId = useCallback(async (): Promise<string | null> => {
     if (entryIdRef.current) return entryIdRef.current;
     if (!draftPromise.current) {
-      draftPromise.current = startJournalDraft().then((result) => {
+      draftPromise.current = startJournalDraft({ authorBusinessId: authorRef.current }).then((result) => {
         if ("error" in result) {
           setError(result.error);
           draftPromise.current = null;
@@ -180,7 +187,7 @@ export default function MomentComposer({
     basics.set("entry_date", entryDate);
     if (entryTime) basics.set("entry_time", entryTime);
     if (notes.trim()) basics.set("notes", notes);
-    const [basicsResult, locationResult, connectionsResult] = await Promise.all([
+    const [basicsResult, locationResult, connectionsResult, authorResult] = await Promise.all([
       saveJournalBasics(id, basics),
       saveJournalLocation(id, location?.value ?? null, {
         name: manual.name.trim() || null,
@@ -196,10 +203,12 @@ export default function MomentComposer({
         eventIds: events.map((e) => e.value),
         occurrenceIds: events.map((e) => e.occurrence?.id).filter((v): v is string => Boolean(v)),
       }),
+      initial.postedBy ? setJournalAuthor(id, authorBusinessId) : Promise.resolve({ ok: true as const }),
     ]);
     if ("error" in locationResult) return { error: locationResult.error, stage: 1 };
     if ("error" in connectionsResult) return { error: connectionsResult.error, stage: 1 };
     if ("error" in basicsResult) return { error: basicsResult.error, stage: 3 };
+    if ("error" in authorResult) return { error: authorResult.error, stage: 3 };
     return { ok: true };
   }
 
@@ -332,6 +341,7 @@ export default function MomentComposer({
 
         <div className={stage === 3 ? "" : "hidden"}>
           <div className="flex flex-col gap-5">
+            {initial.postedBy && <MomentPostedBy postedBy={initial.postedBy} value={authorBusinessId} onChange={setAuthorBusinessId} />}
             <label className="flex flex-col gap-1.5">
               <span className="font-display text-base font-bold tracking-tight text-ink">Name This Moment</span>
               <input autoCapitalize="words"

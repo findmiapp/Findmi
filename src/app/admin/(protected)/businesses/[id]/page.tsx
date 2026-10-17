@@ -34,6 +34,9 @@ import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import { getCurrentAccessByEntity } from "@/lib/admin/claim-queries";
+import { ACCESS_EVENT_LABELS, getBusinessAccessOverview } from "@/lib/admin/business-access";
+import { BUSINESS_MANAGEMENT_STATE_LABELS, businessManagementState } from "@/lib/moment-author";
+import { makeBusinessOwner, removeAllBusinessManagers, removeBusinessOwnerAccess } from "../access-actions";
 import {
   BUSINESS_INQUIRY_TOPIC_LABELS,
   BUSINESS_INQUIRY_TOPIC_VALUES,
@@ -124,7 +127,7 @@ export default async function EditBusinessPage({
   const { tab: tabParam, error, saved, member_updated } = await searchParams;
   const tab = tabParam && ADMIN_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
-  const [result, categories, membership, accessByEntity, products] = await Promise.all([
+  const [result, categories, membership, accessByEntity, products, accessOverview] = await Promise.all([
     getAdminBusinessById(id),
     getAllCategories("business"),
     getMembershipForBusiness(id),
@@ -137,6 +140,7 @@ export default async function EditBusinessPage({
     // getAdminProducts(businessId) filter as-is (already used by the
     // products list's own Business picker); no new query.
     getAdminProducts({ businessId: id }),
+    getBusinessAccessOverview(id),
   ]);
   if (!result) notFound();
   const { business } = result;
@@ -193,11 +197,11 @@ export default async function EditBusinessPage({
   // label here rather than reading identically to "Pro", so a founder
   // looking at this summary can actually tell the two apart.
   const proSeller = isBusinessProSeller(business);
-  // Derived, not stored — "Claimed" simply means an owner row already
-  // exists in business_members for this business. No new claim logic or
-  // schema: same source of truth requireBusinessMember()/the claims page
-  // already treat as the real ownership signal.
-  const claimed = members.some((m) => m.role === "owner");
+  // Identity V1 — the ONE shared management state (lib/moment-author):
+  // Managed = any REAL business_members row; Admin's own access never
+  // counts. Verified is separate.
+  const managementState = businessManagementState({ memberCount: members.length, pendingClaimCount: accessOverview.pendingClaimCount });
+  const claimed = managementState === "managed";
   // Admin Pending Review Decision UX pass — the SAME publication_status
   // saveBusinessModeration already treats as authoritative (see that
   // action's own comment). Owner email is only ever shown when cheaply
@@ -276,7 +280,7 @@ export default async function EditBusinessPage({
             claimed ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.06] text-ink/50"
           }`}
         >
-          {claimed ? "Claimed" : "Unclaimed"}
+          {BUSINESS_MANAGEMENT_STATE_LABELS[managementState]}
         </span>
         {/* Admin Pending Review Decision UX pass — compact status context
             for an already-decided listing (task's own "do not clutter every
@@ -353,8 +357,8 @@ export default async function EditBusinessPage({
           <div className="rounded-2xl border border-black/10 bg-white p-4">
             <p className="text-sm font-semibold text-ink">{business.name}</p>
             <p className="mt-1 text-xs text-ink/45">
-              Plan is editable in the Plan tab. Claimed/Unclaimed is derived — it just means an owner already
-              exists in Ownership, not a separate stored status.
+              Plan is editable in the Plan tab. Managed / Claim Pending / Unclaimed is derived from real
+              Business access in Ownership — Findmi Admin access never counts — not a separate stored status.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {ADMIN_TABS.filter((t) => t.key !== "overview").map((t) => (
@@ -805,29 +809,82 @@ export default async function EditBusinessPage({
               editor). Doesn&rsquo;t create accounts or change ownership.
             </p>
 
+            <p className="mt-2 text-xs font-semibold text-ink/60">
+              {BUSINESS_MANAGEMENT_STATE_LABELS[managementState]}
+              {managementState === "unclaimed" && " — eligible to be claimed. Findmi Admin can still edit it."}
+              {managementState === "claim_pending" && " — a claim is waiting in Claims."}
+            </p>
+
             {members.length > 0 ? (
               <ul className="mt-3 flex flex-col gap-2">
-                {members.map((m) => (
-                  <li
-                    key={m.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{m.email ?? m.displayName ?? "Unknown account"}</p>
-                      <p className="text-xs uppercase tracking-wide text-ink/45">{m.role}</p>
-                    </div>
-                    {m.role !== "owner" && (
-                      <form action={removeBusinessMember.bind(null, id, m.id)}>
-                        <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
-                          Remove
-                        </button>
-                      </form>
-                    )}
-                  </li>
-                ))}
+                {members.map((m) => {
+                  const source = accessOverview.approvedClaimUserIds.has(m.user_id)
+                    ? "Approved Claim"
+                    : accessOverview.adminAddedUserIds.has(m.user_id)
+                      ? "Added By Admin"
+                      : "Unknown / Before Access History";
+                  return (
+                    <li key={m.id} className="flex flex-col gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{m.email ?? m.displayName ?? "Unknown account"}</p>
+                        <p className="text-xs text-ink/45">
+                          <span className="font-semibold uppercase tracking-wide">{m.role}</span>
+                          {m.createdAt ? ` · Since ${new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}
+                          {` · ${source}`}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        {m.role === "owner" ? (
+                          <form action={removeBusinessOwnerAccess.bind(null, id)}>
+                            <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                              Remove Owner
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            <form action={makeBusinessOwner.bind(null, id, m.id)}>
+                              <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                                Make Owner
+                              </button>
+                            </form>
+                            <form action={removeBusinessMember.bind(null, id, m.id)}>
+                              <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                                Remove
+                              </button>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="mt-2 text-sm text-ink/50">No assigned members yet.</p>
+              <p className="mt-2 text-sm text-ink/50">No external managers. Findmi Admin can still edit this Business.</p>
+            )}
+
+            {members.length > 0 && (
+              <form action={removeAllBusinessManagers.bind(null, id)} className="mt-3 flex flex-col gap-2 rounded-xl border border-red-200 bg-red-50/50 p-3">
+                <p className="text-xs font-bold text-red-700">Remove All Managers / Return To Unclaimed</p>
+                <p className="text-xs text-ink/55">
+                  Removes every person&rsquo;s access to this Business. The Business, its Events, Locations, Appearances, Products and media stay
+                  exactly as they are, and Findmi Admin can still edit it.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    autoCapitalize="none"
+                    type="text"
+                    name="confirm"
+                    required
+                    placeholder="Type REMOVE"
+                    aria-label="Type REMOVE to confirm"
+                    className="min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                  />
+                  <button type="submit" className="rounded-full bg-red-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-red-700">
+                    Remove All
+                  </button>
+                </div>
+              </form>
             )}
 
             <form action={assignMember} className="mt-3 flex flex-wrap items-center gap-2">
@@ -845,6 +902,23 @@ export default async function EditBusinessPage({
                 Assign
               </button>
             </form>
+
+            <p className="mt-5 text-xs font-bold uppercase tracking-wide text-ink/40">Access History</p>
+            {accessOverview.history.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-1">
+                {accessOverview.history.map((h) => (
+                  <li key={h.id} className="text-xs text-ink/60">
+                    <span className="font-semibold text-ink/75">{ACCESS_EVENT_LABELS[h.action]}</span>
+                    {" · "}
+                    {new Date(h.created_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                    {" · "}
+                    {h.actor_kind === "admin" ? "Findmi Admin" : "Account"}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs text-ink/45">No recorded access changes yet. Earlier access shows as Unknown / Before Access History.</p>
+            )}
           </div>
         )}
 

@@ -27,6 +27,7 @@ import { validateImageFile } from "./imageUploadValidation";
 import type { JournalEntrySectionRow } from "./journal-sections";
 import type { ImageSize } from "./image-variants";
 import { createSignedUrlCache, signImageUrls, type Signer } from "./signed-image-urls";
+import { getViewerAuthorContext, hasMomentAuthorship } from "./moment-authorship";
 
 export const JOURNAL_MEDIA_BUCKET = "journal-media";
 // Signed URLs live 60 minutes (long enough for normal viewing/scrolling,
@@ -64,6 +65,11 @@ export interface JournalEntryRow {
   // migration's own comment for why this is a single plain column rather
   // than any author/publisher/organization architecture.
   author_label: string | null;
+  /** Identity, Authorship & Entity Access V1 — the PUBLIC author when set
+   * (a Business); NULL/absent → the Person user_id. user_id itself is
+   * always the creator. Optional so the row shape stays valid before the
+   * column reaches a given database. */
+  author_business_id?: string | null;
 }
 
 export interface JournalEntryMediaRow {
@@ -278,7 +284,9 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
     events,
     occurrences,
     sections,
-    isOwner: Boolean(user && user.id === entry.user_id),
+    // "Can manage" — derived from current state: a Personal Moment → its
+    // creator; a Business Moment → a current owner/manager of it.
+    isOwner: Boolean(user && (await viewerManagesEntry(supabase, user.id, entry as JournalEntryRow))),
   };
 }
 
@@ -398,6 +406,8 @@ export interface JournalIndexEntry {
   hasBusiness: boolean;
   hasProduct: boolean;
   hasEvent: boolean;
+  /** Identity V1 — the Business this Moment is posted as (null = Personal). */
+  postedAs: string | null;
 }
 
 export type JournalArchiveFilter = "all" | "places" | "brands" | "products" | "events";
@@ -425,20 +435,44 @@ export type JournalArchiveFilter = "all" | "places" | "brands" | "products" | "e
  * request, and still zero N+1 regardless of how many entries exist. */
 export async function getJournalArchiveEntries(userId: string, options?: { limit?: number }): Promise<JournalIndexEntry[]> {
   const supabase = await getServerSupabase();
+  // Identity V1 — My Moments = my Personal Moments plus Moments posted as
+  // a Business I CURRENTLY own/manage (a former manager's Business Moments
+  // drop out at once). Before the authorship column exists: unchanged.
+  const authorship = await hasMomentAuthorship();
+  const managedIds = authorship ? (await getViewerAuthorContext(supabase, userId)).managed.map((b) => b.id) : [];
   let query = supabase
     .from("journal_entries")
     .select(
-      "id, title, entry_date, entry_time, visibility, status, location_id, manual_location_name, manual_location_city, location:locations(name)"
-    )
-    .eq("user_id", userId)
+      "id, title, entry_date, entry_time, visibility, status, location_id, manual_location_name, manual_location_city, location:locations(name)" +
+        (authorship ? ", author_business_id, author_business:businesses!author_business_id(name)" : "")
+    );
+  query = !authorship
+    ? query.eq("user_id", userId)
+    : managedIds.length === 0
+      ? query.eq("user_id", userId).is("author_business_id", null)
+      : query.or(`and(user_id.eq.${userId},author_business_id.is.null),author_business_id.in.(${managedIds.join(",")})`);
+  query = query
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
   // Personal Home V2 — optional bound (Home shows the 3 most recent), so
   // media/connections/cover signing only run for the entries shown. No
   // limit (every existing caller) is the unchanged full archive.
   if (options?.limit) query = query.limit(options.limit);
-  const { data: entries } = await query;
-  if (!entries || entries.length === 0) return [];
+  const { data } = await query;
+  type ArchiveRow = {
+    id: string;
+    title: string;
+    entry_date: string;
+    entry_time: string | null;
+    visibility: string;
+    status: string;
+    manual_location_name: string | null;
+    manual_location_city: string | null;
+    location: { name: string } | { name: string }[] | null;
+    author_business?: { name: string } | { name: string }[] | null;
+  };
+  const entries = (data ?? []) as unknown as ArchiveRow[];
+  if (entries.length === 0) return [];
 
   const entryIds = entries.map((e) => e.id);
   const [{ data: mediaRows }, { data: connectionRows }] = await Promise.all([
@@ -487,6 +521,7 @@ export async function getJournalArchiveEntries(userId: string, options?: { limit
       hasBusiness: Boolean(connections?.business),
       hasProduct: Boolean(connections?.product),
       hasEvent: Boolean(connections?.event),
+      postedAs: (Array.isArray(e.author_business) ? e.author_business[0]?.name : e.author_business?.name) ?? null,
     };
   });
 }
@@ -500,8 +535,23 @@ export async function getJournalArchiveEntries(userId: string, options?: { limit
  * an empty page. */
 export async function getOwnJournalEntryOrNull(entryId: string, userId: string): Promise<JournalEntryWithRelations | null> {
   const result = await getJournalEntryWithRelations(entryId);
-  if (!result || result.entry.user_id !== userId) return null;
+  if (!result || !result.isOwner) return null;
   return result;
+}
+
+/** The viewer manages this Moment right now (same rule as
+ * lib/moment-author canManageMoment, read through the viewer's own RLS-
+ * scoped business_members rows — owner/manager only, never staff). */
+async function viewerManagesEntry(supabase: SupabaseClient, userId: string, entry: JournalEntryRow): Promise<boolean> {
+  if (!entry.author_business_id) return entry.user_id === userId;
+  const { data } = await supabase
+    .from("business_members")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("business_id", entry.author_business_id)
+    .in("role", ["owner", "manager"])
+    .maybeSingle();
+  return Boolean(data);
 }
 
 /** Validates that a supplied Location/Business/Product/Event id is real
