@@ -59,6 +59,7 @@ export default function JournalPhotoStrip({
   onEditNote,
   onMoveToSection,
   onRemoveFromSection,
+  reorderLocked,
 }: {
   items: JournalPhotoItem[];
   error: string | null;
@@ -87,6 +88,10 @@ export default function JournalPhotoStrip({
   onEditNote?: (localId: string) => void;
   onMoveToSection?: (localId: string) => void;
   onRemoveFromSection?: (localId: string) => void;
+  /** Moments — true while a Section filter is active: the strip shows a
+   * subset of the global order, so drag and Move Earlier/Later are off
+   * (reordering is authoritative only from All). */
+  reorderLocked?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -116,7 +121,7 @@ export default function JournalPhotoStrip({
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (reorderLocked || !over || active.id === over.id) return;
     onDragReorder(String(active.id), String(over.id));
   }
 
@@ -169,8 +174,9 @@ export default function JournalPhotoStrip({
                   key={item.localId}
                   item={item}
                   isCover={item.localId === coverLocalId}
-                  canMoveEarlier={index > 0}
-                  canMoveLater={index < items.length - 1}
+                  canMoveEarlier={!reorderLocked && index > 0}
+                  canMoveLater={!reorderLocked && index < items.length - 1}
+                  reorderLocked={reorderLocked}
                   menuOpenId={openMenuId}
                   onToggleMenu={setOpenMenuId}
                   onCloseMenu={() => setOpenMenuId(null)}
@@ -298,6 +304,7 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
   onEditNote,
   onMoveToSection,
   onRemoveFromSection,
+  reorderLocked,
 }: {
   item: JournalPhotoItem;
   isCover: boolean;
@@ -314,9 +321,10 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
   onEditNote?: (localId: string) => void;
   onMoveToSection?: (localId: string) => void;
   onRemoveFromSection?: (localId: string) => void;
+  reorderLocked?: boolean;
 }) {
   const saved = item.status === "complete" && Boolean(item.mediaId);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.localId });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.localId, disabled: reorderLocked });
   const isBusy = item.status === "preparing" || item.status === "uploading" || item.status === "saving";
   const menuOpen = menuOpenId === item.localId;
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -335,15 +343,17 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
       {/* Drag handle — the ONLY element wired to dnd-kit's listeners, and
           the only one that disables native touch gestures (touch-none),
           scoped to this small corner grip rather than the whole tile. */}
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label="Drag to reorder"
-        className="absolute left-1 top-1 flex h-6 w-6 touch-none items-center justify-center rounded-full bg-black/55 text-white active:scale-95"
-      >
-        <GripGlyph className="h-3.5 w-3.5" />
-      </button>
+      {!reorderLocked && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to reorder"
+          className="absolute left-1 top-1 flex h-6 w-6 touch-none items-center justify-center rounded-full bg-black/55 text-white active:scale-95"
+        >
+          <GripGlyph className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       {isCover && (
         <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-findmi py-0.5 text-center text-[7px] font-bold uppercase tracking-wide text-white">

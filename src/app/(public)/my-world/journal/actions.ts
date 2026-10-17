@@ -14,6 +14,7 @@ import { canGenerateVariants, mapLimit, storePrivateVariants, variantPathsFor } 
 import { isVariantPath } from "@/lib/image-variants";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { calendarDate } from "@/lib/event-time";
+import { planMediaLayout } from "@/lib/moment-media-order";
 import {
   isJournalSectionType,
   JOURNAL_PHOTO_CAPTION_MAX,
@@ -543,8 +544,9 @@ export async function discardJournalUpload(entryId: string, storagePath: string)
 // Invariants these maintain:
 //   - COVER = explicit is_cover (one per Moment — journal_entry_media_one_
 //     cover_idx). Never derived from position; layout saves never touch it.
-//   - ORDER = one global display_order per Moment, flattened as section 1's
-//     photos, section 2's, …, then unsectioned photos.
+//   - ORDER = one global, creator-controlled display_order per Moment. It
+//     is authoritative and independent of sections: assigning, changing,
+//     removing, reordering or deleting a section never rewrites it.
 //   - A photo's section_id is NULL or a section of the SAME Moment (also
 //     enforced by the composite FK in the database).
 //
@@ -650,8 +652,9 @@ async function screenForeignMediaIds(admin: JournalAdminClient, entryId: string,
 }
 
 /** The one layout writer. Applies an optional new section order, optional
- * per-photo section assignments and an optional photo order, then rewrites
- * every photo's display_order to the flattened global order. Only changed
+ * per-photo section assignments and an optional photo order. display_order
+ * is written ONLY from an explicit photo order (mediaOrder) — sections are
+ * metadata and never regroup or renumber photos. Only changed
  * rows are written. Never touches is_cover. Not one atomic transaction
  * (same trade-off the previous reorder accepted): a partial failure leaves
  * a recoverable order the next save rewrites completely. */
@@ -663,12 +666,11 @@ async function writeJournalMediaLayout(
   const sections = await loadEntrySections(admin, entryId);
   const sectionIds = new Set(sections.map((s) => s.id));
 
-  let orderedSections = sections;
   if (opts.sectionOrder) {
     if (opts.sectionOrder.some((id) => !sectionIds.has(id))) return { error: "That section isn't part of this Moment." };
     const named = [...new Set(opts.sectionOrder)];
     const rest = sections.filter((s) => !named.includes(s.id));
-    orderedSections = [...named.map((id) => sections.find((s) => s.id === id)!), ...rest];
+    const orderedSections = [...named.map((id) => sections.find((s) => s.id === id)!), ...rest];
     const sectionWrites = orderedSections
       .map((s, index) => ({ s, index }))
       .filter(({ s, index }) => s.display_order !== index)
@@ -692,26 +694,9 @@ async function writeJournalMediaLayout(
     assignments.set(mediaId, sectionId);
   }
 
-  const namedOrder = [...new Set((opts.mediaOrder ?? []).filter((id) => known.has(id)))];
-  const namedSet = new Set(namedOrder);
-  const baseSequence = [...namedOrder.map((id) => mediaById.get(id)!), ...media.filter((m) => !namedSet.has(m.id))];
-
-  const effectiveSection = (m: MediaLayoutRow): string | null => {
-    const sectionId = assignments.has(m.id) ? assignments.get(m.id)! : m.section_id;
-    return sectionId && sectionIds.has(sectionId) ? sectionId : null;
-  };
-  const flattened: MediaLayoutRow[] = [
-    ...orderedSections.flatMap((s) => baseSequence.filter((m) => effectiveSection(m) === s.id)),
-    ...baseSequence.filter((m) => effectiveSection(m) === null),
-  ];
-
-  const mediaWrites = flattened.flatMap((m, index) => {
-    const patch: { display_order?: number; section_id?: string | null } = {};
-    if (m.display_order !== index) patch.display_order = index;
-    if (assignments.has(m.id) && assignments.get(m.id) !== m.section_id) patch.section_id = assignments.get(m.id)!;
-    if (Object.keys(patch).length === 0) return [];
-    return [admin.from("journal_entry_media").update(patch).eq("id", m.id).eq("journal_entry_id", entryId)];
-  });
+  const mediaWrites = planMediaLayout(media, { mediaOrder: opts.mediaOrder, assignments }).map(({ id, patch }) =>
+    admin.from("journal_entry_media").update(patch).eq("id", id).eq("journal_entry_id", entryId)
+  );
   const mediaResults = await Promise.all(mediaWrites);
   const mediaFailed = mediaResults.find((r) => r.error);
   if (mediaFailed?.error) return { error: mediaFailed.error.message };
@@ -728,8 +713,8 @@ export interface JournalMediaLayoutInput {
   items: { mediaId: string; sectionId?: string | null }[];
 }
 
-/** Saves section order, each photo's section membership, and the flattened
- * global photo order. Never changes the cover. */
+/** Saves section order, each photo's section membership, and the global
+ * photo order exactly as given. Never changes the cover. */
 export async function saveJournalMediaLayout(entryId: string, layout: JournalMediaLayoutInput): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
@@ -861,8 +846,7 @@ export async function updateJournalSection(
   }
 }
 
-/** Reorders this Moment's sections and re-flattens the global photo order
- * to match. */
+/** Reorders this Moment's sections. Photo order is untouched. */
 export async function reorderJournalSections(entryId: string, orderedSectionIds: string[]): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
@@ -873,15 +857,15 @@ export async function reorderJournalSections(entryId: string, orderedSectionIds:
 }
 
 /** Deletes a section. Its photos are never deleted: the database clears
- * their section_id (ON DELETE SET NULL (section_id)), and the global order
- * is re-flattened so they sit with the other unsectioned photos. */
+ * their section_id (ON DELETE SET NULL (section_id)) and they keep their
+ * place in the global photo order. */
 export async function deleteJournalSection(entryId: string, sectionId: string): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
     const { data, error } = await admin.from("journal_entry_sections").delete().eq("id", sectionId).eq("journal_entry_id", entryId).select("id");
     if (error) return { error: error.message };
     if (!data || data.length === 0) return { error: "That section isn't part of this Moment." };
-    return await writeJournalMediaLayout(admin, entryId, {});
+    return { ok: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't delete that section." };
   }

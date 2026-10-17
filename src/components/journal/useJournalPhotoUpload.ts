@@ -16,6 +16,7 @@ import {
 } from "@/app/(public)/my-world/journal/actions";
 import { preprocessImageForUpload, isHeicLike, isPng } from "@/lib/imagePreprocessing";
 import { createConcurrencyLimiter } from "@/lib/concurrency";
+import { assignSectionInPlace, moveAdjacent } from "@/lib/moment-media-order";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
 // Journal Photo Upload V3 — mirrors the literal bucket id
@@ -746,39 +747,17 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     [reorder]
   );
 
-  // Moments V2 — Move Earlier/Later step within the photo's own group
-  // (its section, or the unsectioned photos), so a sectioned Moment's
-  // photos never jump into a neighbouring section. For a flat Moment
-  // (every photo unsectioned) this is exactly the previous behavior.
-  const moveWithinGroup = useCallback(
-    (localId: string, direction: -1 | 1) => {
-      reorder((prev) => {
-        const index = prev.findIndex((it) => it.localId === localId);
-        if (index === -1) return prev;
-        const group = prev[index].sectionId ?? null;
-        let target = index + direction;
-        while (target >= 0 && target < prev.length && (prev[target].sectionId ?? null) !== group) target += direction;
-        if (target < 0 || target >= prev.length) return prev;
-        const next = [...prev];
-        [next[index], next[target]] = [next[target], next[index]];
-        return next;
-      });
-    },
-    [reorder]
-  );
-  const moveEarlier = useCallback((localId: string) => moveWithinGroup(localId, -1), [moveWithinGroup]);
-  const moveLater = useCallback((localId: string) => moveWithinGroup(localId, 1), [moveWithinGroup]);
+  // Move Earlier/Later step through the ONE global photo order — sections
+  // are metadata and never constrain or regroup it.
+  const moveEarlier = useCallback((localId: string) => reorder((prev) => moveAdjacent(prev, localId, -1)), [reorder]);
+  const moveLater = useCallback((localId: string) => reorder((prev) => moveAdjacent(prev, localId, 1)), [reorder]);
 
   /** Moments V2 — puts photos into a section (or back to unsectioned with
-   * null), appended after that group's existing photos. Never deletes,
-   * never changes the cover. */
+   * null). Metadata only: every photo keeps its place in the global order.
+   * Never deletes, never changes the cover. */
   const assignSection = useCallback(
     (localIds: string[], sectionId: string | null) => {
-      const ids = new Set(localIds);
-      reorder((prev) => {
-        const moving = prev.filter((it) => ids.has(it.localId)).map((it) => ({ ...it, sectionId }));
-        return [...prev.filter((it) => !ids.has(it.localId)), ...moving];
-      });
+      reorder((prev) => assignSectionInPlace(prev, localIds, sectionId));
     },
     [reorder]
   );

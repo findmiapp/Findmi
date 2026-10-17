@@ -17,6 +17,7 @@ import {
   type JournalEntrySectionRow,
   type JournalSectionType,
 } from "@/lib/journal-sections";
+import { canReorder, filterBySection, type MomentSectionFilter } from "@/lib/moment-media-order";
 
 type PhotoState = ReturnType<typeof useJournalPhotoUpload>;
 
@@ -38,7 +39,12 @@ function typeLabel(type: string): string {
  * notes); once a section exists, that area becomes the section manager. Built entirely on the
  * existing photo pipeline (useJournalPhotoUpload / JournalPhotoStrip) and
  * the photo-section foundation actions; the cover stays explicit and
- * independent of order and sections. */
+ * independent of order and sections.
+ *
+ * ORDER — the Moment has ONE creator-controlled photo order, shown and
+ * reordered in All. A section is metadata on a photo: the section chips
+ * are filters over that same order (relative order kept), and reordering
+ * is locked while one is active so a filtered view can never rewrite it. */
 export default function MomentPhotosStage({
   photos,
   sections,
@@ -54,17 +60,20 @@ export default function MomentPhotosStage({
 }) {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<MomentSectionFilter>("all");
 
   const { items } = photos;
   const grouped = sections.length > 0;
   const sectionIds = new Set(sections.map((s) => s.id));
   const groupOf = (sectionId: string | null | undefined) => (sectionId && sectionIds.has(sectionId) ? sectionId : null);
-  const unsectioned = items.filter((it) => groupOf(it.sectionId) === null);
   const savedCount = items.filter((it) => it.status === "complete").length;
-  // The Moment's ONE cover across every group: the explicit cover, else
-  // the first photo in display order (sections in order, then the rest).
-  const displayOrder = [...sections.flatMap((s) => items.filter((it) => groupOf(it.sectionId) === s.id)), ...unsectioned];
-  const coverLocalId = (items.find((it) => it.isCover) ?? displayOrder[0])?.localId ?? null;
+  // A filter on a section that no longer exists falls back to All.
+  const activeFilter: MomentSectionFilter = filter !== "all" && sectionIds.has(filter) ? filter : "all";
+  const visible = filterBySection(items, activeFilter);
+  const reorderLocked = !canReorder(activeFilter);
+  // The Moment's ONE cover: the explicit cover, else the first photo in
+  // the global order.
+  const coverLocalId = (items.find((it) => it.isCover) ?? items[0])?.localId ?? null;
 
   const stripHandlers = {
     error: null,
@@ -166,8 +175,27 @@ export default function MomentPhotosStage({
           {photos.error && <p className="text-xs text-red-600">{photos.error}</p>}
           <div>
             <h3 className="font-display text-base font-bold tracking-tight text-ink">Organize Your Photos</h3>
-            <p className="text-sm text-ink/55">Tap &bull;&bull;&bull; on a photo to move it to a section or add a note.</p>
+            <p className="text-sm text-ink/55">Drag photos in All to set their order. Tap &bull;&bull;&bull; on a photo to choose its section or add a note.</p>
           </div>
+          <div role="group" aria-label="Filter photos by section" className="-mx-0.5 flex gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <FilterChip label="All" selected={activeFilter === "all"} onClick={() => setFilter("all")} />
+            {sections.map((s) => (
+              <FilterChip key={s.id} label={s.title?.trim() || typeLabel(s.section_type)} selected={activeFilter === s.id} onClick={() => setFilter(s.id)} />
+            ))}
+          </div>
+          {reorderLocked && <p className="text-xs text-ink/50">Showing this section in your photo order. Switch to All to reorder.</p>}
+          <JournalPhotoStrip
+            items={visible}
+            {...stripHandlers}
+            coverLocalId={coverLocalId}
+            compactEmpty={reorderLocked}
+            reorderLocked={reorderLocked}
+            onMoveToSection={(localId) => setSheet({ kind: "move", localId })}
+            onRemoveFromSection={(localId) => photos.assignSection([localId], null)}
+            onFilesSelected={(files) => void (activeFilter === "all" ? photos.handleFiles(files) : photos.handleFiles(files, { sectionId: activeFilter }))}
+          />
+
+          <h3 className="mt-1 text-sm font-bold text-ink">Sections</h3>
           {sections.map((section, index) => (
             <SectionBlock
               key={section.id}
@@ -180,33 +208,8 @@ export default function MomentPhotosStage({
               onMove={(direction) => void moveSection(section.id, direction)}
               onDelete={() => setSheet({ kind: "deleteSection", sectionId: section.id })}
               onAddPhotos={() => setSheet({ kind: "assign", sectionId: section.id })}
-            >
-              <JournalPhotoStrip
-                items={items.filter((it) => groupOf(it.sectionId) === section.id)}
-                {...stripHandlers}
-                coverLocalId={coverLocalId}
-                compactEmpty
-                onMoveToSection={(localId) => setSheet({ kind: "move", localId })}
-                onRemoveFromSection={(localId) => photos.assignSection([localId], null)}
-                onFilesSelected={(files) => void photos.handleFiles(files, { sectionId: section.id })}
-              />
-            </SectionBlock>
-          ))}
-
-          <div className="flex flex-col gap-2 rounded-2xl border border-black/10 bg-white p-3">
-            <div>
-              <h3 className="text-sm font-bold text-ink">More Photos</h3>
-              {unsectioned.length === 0 && <p className="text-xs text-ink/45">Photos not in a section appear here.</p>}
-            </div>
-            <JournalPhotoStrip
-              items={unsectioned}
-              {...stripHandlers}
-              coverLocalId={coverLocalId}
-              compactEmpty
-              onMoveToSection={(localId) => setSheet({ kind: "move", localId })}
-              onFilesSelected={(files) => void photos.handleFiles(files)}
             />
-          </div>
+          ))}
         </>
       )}
 
@@ -337,7 +340,6 @@ function SectionBlock({
   onMove,
   onDelete,
   onAddPhotos,
-  children,
 }: {
   section: JournalEntrySectionRow;
   isFirst: boolean;
@@ -348,7 +350,6 @@ function SectionBlock({
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
   onAddPhotos: () => void;
-  children: ReactNode;
 }) {
   const [title, setTitle] = useState(section.title ?? "");
   const [notes, setNotes] = useState(section.notes ?? "");
@@ -414,8 +415,6 @@ function SectionBlock({
           Add A Note About This Section
         </button>
       )}
-
-      {children}
 
       <button type="button" onClick={onAddPhotos} className="w-fit text-xs font-semibold text-findmi-700 transition hover:text-findmi-800">
         Add Photos To This Section
@@ -610,5 +609,20 @@ function AssignSheet({
         </div>
       )}
     </MomentSheet>
+  );
+}
+
+function FilterChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`h-8 shrink-0 whitespace-nowrap rounded-full border px-3 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-findmi ${
+        selected ? "border-findmi/40 bg-findmi-50 text-findmi-700" : "border-black/10 bg-white text-ink/70 hover:border-black/20 hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
