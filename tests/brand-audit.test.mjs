@@ -209,7 +209,7 @@ test("a manager saves Goals; each elaboration persists with ITS Goal; Other work
     { key: "other", detail: "Win a regional grocery chain" },
   ]);
   assert.equal(audit.summary.status, "in_progress");
-  assert.equal(D.auditProgress(audit.summary), 50);
+  assert.equal(D.auditProgress(audit.summary), 20, "1 of 5 profile sections");
   assert.equal(db.tables.brand_audit_answers.every((a) => a.business_id === A && a.updated_by_user_id === "user-a"), true);
 });
 
@@ -229,7 +229,7 @@ test("Challenges persist with their own elaboration and never touch Goals", asyn
     { key: "activation_locations", detail: "Hard to find lobbies" },
     { key: "measuring_results", detail: null },
   ]);
-  assert.equal(D.auditProgress(audit.summary), 100 - 0, "both steps answered");
+  assert.equal(D.auditProgress(audit.summary), 40, "2 of 5 profile sections");
 });
 
 test("resume + edit later: lands on the next step; deselecting removes only that answer; completion keeps its first date", async () => {
@@ -241,7 +241,7 @@ test("resume + edit later: lands on the next step; deselecting removes only that
   const done = (await L.getBrandAudit(A)).summary;
   assert.equal(done.status, "complete");
   assert.ok(done.completedAt);
-  assert.equal(D.auditResumeStep(done), "review");
+  assert.equal(D.auditResumeStep(done), "audience", "a completed V1 audit resumes on the first newer section");
   // Edit later: drop Partnerships, rewrite Drive Sales' note.
   await L.saveBrandAuditStep(A, "goal", goals(["drive_sales", "v2"]));
   await L.completeBrandAudit(A);
@@ -256,8 +256,9 @@ test("dashboard entry labels: Start / Continue · N% / Complete", () => {
   const s = (o) => ({ status: null, goalCount: 0, challengeCount: 0, completedAt: null, updatedAt: null, ...o });
   assert.equal(D.auditActionLabel(s({})), "Start Brand Audit");
   assert.equal(D.auditActionLabel(s({ status: "in_progress", goalCount: 2 })), "Continue Brand Audit");
-  assert.equal(D.auditProgress(s({ status: "in_progress", goalCount: 2 })), 50);
-  assert.equal(D.auditActionLabel(s({ status: "complete", goalCount: 1, challengeCount: 1, completedAt: "x" })), "Review & Update");
+  assert.equal(D.auditProgress(s({ status: "in_progress", goalCount: 2 })), 20);
+  assert.equal(D.auditActionLabel(s({ status: "complete", goalCount: 1, challengeCount: 1, completedAt: "x" })), "Complete Your Profile", "V1-complete, newer sections open");
+  assert.equal(D.auditActionLabel(s({ status: "complete", goalCount: 1, challengeCount: 1, audienceCount: 1, marketCount: 1, environmentCount: 1, completedAt: "x" })), "Review & Update");
 });
 
 // ---------------------------------------------------------------- ideas

@@ -6,10 +6,14 @@
 // timestamps. Tested directly by tests/brand-intelligence.test.mjs.
 
 import {
+  AUDIT_KEYS,
+  AUDIT_SECTIONS,
+  SECTION_OF_KIND,
   auditOptionLabel,
   auditProgress,
   IDEA_RESPONSES,
   type AuditKind,
+  type AuditSection,
   type AuditStatus,
   type IdeaResponse,
 } from "./brand-audit-domain";
@@ -33,6 +37,17 @@ export interface AnswerRow {
   business_id: string;
   kind: AuditKind;
   option_key: string;
+  updated_at?: string;
+}
+/** brand_audit_markets (declared) — V1.2 geography. */
+export interface GeoRow {
+  business_id: string;
+  intent: "current" | "priority";
+  level: string;
+  place_key: string;
+  label: string;
+  created_at: string;
+  updated_at: string;
 }
 export interface ResponseRow {
   id: string;
@@ -65,7 +80,23 @@ export interface IntelligenceSignal {
   event: SignalEvent;
   business: { id: string; name: string };
   /** Brand Audit signals. */
-  audit?: { progress: number; goals: string[]; challenges: string[] };
+  audit?: {
+    progress: number;
+    goals: string[];
+    challenges: string[];
+    audiences: string[];
+    ages: string[];
+    priorities: string[];
+    scope: string | null;
+    currentMarkets: string[];
+    priorityMarkets: string[];
+    environments: string[];
+    /** Sections the Brand changed since Admin last reviewed (or since it
+     * completed, if never reviewed) — "Red Bull updated Target Audience". */
+    changedSections: AuditSection[];
+    /** Priority places added in that window — "added New York City". */
+    addedPriorityMarkets: string[];
+  };
   /** Idea response signals. */
   idea?: { id: string; title: string; response: IdeaResponse; note: string | null };
 }
@@ -89,6 +120,7 @@ export function buildSignals(input: {
   ideas: IdeaRow[];
   businesses: { id: string; name: string }[];
   reviews: ReviewRow[];
+  geo?: GeoRow[];
 }): IntelligenceSignal[] {
   const names = new Map(input.businesses.map((b) => [b.id, b.name]));
   const ideas = new Map(input.ideas.map((i) => [i.id, i]));
@@ -97,19 +129,64 @@ export function buildSignals(input: {
 
   const auditSignals = input.audits.flatMap((a): IntelligenceSignal[] => {
     const mine = input.answers.filter((x) => x.business_id === a.business_id);
-    const goals = mine.filter((x) => x.kind === "goal").map((x) => auditOptionLabel("goal", x.option_key));
-    const challenges = mine.filter((x) => x.kind === "challenge").map((x) => auditOptionLabel("challenge", x.option_key));
+    const geo = (input.geo ?? []).filter((g) => g.business_id === a.business_id);
+    const labels = (kind: AuditKind) =>
+      mine
+        .filter((x) => x.kind === kind)
+        .sort((x, y) => AUDIT_KEYS[kind].indexOf(x.option_key) - AUDIT_KEYS[kind].indexOf(y.option_key))
+        .map((x) => auditOptionLabel(kind, x.option_key));
+    const goals = labels("goal");
+    const challenges = labels("challenge");
     // An audit row with no answers says nothing yet.
-    if (goals.length === 0 && challenges.length === 0) return [];
+    if (mine.length === 0 && geo.length === 0) return [];
+    const review = reviews.get(`brand_audit:${a.business_id}`);
+    // "Changed since": Admin's last review, else (never reviewed) after the
+    // save that completed the audit; an unfinished, unreviewed audit has no
+    // baseline, so nothing is singled out.
+    const since = review ? ms(review.reviewed_at) : a.completed_at ? ms(a.completed_at) + SAME_SAVE_MS : null;
+    const changed = new Set<AuditSection>();
+    if (since !== null) {
+      for (const x of mine) if (x.updated_at && ms(x.updated_at) > since) changed.add(SECTION_OF_KIND[x.kind]);
+      if (geo.some((g) => ms(g.updated_at) > since)) changed.add("markets");
+    }
+    const audiences = labels("audience");
+    const ages = labels("age_range");
+    const priorities = labels("audience_priority");
+    const environments = labels("environment");
+    const scope = labels("market_scope")[0] ?? null;
+    const currentMarkets = geo.filter((g) => g.intent === "current").map((g) => g.label);
+    const priorityMarkets = geo.filter((g) => g.intent === "priority").map((g) => g.label);
     return [
       {
         type: "brand_audit",
         id: a.business_id,
         at: a.updated_at,
-        isNew: isSignalNew(a.updated_at, reviews.get(`brand_audit:${a.business_id}`)),
+        isNew: isSignalNew(a.updated_at, review),
         event: auditEvent(a),
         business: business(a.business_id),
-        audit: { progress: auditProgress({ status: a.status, goalCount: goals.length, challengeCount: challenges.length, completedAt: a.completed_at, updatedAt: a.updated_at }), goals, challenges },
+        audit: {
+          progress: auditProgress({
+            status: a.status,
+            goalCount: goals.length,
+            challengeCount: challenges.length,
+            audienceCount: audiences.length + ages.length + priorities.length,
+            marketCount: (scope ? 1 : 0) + geo.length,
+            environmentCount: environments.length,
+            completedAt: a.completed_at,
+            updatedAt: a.updated_at,
+          }),
+          goals,
+          challenges,
+          audiences,
+          ages,
+          priorities,
+          scope,
+          currentMarkets,
+          priorityMarkets,
+          environments,
+          changedSections: AUDIT_SECTIONS.filter((k) => changed.has(k)),
+          addedPriorityMarkets: since === null ? [] : geo.filter((g) => g.intent === "priority" && ms(g.created_at) > since).map((g) => g.label),
+        },
       },
     ];
   });
@@ -229,6 +306,20 @@ export function intelligenceByIdea(signals: IntelligenceSignal[], ideas: IdeaRow
     rows.set(idea.id, row);
   }
   return [...rows.values()].sort((a, b) => b.counts.interested - a.counts.interested || b.counts.maybe - a.counts.maybe || a.idea.title.localeCompare(b.idea.title));
+}
+
+/** "Updated Target Audience & Markets · Added New York City As A Priority
+ * Market" — the specific change when it's known, else the event headline. */
+export function auditChangeHeadline(s: IntelligenceSignal, sectionLabels: Record<AuditSection, string>): string | null {
+  if (!s.audit || s.event === "audit_completed") return null;
+  const parts: string[] = [];
+  const sections = s.audit.changedSections.map((k) => sectionLabels[k]);
+  if (sections.length) parts.push(`Updated ${sections.length > 1 ? `${sections.slice(0, -1).join(", ")} & ${sections.at(-1)}` : sections[0]}`);
+  if (s.audit.addedPriorityMarkets.length) {
+    const places = s.audit.addedPriorityMarkets;
+    parts.push(`Added ${places.length > 2 ? `${places.slice(0, 2).join(", ")} +${places.length - 2}` : places.join(" & ")} As ${places.length > 1 ? "Priority Markets" : "A Priority Market"}`);
+  }
+  return parts.length ? parts.join(" · ") : null;
 }
 
 export const SIGNAL_HEADLINE: Record<SignalEvent, string> = {

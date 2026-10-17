@@ -424,7 +424,9 @@ function BrandAuditEntry({ basePath, summary }: { basePath: string; summary: Aud
   const progress = auditProgress(summary);
   const status =
     state === "complete"
-      ? `Brand Audit Complete${summary.updatedAt ? ` · Updated ${shortDate(summary.updatedAt)}` : ""}`
+      ? progress < 100
+        ? `Brand Audit Complete · Profile ${progress}% — add your audience and markets`
+        : `Brand Audit Complete${summary.updatedAt ? ` · Updated ${shortDate(summary.updatedAt)}` : ""}`
       : state === "in_progress"
         ? `Brand Audit · ${progress}% Complete`
         : "Help Findmi understand where you\u2019re headed so we can surface better ideas, connections and opportunities for your brand.";
@@ -445,7 +447,7 @@ function BrandAuditEntry({ basePath, summary }: { basePath: string; summary: Aud
           </span>
           <span className="mt-0.5 block text-metadata text-muted">{status}</span>
           <span className="mt-1 block text-metadata font-bold text-accent">{auditActionLabel(summary)}</span>
-          {state === "in_progress" && (
+          {progress < 100 && state !== "not_started" && (
             <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-black/[0.06]" aria-hidden="true">
               <span className="block h-full rounded-full bg-findmi" style={{ width: `${progress}%` }} />
             </span>

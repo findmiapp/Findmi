@@ -1,9 +1,31 @@
 import Link from "next/link";
 import type { AdminBusinessIntelligence } from "@/lib/brand-audit";
-import { auditOptionLabel, auditProgress, auditState, IDEA_RESPONSE_LABELS, type AuditAnswer, type AuditKind } from "@/lib/brand-audit-domain";
+import {
+  auditOptionLabel,
+  auditProgress,
+  auditState,
+  GEO_INTENT_LABELS,
+  GEO_INTENTS,
+  IDEA_RESPONSE_LABELS,
+  type AuditAnswer,
+  type AuditKind,
+} from "@/lib/brand-audit-domain";
 
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" }) : null;
+
+const LEVEL_NOTE: Record<string, string> = { market: "", area: "Area", neighborhood: "Neighborhood", place: "Not yet a Findmi market" };
+
+function Group({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="rounded-2xl border border-black/5 bg-white p-4">
+      <h2 id={id} className="font-display text-lg font-semibold text-ink">
+        {title}
+      </h2>
+      <div className="mt-3 grid gap-5 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
 
 function Answers({ title, kind, answers }: { title: string; kind: AuditKind; answers: AuditAnswer[] }) {
   return (
@@ -46,7 +68,9 @@ export default function BusinessIntelligencePanel({
     );
   }
   const state = auditState(data.summary);
-  const status = state === "complete" ? "Complete" : state === "in_progress" ? `In Progress · ${auditProgress(data.summary)}%` : "Not Started";
+  const progress = auditProgress(data.summary);
+  const status =
+    state === "complete" ? (progress < 100 ? `Complete · Profile ${progress}%` : "Complete") : state === "in_progress" ? `In Progress · ${progress}%` : "Not Started";
 
   return (
     <div className="flex flex-col gap-5">
@@ -64,11 +88,52 @@ export default function BusinessIntelligencePanel({
             {data.summary.updatedAt && `Last Updated ${fmt(data.summary.updatedAt)}`}
           </p>
         )}
-        <div className="mt-3 grid gap-5 sm:grid-cols-2">
-          <Answers title="What They Want · Goals" kind="goal" answers={data.goals} />
-          <Answers title="What's In Their Way · Challenges" kind="challenge" answers={data.challenges} />
-        </div>
+        <p className="mt-1 text-xs text-ink/45">Declared by the Brand in its Brand Audit.</p>
       </section>
+
+      <Group id="intel-objectives" title="Objectives">
+        <Answers title="What They Want · Goals" kind="goal" answers={data.goals} />
+        <Answers title="What's In Their Way · Challenges" kind="challenge" answers={data.challenges} />
+      </Group>
+
+      <Group id="intel-audience" title="Audience">
+        <Answers title="Target Audiences" kind="audience" answers={data.audiences} />
+        <div className="flex flex-col gap-4">
+          <Answers title="Age Ranges" kind="age_range" answers={data.ages} />
+          <Answers title="Audience Priorities" kind="audience_priority" answers={data.priorities} />
+        </div>
+      </Group>
+
+      <Group id="intel-geography" title="Geography">
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">Market Scope</h3>
+          <p className="mt-1 text-sm text-ink">{data.marketScope[0] ? auditOptionLabel("market_scope", data.marketScope[0].key) : <span className="text-ink/45">Not answered yet.</span>}</p>
+        </div>
+        {GEO_INTENTS.map((intent) => {
+          const places = data.geo.filter((g) => g.intent === intent);
+          return (
+            <div key={intent}>
+              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">{GEO_INTENT_LABELS[intent]}</h3>
+              {places.length === 0 ? (
+                <p className="mt-1 text-sm text-ink/45">Not answered yet.</p>
+              ) : (
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {places.map((g) => (
+                    <li key={`${g.level}:${g.place_key}`} className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-semibold text-ink">
+                      {g.label}
+                      {LEVEL_NOTE[g.level] && <span className="font-medium text-ink/45"> · {LEVEL_NOTE[g.level]}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </Group>
+
+      <Group id="intel-activation" title="Activation">
+        <Answers title="Preferred Environments" kind="environment" answers={data.environments} />
+      </Group>
 
       <section aria-labelledby="intel-signals" className="rounded-2xl border border-black/5 bg-white p-4">
         <h2 id="intel-signals" className="font-display text-lg font-semibold text-ink">

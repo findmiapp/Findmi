@@ -72,7 +72,7 @@ export default function AuditChoiceList({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-card-title font-bold text-primary">{option.label}</span>
-                <span className="mt-0.5 block text-metadata italic text-muted">{option.description}</span>
+                {option.description && <span className="mt-0.5 block text-metadata italic text-muted">{option.description}</span>}
               </span>
             </button>
             {selected && !isOther && !showText && !disabled && (

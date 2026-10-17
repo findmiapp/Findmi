@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { getCommandCenter } from "@/lib/brand-intelligence";
-import { SIGNAL_HEADLINE, type IntelligenceSignal } from "@/lib/brand-intelligence-domain";
-import { IDEA_RESPONSE_LABELS, IDEA_RESPONSES, IDEA_STATUS_LABELS, isIdeaStatus, type IdeaResponse } from "@/lib/brand-audit-domain";
+import { SIGNAL_HEADLINE, auditChangeHeadline, type IntelligenceSignal } from "@/lib/brand-intelligence-domain";
+import { AUDIT_SECTION_LABELS, IDEA_RESPONSE_LABELS, IDEA_RESPONSES, IDEA_STATUS_LABELS, isIdeaStatus, type IdeaResponse } from "@/lib/brand-audit-domain";
 import OpportunitiesAdminTabs from "../OpportunitiesAdminTabs";
 import { formatOpportunityDate } from "../format";
 import { markAllReviewed, markReviewed } from "./actions";
@@ -48,6 +48,32 @@ function Metric({ label, value, href }: { label: string; value: number; href?: s
   );
 }
 
+function Line({ label, values, max = 4 }: { label: string; values: string[]; max?: number }) {
+  if (values.length === 0) return null;
+  return (
+    <p className="mt-0.5 text-sm text-ink/75">
+      <span className="font-semibold text-ink/50">{label}:</span> {values.slice(0, max).join(" · ")}
+      {values.length > max ? ` +${values.length - max}` : ""}
+    </p>
+  );
+}
+
+/** Compact who / where / what lines; the Business Intelligence tab has
+ * every answer with the Brand's own context. */
+function AuditSummaryLines({ audit: a, brandView = false }: { audit: NonNullable<IntelligenceSignal["audit"]>; brandView?: boolean }) {
+  return (
+    <div className="mt-1">
+      <Line label="Wants" values={a.goals} />
+      <Line label="Audience" values={a.audiences} max={3} />
+      <Line label="Age" values={a.ages} max={6} />
+      <Line label="Priority Markets" values={a.priorityMarkets} />
+      {brandView && <Line label="Current Markets" values={a.scope ? [a.scope, ...a.currentMarkets] : a.currentMarkets} />}
+      <Line label="Environments" values={a.environments} max={3} />
+      <Line label="In The Way" values={a.challenges} max={3} />
+    </div>
+  );
+}
+
 function SmallLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link href={href} className="text-xs font-semibold text-findmi-700 hover:underline">
@@ -74,8 +100,8 @@ function SignalCard({ s, returnTo, canReview }: { s: IntelligenceSignal; returnT
               </>
             ) : (
               <>
-                {SIGNAL_HEADLINE[s.event]}
-                {s.event === "audit_in_progress" && s.audit ? ` · ${s.audit.progress}%` : ""}
+                {auditChangeHeadline(s, AUDIT_SECTION_LABELS) ?? SIGNAL_HEADLINE[s.event]}
+                {s.audit && s.audit.progress < 100 ? ` · Profile ${s.audit.progress}%` : ""}
               </>
             )}
           </p>
@@ -87,22 +113,7 @@ function SignalCard({ s, returnTo, canReview }: { s: IntelligenceSignal; returnT
         </span>
       </div>
       {s.idea?.note && <p className="mt-1.5 whitespace-pre-line text-sm text-ink/70">&ldquo;{s.idea.note}&rdquo;</p>}
-      {s.audit && (
-        <dl className="mt-1.5 grid gap-1 text-sm sm:grid-cols-2 sm:gap-4">
-          {s.audit.goals.length > 0 && (
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">Goals</dt>
-              <dd className="text-ink/75">{s.audit.goals.join(" · ")}</dd>
-            </div>
-          )}
-          {s.audit.challenges.length > 0 && (
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">Challenges</dt>
-              <dd className="text-ink/75">{s.audit.challenges.join(" · ")}</dd>
-            </div>
-          )}
-        </dl>
-      )}
+      {s.audit && <AuditSummaryLines audit={s.audit} />}
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
         <SmallLink href={brandHref(s.business.id)}>{s.idea ? "View Brand" : "View Intelligence"}</SmallLink>
         {s.idea && <SmallLink href={ideaHref(s.idea.id)}>View Idea</SmallLink>}
@@ -218,9 +229,8 @@ export default async function AdminIntelligencePage({ searchParams }: { searchPa
                           </Pill>
                         </span>
                       </div>
-                      {b.audit && b.audit.goals.length > 0 && <p className="mt-1 text-sm text-ink/75"><span className="font-semibold text-ink/50">Wants:</span> {b.audit.goals.slice(0, 4).join(" · ")}{b.audit.goals.length > 4 ? ` +${b.audit.goals.length - 4}` : ""}</p>}
-                      {b.audit && b.audit.challenges.length > 0 && <p className="mt-0.5 text-sm text-ink/75"><span className="font-semibold text-ink/50">In The Way:</span> {b.audit.challenges.slice(0, 4).join(" · ")}{b.audit.challenges.length > 4 ? ` +${b.audit.challenges.length - 4}` : ""}</p>}
-                      {b.openTo.length > 0 && <p className="mt-0.5 text-sm text-ink/75"><span className="font-semibold text-ink/50">Open To:</span> {b.openTo.join(" · ")}</p>}
+                      {b.audit && <AuditSummaryLines audit={b.audit} brandView />}
+                      {b.openTo.length > 0 && <Line label="Open To" values={b.openTo} />}
                       <p className="mt-1.5 text-xs font-semibold text-ink/50">
                         Interested {b.interested} · Maybe {b.maybe} · Not For Us {b.notForUs} · Last activity {formatOpportunityDate(b.lastAt)}
                       </p>

@@ -9,7 +9,9 @@ import {
   isIdeaResponse,
   orderIdeasForBusiness,
   validateAuditAnswers,
+  validateGeo,
   validateIdeaInput,
+  AUDIT_KEYS,
   IDEA_LIMITS,
   IDEA_RESPONSES,
   type AuditAnswer,
@@ -17,6 +19,10 @@ import {
   type AuditKind,
   type AuditStatus,
   type AuditSummary,
+  type GeoCatalog,
+  type GeoInput,
+  type GeoIntent,
+  type GeoLevel,
   type IdeaAudience,
   type IdeaFormInput,
   type IdeaResponse,
@@ -51,32 +57,89 @@ const missing = (error: { code?: string } | null | undefined) => error?.code ===
 
 // ---------------------------------------------------------------- shared reads
 
+export interface BrandAuditGeo {
+  intent: GeoIntent;
+  level: GeoLevel;
+  market_id: string | null;
+  market_area_id: string | null;
+  place_key: string;
+  label: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BrandAuditData {
   available: boolean;
   summary: AuditSummary;
   goals: AuditAnswer[];
   challenges: AuditAnswer[];
+  audiences: AuditAnswer[];
+  ages: AuditAnswer[];
+  priorities: AuditAnswer[];
+  marketScope: AuditAnswer[];
+  environments: AuditAnswer[];
+  geo: BrandAuditGeo[];
 }
 
 const EMPTY_SUMMARY: AuditSummary = { status: null, goalCount: 0, challengeCount: 0, completedAt: null, updatedAt: null };
+const EMPTY_AUDIT: BrandAuditData = {
+  available: false,
+  summary: EMPTY_SUMMARY,
+  goals: [],
+  challenges: [],
+  audiences: [],
+  ages: [],
+  priorities: [],
+  marketScope: [],
+  environments: [],
+  geo: [],
+};
 
+/** Only the Brand's own DECLARED answers — observed/researched
+ * intelligence (future) never mixes into the Audit. */
 async function readAudit(businessId: string): Promise<BrandAuditData> {
   const admin = client();
-  const [{ data: audit, error }, { data: answers, error: answersError }] = await Promise.all([
+  const [{ data: audit, error }, { data: answers, error: answersError }, { data: geoRows, error: geoError }] = await Promise.all([
     admin.from("brand_audits").select("status, completed_at, updated_at").eq("business_id", businessId).maybeSingle(),
-    admin.from("brand_audit_answers").select("kind, option_key, detail, updated_at").eq("business_id", businessId),
+    admin.from("brand_audit_answers").select("kind, option_key, detail, updated_at").eq("business_id", businessId).eq("source", "declared"),
+    admin
+      .from("brand_audit_markets")
+      .select("intent, level, market_id, market_area_id, place_key, label, created_at, updated_at")
+      .eq("business_id", businessId)
+      .eq("source", "declared"),
   ]);
-  if (error || answersError) return { available: false, summary: EMPTY_SUMMARY, goals: [], challenges: [] };
+  if (error || answersError || geoError) return EMPTY_AUDIT;
   const rows = (answers ?? []) as { kind: AuditKind; option_key: string; detail: string | null; updated_at: string }[];
-  const pick = (kind: AuditKind) => rows.filter((r) => r.kind === kind).map((r) => ({ key: r.option_key, detail: r.detail }));
-  const goals = pick("goal");
-  const challenges = pick("challenge");
+  const pick = (kind: AuditKind) =>
+    rows
+      .filter((r) => r.kind === kind)
+      .map((r) => ({ key: r.option_key, detail: r.detail }))
+      .sort((x, y) => AUDIT_KEYS[kind].indexOf(x.key) - AUDIT_KEYS[kind].indexOf(y.key));
+  const geo = ((geoRows ?? []) as BrandAuditGeo[]).sort((a, b) => a.intent.localeCompare(b.intent) || a.label.localeCompare(b.label));
+  const data = {
+    goals: pick("goal"),
+    challenges: pick("challenge"),
+    audiences: pick("audience"),
+    ages: pick("age_range"),
+    priorities: pick("audience_priority"),
+    marketScope: pick("market_scope"),
+    environments: pick("environment"),
+  };
   const a = audit as { status: AuditStatus; completed_at: string | null; updated_at: string } | null;
   return {
     available: true,
-    summary: { status: a?.status ?? null, goalCount: goals.length, challengeCount: challenges.length, completedAt: a?.completed_at ?? null, updatedAt: a?.updated_at ?? null },
-    goals,
-    challenges,
+    summary: {
+      status: a?.status ?? null,
+      goalCount: data.goals.length,
+      challengeCount: data.challenges.length,
+      audienceCount: data.audiences.length + data.ages.length + data.priorities.length,
+      marketCount: data.marketScope.length + geo.length,
+      environmentCount: data.environments.length,
+      completedAt: a?.completed_at ?? null,
+      updatedAt: a?.updated_at ?? null,
+    },
+    ...data,
+    geo,
   };
 }
 
@@ -87,13 +150,24 @@ export async function getBrandAudit(businessId: string): Promise<BrandAuditData>
   return readAudit(businessId);
 }
 
+/** Active Findmi Markets and Areas — what Market / Area choices resolve
+ * against (never a hard-coded city list). */
+export async function getGeoCatalog(): Promise<GeoCatalog> {
+  const admin = client();
+  const [{ data: markets }, { data: areas }] = await Promise.all([
+    admin.from("markets").select("id, slug, name").eq("active", true).order("sort_order"),
+    admin.from("market_areas").select("id, slug, name, market_id").eq("active", true).order("sort_order"),
+  ]);
+  return { markets: (markets ?? []) as GeoCatalog["markets"], areas: (areas ?? []) as GeoCatalog["areas"] };
+}
+
 async function authorizeManage(businessId: string): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const membership = await requireBusinessMember(businessId);
   if (!canManageGoals(membership.role, membership.viaAdmin)) {
     return {
       ok: false,
       error: membership.viaAdmin
-        ? "The Brand Audit comes from the Business. Viewing as a Findmi Admin can’t change it."
+        ? "The Brand Audit comes from the Business. Viewing as a Findmi Admin can\u2019t change it."
         : "Only a Business owner or manager can change the Brand Audit.",
     };
   }
@@ -102,38 +176,124 @@ async function authorizeManage(businessId: string): Promise<{ ok: true; userId: 
   return { ok: true, userId };
 }
 
-/** Saves one step (Goals or Challenges) as the Business's current answers
- * for that kind: deselected choices are removed, each selected choice keeps
- * its own elaboration. Never touches the other kind. Creates the audit row
- * (in progress) the first time; never downgrades a completed audit. */
-export async function saveBrandAuditStep(businessId: string, kind: AuditKind, input: AuditAnswerInput[]): Promise<Result> {
-  const auth = await authorizeManage(businessId);
-  if (!auth.ok) return auth;
-  const parsed = validateAuditAnswers(kind, input);
-  if (!parsed.ok) return parsed;
+const SAVE_FAILED = "Couldn\u2019t save. Please try again.";
+
+/** Creates the audit row (in progress) the first time; never downgrades a
+ * completed audit. */
+async function ensureAuditRow(businessId: string, userId: string): Promise<Result> {
   const admin = client();
-
-  const { data: audit, error: auditError } = await admin.from("brand_audits").select("status").eq("business_id", businessId).maybeSingle();
-  if (auditError) return { ok: false, error: missing(auditError) ? UNAVAILABLE : "Couldn’t save. Please try again." };
+  const { data: audit, error } = await admin.from("brand_audits").select("status").eq("business_id", businessId).maybeSingle();
+  if (error) return { ok: false, error: missing(error) ? UNAVAILABLE : SAVE_FAILED };
   if (!audit) {
-    const { error } = await admin.from("brand_audits").insert({ business_id: businessId, status: "in_progress", updated_by_user_id: auth.userId });
-    if (error && error.code !== "23505") return { ok: false, error: "Couldn’t save. Please try again." };
+    const { error: insertError } = await admin.from("brand_audits").insert({ business_id: businessId, status: "in_progress", updated_by_user_id: userId });
+    if (insertError && insertError.code !== "23505") return { ok: false, error: SAVE_FAILED };
   }
+  return { ok: true };
+}
 
-  const { data: existing } = await admin.from("brand_audit_answers").select("option_key").eq("business_id", businessId).eq("kind", kind);
-  const keep = new Set(parsed.value.map((a) => a.key));
+async function touchAudit(businessId: string, userId: string) {
+  await client().from("brand_audits").update({ updated_by_user_id: userId, updated_at: new Date().toISOString() }).eq("business_id", businessId);
+}
+
+/** Replaces this Business's DECLARED answers for one kind: deselected
+ * choices are removed, each selected choice keeps its own elaboration.
+ * Never touches other kinds or other sources. */
+async function replaceKind(businessId: string, userId: string, kind: AuditKind, value: AuditAnswer[]): Promise<Result> {
+  const admin = client();
+  const { data: existing } = await admin.from("brand_audit_answers").select("option_key").eq("business_id", businessId).eq("kind", kind).eq("source", "declared");
+  const keep = new Set(value.map((a) => a.key));
   const removed = ((existing ?? []) as { option_key: string }[]).map((r) => r.option_key).filter((k) => !keep.has(k));
   if (removed.length) {
-    const { error } = await admin.from("brand_audit_answers").delete().eq("business_id", businessId).eq("kind", kind).in("option_key", removed);
-    if (error) return { ok: false, error: "Couldn’t save. Please try again." };
+    const { error } = await admin.from("brand_audit_answers").delete().eq("business_id", businessId).eq("kind", kind).eq("source", "declared").in("option_key", removed);
+    if (error) return { ok: false, error: SAVE_FAILED };
   }
-  const { error: upsertError } = await admin.from("brand_audit_answers").upsert(
-    parsed.value.map((a) => ({ business_id: businessId, kind, option_key: a.key, detail: a.detail, updated_by_user_id: auth.userId })),
-    { onConflict: "business_id,kind,option_key" }
+  if (value.length) {
+    const { error } = await admin.from("brand_audit_answers").upsert(
+      value.map((a) => ({ business_id: businessId, kind, option_key: a.key, detail: a.detail, source: "declared", updated_by_user_id: userId })),
+      { onConflict: "business_id,kind,option_key,source" }
+    );
+    if (error) return { ok: false, error: SAVE_FAILED };
+  }
+  return { ok: true };
+}
+
+async function saveKinds(businessId: string, entries: { kind: AuditKind; input: AuditAnswerInput[] }[], requireOne: string | null): Promise<Result> {
+  const auth = await authorizeManage(businessId);
+  if (!auth.ok) return auth;
+  const parsed: { kind: AuditKind; value: AuditAnswer[] }[] = [];
+  for (const e of entries) {
+    const r = validateAuditAnswers(e.kind, e.input, { allowEmpty: entries.length > 1 });
+    if (!r.ok) return r;
+    parsed.push({ kind: e.kind, value: r.value });
+  }
+  if (requireOne && parsed.every((p) => p.value.length === 0)) return { ok: false, error: requireOne };
+  const row = await ensureAuditRow(businessId, auth.userId);
+  if (!row.ok) return row;
+  for (const p of parsed) {
+    const r = await replaceKind(businessId, auth.userId, p.kind, p.value);
+    if (!r.ok) return r;
+  }
+  await touchAudit(businessId, auth.userId);
+  return { ok: true };
+}
+
+/** Saves one single-kind step (Goals, Challenges or Activation
+ * Environments) as the Business's current answers for that kind. */
+export async function saveBrandAuditStep(businessId: string, kind: AuditKind, input: AuditAnswerInput[]): Promise<Result> {
+  return saveKinds(businessId, [{ kind, input }], null);
+}
+
+/** Target Audience step: audiences, age ranges and audience priorities
+ * together (at least one answer across them). */
+export async function saveBrandAuditAudience(
+  businessId: string,
+  input: { audiences: AuditAnswerInput[]; ages: AuditAnswerInput[]; priorities: AuditAnswerInput[] }
+): Promise<Result> {
+  return saveKinds(
+    businessId,
+    [
+      { kind: "audience", input: input.audiences },
+      { kind: "age_range", input: input.ages },
+      { kind: "audience_priority", input: input.priorities },
+    ],
+    "Choose at least one audience, age range or priority \u2014 or skip this step for now."
   );
-  if (upsertError) return { ok: false, error: "Couldn’t save. Please try again." };
-  // Touch the audit so "last updated" reflects this save.
-  await admin.from("brand_audits").update({ updated_by_user_id: auth.userId, updated_at: new Date().toISOString() }).eq("business_id", businessId);
+}
+
+/** Markets step: market scope plus Current and Priority/Growth places.
+ * Places resolve against Findmi's own Markets/Areas (labels come from
+ * Findmi), curated NYC neighborhoods, or a normalized Brand-named place.
+ * Existing rows keep their created_at, so "added since" stays accurate. */
+export async function saveBrandAuditMarkets(businessId: string, input: { scope: string | null; geo: GeoInput[] }): Promise<Result> {
+  const auth = await authorizeManage(businessId);
+  if (!auth.ok) return auth;
+  const scope = validateAuditAnswers("market_scope", input.scope ? [{ key: input.scope, detail: null }] : [], { allowEmpty: true });
+  if (!scope.ok) return scope;
+  const geo = validateGeo(input.geo, await getGeoCatalog());
+  if (!geo.ok) return geo;
+  if (scope.value.length === 0 && geo.value.length === 0) return { ok: false, error: "Choose your market scope or at least one market \u2014 or skip this step for now." };
+  const row = await ensureAuditRow(businessId, auth.userId);
+  if (!row.ok) return row;
+  const scoped = await replaceKind(businessId, auth.userId, "market_scope", scope.value);
+  if (!scoped.ok) return scoped;
+
+  const admin = client();
+  const { data: existing } = await admin.from("brand_audit_markets").select("id, intent, level, place_key").eq("business_id", businessId).eq("source", "declared");
+  const id = (e: { intent: string; level: string; place_key: string }) => `${e.intent}:${e.level}:${e.place_key}`;
+  const keep = new Set(geo.value.map(id));
+  const removed = ((existing ?? []) as { id: string; intent: string; level: string; place_key: string }[]).filter((r) => !keep.has(id(r))).map((r) => r.id);
+  if (removed.length) {
+    const { error } = await admin.from("brand_audit_markets").delete().eq("business_id", businessId).in("id", removed);
+    if (error) return { ok: false, error: SAVE_FAILED };
+  }
+  if (geo.value.length) {
+    const { error } = await admin.from("brand_audit_markets").upsert(
+      geo.value.map((g) => ({ ...g, business_id: businessId, source: "declared", updated_by_user_id: auth.userId })),
+      { onConflict: "business_id,intent,level,place_key,source" }
+    );
+    if (error) return { ok: false, error: missing(error) ? UNAVAILABLE : SAVE_FAILED };
+  }
+  await touchAudit(businessId, auth.userId);
   return { ok: true };
 }
 

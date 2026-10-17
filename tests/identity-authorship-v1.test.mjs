@@ -247,5 +247,5 @@ test("RLS: SECURITY DEFINER functions with a safe search_path; all four Moment t
   assert.doesNotMatch(MIGRATION, /\b(delete from|truncate|drop table|drop column)\b/i);
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
   // Later passes add their own migrations after this one (Brand Audit V1).
-  assert.deepEqual(files.slice(files.indexOf(MIGRATION_FILE)), [MIGRATION_FILE, "20261021000000_brand_audit_and_opportunity_ideas.sql", "20261022000000_admin_intelligence_reviews.sql" /* Brand Intelligence V1.1 pass */]);
+  assert.deepEqual(files.slice(files.indexOf(MIGRATION_FILE)), [MIGRATION_FILE, "20261021000000_brand_audit_and_opportunity_ideas.sql", "20261022000000_admin_intelligence_reviews.sql" /* Brand Intelligence V1.1 pass */, "20261023000000_brand_intelligence_v1_2.sql" /* Brand Intelligence V1.2 pass */]);
 });

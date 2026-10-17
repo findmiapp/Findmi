@@ -90,11 +90,11 @@ const world = () => ({
     { business_id: X, status: "in_progress", completed_at: null, created_at: t(3), updated_at: t(3) },
   ],
   brand_audit_answers: [
-    { business_id: LAVAZZA, kind: "goal", option_key: "product_sampling" },
-    { business_id: LAVAZZA, kind: "goal", option_key: "build_awareness" },
-    { business_id: LAVAZZA, kind: "challenge", option_key: "activation_locations" },
-    { business_id: ILLY, kind: "goal", option_key: "partnerships" },
-    { business_id: ILLY, kind: "challenge", option_key: "staffing_execution" },
+    { business_id: LAVAZZA, kind: "goal", option_key: "product_sampling", source: "declared" },
+    { business_id: LAVAZZA, kind: "goal", option_key: "build_awareness", source: "declared" },
+    { business_id: LAVAZZA, kind: "challenge", option_key: "activation_locations", source: "declared" },
+    { business_id: ILLY, kind: "goal", option_key: "partnerships", source: "declared" },
+    { business_id: ILLY, kind: "challenge", option_key: "staffing_execution", source: "declared" },
   ],
   opportunity_ideas: [
     { id: RES, title: "Residential Sampling", status: "published" },
@@ -106,6 +106,7 @@ const world = () => ({
     { id: R3, idea_id: RES, business_id: LAVAZZA, response: "not_for_us", note: null, created_at: t(20), updated_at: t(20) },
   ],
   admin_intelligence_reviews: [],
+  brand_audit_markets: [],
   business_intelligence_notes: [{ business_id: ILLY, note: "SECRET internal note" }],
 });
 beforeEach(() => {
@@ -140,7 +141,7 @@ test("recent feed: newest first, correct Business on every signal, audit complet
     ]
   );
   const lav = cc.signals.find((s) => s.type === "brand_audit" && s.business.id === LAVAZZA);
-  assert.deepEqual(lav.audit.goals, ["Drive Product Trial", "Increase Brand Awareness"]);
+  assert.deepEqual(lav.audit.goals, ["Increase Brand Awareness", "Drive Product Trial"], "canonical option order");
   assert.deepEqual(lav.audit.challenges, ["Finding Places To Activate"]);
   assert.equal(cc.signals.find((s) => s.id === R1).idea.note, "Premium residential buildings around NYC");
   assert.equal(cc.signals.every((s) => s.isNew), true, "nothing reviewed yet");
@@ -232,7 +233,7 @@ test("migration: one additive Admin-only table; no V1 table touched", () => {
   assert.doesNotMatch(sql, /brand_audits|brand_audit_answers|opportunity_idea|business_intelligence_notes/);
   assert.match(sql, /signal_type in \('brand_audit', 'idea_response'\)/);
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261022000000_admin_intelligence_reviews.sql");
+  assert.ok(files.includes("20261022000000_admin_intelligence_reviews.sql"));
 });
 
 test("no Business-facing or public surface imports the command center", () => {

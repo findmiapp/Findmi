@@ -10,6 +10,7 @@ import {
   type AnswerRow,
   type AuditRow,
   type BrandIntelligenceRow,
+  type GeoRow,
   type IdeaDemandRow,
   type IdeaRow,
   type IntelligenceMetrics,
@@ -59,14 +60,15 @@ const EMPTY: CommandCenter = {
 
 async function loadSignals() {
   const admin = client();
-  const [audits, answers, responses, ideas, reviews] = await Promise.all([
+  const [audits, answers, responses, ideas, reviews, geo] = await Promise.all([
     admin.from("brand_audits").select("business_id, status, completed_at, created_at, updated_at"),
-    admin.from("brand_audit_answers").select("business_id, kind, option_key"),
+    admin.from("brand_audit_answers").select("business_id, kind, option_key, updated_at").eq("source", "declared"),
     admin.from("opportunity_idea_responses").select("id, idea_id, business_id, response, note, created_at, updated_at"),
     admin.from("opportunity_ideas").select("id, title, status"),
     admin.from("admin_intelligence_reviews").select("signal_type, signal_id, reviewed_at"),
+    admin.from("brand_audit_markets").select("business_id, intent, level, place_key, label, created_at, updated_at").eq("source", "declared"),
   ]);
-  if (audits.error || answers.error || responses.error || ideas.error) return null;
+  if (audits.error || answers.error || responses.error || ideas.error || geo.error) return null;
   const auditRows = (audits.data ?? []) as AuditRow[];
   const responseRows = (responses.data ?? []) as ResponseRow[];
   const ideaRows = (ideas.data ?? []) as IdeaRow[];
@@ -79,6 +81,7 @@ async function loadSignals() {
     ideas: ideaRows,
     businesses: (businesses ?? []) as { id: string; name: string }[],
     reviews: reviews.error ? [] : ((reviews.data ?? []) as ReviewRow[]),
+    geo: (geo.data ?? []) as GeoRow[],
   });
   return { signals, auditRows, responseRows, ideaRows, reviewsAvailable: !reviews.error };
 }
