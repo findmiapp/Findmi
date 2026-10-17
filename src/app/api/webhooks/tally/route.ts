@@ -319,7 +319,6 @@ export async function POST(request: NextRequest) {
   // Hidden fields — see lib/tally.ts's documented required hidden-field keys.
   const membershipId = findValue(byLabel, ["membership_id"]);
   const source = findValue(byLabel, ["source"]);
-  const existingBusinessIdField = findValue(byLabel, ["existing_business_id"]);
 
   if (!membershipId) {
     return NextResponse.json({ error: "Missing membership_id — this form must be opened via a Findmi invite/checkout link." }, { status: 400 });
@@ -373,7 +372,12 @@ export async function POST(request: NextRequest) {
   ].filter(([, v]) => v) as [string, string][];
   const submittedNotes = notesParts.map(([label, v]) => `${label}: ${v}`).join("\n");
 
-  const targetBusinessId = membership.business_id ?? existingBusinessIdField ?? membership.existing_business_id ?? null;
+  // Security: the target Business comes ONLY from the server-stored
+  // membership (set by Admin when the invite was created). The form's
+  // existing_business_id hidden field is filled from the link's query
+  // string, so a recipient could change it to any Business's id — it is
+  // never read here.
+  const targetBusinessId = membership.business_id ?? membership.existing_business_id ?? null;
 
   const businessPayload: Record<string, unknown> = {
     short_description: description ? description.slice(0, 160) : null,

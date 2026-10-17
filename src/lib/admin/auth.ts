@@ -97,6 +97,10 @@ async function sign(expiry: number, version: string): Promise<string> {
 }
 
 async function verify(token: string): Promise<boolean> {
+  // Fail closed without a configured password: the signing key is derived
+  // from ADMIN_PASSWORD, so an unset/empty one would make the key a public
+  // constant (SHA-256 of "") and any forged cookie would verify.
+  if (!process.env.ADMIN_PASSWORD) return false;
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   const [expiryStr, version, hmac] = parts;
