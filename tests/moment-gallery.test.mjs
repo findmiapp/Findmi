@@ -74,8 +74,8 @@ test("filter strip only when it offers a meaningful choice", () => {
 });
 
 // ── Views ─────────────────────────────────────────────────────────────────
-test("All: the full story in stored order, cover excluded, nothing duplicated", () => {
-  assert.deepEqual(ids(G.momentGalleryPhotos(PHOTOS, null)), ["p2", "p3", "p4", "p5", "p6", "p7"]);
+test("All: the full story in stored order, cover INCLUDED in its own place, nothing duplicated", () => {
+  assert.deepEqual(ids(G.momentGalleryPhotos(PHOTOS, null)), ["p1", "p2", "p3", "p4", "p5", "p6", "p7"]);
   const shuffled = [ph("z"), ph("a", "s1"), ph("m"), ph("b", "s1")];
   assert.deepEqual(ids(G.momentGalleryPhotos(shuffled, null)), ["z", "a", "m", "b"], "never regrouped by section");
 });
@@ -101,7 +101,7 @@ test("page: photos keep stored order; cover flagged (not removed); unknown secti
   assert.match(c, /const galleryPhotos = media\.map\(\(m\) => \(\{/, "the stored media order, unfiltered");
   assert.match(c, /sectionId: m\.section_id && sectionIds\.has\(m\.section_id\) \? m\.section_id : null,/);
   assert.match(c, /isCover: m\.id === cover\?\.id,/, "the same photo the hero shows");
-  assert.match(c, /const hasGallery = galleryPhotos\.some\(\(p\) => !p\.isCover\);/);
+  assert.match(c, /const hasGallery = galleryPhotos\.length > 0;/);
 });
 
 test("page: hero keeps the shared page-level viewer over display_order", () => {
@@ -164,7 +164,7 @@ test("notes: only for the active category, quiet body text — never a heading",
 // ── Badges + tiles ───────────────────────────────────────────────────────
 test("badges: bottom-right, subtle neutral metadata, aria-hidden, only when categorized", () => {
   const c = code(MOMENT);
-  assert.match(c, /badge: p\.sectionId \? \(badgeBySection\.get\(p\.sectionId\) \?\? null\) : null,/);
+  assert.match(c, /badge: p\.sectionId && momentBadgeVisible\(active\?\.id \?\? null\) \? \(badgeBySection\.get\(p\.sectionId\) \?\? null\) : null,/);
   assert.match(c, /new Map\(sections\.map\(\(s\) => \[s\.id, momentCategoryLabel\(s\)\]\)\)/, "same label rule as chips (untitled other → none)");
   const g = code(GALLERY);
   const badge = g.slice(g.indexOf("const badge = item.badge"), g.indexOf("const tile ="));

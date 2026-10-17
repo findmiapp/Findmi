@@ -119,7 +119,7 @@ test("8. public rendering respects the stored order", () => {
   ];
   assert.deepEqual(G.momentGalleryPhotos(photos, PRODUCTS).map((p) => p.id), ["B", "D"]);
   assert.deepEqual(G.momentGalleryPhotos(photos, PLACE).map((p) => p.id), ["A", "E"]);
-  assert.deepEqual(G.momentGalleryPhotos(photos, null).map((p) => p.id), ["B", "C", "D", "E"], "All = stored order after the cover");
+  assert.deepEqual(G.momentGalleryPhotos(photos, null).map((p) => p.id), ["A", "B", "C", "D", "E"], "All = the whole stored order, cover included");
 });
 
 test("9. private/editor rendering respects the order: one global strip, no per-section strips", () => {

@@ -48,25 +48,27 @@ test("auth: existing behavior for both destinations", () => {
   assert.match(MIDDLEWARE, /loginUrl\.searchParams\.set\("next", getSafeRedirect\(pathname \+ request\.nextUrl\.search\)\);/, "generic: login, then back to the composer");
 });
 
-test("top CTA with a source: beside the 'This Moment Is From' label (Illy/Lavazza unchanged)", () => {
-  const block = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("<ContextCard"));
-  assert.match(block, /flex min-h-8 items-center justify-between gap-3/);
-  assert.match(block, /This Moment Is From<\/p>\s*<AddYourMomentPill href=\{addMomentHref\} \/>/);
+test("'This Moment Is From' introduces ONLY the relationship card — no CTA beside it (Moment UX polish)", () => {
+  const block = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("{entry.notes && ("));
+  assert.match(block, /<p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From<\/p>\s*<div className="mt-1\.5">\s*\{primaryKind === "event"/);
+  assert.doesNotMatch(block, /AddYourMomentPill|justify-between/);
   const pill = C.slice(C.indexOf("function AddYourMomentPill"));
   assert.match(pill, /inline-flex h-8 shrink-0 items-center rounded-full border border-findmi\/40 bg-white px-3\.5 text-metadata font-bold text-findmi-700/, "same secondary pill as before");
   assert.match(pill, />\s*\+ Add Your Moment\s*</);
 });
 
-test("top CTA without any source (Babylist): standalone pill row — no fake label, card or Event", () => {
-  const standalone = C.slice(C.indexOf("{!primaryKind && ("), C.indexOf("{entry.notes && ("));
-  assert.match(standalone, /<div className="mt-4 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>\s*<\/div>/);
-  assert.doesNotMatch(standalone, /This Moment Is From|ContextCard/);
+test("ONE Add Your Moment CTA, after the photo story — never a top pill (Moment UX polish)", () => {
+  assert.doesNotMatch(C, /\{!primaryKind && \(/, "no standalone top pill row");
   assert.equal((C.match(/This Moment Is From/g) ?? []).length, 1, "the source label only exists inside the real source block");
-  assert.ok(C.indexOf("{!primaryKind && (") > C.indexOf("{primaryKind && ("), "same region where the source block would begin");
-  const heroAt = C.indexOf("aspect-[4/3] w-full overflow-hidden bg-ink");
-  assert.ok(heroAt > 0 && heroAt < C.indexOf("{!primaryKind && ("), "below the hero, not overlaid");
-  // Exactly one top pill renders in either case.
-  assert.equal((C.match(/<AddYourMomentPill /g) ?? []).length, 2, "one in the source row, one in the mutually-exclusive standalone row");
+  assert.equal((C.match(/<AddYourMomentPill /g) ?? []).length, 1, "only the no-photos fallback");
+  const gallery = C.indexOf("{hasGallery && <JournalMomentGallery");
+  const fallback = C.indexOf("{!hasGallery && (");
+  assert.ok(gallery > C.indexOf("{primaryKind && (") && fallback > gallery, "after the relationship card and the story");
+  assert.ok(fallback < C.indexOf("Visit Details"), "before Visit Details");
+  assert.match(C.slice(fallback), /^\{!hasGallery && \(\s*<div className="mt-5 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>\s*<\/div>\s*\)\}/);
+  // With photos, the gallery's own end-of-story CTA is the only one.
+  const g = code(GALLERY);
+  assert.equal((g.match(/Add Your Moment/g) ?? []).length, 1);
 });
 
 test("bottom CTA: universal for any Moment with a gallery — Event only changes the destination", () => {
@@ -95,11 +97,10 @@ test("bottom CTA styling preserved from 6349662", () => {
   assert.match(cta, /h-5 w-5 shrink-0 items-center justify-center rounded-full bg-findmi text-white/);
 });
 
-test("no gallery (cover-only): the top CTA still exists; no empty gallery is manufactured", () => {
+test("no photos: the gallery isn't manufactured; the same pill renders after the story instead", () => {
   assert.match(C, /\{hasGallery && <JournalMomentGallery/, "the gallery (and its bottom CTA) still renders only with photos");
-  // The top pill doesn't depend on the gallery: one of the two rows always renders.
-  const top = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("{hasGallery && <JournalMomentGallery"));
-  assert.doesNotMatch(top, /hasGallery/);
+  assert.match(C, /const hasGallery = galleryPhotos\.length > 0;/, "a cover-only Moment now HAS a gallery (its one photo)");
+  assert.match(C, /\{!hasGallery && \(/);
 });
 
 test("unchanged: source resolution, gallery filtering, viewer, cover; no Bulletin/BD change; no migration", () => {

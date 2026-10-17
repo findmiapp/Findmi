@@ -53,11 +53,18 @@ export function momentGalleryCategories<P extends MomentGalleryPhoto>(sections: 
   });
 }
 
-/** The photos a view shows, in their stored order:
- *  - All (null): the whole story except the cover (it is the hero);
+/** The photos a view shows, in their stored display order:
+ *  - All (null): the whole story — the cover included, in its own place
+ *    (being the hero is a presentation role, not removal from the story);
  *  - a category: exactly that section's photos, its cover included. */
 export function momentGalleryPhotos<P extends MomentGalleryPhoto>(photos: P[], categoryId: string | null): P[] {
-  return categoryId === null ? photos.filter((p) => !p.isCover) : photos.filter((p) => p.sectionId === categoryId);
+  return categoryId === null ? photos : photos.filter((p) => p.sectionId === categoryId);
+}
+
+/** A photo's section badge: shown in All (it explains the organization),
+ * hidden inside a section's own view where every photo shares it. */
+export function momentBadgeVisible(categoryId: string | null): boolean {
+  return categoryId === null;
 }
 
 /** A filter strip only when it offers a real choice: at least two visible

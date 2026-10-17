@@ -6,6 +6,7 @@ import type { MediaViewerItem } from "@/components/MediaViewer";
 import JournalPhotoGallery, { type JournalGalleryItem } from "./JournalPhotoGallery";
 import { JournalMediaViewerRoot } from "./JournalMediaViewer";
 import {
+  momentBadgeVisible,
   momentCategoryLabel,
   momentGalleryCategories,
   momentGalleryPhotos,
@@ -100,7 +101,7 @@ export default function JournalMomentGallery({
       url: p.url,
       largeUrl: p.largeUrl,
       caption: p.caption,
-      badge: p.sectionId ? (badgeBySection.get(p.sectionId) ?? null) : null,
+      badge: p.sectionId && momentBadgeVisible(active?.id ?? null) ? (badgeBySection.get(p.sectionId) ?? null) : null,
       mediaIndex,
     };
   });

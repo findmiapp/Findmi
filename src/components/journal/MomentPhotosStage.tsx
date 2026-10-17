@@ -208,6 +208,7 @@ export default function MomentPhotosStage({
               onMove={(direction) => void moveSection(section.id, direction)}
               onDelete={() => setSheet({ kind: "deleteSection", sectionId: section.id })}
               onAddPhotos={() => setSheet({ kind: "assign", sectionId: section.id })}
+              photos={filterBySection(items, section.id)}
             />
           ))}
         </>
@@ -340,6 +341,7 @@ function SectionBlock({
   onMove,
   onDelete,
   onAddPhotos,
+  photos,
 }: {
   section: JournalEntrySectionRow;
   isFirst: boolean;
@@ -350,6 +352,9 @@ function SectionBlock({
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
   onAddPhotos: () => void;
+  /** This section's photos — a filtered VIEW of the one global order
+   * (filterBySection), never a second ordering. */
+  photos: PhotoState["items"];
 }) {
   const [title, setTitle] = useState(section.title ?? "");
   const [notes, setNotes] = useState(section.notes ?? "");
@@ -414,6 +419,16 @@ function SectionBlock({
         <button type="button" onClick={() => setNotesOpen(true)} className="w-fit text-xs font-semibold text-ink/50 transition hover:text-findmi-700">
           Add A Note About This Section
         </button>
+      )}
+
+      {photos.length > 0 && (
+        <ul aria-label={`Photos in ${title.trim() || label}`} className="flex flex-wrap gap-1.5">
+          {photos.map((p) => (
+            <li key={p.localId} className="relative h-12 w-12 overflow-hidden rounded-lg border border-black/10 bg-mist">
+              <Image src={p.previewUrl} alt="" fill unoptimized sizes="48px" className="object-cover" />
+            </li>
+          ))}
+        </ul>
       )}
 
       <button type="button" onClick={onAddPhotos} className="w-fit text-xs font-semibold text-findmi-700 transition hover:text-findmi-800">

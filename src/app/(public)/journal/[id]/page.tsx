@@ -88,11 +88,11 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
 
   // Public Moment continuous gallery — the photos below the hero are ONE
-  // story in their stored display_order (the editor already flattens it
-  // section by section), each tagged with its section. A section_id that
-  // points at no loaded section reads as uncategorized (never dropped).
-  // The cover is the hero: JournalMomentGallery leaves it out of All and
-  // shows it only inside its own section's filtered view.
+  // story in their stored display_order, each tagged with its section. A
+  // section_id that points at no loaded section reads as uncategorized
+  // (never dropped). The cover is also the hero, but stays in the story in
+  // its own place (All, and its section's view) — so the photo count and
+  // the gallery agree.
   const sectionIds = new Set(sections.map((sec) => sec.id));
   const galleryPhotos = media.map((m) => ({
     id: m.id,
@@ -104,7 +104,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
     caption: m.caption,
   }));
   const gallerySections = sections.map((sec) => ({ id: sec.id, section_type: sec.section_type, title: sec.title, notes: sec.notes }));
-  const hasGallery = galleryPhotos.some((p) => !p.isCover);
+  const hasGallery = galleryPhotos.length > 0;
 
   // Global Media Viewer V1 — the hero opens the page-level viewer over the
   // whole Moment in display_order. The gallery below scopes its own nested
@@ -281,10 +281,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             photos: "what real-world experience was this?" */}
         {primaryKind && (
           <div className="mt-4">
-            <div className="flex min-h-8 items-center justify-between gap-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
-              <AddYourMomentPill href={addMomentHref} />
-            </div>
+            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
             <div className="mt-1.5">
               {primaryKind === "event" && primaryEvent && (
                 <ContextCard
@@ -317,14 +314,6 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        {/* No source connection at all: the same pill on its own row, in the
-            spot the source block would start — no stand-in label or card. */}
-        {!primaryKind && (
-          <div className="mt-4 flex">
-            <AddYourMomentPill href={addMomentHref} />
-          </div>
-        )}
-
         {/* The author's overall story — plain, restrained text. */}
         {entry.notes && (
           <div className="mt-5 max-w-xl">
@@ -339,6 +328,14 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             adminToolbar={isAuthorizedAdmin}
             addMomentHref={addMomentHref}
           />}
+
+        {/* ONE "+ Add Your Moment", after the photo story: the gallery ends
+            with it; a Moment with no photos gets the same pill here. */}
+        {!hasGallery && (
+          <div className="mt-5 flex">
+            <AddYourMomentPill href={addMomentHref} />
+          </div>
+        )}
 
         {/* Visit Details — where/when, plus whatever else is connected
             (never the primary context card again). */}
