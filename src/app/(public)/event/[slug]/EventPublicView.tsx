@@ -35,6 +35,7 @@ import EventActionRow from "@/components/event/EventActionRow";
 import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
 import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
+import RelationshipButton from "@/components/discovery/RelationshipButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
@@ -929,7 +930,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
       <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
         <div className="order-1">{keyFacts}</div>
-        <div className="order-2 mt-4 lg:mt-5">{actions}</div>
+        <div className="order-2 mt-4 lg:mt-5">
+          {actions}
+          {/* Discovery Intelligence V1 — explicit Personal statements. */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <RelationshipButton entityType="event" entityId={event.id} relation="must_do" label="Must Do" />
+            <RelationshipButton entityType="event" entityId={event.id} relation="been" label="Been" activeLabel="Been Here" />
+          </div>
+        </div>
       </div>
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
         {bulletinStrip && <div className="order-3 mt-3 lg:mt-0">{bulletinStrip}</div>}

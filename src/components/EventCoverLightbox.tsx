@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import ParallaxMedia from "@/components/motion/ParallaxMedia";
 import Image from "@/components/SupabaseImage";
 import ImageLightbox from "./ImageLightbox";
 
@@ -27,33 +28,8 @@ export default function EventCoverLightbox({
   parallax?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const driftRef = useRef<HTMLDivElement>(null);
   const cover = images[0];
 
-  // Fallback only for browsers WITHOUT CSS scroll-driven animations: the
-  // same 48px / 320px drift written straight to style.transform from a
-  // passive scroll listener, at most once per frame. No React state.
-  useEffect(() => {
-    const el = driftRef.current;
-    if (!parallax || !el || typeof CSS === "undefined") return;
-    if (CSS.supports("animation-timeline: scroll()")) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let frame = 0;
-    const apply = () => {
-      frame = 0;
-      const y = Math.min(48, Math.max(0, window.scrollY) * 0.15);
-      el.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0)`;
-    };
-    const onScroll = () => {
-      if (!frame) frame = requestAnimationFrame(apply);
-    };
-    apply();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, [parallax]);
   if (!cover) return null;
 
   return (
@@ -65,9 +41,9 @@ export default function EventCoverLightbox({
           original file directly instead of relying on that failing
           pipeline. */}
       {parallax ? (
-        <div ref={driftRef} className="findmi-hero-parallax absolute inset-x-0 -top-12 bottom-0">
+        <ParallaxMedia>
           <Image src={cover} alt={alt} fill priority unoptimized sizes="100vw" className="object-cover" />
-        </div>
+        </ParallaxMedia>
       ) : (
         <Image
           src={cover}

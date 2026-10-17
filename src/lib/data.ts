@@ -900,6 +900,17 @@ export async function getBusinessIdsInMarket(marketSlug: string): Promise<string
  * removeMarketAssignment/assignPrimaryMarket's own cleanup in admin
  * actions), but this keeps discovery correct even if that invariant were
  * ever violated rather than silently trusting business_market_areas alone. */
+/** Discovery Intelligence V1 — Area roll-up. A borough-level Area includes
+ * its (consumer-hidden) neighborhood child Areas, so content tagged to
+ * SoHo still appears under Manhattan. Returns the Area's own id first,
+ * then its ACTIVE children. Tolerates a database without
+ * market_areas.parent_area_id yet (pre-migration): the Area alone. */
+export async function getAreaScopeIds(supabase: NonNullable<ReturnType<typeof getSupabase>>, areaId: string): Promise<string[]> {
+  const { data, error } = await supabase.from("market_areas").select("id").eq("parent_area_id", areaId).eq("active", true);
+  if (error || !data) return [areaId];
+  return [areaId, ...(data as { id: string }[]).map((r) => r.id)];
+}
+
 export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -923,7 +934,7 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
     .from("business_market_areas")
     .select("business_id")
     .eq("market_id", market.id)
-    .eq("market_area_id", area.id);
+    .in("market_area_id", await getAreaScopeIds(supabase, area.id));
   const candidateIds = (areaRows ?? []).map((r) => r.business_id as string);
   if (candidateIds.length === 0) return [];
 
@@ -1945,6 +1956,7 @@ export async function getEffectiveUpcomingEvents(
   // Market, not globally). `?area=` without a valid `?market=` is treated
   // as an unresolvable filter, same as an unknown Market slug.
   let areaId: string | null = null;
+  let areaIds: string[] = [];
   if (options.areaSlug) {
     if (!marketId) return [];
     const { data: areaRow } = await supabase
@@ -1956,6 +1968,7 @@ export async function getEffectiveUpcomingEvents(
       .maybeSingle();
     if (!areaRow) return [];
     areaId = areaRow.id;
+    areaIds = await getAreaScopeIds(supabase, areaRow.id);
   }
 
   // Business scope (shared Event filter): every date of a hosted /
@@ -2074,7 +2087,7 @@ export async function getEffectiveUpcomingEvents(
   let occurrenceEvents: FindmiEvent[] = [];
   if (occurrenceEventIds.length > 0) {
     let evQuery = supabase.from("events").select("*").eq("is_demo", false).in("id", occurrenceEventIds);
-    if (areaId) evQuery = evQuery.eq("market_area_id", areaId);
+    if (areaId) evQuery = evQuery.in("market_area_id", areaIds);
     if (options.requireShowOnHomepage) evQuery = evQuery.eq("show_on_homepage", true);
     evQuery = applyEventTextFilters(evQuery, options);
     const { data } = await evQuery;
@@ -2123,7 +2136,7 @@ export async function getEffectiveUpcomingEvents(
   let legacyQuery = supabase.from("events").select("*").eq("is_demo", false);
   if (options.eventIds) legacyQuery = legacyQuery.in("id", options.eventIds);
   if (marketId) legacyQuery = legacyQuery.eq("market_id", marketId);
-  if (areaId) legacyQuery = legacyQuery.eq("market_area_id", areaId);
+  if (areaId) legacyQuery = legacyQuery.in("market_area_id", areaIds);
   if (options.requireShowOnHomepage) legacyQuery = legacyQuery.eq("show_on_homepage", true);
   if (bounds) {
     const dates = windowDates(bounds);
@@ -2902,6 +2915,7 @@ export async function getFindMiHereFeed(
     marketId = marketRow.id;
   }
   let areaId: string | null = null;
+  let areaScope = new Set<string>();
   if (extra.areaSlug) {
     if (!marketId) return [];
     const { data: areaRow } = await supabase
@@ -2913,6 +2927,7 @@ export async function getFindMiHereFeed(
       .maybeSingle();
     if (!areaRow) return [];
     areaId = areaRow.id;
+    areaScope = new Set(await getAreaScopeIds(supabase, areaRow.id));
   }
 
   let categoryBusinessIds: string[] | null = null;
@@ -3083,7 +3098,7 @@ export async function getFindMiHereFeed(
         effectiveMarketId = effective.marketId;
         effectiveAreaId = effective.areaId;
       }
-      return areaId ? effectiveAreaId === areaId : effectiveMarketId === marketId;
+      return areaId ? effectiveAreaId !== null && areaScope.has(effectiveAreaId) : effectiveMarketId === marketId;
     });
   }
 
@@ -4196,6 +4211,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     marketId = marketRow.id;
   }
   let areaId: string | null = null;
+  let areaIds: string[] = [];
   if (areaSlug) {
     if (!marketId) return [];
     const { data: areaRow } = await supabase
@@ -4207,6 +4223,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
       .maybeSingle();
     if (!areaRow) return [];
     areaId = areaRow.id;
+    areaIds = await getAreaScopeIds(supabase, areaRow.id);
   }
   let categoryId: string | null = null;
   if (categorySlug) {
@@ -4221,7 +4238,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }
 
   let query = supabase.from("locations").select("*, category:categories(id, name, slug)").eq("is_demo", false);
-  if (areaId) query = query.eq("market_area_id", areaId);
+  if (areaId) query = query.in("market_area_id", areaIds);
   else if (marketId) query = query.eq("market_id", marketId);
   if (categoryId) query = query.eq("category_id", categoryId);
   if (q?.trim()) {

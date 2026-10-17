@@ -98,7 +98,7 @@ export default function SearchBar({
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (marketSlug) params.set("market", marketSlug);
-    router.push(`/businesses${params.toString() ? `?${params.toString()}` : ""}`);
+    router.push(`/search${params.toString() ? `?${params.toString()}` : ""}`);
   }
 
   const term = q.trim();
@@ -161,7 +161,7 @@ export default function SearchBar({
               <ResultGroup label="Events" items={results.events} onSelect={() => setOpen(false)} />
               <ResultGroup label="Products" items={results.products} onSelect={() => setOpen(false)} />
               <Link
-                href={`/businesses?q=${encodeURIComponent(term)}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}`}
+                href={`/search?q=${encodeURIComponent(term)}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}`}
                 onClick={() => setOpen(false)}
                 className="mt-1 flex items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-center text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
               >

@@ -103,7 +103,7 @@ export default function DrawerSearch({ onNavigate }: { onNavigate: () => void })
               <ResultGroup label="Events" items={results.events} onSelect={onNavigate} />
               <ResultGroup label="Products" items={results.products} onSelect={onNavigate} />
               <Link
-                href={`/businesses?q=${encodeURIComponent(term)}`}
+                href={`/search?q=${encodeURIComponent(term)}`}
                 onClick={onNavigate}
                 className="mt-1 flex items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-center text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
               >

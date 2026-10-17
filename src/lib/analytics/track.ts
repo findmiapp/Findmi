@@ -27,6 +27,9 @@ export interface TrackEventPayload {
   product_id?: string;
   discovery_page_id?: string;
   discovery_section_id?: string;
+  /** Discovery Intelligence V1 — Topic / Area context (uuid). */
+  discovery_topic_id?: string;
+  market_area_id?: string;
   page_type?: string;
   page_path?: string;
   placement?: string;

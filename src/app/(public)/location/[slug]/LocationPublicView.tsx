@@ -17,6 +17,7 @@ import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import ChevronIcon from "@/components/ChevronIcon";
 import BrandHeading from "@/components/BrandHeading";
 import EventShareButton from "@/components/EventShareButton";
+import RelationshipButton from "@/components/discovery/RelationshipButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ReadMoreText from "@/components/ReadMoreText";
@@ -341,6 +342,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               layout="icon"
               track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
             />
+          </div>
+          {/* Discovery Intelligence V1 — explicit Personal statements. */}
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <RelationshipButton entityType="location" entityId={location.id} relation="must_do" label="Must Do" />
+            <RelationshipButton entityType="location" entityId={location.id} relation="been" label="Been" activeLabel="Been Here" />
           </div>
         </div>
         {/* Address as one full-width compact row under the actions (moved

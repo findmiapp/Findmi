@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import DiscoveryLanes, { DiscoveryLanesSkeleton } from "@/components/discovery/DiscoveryLanes";
 import Link from "next/link";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
@@ -220,6 +222,14 @@ export default async function HomePage({
           <HomepageBulletinCarousel bulletins={bulletins} />
         </div>
       )}
+
+      {/* Discovery Intelligence V1 — Admin-ordered Lanes (Topics, one
+          Topic's live results, a Market's Areas). Streams in after the
+          above-the-fold content; renders nothing when no Lane has
+          anything to show. */}
+      <Suspense fallback={<DiscoveryLanesSkeleton />}>
+        <DiscoveryLanes market={marketSlug} area={areaSlug} />
+      </Suspense>
 
       {/* Dual-Audience Join Doorway pass — a compact two-path onboarding
           block: one short headline, two small side-by-side cards

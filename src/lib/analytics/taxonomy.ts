@@ -40,6 +40,15 @@ export const ANALYTICS_EVENT_NAMES = [
   "discovery_section_impression",
   // Phase 2B addition:
   "qr_scan",
+  // Discovery Intelligence V1 — Topic / Area / contextual-search signals.
+  // Raw interactions only (the structured query, never raw search text);
+  // preferences are derived at read time, never stored as traits.
+  "topic_open",
+  "area_open",
+  "search_submit",
+  "search_result_open",
+  "relationship_set",
+  "relationship_unset",
 ] as const;
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
 
@@ -104,6 +113,10 @@ export const ANALYTICS_PAGE_TYPES = [
   "marketplace",
   // Phase 2B — the QR resolution route itself (see src/app/q/[code]).
   "qr",
+  // Discovery Intelligence V1.
+  "search",
+  "topic",
+  "area",
 ] as const;
 export type AnalyticsPageType = (typeof ANALYTICS_PAGE_TYPES)[number];
 

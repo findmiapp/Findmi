@@ -66,6 +66,8 @@ export async function POST(request: NextRequest) {
     "product_id",
     "discovery_page_id",
     "discovery_section_id",
+    "discovery_topic_id",
+    "market_area_id",
   ] as const;
   for (const field of uuidFields) {
     if (!isValidUuidField(body[field])) {
@@ -106,6 +108,8 @@ export async function POST(request: NextRequest) {
     product_id: optionalUuid(body.product_id) ?? null,
     discovery_page_id: optionalUuid(body.discovery_page_id) ?? null,
     discovery_section_id: optionalUuid(body.discovery_section_id) ?? null,
+    discovery_topic_id: optionalUuid(body.discovery_topic_id) ?? null,
+    market_area_id: optionalUuid(body.market_area_id) ?? null,
     page_type: clampText(body.page_type, 64) ?? null,
     page_path: clampText(body.page_path, 512) ?? null,
     placement: clampText(body.placement, 128) ?? null,

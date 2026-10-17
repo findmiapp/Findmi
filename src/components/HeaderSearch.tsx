@@ -96,7 +96,7 @@ export default function HeaderSearch({ variant }: { variant: "icon" | "text" }) 
     closePanel();
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
-    router.push(`/businesses${params.toString() ? `?${params.toString()}` : ""}`);
+    router.push(`/search${params.toString() ? `?${params.toString()}` : ""}`);
   }
 
   const term = q.trim();

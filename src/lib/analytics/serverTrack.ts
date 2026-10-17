@@ -19,6 +19,10 @@ export interface AnalyticsEventFields {
   product_id?: string | null;
   discovery_page_id?: string | null;
   discovery_section_id?: string | null;
+  /** Discovery Intelligence V1 columns — only sent when set, so inserts
+   * keep working on a database without them yet. */
+  discovery_topic_id?: string | null;
+  market_area_id?: string | null;
   qr_campaign_id?: string | null;
   page_type?: string | null;
   page_path?: string | null;
@@ -41,8 +45,11 @@ export interface AnalyticsEventFields {
  * react to it without propagating an exception. */
 export async function insertAnalyticsEvent(admin: SupabaseClient, fields: AnalyticsEventFields): Promise<boolean> {
   try {
+    const { discovery_topic_id, market_area_id, ...rest } = fields;
     const { error } = await admin.from("analytics_events").insert({
-      ...fields,
+      ...rest,
+      ...(discovery_topic_id ? { discovery_topic_id } : {}),
+      ...(market_area_id ? { market_area_id } : {}),
       metadata: fields.metadata ?? {},
     });
     return !error;

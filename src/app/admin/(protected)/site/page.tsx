@@ -12,6 +12,8 @@ const PAGES = [
   { key: "about", label: "About Page", href: "/admin/site/about", available: true },
   { key: "navigation", label: "Navigation", href: "/admin/site/navigation", available: true },
   { key: "contact", label: "Contact Info", href: "/admin/site/contact", available: true },
+  { key: "discovery", label: "Discovery (Topics + Lanes)", href: "/admin/site/discovery", available: true },
+  { key: "geography", label: "Geography (Census + Areas)", href: "/admin/site/geography", available: true },
 ];
 
 export default function SiteEditorPage() {
