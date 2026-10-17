@@ -255,8 +255,8 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
 
   /** Persists the editor's photo layout — order plus each photo's section
    * (this editor session is the authority for both) — never the cover
-   * (explicit is_cover). The server flattens it to one global order:
-   * sectioned photos by section order, then unsectioned photos. */
+   * (explicit is_cover). The server stores the order exactly as given;
+   * sections are metadata and never regroup it. */
   const persistOrder = useCallback(async (entryId: string) => {
     const complete = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId);
     if (complete.length === 0) return;
