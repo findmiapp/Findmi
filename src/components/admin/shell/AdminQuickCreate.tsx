@@ -9,7 +9,7 @@ interface CreateOption {
 }
 
 // The existing canonical Admin create routes — no new creation flow.
-const OPTIONS: CreateOption[] = [
+export const ADMIN_CREATE_OPTIONS: CreateOption[] = [
   { href: "/admin/businesses/new", label: "Business" },
   { href: "/admin/events/new", label: "Event" },
   { href: "/admin/locations/new", label: "Location" },
@@ -59,7 +59,7 @@ export default function AdminQuickCreate({
             }`}
           >
             <p className="px-3 pb-1 pt-1.5 text-label font-bold uppercase text-subtle">Create</p>
-            {OPTIONS.map((option) => (
+            {ADMIN_CREATE_OPTIONS.map((option) => (
               <Link
                 key={option.href}
                 href={option.href}

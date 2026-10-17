@@ -80,8 +80,14 @@ export const ADMIN_SECTIONS: AdminSection[] = [
         ],
       },
       {
-        label: "Tools",
-        items: [{ href: "/admin/appearances/import", label: "Import Appearances", hint: "Paste or upload a schedule" }],
+        label: "Import Tools",
+        items: [
+          { href: "/admin/events/import", label: "Import Events", hint: "Paste an Event listing or flyer" },
+          { href: "/admin/locations/import", label: "Import Locations", hint: "Paste places to create Locations" },
+          { href: "/admin/businesses/import", label: "Import Brands", hint: "Read a Brand from its website" },
+          { href: "/admin/appearances/import", label: "Import Appearances", hint: "Paste or upload a schedule" },
+          { href: "/admin/appearances/convert", label: "Convert To Events", hint: "Turn Appearances into Events" },
+        ],
       },
     ],
   },
@@ -208,3 +214,45 @@ export function resolveAdminRoute(pathname: string): AdminRouteContext {
 export function getAdminSection(key: AdminSectionKey): AdminSection {
   return ADMIN_SECTIONS.find((s) => s.key === key)!;
 }
+
+// ── Black Admin toolbar ────────────────────────────────────────────────
+// The compact operator menus, built FROM the route model above (one
+// source of truth): Content (the entities), Import (the import tools) and
+// Requests (everything waiting on Findmi).
+const ALL_ITEMS = ADMIN_SECTIONS.flatMap((s) => s.groups.flatMap((g) => g.items));
+const pick = (hrefs: string[]): AdminNavItem[] =>
+  hrefs.map((href) => ALL_ITEMS.find((i) => i.href === href)).filter((i): i is AdminNavItem => Boolean(i));
+
+export interface AdminToolbarGroup {
+  key: "content" | "import" | "requests";
+  label: string;
+  items: AdminNavItem[];
+}
+
+export const ADMIN_TOOLBAR_GROUPS: AdminToolbarGroup[] = [
+  {
+    key: "content",
+    label: "Content",
+    items: pick([
+      "/admin/businesses",
+      "/admin/events",
+      "/admin/locations",
+      "/admin/appearances",
+      "/admin/products",
+      "/admin/people",
+      "/admin/users",
+      "/admin/categories",
+      "/admin/markets",
+    ]),
+  },
+  {
+    key: "import",
+    label: "Import",
+    items: getAdminSection("activity").groups.find((g) => g.label === "Import Tools")?.items ?? [],
+  },
+  {
+    key: "requests",
+    label: "Requests",
+    items: [{ href: "/admin/requests", label: "All Requests" }, ...getAdminSection("requests").groups.flatMap((g) => g.items)],
+  },
+];

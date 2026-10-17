@@ -36,16 +36,12 @@ export default function JournalMomentGallery({
   photos,
   sections,
   title,
-  adminToolbar,
   addMomentHref = null,
 }: {
   photos: MomentGalleryMedia[];
   sections: MomentGallerySection[];
   /** Viewer alt text (the Moment's title). */
   title: string;
-  /** The mobile Admin toolbar is showing — the fixed mobile header sits
-   * 1.75rem lower, so the sticky strip must too. */
-  adminToolbar: boolean;
   /** Where "Add Your Moment" goes: the source Event's entry point
    * (/event/<slug>/journal) when there is one, else the generic composer.
    * Omitted/null → no end-of-stream CTA. */
@@ -60,8 +56,8 @@ export default function JournalMomentGallery({
   const hasFilter = showMomentFilter(categories, photos);
 
   // The strip sticks directly under whichever site header is showing. Its
-  // classes carry the known offsets (mobile h-14 header, +1.75rem with the
-  // Admin toolbar, desktop nav) for the first paint; once mounted, the
+  // classes carry the known offsets (mobile h-14 header, + --admin-bar-h for
+  // the Admin toolbar, desktop nav) for the first paint; once mounted, the
   // real header is measured, since the desktop nav's height varies with
   // its contents (e.g. a wrapping call-to-action).
   useEffect(() => {
@@ -125,7 +121,7 @@ export default function JournalMomentGallery({
         <div
           ref={stripRef}
           style={stickyTop !== null ? { top: stickyTop } : undefined}
-          className={`sticky z-20 -mx-4 mb-3 bg-paper/95 px-4 py-1.5 backdrop-blur sm:mx-0 sm:px-0 md:top-[93px] ${adminToolbar ? "top-[calc(3.5rem+1.75rem)]" : "top-14"}`}
+          className={`sticky z-20 -mx-4 mb-3 bg-paper/95 px-4 py-1.5 backdrop-blur sm:mx-0 sm:px-0 lg:top-[65px] top-[calc(3.5rem+var(--admin-bar-h))]`}
         >
           <div role="group" aria-label="Filter photos" className="-mx-0.5 flex gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <FilterChip label="All" selected={active === null} onClick={() => choose(null)} />

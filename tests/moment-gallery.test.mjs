@@ -89,7 +89,7 @@ test("a category: exactly that section's photos in order, its cover included", (
 // ── Page composition ─────────────────────────────────────────────────────
 test("page: one continuous gallery — no section headings, carousels or More Photos", () => {
   const c = code(PAGE);
-  assert.match(c, /<JournalMomentGallery\s+photos=\{galleryPhotos\}\s+sections=\{gallerySections\}\s+title=\{entry\.title\}\s+adminToolbar=\{isAuthorizedAdmin\}\s+addMomentHref=\{addMomentHref\}\s+\/>/);
+  assert.match(c, /<JournalMomentGallery\s+photos=\{galleryPhotos\}\s+sections=\{gallerySections\}\s+title=\{entry\.title\}\s+addMomentHref=\{addMomentHref\}\s+\/>/);
   assert.doesNotMatch(c, /JournalSectionCarousel|More Photos|journalSectionLabel|section-\$\{|photoSections|<JournalPhotoGallery/);
   assert.equal(existsSync("src/components/journal/JournalSectionCarousel.tsx"), false, "carousel deleted");
   assert.equal(existsSync("tests/journal-section-carousel.test.mjs"), false);
@@ -145,8 +145,8 @@ test("sticky strip: inside the gallery section, under the mobile/admin/desktop h
   const c = code(MOMENT);
   const strip = c.slice(c.indexOf("ref={stripRef}"), c.indexOf('role="group"'));
   assert.match(strip, /sticky z-20/, "below the z-40/z-50 headers");
-  assert.match(strip, /adminToolbar \? "top-\[calc\(3\.5rem\+1\.75rem\)\]" : "top-14"/, "mobile header h-14, shifted by the 1.75rem admin toolbar");
-  assert.match(strip, /md:top-\[93px\]/, "desktop sticky NavDesktop height as measured signed-out (first-paint fallback)");
+  assert.match(strip, /top-\[calc\(3\.5rem\+var\(--admin-bar-h\)\)\]/, "mobile header h-14, plus the Admin toolbar's shared height token");
+  assert.match(strip, /lg:top-\[65px\]/, "desktop sticky NavDesktop height (lg+) as measured (first-paint fallback)");
   assert.match(strip, /style=\{stickyTop !== null \? \{ top: stickyTop \} : undefined\}/, "then the live header is measured");
   assert.match(c, /cs\.position !== "fixed" && cs\.position !== "sticky"/);
   assert.match(c, /\(parseFloat\(cs\.top\) \|\| 0\) \+ h\.getBoundingClientRect\(\)\.height/, "includes the admin-toolbar shift of the fixed mobile header");

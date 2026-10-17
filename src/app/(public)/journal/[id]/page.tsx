@@ -325,7 +325,6 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             photos={galleryPhotos}
             sections={gallerySections}
             title={entry.title}
-            adminToolbar={isAuthorizedAdmin}
             addMomentHref={addMomentHref}
           />}
 

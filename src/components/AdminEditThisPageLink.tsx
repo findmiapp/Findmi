@@ -34,9 +34,9 @@ export default function AdminEditThisPageLink() {
   return (
     <Link
       href={href}
-      className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-white transition hover:text-white/80"
+      className="flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-[11px] font-semibold text-white transition hover:text-white/80"
     >
-      <span aria-hidden="true">✎</span> Edit This Page
+      <span aria-hidden="true">✎</span> Edit<span className="hidden sm:inline"> This Page</span>
     </Link>
   );
 }

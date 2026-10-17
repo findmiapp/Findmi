@@ -2,6 +2,7 @@ import AdminSidebar from "@/components/admin/shell/AdminSidebar";
 import AdminTopBar from "@/components/admin/shell/AdminTopBar";
 import AdminMobileNav from "@/components/admin/shell/AdminMobileNav";
 import AdminBreadcrumb from "@/components/admin/shell/AdminBreadcrumb";
+import AdminToolbar from "@/components/AdminToolbar";
 
 /** Admin V2, Pass 1 — one shell for every protected admin page:
  *   desktop (lg+) — persistent AdminSidebar (sections + destinations,
@@ -14,6 +15,9 @@ import AdminBreadcrumb from "@/components/admin/shell/AdminBreadcrumb";
  * components/admin/adminNavItems.ts. Pages themselves are unchanged. */
 export default function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
+    <>
+    {/* The same black Admin toolbar as public Findmi, in normal flow. */}
+    <AdminToolbar placement="static" />
     <div className="lg:flex lg:min-h-screen">
       <AdminSidebar />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -25,5 +29,6 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
       </div>
       <AdminMobileNav />
     </div>
+    </>
   );
 }

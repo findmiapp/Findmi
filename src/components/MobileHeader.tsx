@@ -6,25 +6,17 @@ import HamburgerMenu from "./HamburgerMenu";
 import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import QuickCreateMenu from "./QuickCreateMenu";
-import type { ResolvedNavItem } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 export default function MobileHeader({
-  navItems,
-  adminToolbar = false,
   authenticated,
+  isAdmin,
   businesses,
 }: {
-  navItems: ResolvedNavItem[];
-  /** True only when the server-verified admin session gates AdminToolbar
-   * into rendering above this header on mobile (see (public)/layout.tsx) —
-   * shifts this header down by its 1.75rem height so the two stack
-   * instead of overlapping. Never itself a source of truth for admin
-   * status; just a layout offset the layout hands down. */
-  adminToolbar?: boolean;
-  /** Passed straight through to HamburgerMenu — drives whether its
-   * bottom Sign Out row renders. */
+  /** Server-resolved; passed through to HamburgerMenu. */
   authenticated: boolean;
+  /** Server-verified Admin session — HamburgerMenu's Admin entry. */
+  isAdmin: boolean;
   /** Global Quick-Create pass — the signed-in visitor's managed
    * Businesses, for QuickCreateMenu's Business-scoped rows. Always []
    * when signed out (see (public)/layout.tsx). */
@@ -36,7 +28,7 @@ export default function MobileHeader({
 
   return (
     <header
-      className={`fixed inset-x-0 ${adminToolbar ? "top-7" : "top-0"} z-40 flex h-14 items-center justify-between border-b border-black/5 bg-paper/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden`}
+      className="fixed inset-x-0 top-[var(--admin-bar-h)] z-40 flex h-14 items-center justify-between border-b border-black/5 bg-paper/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden"
     >
       <div className="flex items-center gap-1">
         {!isHome && (
@@ -64,7 +56,7 @@ export default function MobileHeader({
         <HeaderSearch variant="icon" />
         <CartBadge />
         <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
-        <HamburgerMenu items={navItems} authenticated={authenticated} />
+        <HamburgerMenu authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />
       </div>
     </header>
   );

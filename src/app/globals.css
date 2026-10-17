@@ -20,6 +20,16 @@ html {
   letter-spacing: -0.006em;
 }
 
+/* The black Admin toolbar's height, as ONE token for every toolbar-aware
+   offset (fixed MobileHeader, content padding, sticky strips). Non-zero
+   only while the public, mobile-fixed toolbar is actually on the page. */
+html {
+  --admin-bar-h: 0px;
+}
+html:has(#findmi-admin-bar[data-placement="public"]) {
+  --admin-bar-h: 1.75rem;
+}
+
 body {
   background-color: #fdfcfb;
   color: #111111;

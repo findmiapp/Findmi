@@ -4,7 +4,6 @@ import AdminToolbar from "@/components/AdminToolbar";
 import Footer from "@/components/Footer";
 import SiteChrome from "@/components/SiteChrome";
 import { BusinessesProvider } from "@/components/BusinessesContext";
-import { filterNavItemsForAudience, getVisibleNavItems } from "@/lib/navigation";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
@@ -16,24 +15,13 @@ import { getAccountContexts } from "@/lib/accountContext";
 export const revalidate = 60;
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  // One fetch, shared by both the mobile hamburger drawer and desktop nav
-  // (Part A11/A5) — founder-managed nav_items when populated, otherwise
-  // the real-routes-only fallback (see lib/navigation.ts). Still exactly
-  // one nav_items query regardless of auth state — audience filtering
-  // (below, once `authenticated` is known) narrows the SAME already-
-  // fetched tree, it never triggers a second fetch.
-  const allNavItems = await getVisibleNavItems();
+  // Pass A — Navigation Shell: the header and the mobile drawer render the
+  // fixed consumer IA from lib/primary-nav (Discover · Events · Places ·
+  // Brands · Moments, then Your Findmi / Manage / Admin), so nav_items is
+  // no longer read here.
 
-  // Admin quick toolbar — AdminToolbar itself independently re-verifies
-  // this (see its own note on why that's not a weaker check), but the
-  // layout also needs to know up front whether it's about to render:
-  // MobileHeader is `fixed top-0` on mobile, so on a real admin session
-  // it has to shift down to make room for the toolbar sitting above it
-  // (and the content wrapper's top padding grows to match), or the fixed
-  // header would sit on top of / hide the toolbar instead of stacking
-  // below it. Desktop's nav is `sticky`, not `fixed`, so it's already
-  // pushed down naturally by the toolbar's own place in the document flow
-  // there — no equivalent adjustment needed for it.
+  // Admin session — the drawer/account menu's Admin entry. The toolbar's
+  // own offsets come from --admin-bar-h (globals.css), not this flag.
   const isAdmin = await isAdminSession();
 
   // `authenticated` is the exact same /account Supabase session check used
@@ -45,12 +33,6 @@ export default async function PublicLayout({ children }: { children: React.React
     data: { user },
   } = await supabase.auth.getUser();
   const authenticated = Boolean(user);
-
-  // Navigation Information Architecture + Founder-Editable Audience pass
-  // — the one place a viewer's audience narrows the shared nav_items tree
-  // (Section F): everyone/logged_out/logged_in, founder-configured per
-  // item in /admin/site/navigation, never a second query.
-  const navItems = filterNavItemsForAudience(allNavItems, authenticated);
 
   // Global Quick-Create pass — the same managed-Business list
   // BusinessScopedAction needs for its zero/one/many routing decision
@@ -72,17 +54,10 @@ export default async function PublicLayout({ children }: { children: React.React
   return (
     <SiteChrome
       adminToolbar={<AdminToolbar />}
-      mobileHeader={
-        <MobileHeader
-          navItems={navItems}
-          adminToolbar={isAdmin}
-          authenticated={authenticated}
-          businesses={businesses}
-        />
-      }
-      navDesktop={<NavDesktop navItems={navItems} authenticated={authenticated} businesses={businesses} />}
+      adminToolbarStatic={<AdminToolbar placement="static" />}
+      mobileHeader={<MobileHeader authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />}
+      navDesktop={<NavDesktop authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />}
       footer={<Footer />}
-      isAdmin={isAdmin}
     >
       {/* Account Create Navigation Hotfix — the same `businesses` list
           the headers above already use for QuickCreateMenu, made

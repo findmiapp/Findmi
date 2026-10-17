@@ -24,17 +24,21 @@ import OnboardingHeader from "./OnboardingHeader";
  * components render in the exact same order as before this pass. */
 export default function SiteChrome({
   adminToolbar,
+  adminToolbarStatic,
   mobileHeader,
   navDesktop,
   footer,
-  isAdmin,
   children,
 }: {
+  /** The Admin toolbar (null unless Admin) — fixed on mobile above the
+   * fixed MobileHeader; sets --admin-bar-h. */
   adminToolbar: React.ReactNode;
+  /** The same toolbar in normal flow, for shells with their own sticky
+   * header (/account, the auth screens). */
+  adminToolbarStatic: React.ReactNode;
   mobileHeader: React.ReactNode;
   navDesktop: React.ReactNode;
   footer: React.ReactNode;
-  isAdmin: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -77,7 +81,7 @@ export default function SiteChrome({
         {adminToolbar}
         {mobileHeader}
         {navDesktop}
-        <div className={`flex-1 ${isAdmin ? "pt-[calc(3.5rem+1.75rem)]" : "pt-14"} md:pt-0`}>{children}</div>
+        <div className="flex-1 pt-[calc(3.5rem+var(--admin-bar-h))] lg:pt-0">{children}</div>
       </>
     );
   }
@@ -124,7 +128,8 @@ export default function SiteChrome({
     // div stays either way so content never sits under the fixed nav.
     return (
       <>
-        <OwnerHeader isAdmin={isAdmin} />
+        {adminToolbarStatic}
+        <OwnerHeader />
         <div className="flex-1">{children}</div>
         {hasBusinessTabBar ? (
           <div className="pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" />
@@ -138,6 +143,7 @@ export default function SiteChrome({
   if (isOnboardingEntry) {
     return (
       <>
+        {adminToolbarStatic}
         <OnboardingHeader />
         <div className="flex-1">{children}</div>
         {footer}
@@ -150,7 +156,7 @@ export default function SiteChrome({
       {adminToolbar}
       {mobileHeader}
       {navDesktop}
-      <div className={`flex-1 ${isAdmin ? "pt-[calc(3.5rem+1.75rem)]" : "pt-14"} md:pt-0`}>{children}</div>
+      <div className="flex-1 pt-[calc(3.5rem+var(--admin-bar-h))] lg:pt-0">{children}</div>
       {footer}
     </>
   );

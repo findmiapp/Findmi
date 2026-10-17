@@ -9,21 +9,13 @@ import Logo from "./Logo";
  * dark bar (its wordmark is solid near-black — see public/logo-
  * lockup.png), so the bar itself stays light/paper, tightened instead
  * of darkened for the "workspace" signal. */
-export default function OwnerHeader({ isAdmin }: { isAdmin: boolean }) {
+export default function OwnerHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-paper/95 backdrop-blur">
       <div className="h-[3px] bg-findmi" />
       <div className="flex h-11 items-center justify-between px-3 pt-[env(safe-area-inset-top)] sm:px-6">
         <Logo heightClassName="h-7" />
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="rounded-md border border-black/10 px-2.5 py-1 text-label font-bold text-muted transition hover:border-black/20 hover:text-ink"
-            >
-              Admin
-            </Link>
-          )}
           <Link href="/find" className="text-metadata font-semibold text-muted transition hover:text-ink">
             Discover
           </Link>

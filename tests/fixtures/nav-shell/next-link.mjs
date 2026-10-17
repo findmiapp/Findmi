@@ -1,0 +1,5 @@
+// next/link stand-in: a plain <a> (no router in jsdom).
+import { createElement } from "react";
+export default function Link({ href, children, prefetch: _p, ...rest }) {
+  return createElement("a", { href, ...rest }, children);
+}
