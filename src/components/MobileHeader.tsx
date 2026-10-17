@@ -6,13 +6,17 @@ import HamburgerMenu from "./HamburgerMenu";
 import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import QuickCreateMenu from "./QuickCreateMenu";
+import type { ResolvedNavItem } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 export default function MobileHeader({
+  navItems,
   authenticated,
   isAdmin,
   businesses,
 }: {
+  /** Public discovery navigation (nav_items, audience-filtered). */
+  navItems: ResolvedNavItem[];
   /** Server-resolved; passed through to HamburgerMenu. */
   authenticated: boolean;
   /** Server-verified Admin session — HamburgerMenu's Admin entry. */
@@ -56,7 +60,7 @@ export default function MobileHeader({
         <HeaderSearch variant="icon" />
         <CartBadge />
         <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
-        <HamburgerMenu authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />
+        <HamburgerMenu items={navItems} authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />
       </div>
     </header>
   );

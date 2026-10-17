@@ -1,7 +1,17 @@
 import Link from "next/link";
 import NavItemCard from "@/components/admin/NavItemCard";
 import { TextField } from "@/components/admin/Fields";
-import { getAdminNavItems, type NavItem } from "@/lib/navigation";
+import {
+  RESERVED_NAV_DESTINATIONS,
+  filterNavItemsForAudience,
+  getAdminNavItems,
+  navRowPublicStatus,
+  publicDiscoveryNav,
+  reservedNavOwner,
+  resolveNavTree,
+  splitDesktopNav,
+  type NavItem,
+} from "@/lib/navigation";
 import { PUBLIC_ROUTES } from "@/lib/public-routes";
 import { createNavItem, deleteNavItem, moveNavItemDown, moveNavItemUp, saveNavItem } from "./actions";
 
@@ -30,6 +40,15 @@ export default async function NavigationAdminPage({
   // dropdown from offering an obviously-invalid choice.
   const parentOptionsFor = (itemId: string) =>
     topLevel.filter((t) => t.id !== itemId).map((t) => ({ id: t.id, label: t.label }));
+  // Reserved (code-owned) pages aren't offered as destinations; a row that
+  // already uses one keeps it listed so its read-only card stays accurate.
+  // Desktop fit preview — the exact public pipeline per audience: which
+  // top-level items will move into "More" on the desktop header.
+  const desktopOverflow = (["Signed-out visitors", "Signed-in accounts"] as const).flatMap((who, i) => {
+    const { more } = splitDesktopNav(publicDiscoveryNav(filterNavItemsForAudience(resolveNavTree(items), i === 1)));
+    return more.length > 0 ? [{ who, labels: more.map((m) => m.label) }] : [];
+  });
+  const routesFor = (item: NavItem) => PUBLIC_ROUTES.filter((r) => !reservedNavOwner(r.path) || r.key === item.route_key);
 
   return (
     <div>
@@ -42,12 +61,27 @@ export default async function NavigationAdminPage({
       </div>
       <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Navigation</h1>
       <p className="mt-1 max-w-xl text-sm text-ink/50">
-        Control the menu behind Findmi&rsquo;s header menu button — add, rename, hide, reorder, or delete
-        items without a code change. Nest an item under another (one level) to make an expandable
-        submenu. Mark one item Highlight to make it stand out as a call-to-action. Set Audience to
-        Everyone, Signed Out Only, or Signed In Only to control who sees an item — a signed-out
-        visitor and a signed-in account can have a genuinely different menu.
+        Control Findmi&rsquo;s public discovery menu — the desktop header bar and the Discover section of
+        the mobile menu. Add, rename, hide, reorder, nest (one level), highlight or set the audience of
+        items without a code change.
       </p>
+      <p className="mt-2 max-w-xl text-xs text-ink/45">
+        Account and sign-in controls are built in and can&rsquo;t be added here:{" "}
+        {[...new Set(RESERVED_NAV_DESTINATIONS.map((r) => r.prefix))].join(", ")} (Log In, Join, the account menu,
+        Cart and Admin). Rows pointing at them are marked Reserved and never appear in the public menu.
+      </p>
+
+      {desktopOverflow.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <p className="font-semibold">Some items won&rsquo;t fit in the desktop header bar and will appear under &ldquo;More&rdquo;:</p>
+          {desktopOverflow.map((o) => (
+            <p key={o.who} className="mt-1">
+              {o.who}: {o.labels.join(", ")}
+            </p>
+          ))}
+          <p className="mt-1 text-amber-900/70">Shorter labels or fewer top-level items keep everything in the bar.</p>
+        </div>
+      )}
 
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -75,8 +109,8 @@ export default async function NavigationAdminPage({
 
       {topLevel.length === 0 ? (
         <p className="mt-6 text-sm text-ink/45">
-          No menu items yet — visitors see a safe default menu (Events, Brands, Marketplace, Findmi for
-          Business, About, You) until you add at least one item here.
+          No menu items yet — visitors see the default menu (Discover, Events, Places, Brands, Moments)
+          until you add at least one visible item here.
         </p>
       ) : (
         <div className="mt-6 flex flex-col gap-4">
@@ -86,7 +120,8 @@ export default async function NavigationAdminPage({
               <div key={item.id} className="flex flex-col gap-3">
                 <NavItemCard
                   item={item}
-                  routes={PUBLIC_ROUTES}
+                  routes={routesFor(item)}
+                  publicStatus={navRowPublicStatus(item, items)}
                   parentOptions={parentOptionsFor(item.id)}
                   saveAction={saveNavItem.bind(null, item.id)}
                   deleteAction={deleteNavItem.bind(null, item.id)}
@@ -101,7 +136,8 @@ export default async function NavigationAdminPage({
                       <NavItemCard
                         key={child.id}
                         item={child}
-                        routes={PUBLIC_ROUTES}
+                        routes={routesFor(child)}
+                        publicStatus={navRowPublicStatus(child, items)}
                         parentOptions={parentOptionsFor(child.id)}
                         saveAction={saveNavItem.bind(null, child.id)}
                         deleteAction={deleteNavItem.bind(null, child.id)}

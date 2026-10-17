@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { CheckboxField, TextField } from "@/components/admin/Fields";
-import { NAV_AUDIENCES, NAV_ICON_KEYS, type NavAudience, type NavDestinationType, type NavItem } from "@/lib/navigation";
+import {
+  DESKTOP_NAV_MAX_ITEMS,
+  NAV_AUDIENCES,
+  NAV_ICON_KEYS,
+  NAV_TOP_LABEL_MAX,
+  type NavAudience,
+  type NavDestinationType,
+  type NavItem,
+} from "@/lib/navigation";
 import type { PublicRouteOption } from "@/lib/public-routes";
 
 const selectClass =
@@ -48,6 +56,7 @@ export default function NavItemCard({
   moveDownAction,
   canMoveUp,
   canMoveDown,
+  publicStatus = { reservedBy: null, hiddenGroup: false },
 }: {
   item: NavItem;
   routes: PublicRouteOption[];
@@ -61,14 +70,22 @@ export default function NavItemCard({
   moveDownAction: () => void;
   canMoveUp: boolean;
   canMoveDown: boolean;
+  /** How this row behaves in the public menu (lib/navigation
+   * navRowPublicStatus). A reserved row is read-only here: its destination
+   * belongs to a code-owned control and never renders in the public menu. */
+  publicStatus?: { reservedBy: string | null; hiddenGroup: boolean };
 }) {
+  const reserved = Boolean(publicStatus.reservedBy);
   const [destinationType, setDestinationType] = useState<NavDestinationType>(item.destination_type);
 
   return (
-    <div className="rounded-2xl border border-black/10 bg-white p-4">
+    <div className={`rounded-2xl border p-4 ${reserved ? "border-amber-200 bg-amber-50/40" : "border-black/10 bg-white"}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="font-display text-sm font-semibold tracking-tight text-ink">{item.label}</p>
-        <div className="flex shrink-0 gap-1.5">
+        <p className="font-display text-sm font-semibold tracking-tight text-ink">
+          {item.label}
+          {reserved && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">Reserved</span>}
+        </p>
+        <div className={`flex shrink-0 gap-1.5 ${reserved ? "invisible" : ""}`}>
           <form action={moveUpAction}>
             <button type="submit" disabled={!canMoveUp} className={iconButtonClass} aria-label="Move up">
               ↑
@@ -82,8 +99,27 @@ export default function NavItemCard({
         </div>
       </div>
 
+      {reserved && (
+        <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Not shown in the public menu — this destination is provided by {publicStatus.reservedBy}, which Findmi controls in code.
+          Editing it here has no effect, so it&rsquo;s read-only. You can delete it.
+        </p>
+      )}
+      {!reserved && publicStatus.hiddenGroup && (
+        <p className="mt-2 rounded-xl border border-black/10 bg-black/[0.03] px-3 py-2 text-xs text-ink/70">
+          Not shown in the public menu — every item in this group is reserved for Findmi&rsquo;s account controls.
+        </p>
+      )}
+
       <form action={saveAction} className="mt-3 flex flex-col gap-3">
-        <TextField label="Label" name="label" defaultValue={item.label} required />
+        <fieldset disabled={reserved} className="contents">
+        <TextField
+          label="Label"
+          name="label"
+          defaultValue={item.label}
+          required
+          hint={item.parent_id ? undefined : `Top-level labels: ${NAV_TOP_LABEL_MAX} characters max, so the desktop bar fits. Up to ${DESKTOP_NAV_MAX_ITEMS} top-level items show in the bar; more move into "More".`}
+        />
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Links To</span>
@@ -170,12 +206,15 @@ export default function NavItemCard({
           hint="Renders as a stronger Findmi teal call-to-action instead of a plain link."
         />
 
-        <button
-          type="submit"
-          className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Save
-        </button>
+        </fieldset>
+        {!reserved && (
+          <button
+            type="submit"
+            className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Save
+          </button>
+        )}
       </form>
 
       <form action={deleteAction} className="mt-2">

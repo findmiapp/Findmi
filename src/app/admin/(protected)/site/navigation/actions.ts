@@ -5,7 +5,15 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
-import { NAV_AUDIENCES, NAV_ICON_KEYS, validateCustomDestination, type NavAudience, type NavDestinationType } from "@/lib/navigation";
+import {
+  NAV_AUDIENCES,
+  NAV_ICON_KEYS,
+  NAV_TOP_LABEL_MAX,
+  reservedNavOwner,
+  validateCustomDestination,
+  type NavAudience,
+  type NavDestinationType,
+} from "@/lib/navigation";
 import { findPublicRoute } from "@/lib/public-routes";
 
 const EDIT_PATH = "/admin/site/navigation";
@@ -43,9 +51,19 @@ function readAndValidate(formData: FormData): { fields: Record<string, unknown> 
     }
   }
 
+  // Account, sign-in, Cart and Admin destinations are code-owned controls;
+  // they never render in the public menu, so they can't be set here.
+  const destination = destination_type === "route" ? (findPublicRoute(route_key ?? "")?.path ?? null) : custom_href;
+  const reservedBy = reservedNavOwner(destination);
+  if (reservedBy) return { error: `That page is already provided by ${reservedBy}, so it can't be added to the public menu.` };
+
   const iconRaw = str(formData, "icon_key");
   const icon_key = iconRaw && (NAV_ICON_KEYS as readonly string[]).includes(iconRaw) ? iconRaw : null;
   const parent_id = str(formData, "parent_id");
+  // Desktop fit: top-level labels sit in the header bar.
+  if (!parent_id && label.length > NAV_TOP_LABEL_MAX) {
+    return { error: `Top-level labels can be at most ${NAV_TOP_LABEL_MAX} characters so the desktop header fits. Shorten it, or nest it under a parent item.` };
+  }
 
   // Navigation Information Architecture + Founder-Editable Audience pass
   // — Everyone/Logged Out/Logged In, per item (parent or child alike:
@@ -102,6 +120,9 @@ export async function createNavItem(formData: FormData) {
   const supabase = await requireAdminSupabase();
 
   const label = str(formData, "label") ?? "New Item";
+  if (label.length > NAV_TOP_LABEL_MAX) {
+    redirect(errorRedirectUrl(EDIT_PATH, `Top-level labels can be at most ${NAV_TOP_LABEL_MAX} characters so the desktop header fits.`));
+  }
   const { data: existing } = await supabase.from("nav_items").select("sort_order").order("sort_order", { ascending: false }).limit(1);
   const nextOrder = (existing?.[0]?.sort_order ?? 0) + 10;
 

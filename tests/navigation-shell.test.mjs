@@ -7,7 +7,7 @@
 // mounting and the shared offset token.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 import { resolve as resolvePath } from "node:path";
@@ -29,7 +29,8 @@ const STUBS = {
   "./Logo": NULL,
   "./DrawerSearch": NULL,
 };
-const withExt = (base) => [base, `${base}.ts`, `${base}.tsx`].find((f) => existsSync(f));
+const isFile = (f) => existsSync(f) && statSync(f).isFile();
+const withExt = (base) => [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`].find(isFile);
 registerHooks({
   resolve(specifier, context, next) {
     if (STUBS[specifier]) return { url: pathToFileURL(STUBS[specifier]).href, shortCircuit: true };
@@ -65,6 +66,8 @@ const { createRoot } = await import("react-dom/client");
 const NAV = await import("next/navigation");
 const { default: HamburgerMenu } = await import("../src/components/HamburgerMenu.tsx");
 const { default: NavDesktop } = await import("../src/components/NavDesktop.tsx");
+const NAVLIB = await import("../src/lib/navigation.ts");
+const DEFAULT_ITEMS = NAVLIB.FALLBACK_NAV_ITEMS;
 const h = React.createElement;
 
 let root;
@@ -79,7 +82,7 @@ after(async () => act(async () => root?.unmount()));
 const click = (el) => act(async () => el.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
 
 async function openDrawer(props, pathname) {
-  await render(h(HamburgerMenu, props), pathname);
+  await render(h(HamburgerMenu, { items: DEFAULT_ITEMS, ...props }), pathname);
   await click(document.querySelector('button[aria-label="Menu"]'));
   const drawer = document.querySelector('[role="dialog"][aria-label="Menu"]');
   const sections = [...drawer.querySelectorAll("section")].map((s) => ({
@@ -132,7 +135,7 @@ test("mobile: the current destination is marked active", async () => {
 });
 
 test("desktop: Discover · Events · Places · Brands · Moments; no My Moments/Add Moment in the bar", async () => {
-  await render(h(NavDesktop, { authenticated: false, isAdmin: false, businesses: [] }), "/events");
+  await render(h(NavDesktop, { navItems: DEFAULT_ITEMS, authenticated: false, isAdmin: false, businesses: [] }), "/events");
   const nav = document.querySelector('nav[aria-label="Discover"]');
   assert.deepEqual([...nav.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]), DISCOVER);
   assert.equal(nav.querySelector('a[aria-current="page"]').textContent, "Events");
@@ -143,7 +146,7 @@ test("desktop: Discover · Events · Places · Brands · Moments; no My Moments/
 });
 
 test("desktop, signed in: the account menu holds Your Findmi, Manage, Admin and Sign Out", async () => {
-  await render(h(NavDesktop, { authenticated: true, isAdmin: true, businesses: [{ id: "b1", name: "FUJIFILM" }] }), "/");
+  await render(h(NavDesktop, { navItems: DEFAULT_ITEMS, authenticated: true, isAdmin: true, businesses: [{ id: "b1", name: "FUJIFILM" }] }), "/");
   assert.doesNotMatch(document.querySelector("header").textContent, /Log In|Join For Free/);
   await click(document.querySelector('button[aria-label="Your Findmi"]'));
   const menu = document.querySelector('[role="menu"]');
@@ -182,4 +185,161 @@ test("toolbar offsets use ONE token (--admin-bar-h), not scattered 1.75rem value
   for (const f of ["src/components/MobileHeader.tsx", "src/components/SiteChrome.tsx", "src/components/journal/JournalMomentGallery.tsx"]) {
     assert.doesNotMatch(readFileSync(f, "utf8").replace(/\/\/.*$/gm, ""), /1\.75rem|top-7\b/, f);
   }
+});
+
+// ── Admin → Site → Navigation drives the public discovery menu ───────────
+// Rows go through the SAME pipeline as (public)/layout.tsx:
+// resolveNavTree → filterNavItemsForAudience → publicDiscoveryNav.
+let seq = 0;
+const row = (o) => ({
+  id: o.id ?? `r${++seq}`,
+  label: o.label,
+  destination_type: o.custom ? "custom" : "route",
+  route_key: o.route ?? null,
+  custom_href: o.custom ?? null,
+  group_label: null,
+  icon_key: o.icon ?? null,
+  is_visible: o.visible ?? true,
+  is_highlight: o.highlight ?? false,
+  sort_order: o.sort ?? 0,
+  parent_id: o.parent ?? null,
+  audience: o.audience ?? "everyone",
+});
+const pipeline = (rows, authenticated) =>
+  NAVLIB.publicDiscoveryNav(NAVLIB.filterNavItemsForAudience(NAVLIB.resolveNavTree([...rows].sort((a, b) => a.sort_order - b.sort_order)), authenticated));
+const APPROVED = [
+  row({ id: "d", label: "Discover", route: "discover", sort: 10 }),
+  row({ id: "e", label: "Events", route: "events", sort: 20 }),
+  row({ id: "p", label: "Places", route: "locations", sort: 30 }),
+  row({ id: "b", label: "Brands", route: "businesses", sort: 40 }),
+  row({ id: "m", label: "Moments", route: "moments", sort: 50 }),
+];
+async function desktopLinks(rows, { authenticated = false, pathname = "/" } = {}) {
+  await render(h(NavDesktop, { navItems: pipeline(rows, authenticated), authenticated, isAdmin: false, businesses: [] }), pathname);
+  const nav = document.querySelector('nav[aria-label="Discover"]');
+  return [...nav.children].map((el) => el.querySelector("button")?.textContent.trim() ?? [el.textContent, el.getAttribute("href")]);
+}
+async function drawerDiscover(rows, authenticated = false) {
+  const { sections } = await openDrawer({ items: pipeline(rows, authenticated), authenticated });
+  return sections.find((s) => s.title === "Discover");
+}
+
+test("Admin rows (the approved IA) render in the desktop bar and the drawer", async () => {
+  assert.deepEqual(await desktopLinks(APPROVED), DISCOVER);
+  assert.deepEqual((await drawerDiscover(APPROVED)).links, DISCOVER);
+});
+
+test("Admin edits: rename, reorder and hide change the rendered menu", async () => {
+  const edited = APPROVED.map((r) => (r.id === "p" ? { ...r, label: "Spots", sort_order: 5 } : r.id === "m" ? { ...r, is_visible: false } : r));
+  const expected = [["Spots", "/locations"], ["Discover", "/discover"], ["Events", "/events"], ["Brands", "/businesses"]];
+  assert.deepEqual(await desktopLinks(edited), expected);
+  assert.deepEqual((await drawerDiscover(edited)).links, expected);
+});
+
+test("Admin edits: audience — a Signed In Only row shows only to signed-in visitors", async () => {
+  const rows = [...APPROVED, row({ label: "Members", custom: "/members", sort: 60, audience: "logged_in" })];
+  assert.ok(!(await drawerDiscover(rows, false)).links.some(([l]) => l === "Members"));
+  assert.ok((await drawerDiscover(rows, true)).links.some(([l]) => l === "Members"));
+});
+
+test("Admin edits: nesting, highlight, icon and custom links", async () => {
+  const rows = [
+    row({ id: "g", label: "Explore", sort: 10, icon: "compass" }),
+    row({ label: "Pop-Ups", custom: "/events?format=pop-up", parent: "g", sort: 1 }),
+    row({ label: "Guide", custom: "https://guide.example.com", parent: "g", sort: 2 }),
+    row({ label: "Tonight", custom: "/events?when=today", sort: 20, highlight: true }),
+  ];
+  assert.deepEqual(await desktopLinks(rows), ["Explore", ["Tonight", "/events?when=today"]]);
+  assert.match(document.querySelector('nav[aria-label="Discover"] a').className, /bg-findmi text-white/, "highlight");
+  await click(document.querySelector('nav[aria-label="Discover"] button'));
+  const menu = [...document.querySelectorAll('[role="menu"] a')].map((a) => [a.textContent, a.getAttribute("href"), a.getAttribute("target")]);
+  assert.deepEqual(menu, [["Pop-Ups", "/events?format=pop-up", null], ["Guide", "https://guide.example.com", "_blank"]]);
+  const { drawer } = await openDrawer({ items: pipeline(rows, false), authenticated: false });
+  const group = [...drawer.querySelectorAll("button[aria-expanded]")].find((b) => b.textContent.includes("Explore"));
+  assert.ok(group.querySelector("svg"), "icon rendered");
+  await click(group);
+  assert.ok([...drawer.querySelectorAll("a")].some((a) => a.textContent === "Pop-Ups"), "group expands to its children");
+});
+
+test("reserved account/auth rows never render — no duplicate Log In, Join or account links", async () => {
+  // Shaped like the live rows: account groups, auth links, Saved, Profile.
+  const rows = [
+    ...APPROVED,
+    row({ id: "yf", label: "Your Findmi", sort: 1, audience: "logged_in" }),
+    row({ label: "Account", custom: "/account", parent: "yf", audience: "logged_in" }),
+    row({ label: "Messages", custom: "/account/messages", parent: "yf", audience: "logged_in" }),
+    row({ label: "Saved", route: "saved", sort: 2 }),
+    row({ label: "Log In", custom: "/login", sort: 990, audience: "logged_out" }),
+    row({ label: "Join For Free", route: "join", sort: 999, highlight: true, audience: "logged_out" }),
+    row({ label: "Profile", custom: "/account/profile", sort: 995, audience: "logged_in" }),
+  ];
+  for (const authenticated of [false, true]) {
+    assert.deepEqual(await desktopLinks(rows, { authenticated }), DISCOVER, `authenticated=${authenticated}`);
+    const header = document.querySelector("header").textContent;
+    assert.ok(header.split("Log In").length - 1 <= 1 && header.split("Join For Free").length - 1 <= 1);
+    const { text } = await openDrawer({ items: pipeline(rows, authenticated), authenticated });
+    assert.equal(text.split("Log In").length - 1, authenticated ? 0 : 1);
+    assert.equal(text.split("Account").length - 1, authenticated ? 1 : 0, "Account appears once, in Your Findmi");
+  }
+});
+
+test("more than five top-level items: extras move into More ▾ — no horizontal scrolling", async () => {
+  const rows = [...APPROVED, row({ label: "Marketplace", route: "marketplace", sort: 60 }), row({ label: "About", route: "about", sort: 70 })];
+  const bar = await desktopLinks(rows);
+  assert.equal(bar.length, 5);
+  assert.deepEqual(bar.slice(0, 4), DISCOVER.slice(0, 4));
+  assert.equal(bar[4], "More");
+  await click([...document.querySelectorAll('nav[aria-label="Discover"] button')].find((b) => b.textContent.includes("More")));
+  assert.deepEqual([...document.querySelectorAll('[role="menu"] a')].map((a) => a.textContent), ["Moments", "Marketplace", "About"]);
+  assert.doesNotMatch(document.querySelector('nav[aria-label="Discover"]').className, /overflow-x/);
+});
+
+test("desktop budget: long labels move into More by width, not just by count", async () => {
+  const long = ["Neighbourhoods", "Things To Do!!", "Local Makers XL"].map((label, i) => row({ label: label.slice(0, 14), custom: `/x${i}`, sort: i }));
+  const { bar, more } = NAVLIB.splitDesktopNav(pipeline(long, false));
+  assert.deepEqual(bar.map((i) => i.label), ["Neighbourhoods", "Things To Do!!"]);
+  assert.deepEqual(more.map((i) => i.label), ["Local Makers X"]);
+  const used = bar.reduce((n, i) => n + i.label.length + (i.children.length ? 2 : 0), 0);
+  assert.ok(used + 6 <= NAVLIB.DESKTOP_NAV_CHAR_BUDGET && bar.length + 1 <= NAVLIB.DESKTOP_NAV_MAX_ITEMS);
+  const approvedChars = pipeline(APPROVED, false).reduce((n, i) => n + i.label.length, 0);
+  assert.ok(approvedChars <= NAVLIB.DESKTOP_NAV_CHAR_BUDGET, "the approved IA fits without More");
+  const page = readFileSync("src/app/admin/(protected)/site/navigation/page.tsx", "utf8");
+  assert.match(page, /splitDesktopNav\(publicDiscoveryNav\(filterNavItemsForAudience\(resolveNavTree\(items\), i === 1\)\)\)/, "Admin warns with the same pipeline");
+});
+
+test("no visible rows → the approved default IA", async () => {
+  assert.deepEqual(await desktopLinks([]), DISCOVER);
+  assert.deepEqual(await desktopLinks(APPROVED.map((r) => ({ ...r, is_visible: false }))), DISCOVER);
+});
+
+test("Admin editor: reserved rows are flagged read-only; saves reject reserved destinations and over-long top-level labels", () => {
+  const rows = [
+    row({ id: "yf", label: "Your Findmi" }),
+    row({ id: "acc", label: "Account", custom: "/account", parent: "yf" }),
+    row({ id: "li", label: "Log In", custom: "/login" }),
+    row({ id: "ev", label: "Events", route: "events" }),
+  ];
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(NAVLIB.navRowPublicStatus(byId.acc, rows).reservedBy, "the account menu");
+  assert.equal(NAVLIB.navRowPublicStatus(byId.li, rows).reservedBy, "the Log In button");
+  assert.equal(NAVLIB.navRowPublicStatus(byId.yf, rows).hiddenGroup, true);
+  assert.deepEqual(NAVLIB.navRowPublicStatus(byId.ev, rows), { reservedBy: null, hiddenGroup: false });
+  assert.equal(NAVLIB.reservedNavOwner("https://example.com/account"), null, "external links are never reserved");
+  const card = readFileSync("src/components/admin/NavItemCard.tsx", "utf8");
+  assert.match(card, /<fieldset disabled=\{reserved\} className="contents">/);
+  assert.match(card, /\{!reserved && \(\s*<button\s+type="submit"/);
+  const actions = readFileSync("src/app/admin/(protected)/site/navigation/actions.ts", "utf8");
+  assert.match(actions, /const reservedBy = reservedNavOwner\(destination\);\s*if \(reservedBy\) return \{ error:/);
+  assert.match(actions, /if \(!parent_id && label\.length > NAV_TOP_LABEL_MAX\)/);
+  const page = readFileSync("src/app/admin/(protected)/site/navigation/page.tsx", "utf8");
+  assert.match(page, /publicStatus=\{navRowPublicStatus\(item, items\)\}/);
+  assert.match(page, /PUBLIC_ROUTES\.filter\(\(r\) => !reservedNavOwner\(r\.path\) \|\| r\.key === item\.route_key\)/);
+});
+
+test("the public layout feeds nav_items through audience + reserved filtering", () => {
+  const layout = readFileSync("src/app/(public)/layout.tsx", "utf8");
+  assert.match(layout, /const allNavItems = await getVisibleNavItems\(\);/);
+  assert.match(layout, /publicDiscoveryNav\(filterNavItemsForAudience\(allNavItems, authenticated\)\)/);
+  assert.match(layout, /<MobileHeader navItems=\{navItems\}/);
+  assert.match(layout, /<NavDesktop navItems=\{navItems\}/);
 });

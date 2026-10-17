@@ -1,7 +1,8 @@
-// Pass A — Navigation Shell. The ONE consumer navigation model the
-// desktop header and the mobile menu both render, so the two can never
-// drift. Discovery is a fixed product structure (it mirrors what Findmi
-// IS — Events, Places, Brands, Moments — never the database). Client-safe.
+// Pass A — Navigation Shell. The CODE-OWNED parts of the public
+// navigation, shared by the desktop account menu and the mobile drawer:
+// personal destinations, the one compact Manage entry and the signed-out
+// Business link. Discovery navigation itself comes from nav_items (Admin →
+// Site → Navigation; see lib/navigation publicDiscoveryNav). Client-safe.
 import type { NavIconKey } from "./navigation";
 
 export interface PrimaryNavItem {
@@ -12,16 +13,6 @@ export interface PrimaryNavItem {
    * exact path only). */
   match: string[];
 }
-
-/** DISCOVER — consumer discovery, always first. "Places" is the public
- * name for /locations; "Brands" for /businesses. */
-export const DISCOVER_NAV: PrimaryNavItem[] = [
-  { href: "/discover", label: "Discover", icon: "compass", match: ["/discover", "/find"] },
-  { href: "/events", label: "Events", icon: "calendar", match: ["/events", "/event/"] },
-  { href: "/locations", label: "Places", icon: "pin", match: ["/locations", "/location/"] },
-  { href: "/businesses", label: "Brands", icon: "storefront", match: ["/businesses", "/business/"] },
-  { href: "/moments", label: "Moments", icon: "target", match: ["/moments", "/journal"] },
-];
 
 /** YOUR FINDMI — personal destinations (signed in only). */
 export const YOUR_FINDMI_NAV: PrimaryNavItem[] = [

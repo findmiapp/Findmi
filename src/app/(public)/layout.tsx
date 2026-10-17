@@ -6,6 +6,7 @@ import SiteChrome from "@/components/SiteChrome";
 import { BusinessesProvider } from "@/components/BusinessesContext";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { filterNavItemsForAudience, getVisibleNavItems, publicDiscoveryNav } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 import { getAccountContexts } from "@/lib/accountContext";
 
@@ -15,10 +16,12 @@ import { getAccountContexts } from "@/lib/accountContext";
 export const revalidate = 60;
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  // Pass A — Navigation Shell: the header and the mobile drawer render the
-  // fixed consumer IA from lib/primary-nav (Discover · Events · Places ·
-  // Brands · Moments, then Your Findmi / Manage / Admin), so nav_items is
-  // no longer read here.
+  // Public DISCOVERY navigation — founder-managed nav_items (Admin → Site
+  // → Navigation), one fetch shared by the desktop bar and the drawer,
+  // falling back to the approved default IA when the table is empty.
+  // Account, auth, Cart and Admin controls stay code-owned; rows pointing
+  // at those reserved destinations are left out (publicDiscoveryNav).
+  const allNavItems = await getVisibleNavItems();
 
   // Admin session — the drawer/account menu's Admin entry. The toolbar's
   // own offsets come from --admin-bar-h (globals.css), not this flag.
@@ -46,6 +49,8 @@ export default async function PublicLayout({ children }: { children: React.React
   // of useBusinesses() (QuickCreateMenu, NavDesktop, MobileHeader, the
   // Personal/Business account shells) gets slug/logoUrl/role for free
   // from the ONE query already made here, no second round trip.
+  const navItems = publicDiscoveryNav(filterNavItemsForAudience(allNavItems, authenticated));
+
   let businesses: BusinessOption[] = [];
   if (authenticated) {
     businesses = await getAccountContexts(supabase, user!.id);
@@ -55,8 +60,8 @@ export default async function PublicLayout({ children }: { children: React.React
     <SiteChrome
       adminToolbar={<AdminToolbar />}
       adminToolbarStatic={<AdminToolbar placement="static" />}
-      mobileHeader={<MobileHeader authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />}
-      navDesktop={<NavDesktop authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />}
+      mobileHeader={<MobileHeader navItems={navItems} authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />}
+      navDesktop={<NavDesktop navItems={navItems} authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />}
       footer={<Footer />}
     >
       {/* Account Create Navigation Hotfix — the same `businesses` list

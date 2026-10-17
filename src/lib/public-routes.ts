@@ -27,6 +27,7 @@ export const PUBLIC_ROUTES: PublicRouteOption[] = [
   { key: "find", path: "/find", label: "Findmi Here" },
   { key: "people", path: "/people", label: "People" },
   { key: "locations", path: "/locations", label: "Locations" },
+  { key: "moments", path: "/moments", label: "Moments" },
   { key: "join", path: "/join", label: "Join Findmi" },
   { key: "join_business", path: "/join/business", label: "Findmi for Business" },
   { key: "saved", path: "/saved", label: "Saved" },

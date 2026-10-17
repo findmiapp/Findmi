@@ -8,13 +8,15 @@ import Logo from "./Logo";
 import NavIcon from "./NavIcon";
 import SignOutConfirm from "./SignOutConfirm";
 import DrawerSearch from "./DrawerSearch";
-import { DISCOVER_NAV, FOR_BUSINESS_NAV, YOUR_FINDMI_NAV, isPrimaryNavActive, manageNavEntry, type PrimaryNavItem } from "@/lib/primary-nav";
+import { navHrefActive, navItemActive, type ResolvedNavItem } from "@/lib/navigation";
+import { FOR_BUSINESS_NAV, YOUR_FINDMI_NAV, isPrimaryNavActive, manageNavEntry, type PrimaryNavItem } from "@/lib/primary-nav";
 import { signOut } from "@/app/(public)/account/profile/actions";
 
 // Header hamburger trigger + mobile nav drawer. Pass A — Navigation
-// Shell: the drawer is the product's mobile information architecture,
-// rendered from lib/primary-nav (the same model as the desktop header):
-// Search, DISCOVER first, then FOR BUSINESS (signed out) or YOUR FINDMI ·
+// Shell: the drawer is the product's mobile information architecture:
+// Search, DISCOVER first (nav_items — Admin → Site → Navigation, the same
+// rows as the desktop bar; parents expand one level), then the code-owned
+// sections from lib/primary-nav: FOR BUSINESS (signed out) or YOUR FINDMI ·
 // MANAGE (one compact entry, never a list of Businesses), ADMIN when
 // authorized, and ONE auth row (Log In / Join For Free, or Sign Out).
 // Create stays the global "+" control in MobileHeader.
@@ -32,10 +34,14 @@ import { signOut } from "@/app/(public)/account/profile/actions";
 // document.body doesn't exist during SSR — before that, the trigger
 // button alone renders, same as any other client-only overlay.
 export default function HamburgerMenu({
+  items,
   authenticated,
   isAdmin = false,
   businesses = [],
 }: {
+  /** Public discovery navigation — nav_items (Admin → Site → Navigation),
+   * audience-filtered, reserved account/auth destinations removed. */
+  items: ResolvedNavItem[];
   /** Server-resolved (see (public)/layout.tsx). Never determined client-side. */
   authenticated: boolean;
   /** Server-verified Admin session — adds the one Admin entry. */
@@ -47,6 +53,8 @@ export default function HamburgerMenu({
   const pathname = usePathname();
   const manage = authenticated ? manageNavEntry(businesses) : null;
   const [mounted, setMounted] = useState(false);
+  // Accordion: at most one nav_items group open; all collapse on open.
+  const [expanded, setExpanded] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => setMounted(true), []);
@@ -76,7 +84,10 @@ export default function HamburgerMenu({
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setExpanded(null);
+          setOpen(true);
+        }}
         aria-label="Menu"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -146,9 +157,20 @@ export default function HamburgerMenu({
 
               <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-1">
                 <DrawerSection title="Discover">
-                  {DISCOVER_NAV.map((item) => (
-                    <DrawerLink key={item.href} item={item} active={isPrimaryNavActive(pathname, item)} onNavigate={close} />
-                  ))}
+                  {items.map((item) =>
+                    item.children.length > 0 ? (
+                      <DrawerGroup
+                        key={item.id}
+                        item={item}
+                        pathname={pathname}
+                        expanded={expanded === item.id}
+                        onToggle={() => setExpanded((prev) => (prev === item.id ? null : item.id))}
+                        onNavigate={close}
+                      />
+                    ) : (
+                      <NavItemLink key={item.id} item={item} active={navHrefActive(pathname, item.href)} onNavigate={close} />
+                    )
+                  )}
                 </DrawerSection>
 
                 {authenticated ? (
@@ -210,6 +232,77 @@ function DrawerSection({ title, children }: { title: string; children: React.Rea
       <h2 className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">{title}</h2>
       <div className="flex flex-col gap-0.5">{children}</div>
     </section>
+  );
+}
+
+/** One nav_items row as a drawer link (founder label, icon, highlight). */
+function NavItemLink({ item, active, onNavigate, nested = false }: { item: ResolvedNavItem; active: boolean; onNavigate: () => void; nested?: boolean }) {
+  if (!item.href) return null;
+  const className = `flex min-h-11 items-center gap-3 rounded-xl px-3 font-semibold transition active:scale-[0.99] ${nested ? "text-sm" : "text-[15px]"} ${
+    item.highlight ? "bg-findmi text-white hover:bg-findmi-600" : active ? "bg-findmi-50 text-findmi-700" : "text-ink hover:bg-black/[0.03]"
+  }`;
+  const content = (
+    <>
+      {item.icon ? (
+        <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${item.highlight ? "text-white" : active ? "text-findmi-700" : "text-ink/55"}`} />
+      ) : (
+        !nested && <span aria-hidden="true" className="h-5 w-5 shrink-0" />
+      )}
+      <span className="truncate">{item.label}</span>
+    </>
+  );
+  return item.external ? (
+    <a href={item.href} target="_blank" rel="noopener noreferrer" onClick={onNavigate} className={className}>
+      {content}
+    </a>
+  ) : (
+    <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={className}>
+      {content}
+    </Link>
+  );
+}
+
+/** A nav_items parent row: expands to its children (one level). */
+function DrawerGroup({
+  item,
+  pathname,
+  expanded,
+  onToggle,
+  onNavigate,
+}: {
+  item: ResolvedNavItem;
+  pathname: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+}) {
+  const active = navItemActive(pathname, item);
+  const panelId = `drawer-group-${item.id}`;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] font-semibold transition ${
+          active ? "text-findmi-700" : "text-ink hover:bg-black/[0.03]"
+        }`}
+      >
+        {item.icon ? <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-findmi-700" : "text-ink/55"}`} /> : <span aria-hidden="true" className="h-5 w-5 shrink-0" />}
+        <span className="flex-1 truncate">{item.label}</span>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={`h-4 w-4 shrink-0 text-ink/40 transition-transform ${expanded ? "rotate-180" : ""}`}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {expanded && (
+        <div id={panelId} className="ml-5 flex flex-col gap-0.5 border-l-2 border-black/5 pl-3">
+          {item.children.map((child) => (
+            <NavItemLink key={child.id} item={child} active={navHrefActive(pathname, child.href)} onNavigate={onNavigate} nested />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -136,9 +136,16 @@ export async function getVisibleNavItems(): Promise<ResolvedNavItem[]> {
     .select("*")
     .eq("is_visible", true)
     .order("sort_order", { ascending: true });
-  const rows = (data as NavItem[] | null) ?? [];
-  if (rows.length === 0) return FALLBACK_NAV_ITEMS;
-  const tree = buildNavTree(rows);
+  return resolveNavTree((data as NavItem[] | null) ?? []);
+}
+
+/** Visible rows (already in sort order) → the rendered tree, or the
+ * default IA when nothing renderable remains. Pure — tests exercise the
+ * exact path a saved Admin edit takes to the public menu. */
+export function resolveNavTree(rows: NavItem[]): ResolvedNavItem[] {
+  const visible = rows.filter((r) => r.is_visible);
+  if (visible.length === 0) return FALLBACK_NAV_ITEMS;
+  const tree = buildNavTree(visible);
   return tree.length > 0 ? tree : FALLBACK_NAV_ITEMS;
 }
 
@@ -160,57 +167,122 @@ export async function getAdminNavItems(): Promise<NavItem[]> {
   return (data as NavItem[]) ?? [];
 }
 
-/** Safe fallback navigation — real routes only, shown until the founder
- * has added at least one visible nav item. Restructured (Part 19/6 of the
- * live-QA pass) into genuinely useful top-level entries, some with real
- * children, rather than a flat list — Events/Brands/Marketplace/FindMi
- * for Business/About cover the site's real sections, plus a standalone
- * "You" account entry (see the report's note on why this isn't real
- * login/logout — FindMi has no account system to reflect). */
+/** Safe fallback navigation — shown only when nav_items has no visible,
+ * renderable row (empty/unreachable table). Pass A — the approved
+ * consumer discovery IA: Discover · Events · Places · Brands · Moments. */
 export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
-  {
-    id: "fallback-events",
-    label: "Events",
-    href: null,
-    external: false,
-    icon: "calendar",
-    highlight: false,
-    audience: "everyone",
-    children: [
-      { id: "fallback-events-all", label: "All Events", href: "/events", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
-      { id: "fallback-events-discover", label: "Discover", href: "/discover", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
-    ],
-  },
-  {
-    id: "fallback-brands",
-    label: "Brands",
-    href: null,
-    external: false,
-    icon: "storefront",
-    highlight: false,
-    audience: "everyone",
-    children: [
-      { id: "fallback-brands-all", label: "Discover Brands", href: "/businesses", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
-      { id: "fallback-brands-people", label: "People", href: "/people", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
-      { id: "fallback-brands-locations", label: "Locations", href: "/locations", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
-    ],
-  },
-  { id: "fallback-marketplace", label: "Marketplace", href: "/marketplace", external: false, icon: "tag", highlight: false, audience: "everyone", children: [] },
-  {
-    id: "fallback-for-business",
-    label: "Findmi for Business",
-    href: null,
-    external: false,
-    icon: null,
-    highlight: false,
-    audience: "everyone",
-    children: [
-      { id: "fallback-fb-join", label: "Join Findmi", href: "/join/business", external: false, icon: null, highlight: true, audience: "everyone", children: [] },
-    ],
-  },
-  { id: "fallback-about", label: "About", href: "/about", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
-  { id: "fallback-you", label: "You", href: "/you", external: false, icon: "person", highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-discover", label: "Discover", href: "/discover", external: false, icon: "compass", highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-events", label: "Events", href: "/events", external: false, icon: "calendar", highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-places", label: "Places", href: "/locations", external: false, icon: "pin", highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-brands", label: "Brands", href: "/businesses", external: false, icon: "storefront", highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-moments", label: "Moments", href: "/moments", external: false, icon: "target", highlight: false, audience: "everyone", children: [] },
 ];
+
+// ── Public discovery navigation contract ─────────────────────────────────
+// nav_items drives the public DISCOVERY navigation (desktop bar + the
+// mobile drawer's Discover section). Account, authentication, Cart and
+// Admin controls are code-owned (account menu, auth row, Cart, Admin
+// toolbar), so a row pointing at one of these destinations is RESERVED:
+// it never renders in the public menu (it would duplicate the code-owned
+// control), the Admin editor marks it read-only, and saving a new
+// reserved destination is rejected.
+
+export interface ReservedNavDestination {
+  prefix: string;
+  /** Which code-owned control already provides it (shown in Admin). */
+  owner: string;
+}
+
+export const RESERVED_NAV_DESTINATIONS: ReservedNavDestination[] = [
+  { prefix: "/login", owner: "the Log In button" },
+  { prefix: "/join", owner: "Join For Free and the For Business link" },
+  { prefix: "/account", owner: "the account menu" },
+  { prefix: "/my-world", owner: "the account menu" },
+  { prefix: "/saved", owner: "the account menu" },
+  { prefix: "/you", owner: "the account menu" },
+  { prefix: "/cart", owner: "the Cart button" },
+  { prefix: "/admin", owner: "the Admin toolbar" },
+];
+
+/** The code-owned control a destination belongs to, or null. External
+ * links are never reserved. */
+export function reservedNavOwner(href: string | null | undefined): string | null {
+  if (!href || !href.startsWith("/")) return null;
+  const path = href.split(/[?#]/)[0];
+  const hit = RESERVED_NAV_DESTINATIONS.find((r) => path === r.prefix || path.startsWith(`${r.prefix}/`));
+  return hit?.owner ?? null;
+}
+
+/** The public discovery tree: reserved rows removed; a group left with no
+ * child and no destination of its own is removed too. */
+export function publicDiscoveryNav(items: ResolvedNavItem[]): ResolvedNavItem[] {
+  return items.flatMap((item) => {
+    if (reservedNavOwner(item.href)) return [];
+    const children = item.children.filter((c) => !reservedNavOwner(c.href));
+    if (!item.href && children.length === 0) return [];
+    return [{ ...item, children }];
+  });
+}
+
+/** Desktop overflow strategy (no horizontal scrolling): the bar takes
+ * top-level items in order while they fit BOTH limits — at most
+ * DESKTOP_NAV_MAX_ITEMS items and DESKTOP_NAV_CHAR_BUDGET label characters
+ * (measured: the bar has ~490px at 1024px signed out, ~8px per character
+ * plus ~32px per item). Everything after moves into "More ▾", which itself
+ * takes a slot. The approved five labels use 33 characters. Admin also
+ * caps each top-level label at NAV_TOP_LABEL_MAX and warns when items
+ * will move into More. */
+export const DESKTOP_NAV_MAX_ITEMS = 5;
+export const DESKTOP_NAV_CHAR_BUDGET = 36;
+export const NAV_TOP_LABEL_MAX = 14;
+const MORE_COST = 6; // "More" + chevron
+
+const barCost = (item: Pick<ResolvedNavItem, "label" | "children">) => item.label.length + (item.children.length > 0 ? 2 : 0);
+
+export function splitDesktopNav<T extends Pick<ResolvedNavItem, "label" | "children">>(items: T[]): { bar: T[]; more: T[] } {
+  let used = 0;
+  let count = 0;
+  for (const item of items) {
+    if (count >= DESKTOP_NAV_MAX_ITEMS || used + barCost(item) > DESKTOP_NAV_CHAR_BUDGET) break;
+    used += barCost(item);
+    count += 1;
+  }
+  if (count === items.length) return { bar: items, more: [] };
+  // Make room for More itself.
+  while (count > 0 && (count + 1 > DESKTOP_NAV_MAX_ITEMS || used + MORE_COST > DESKTOP_NAV_CHAR_BUDGET)) {
+    count -= 1;
+    used -= barCost(items[count]);
+  }
+  return { bar: items.slice(0, count), more: items.slice(count) };
+}
+
+/** Detail routes that belong to a discovery index (/location/x → Places). */
+const ACTIVE_ALIASES: Record<string, string[]> = {
+  "/discover": ["/find"],
+  "/events": ["/event"],
+  "/locations": ["/location"],
+  "/businesses": ["/business"],
+  "/moments": ["/journal"],
+};
+
+export function navHrefActive(pathname: string, href: string | null): boolean {
+  if (!href || !href.startsWith("/") || href === "/") return href === "/" && pathname === "/";
+  const path = href.split(/[?#]/)[0];
+  return [path, ...(ACTIVE_ALIASES[path] ?? [])].some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+export function navItemActive(pathname: string, item: ResolvedNavItem): boolean {
+  return navHrefActive(pathname, item.href) || item.children.some((c) => navHrefActive(pathname, c.href));
+}
+
+/** How a stored row behaves in the PUBLIC menu — for the Admin editor. */
+export function navRowPublicStatus(row: NavItem, rows: NavItem[]): { reservedBy: string | null; hiddenGroup: boolean } {
+  const reservedBy = reservedNavOwner(resolveHref(row));
+  if (reservedBy || row.parent_id) return { reservedBy, hiddenGroup: false };
+  const children = rows.filter((r) => r.parent_id === row.id);
+  const hiddenGroup = !resolveHref(row) && children.length > 0 && children.every((c) => reservedNavOwner(resolveHref(c)));
+  return { reservedBy: null, hiddenGroup };
+}
 
 function audienceMatches(audience: NavAudience, authenticated: boolean): boolean {
   if (audience === "everyone") return true;
