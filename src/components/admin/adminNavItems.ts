@@ -77,6 +77,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
           { href: "/admin/appearances", label: "Appearances", hint: "Where businesses will be" },
           { href: "/admin/activations", label: "Activations", hint: "Experiences Findmi produces" },
           { href: "/admin/opportunities", label: "Opportunities", hint: "Commercial Opportunities Findmi recommends" },
+          { href: "/admin/opportunities/intelligence", label: "Opportunity Intelligence", hint: "New Brand signals across Businesses" },
           { href: "/admin/opportunities/ideas", label: "Opportunity Ideas", hint: "Ideas Brands can respond to" },
         ],
       },

@@ -16,6 +16,7 @@ import { MetricCell, ModulePanel } from "./dashboard-ui";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 import NavIcon from "@/components/NavIcon";
 import { NEW_EVENT_WINDOW_DAYS } from "@/lib/event-publication";
+import { getIntelligenceSummary } from "@/lib/brand-intelligence";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ function relativeDate(iso: string): string {
 }
 
 export default async function AdminDashboardPage() {
-  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity, locationsAwaiting, today] =
+  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity, locationsAwaiting, today, intelligence] =
     await Promise.all([
       getDashboardCounts(),
       getDashboardNeedsAttention(),
@@ -70,6 +71,9 @@ export default async function AdminDashboardPage() {
       getRecentActivity(),
       getLocationsAwaitingReview(),
       getTodayOnFindmi(),
+      // Opportunity Intelligence (Brand Intelligence V1.1) — null when the
+      // V1 tables aren't there yet; never blocks the dashboard.
+      getIntelligenceSummary().catch(() => null),
     ]);
 
   // Every real, existing queue with a working list/filter. Zero-count
@@ -175,6 +179,34 @@ export default async function AdminDashboardPage() {
                 </div>
               </ModulePanel>
             ))}
+
+          {/* Opportunity Intelligence — new Brand signals since Admin last
+              reviewed them (Admin → Opportunities → Intelligence). */}
+          {intelligence && intelligence.newSignals > 0 && (
+            <ModulePanel
+              title="Opportunity Intelligence"
+              meta={<span className="rounded-full bg-findmi px-2 py-0.5 text-metadata font-bold text-white">{intelligence.newSignals} New</span>}
+              flush
+            >
+              <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
+                {[
+                  { count: intelligence.newBreakdown.interested, label: "new Interested signal", plural: "new Interested signals", view: "recent" },
+                  { count: intelligence.newBreakdown.maybe, label: "new Maybe signal", plural: "new Maybe signals", view: "recent" },
+                  { count: intelligence.newBreakdown.notForUs, label: "new Not For Us response", plural: "new Not For Us responses", view: "recent" },
+                  { count: intelligence.newBreakdown.auditsCompleted, label: "Brand Audit completed", plural: "Brand Audits completed", view: "recent" },
+                  { count: intelligence.newBreakdown.auditsUpdated, label: "Brand profile updated", plural: "Brand profiles updated", view: "recent" },
+                ]
+                  .filter((row) => row.count > 0)
+                  .map((row) => (
+                    <AttentionRow key={row.label} count={row.count} label={row.count === 1 ? row.label : row.plural} href={`/admin/opportunities/intelligence?view=${row.view}&new=1`} />
+                  ))}
+                <Link href="/admin/opportunities/intelligence?new=1" className="flex min-h-[44px] items-center justify-between gap-3 px-4 py-2.5 text-metadata font-bold text-accent transition hover:bg-black/[0.02]">
+                  Review Intelligence
+                  <ChevronRightGlyph className="h-4 w-4" />
+                </Link>
+              </div>
+            </ModulePanel>
+          )}
 
           {/* Today on Findmi — hidden when nothing overlaps today. "Live" only
               when now is genuinely between start and end. */}
