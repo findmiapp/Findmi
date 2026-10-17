@@ -14,6 +14,9 @@ import { resolve as resolvePath } from "node:path";
 const js = (src) => ({ url: `data:text/javascript,${encodeURIComponent(src)}`, shortCircuit: true });
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier === "server-only") return js("export{}");
+    if (specifier === "./opportunities" && context.parentURL?.endsWith("/event-participation.ts")) return js("export async function createOpportunity(){}");
+    if (specifier === "./appearance-event-sync" && context.parentURL?.endsWith("/event-participation.ts")) return js("export async function ensureEventAppearance(){}");
     if (specifier === "next/headers") return js("export const cookies=async()=>({get:()=>undefined,set(){},delete(){}});");
     if (specifier === "next/server")
       return js("export const NextResponse={json:(body,init)=>({body,status:init?.status??200})};");
@@ -157,4 +160,48 @@ test("tally: a bad signature is still rejected before any write", async () => {
   const res = await POST({ text: async () => body, headers: { get: (h) => (h === "tally-signature" ? "forged" : null) } });
   assert.equal(res.status, 401);
   assert.equal(globalThis.__db.writes.length, 0);
+});
+
+// ---------------------------------------------------------------- event participation
+
+const { readFileSync } = await import("node:fs");
+const EP = await import("../src/lib/event-participation.ts");
+const rowDb = (status) => ({
+  from: () => {
+    const api = { select: () => api, eq: () => api, maybeSingle: async () => ({ data: status ? { status } : null, error: null }) };
+    return api;
+  },
+});
+
+test("event participation: the organizer may approve only a Business-initiated request, never its own invitation", async () => {
+  assert.equal(EP.organizerMayApprove("applied"), true, "Business applied → organizer may approve");
+  assert.equal(EP.organizerMayApprove("pending"), true);
+  for (const s of ["invited", "approved", "declined", null]) assert.equal(EP.organizerMayApprove(s), false, String(s));
+  assert.equal(await EP.organizerApprovalBlocked(rowDb("invited"), "e", "b"), true, "invite-then-self-approve is blocked");
+  assert.equal(await EP.organizerApprovalBlocked(rowDb(null), "e", "b"), true, "no row at all is blocked");
+  assert.equal(await EP.organizerApprovalBlocked(rowDb("applied"), "e", "b"), false, "a real application can still be approved");
+});
+
+const fnBody = (src, name) => {
+  const start = src.indexOf(`export async function ${name}(`);
+  assert.ok(start >= 0, name);
+  const next = src.indexOf("\nexport ", start + 10);
+  return src.slice(start, next < 0 ? undefined : next);
+};
+
+test("event participation: both organizer approval paths check the row BEFORE writing approval / creating Appearances", () => {
+  const ev = fnBody(readFileSync("src/app/(public)/account/event/actions.ts", "utf8"), "updateParticipatingBusinessStatus");
+  const guard = ev.indexOf("organizerApprovalBlocked(admin, eventId, businessId)");
+  assert.ok(guard > 0 && guard < ev.indexOf('.from("event_businesses")') && guard < ev.indexOf("realizeEventLevelApproval("));
+  const th = fnBody(readFileSync("src/app/(public)/connect/actions.ts", "utf8"), "respondToApplicationInThread");
+  const guard2 = th.indexOf("organizerApprovalBlocked(admin, eventId, businessId)");
+  assert.ok(guard2 > 0 && guard2 < th.indexOf('.from("event_businesses")') && guard2 < th.indexOf("realizeEventLevelApproval("));
+});
+
+test("event dates: removing a date verifies it belongs to THIS Event before cancelling any Appearances", () => {
+  const rm = fnBody(readFileSync("src/app/(public)/account/event/actions.ts", "utf8"), "removeMemberEventDate");
+  const own = rm.indexOf('.from("event_occurrences").select("id").eq("id", occurrenceId).eq("event_id", eventId)');
+  const bail = rm.indexOf("if (!ownDate) redirect(");
+  const cancel = rm.indexOf("cancelOfficialOccurrenceAppearances(admin, occurrenceId)");
+  assert.ok(own > 0 && own < bail && bail < cancel, "ownership check → refuse → only then cancel");
 });

@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { ORGANIZER_APPROVAL_BLOCKED_MESSAGE, organizerApprovalBlocked } from "@/lib/event-participation";
 import { isEmailVerified, requireEventMember } from "@/lib/permissions";
 import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
 import { getHostEventEligibility } from "@/lib/entitlements";
@@ -796,6 +797,12 @@ export async function removeMemberEventDate(eventId: string, occurrenceId: strin
   // longer find them by occurrence id, and they'd otherwise survive as a
   // stale 'confirmed' row telling customers the (now-removed) date is
   // still happening.
+  // Security (bounded audit): only ever a date of THIS Event — the cancel
+  // below is keyed by occurrence id alone, so it must not run for another
+  // Event's date.
+  const { data: ownDate } = await admin.from("event_occurrences").select("id").eq("id", occurrenceId).eq("event_id", eventId).maybeSingle();
+  if (!ownDate) redirect(appendQuery(redirectPath, { error: "That date isn\u2019t part of this Event." }));
+
   await cancelOfficialOccurrenceAppearances(admin, occurrenceId);
 
   await admin.from("event_occurrences").delete().eq("id", occurrenceId).eq("event_id", eventId);
@@ -1476,7 +1483,11 @@ export async function updateParticipatingBusinessStatus(eventId: string, busines
     }
     // "not_found" falls through to the original unscoped whole-event path
     // below — most likely this is resolving the organizer's own
-    // outstanding invitation, not an application.
+    // outstanding invitation, not an application. Approval there is only
+    // allowed for a Business-initiated row (organizerMayApprove).
+    if (status === "approved" && (await organizerApprovalBlocked(admin, eventId, businessId))) {
+      redirect(appendQuery(redirectPath, { error: ORGANIZER_APPROVAL_BLOCKED_MESSAGE }));
+    }
   }
 
   const { error } = await admin

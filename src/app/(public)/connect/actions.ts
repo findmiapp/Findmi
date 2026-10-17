@@ -28,6 +28,7 @@
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { ORGANIZER_APPROVAL_BLOCKED_MESSAGE, organizerApprovalBlocked } from "@/lib/event-participation";
 import { isEmailVerified, requireBusinessMember, requireEventMember, requireLocationMember } from "@/lib/permissions";
 import {
   createInquiryConversation,
@@ -950,7 +951,11 @@ export async function respondToApplicationInThread(conversationId: string, event
   if (decision.kind === "not_found") {
     // Not an application in the Opportunity system for this context —
     // most likely the organizer's own outstanding invitation. Preserve
-    // the original unscoped, whole-event behavior exactly as it was.
+    // the original unscoped, whole-event behavior, except that approval
+    // requires a Business-initiated row (organizerMayApprove).
+    if (response === "approved" && (await organizerApprovalBlocked(admin, eventId, businessId))) {
+      redirect(`${redirectPath}?error=${encodeURIComponent(ORGANIZER_APPROVAL_BLOCKED_MESSAGE)}`);
+    }
     const { error } = await admin.from("event_businesses").update({ status: response }).eq("event_id", eventId).eq("business_id", businessId);
     if (error) redirect(`${redirectPath}?error=${encodeURIComponent(error.message)}`);
 

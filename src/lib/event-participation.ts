@@ -3,6 +3,25 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createOpportunity } from "./opportunities";
 import { ensureEventAppearance } from "./appearance-event-sync";
 
+/** Security (bounded audit): the ORGANIZER may approve only a
+ * Business-initiated request ('applied' / 'pending'). An 'invited' row is
+ * the organizer's own outstanding invitation — it becomes approved only
+ * when the Business accepts (applyBusinessToEvent below). Without this, an
+ * organizer could invite any Business and "approve" it themselves,
+ * publishing a confirmed Appearance on that Business's profile it never
+ * agreed to. Declining is always allowed (it only withdraws from the
+ * organizer's own Event). */
+export function organizerMayApprove(currentStatus: string | null): boolean {
+  return currentStatus === "applied" || currentStatus === "pending";
+}
+
+export async function organizerApprovalBlocked(admin: SupabaseClient, eventId: string, businessId: string): Promise<boolean> {
+  const { data } = await admin.from("event_businesses").select("status").eq("event_id", eventId).eq("business_id", businessId).maybeSingle();
+  return !organizerMayApprove((data as { status: string } | null)?.status ?? null);
+}
+
+export const ORGANIZER_APPROVAL_BLOCKED_MESSAGE = "This Business hasn\u2019t asked to join yet. It will be confirmed once the Business accepts your invitation.";
+
 /** A Business asks to take part in an EXISTING Findmi Event (whole Event).
  * The one shared implementation of the locked participation invariant —
  * used by Where I'll Be's request-to-join composer (addAppearanceFromEvent)
