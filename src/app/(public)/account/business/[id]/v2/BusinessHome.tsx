@@ -14,6 +14,10 @@ import { businessCreateActions, orderedCreateActions } from "./createActions";
 import CreateActionIcon from "./CreateActionIcon";
 import AddToPresence from "./AddToPresence";
 import HomeSectionNav, { type HomeSectionNavItem } from "./HomeSectionNav";
+import IdeasForYourBrand from "./IdeasForYourBrand";
+import type { BusinessIdea } from "@/lib/brand-audit";
+import { auditActionLabel, auditProgress, auditState, type AuditSummary } from "@/lib/brand-audit-domain";
+import type { ActionResult } from "../brand-audit/actions";
 
 // Same zone lib/format.ts formats every owner/public time in.
 const APP_TIMEZONE = "America/New_York";
@@ -33,8 +37,10 @@ const APP_TIMEZONE = "America/New_York";
  *   D. Happening Now     — conditional; live Appearances + hosted Events
  *   E. Coming Up         — Appearances + hosted Events, one per Event
  *                          (B2 buildHomeComingUp), compact, See All
+ *   B2. Findmi Brand Audit — always present (start / continue / complete)
  *   F. Create on Findmi  — horizontal action rail from ./createActions;
  *                          View All opens the existing "+" sheet
+ *   F2. Ideas For Your Brand — eligible Opportunity Ideas (swipe rail)
  *   G. Opportunities For You — existing recommendations, else Explore /
  *                          Tell Findmi Your Goals
  *   H. Performance       — existing metrics, existing Free/Pro gating
@@ -83,6 +89,10 @@ export default function BusinessHome({
   businessHandle,
   updateHandleAction,
   opportunityItems,
+  brandAudit,
+  ideas,
+  canRespondToIdeas,
+  respondToIdea,
 }: {
   basePath: string;
   businessId: string;
@@ -107,6 +117,12 @@ export default function BusinessHome({
   updateHandleAction: (formData: FormData) => void | Promise<void>;
   /** This Business's own commercial Opportunities (Business-safe items). */
   opportunityItems: BusinessOpportunityItem[];
+  /** Findmi Brand Audit summary; null when it isn't available yet. */
+  brandAudit: AuditSummary | null;
+  /** Eligible published Opportunity Ideas (server-filtered, unanswered first). */
+  ideas: BusinessIdea[];
+  canRespondToIdeas: boolean;
+  respondToIdea: (ideaId: string, response: string, note?: string | null) => Promise<ActionResult>;
 }) {
   const liveNow = liveActivities;
   const status = STATUS_COPY[publicationStatus] ?? STATUS_COPY.draft;
@@ -159,6 +175,9 @@ export default function BusinessHome({
 
       {/* B. Sticky in-page section rail. */}
       <HomeSectionNav items={navItems} />
+
+      {/* B2. Findmi Brand Audit — never blocks anything; always reachable. */}
+      {brandAudit && <BrandAuditEntry basePath={basePath} summary={brandAudit} />}
 
       {/* C. Needs Attention — only when something is actionable. */}
       {attention.length > 0 && (
@@ -284,6 +303,9 @@ export default function BusinessHome({
         </ul>
       </section>
 
+      {/* F2. Ideas For Your Brand — Findmi Opportunity Ideas, not inventory. */}
+      <IdeasForYourBrand ideas={ideas} canRespond={canRespondToIdeas} respond={respondToIdea} />
+
       {/* G. Opportunities For You — existing data only, never Pro-gated. */}
       <HomeOpportunities basePath={basePath} items={opportunityItems} />
 
@@ -389,6 +411,48 @@ function HomeOpportunities({ basePath, items }: { basePath: string; items: Busin
           </li>
         </ul>
       )}
+    </section>
+  );
+}
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: APP_TIMEZONE });
+
+/** Findmi Brand Audit entry — Start / Continue (with progress) / Complete
+ * (with dates and Review & Update). */
+function BrandAuditEntry({ basePath, summary }: { basePath: string; summary: AuditSummary }) {
+  const state = auditState(summary);
+  const progress = auditProgress(summary);
+  const status =
+    state === "complete"
+      ? `Brand Audit Complete${summary.updatedAt ? ` · Updated ${shortDate(summary.updatedAt)}` : ""}`
+      : state === "in_progress"
+        ? `Brand Audit · ${progress}% Complete`
+        : "Help Findmi understand where you\u2019re headed so we can surface better ideas, connections and opportunities for your brand.";
+  return (
+    <section id="home-brand-audit" aria-labelledby="brand-audit-title" className={SECTION_CLASS}>
+      <Link
+        href={`${basePath}/brand-audit`}
+        className={`flex items-center gap-3 rounded-2xl border px-3.5 py-3 transition active:scale-[0.99] ${
+          state === "complete" ? "border-black/[0.07] bg-white hover:border-black/15" : "border-findmi/30 bg-findmi-50/50 hover:border-findmi/50"
+        }`}
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+          <GoalGlyph className="h-6 w-6" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span id="brand-audit-title" className="block text-card-title font-bold text-primary">
+            Findmi Brand Audit
+          </span>
+          <span className="mt-0.5 block text-metadata text-muted">{status}</span>
+          <span className="mt-1 block text-metadata font-bold text-accent">{auditActionLabel(summary)}</span>
+          {state === "in_progress" && (
+            <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-black/[0.06]" aria-hidden="true">
+              <span className="block h-full rounded-full bg-findmi" style={{ width: `${progress}%` }} />
+            </span>
+          )}
+        </span>
+        <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
+      </Link>
     </section>
   );
 }

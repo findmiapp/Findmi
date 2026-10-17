@@ -20,6 +20,9 @@ import {
 import { adminConnectFindUsAt, adminRemoveFindUsAt } from "../availability-actions";
 import { getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
+import BusinessIntelligencePanel from "@/components/admin/BusinessIntelligencePanel";
+import { getAdminBusinessIntelligence } from "@/lib/brand-audit";
+import { saveIntelligenceNote } from "../../opportunities/ideas/actions";
 import SubmitBar from "@/components/admin/SubmitBar";
 import {
   CheckboxField,
@@ -101,6 +104,7 @@ const LISTING_STATUS_OPTIONS: { value: PublicationStatus; label: string }[] = [
 // here duplicates a field across tabs.
 const ADMIN_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
+  { key: "intelligence", label: "Intelligence" },
   { key: "profile", label: "Profile" },
   { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
@@ -121,10 +125,10 @@ export default async function EditBusinessPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; error?: string; saved?: string; member_updated?: string }>;
+  searchParams: Promise<{ tab?: string; error?: string; saved?: string; member_updated?: string; note_saved?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, error, saved, member_updated } = await searchParams;
+  const { tab: tabParam, error, saved, member_updated, note_saved } = await searchParams;
   const tab = tabParam && ADMIN_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   const [result, categories, membership, accessByEntity, products, accessOverview] = await Promise.all([
@@ -144,6 +148,9 @@ export default async function EditBusinessPage({
   ]);
   if (!result) notFound();
   const { business } = result;
+  // Opportunity Intelligence (Brand Audit + Idea signals + internal note) —
+  // only read for its tab; tolerates the migration not being applied yet.
+  const intelligence = tab === "intelligence" ? await getAdminBusinessIntelligence(id) : null;
 
   // Markets Foundation V1 — same admin/service-role client every other
   // read on this page ultimately uses (getAdminBusinessById etc. create
@@ -375,6 +382,10 @@ export default async function EditBusinessPage({
         )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
+        {tab === "intelligence" && intelligence && (
+          <BusinessIntelligencePanel data={intelligence} noteAction={saveIntelligenceNote.bind(null, id)} noteSaved={note_saved === "1"} />
+        )}
+
         {tab === "profile" && (
           <form action={profileAction} className="flex flex-col gap-5">
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>

@@ -305,5 +305,5 @@ test("29/30. Review stays editable and creation still re-validates logo/cover/In
 
 test("no schema change in A3", () => {
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261020000000_moment_authorship_and_access_history.sql" /* later passes (… Event date/time precision, Identity & Authorship V1) */);
+  assert.equal(files.at(-1), "20261021000000_brand_audit_and_opportunity_ideas.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1) */);
 });

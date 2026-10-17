@@ -50,6 +50,8 @@ import AddToPresence from "./v2/AddToPresence";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
+import { getBrandAudit, getIdeasForBusiness } from "@/lib/brand-audit";
+import { respondToIdeaAction } from "./brand-audit/actions";
 import { getBusinessGoals } from "@/lib/opportunity-goals";
 import { canManageGoals, type GoalRole } from "@/lib/opportunity-goals-domain";
 import { isExploreTiming, isOpportunityType, type ExploreFilters } from "@/lib/opportunity-listings-domain";
@@ -733,6 +735,11 @@ export default async function ManageBusinessPage({
   // role may view. Also loaded for Home (Opportunities preview).
   const recommendedOpportunities =
     activeTab === "opportunities" || activeTab === "overview" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
+  // Findmi Brand Audit + Opportunity Ideas (Home only). Both tolerate the
+  // migration not being applied yet (available: false → the entry and the
+  // Ideas rail simply don't render).
+  const [brandAudit, opportunityIdeas] =
+    activeTab === "overview" ? await Promise.all([getBrandAudit(id), getIdeasForBusiness(id)]) : [null, { available: false, ideas: [] }];
   // Opportunities V2 — the page's four views. Explore and Goals data are
   // only read when that view is open; both tolerate the V2 migration not
   // being applied yet (available: false).
@@ -1707,6 +1714,10 @@ export default async function ManageBusinessPage({
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
               opportunityItems={[...recommendedOpportunities.active, ...recommendedOpportunities.past]}
+              brandAudit={brandAudit?.available ? brandAudit.summary : null}
+              ideas={opportunityIdeas.ideas}
+              canRespondToIdeas={canManageOpportunityGoals}
+              respondToIdea={respondToIdeaAction.bind(null, id)}
             />
           </div>
         )}

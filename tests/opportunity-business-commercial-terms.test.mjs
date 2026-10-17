@@ -330,7 +330,12 @@ test("49 (updated after the classification correction). Pass 3 itself added no m
   // Unrelated later migrations (other features) are outside this guard.
   assert.deepEqual(
     after.filter((f) => /opportunit|commercial_terms/.test(f)),
-    ["20261012000000_commercial_terms_brand_contribution_classification.sql"]
+    [
+      "20261012000000_commercial_terms_brand_contribution_classification.sql",
+      // Brand Audit + Opportunity Ideas V1 — new Idea tables only; no
+      // Opportunity listing / Commercial Terms table is touched.
+      "20261021000000_brand_audit_and_opportunity_ideas.sql",
+    ]
   );
 });
 
