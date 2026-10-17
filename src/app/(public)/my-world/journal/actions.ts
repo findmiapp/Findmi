@@ -20,6 +20,7 @@ import { authorizeAuthorChoice, canManageMoment, canPostAsBusinessRole, type Mom
 import { authorColumn, getViewerAuthorContext, hasMomentAuthorship } from "@/lib/moment-authorship";
 import { recordAccessEvents } from "@/lib/access-history";
 import {
+  existingPresetSection,
   isJournalSectionType,
   JOURNAL_PHOTO_CAPTION_MAX,
   JOURNAL_SECTION_NOTES_MAX,
@@ -895,6 +896,10 @@ export async function createJournalSection(
     const notes = cleanSectionText(input.notes, JOURNAL_SECTION_NOTES_MAX, "note");
     if ("error" in notes) return notes;
     const existing = await loadEntrySections(admin, entryId);
+    // A preset that already exists is reused, never duplicated (also covers
+    // a second request racing in from a double tap).
+    const reuse = existingPresetSection(existing, input.sectionType);
+    if (reuse) return { section: reuse };
     const nextOrder = existing.reduce((max, s) => Math.max(max, s.display_order + 1), 0);
     const { data, error } = await admin
       .from("journal_entry_sections")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import Image from "next/image";
 import ChevronIcon from "@/components/ChevronIcon";
 import JournalPhotoStrip from "./JournalPhotoStrip";
@@ -13,6 +13,7 @@ import {
   JOURNAL_PHOTO_CAPTION_MAX,
   JOURNAL_SECTION_TITLE_MAX,
   JOURNAL_SECTION_NOTES_MAX,
+  existingPresetSection,
   isJournalSectionType,
   type JournalEntrySectionRow,
   type JournalSectionType,
@@ -61,6 +62,10 @@ export default function MomentPhotosStage({
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<MomentSectionFilter>("all");
+  // The section card just chosen from Add Section (created or reused) —
+  // briefly highlighted and scrolled into view.
+  const [focusSectionId, setFocusSectionId] = useState<string | null>(null);
+  const addingRef = useRef(false);
 
   const { items } = photos;
   const grouped = sections.length > 0;
@@ -88,19 +93,33 @@ export default function MomentPhotosStage({
     onEditNote: (localId: string) => setSheet({ kind: "note", localId }),
   };
 
+  // Choosing a preset that already exists REUSES it (never a second "The
+  // Experience"); a preset that doesn't exist yet is created. Either way
+  // the person lands on that one section. addingRef blocks rapid repeat
+  // taps before `busy` has re-rendered; the server also reuses presets.
   async function addSection(type: JournalSectionType) {
+    if (addingRef.current) return;
+    const hasLoose = items.some((it) => it.status === "complete" && groupOf(it.sectionId) === null);
+    const existing = existingPresetSection(sections, type);
+    if (existing) {
+      setFocusSectionId(existing.id);
+      setSheet(hasLoose ? { kind: "assign", sectionId: existing.id } : null);
+      return;
+    }
+    addingRef.current = true;
     setBusy(true);
     onError(null);
     const entryId = await ensureEntryId();
     const result = entryId ? await createJournalSection(entryId, { sectionType: type }) : { error: "Couldn't start this Moment." };
     setBusy(false);
+    addingRef.current = false;
     if ("error" in result) {
       onError(result.error);
       setSheet(null);
       return;
     }
-    setSections((prev) => [...prev, result.section]);
-    const hasLoose = items.some((it) => it.status === "complete" && groupOf(it.sectionId) === null);
+    setSections((prev) => (prev.some((s) => s.id === result.section.id) ? prev : [...prev, result.section]));
+    setFocusSectionId(result.section.id);
     setSheet(hasLoose ? { kind: "assign", sectionId: result.section.id } : null);
   }
 
@@ -209,6 +228,8 @@ export default function MomentPhotosStage({
               onDelete={() => setSheet({ kind: "deleteSection", sectionId: section.id })}
               onAddPhotos={() => setSheet({ kind: "assign", sectionId: section.id })}
               photos={filterBySection(items, section.id)}
+              focused={focusSectionId === section.id}
+              onFocusDone={() => setFocusSectionId((id) => (id === section.id ? null : id))}
             />
           ))}
         </>
@@ -342,6 +363,8 @@ function SectionBlock({
   onDelete,
   onAddPhotos,
   photos,
+  focused = false,
+  onFocusDone,
 }: {
   section: JournalEntrySectionRow;
   isFirst: boolean;
@@ -355,14 +378,30 @@ function SectionBlock({
   /** This section's photos — a filtered VIEW of the one global order
    * (filterBySection), never a second ordering. */
   photos: PhotoState["items"];
+  /** Just chosen from Add Section: scroll to it and highlight it briefly. */
+  focused?: boolean;
+  onFocusDone?: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const onFocusDoneRef = useRef(onFocusDone);
+  onFocusDoneRef.current = onFocusDone;
+  useEffect(() => {
+    if (!focused) return;
+    cardRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    const t = setTimeout(() => onFocusDoneRef.current?.(), 2000);
+    return () => clearTimeout(t);
+  }, [focused]);
   const [title, setTitle] = useState(section.title ?? "");
   const [notes, setNotes] = useState(section.notes ?? "");
   const [notesOpen, setNotesOpen] = useState(Boolean(section.notes));
   const label = typeLabel(section.section_type);
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-2xl border border-black/10 bg-white p-3">
+    <div
+      ref={cardRef}
+      data-focused={focused || undefined}
+      className={`flex flex-col gap-2.5 rounded-2xl border bg-white p-3 transition ${focused ? "border-findmi ring-2 ring-findmi/30" : "border-black/10"}`}
+    >
       <div className="flex items-center gap-1.5">
         <select
           value={isJournalSectionType(section.section_type) ? section.section_type : "other"}

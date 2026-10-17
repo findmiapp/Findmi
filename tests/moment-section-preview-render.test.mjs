@@ -144,3 +144,71 @@ test("after save/reload (assignments come back from the server), the cards show 
   assert.deepEqual(sectionThumbs("The Experience"), ["B", "E"]);
   assert.deepEqual(sectionThumbs("The Place"), ["C"]);
 });
+
+// ── Preset sections are unique: choosing an existing one reuses it ────────
+const STUB = await import("@/app/(public)/my-world/journal/actions");
+const P = await import("../src/lib/journal-sections.ts");
+const sectionCards = () => document.querySelectorAll('select[aria-label="Section type"]').length;
+const presetButton = (label) => [...(document.querySelector('[role="dialog"][aria-label="Add Section"]')?.querySelectorAll("button") ?? [])].find((b) => b.textContent.trim() === label);
+async function openAddSection() {
+  await click(buttons("+ Add Section")[0]);
+}
+
+test("presets: the server-side rule reuses an existing preset, never 'other'", () => {
+  const rows = [
+    { id: "x2", section_type: "experience", display_order: 3 },
+    { id: "x1", section_type: "experience", display_order: 1 }, // historical duplicate
+    { id: "o1", section_type: "other", display_order: 2 },
+  ];
+  assert.equal(P.existingPresetSection(rows, "experience").id, "x1", "first in section order");
+  assert.equal(P.existingPresetSection(rows, "place"), null);
+  assert.equal(P.existingPresetSection(rows, "other"), null, "free-form sections may repeat");
+  const src = readFileSync("src/app/(public)/my-world/journal/actions.ts", "utf8");
+  assert.match(src, /const reuse = existingPresetSection\(existing, input\.sectionType\);\s*if \(reuse\) return \{ section: reuse \};\s*const nextOrder/);
+});
+
+test("Add Section → an existing preset is REUSED: no new section, photos intact, card focused, all presets still offered", async () => {
+  await mount(PHOTOS.map((p) => ({ ...p, sectionId: p.id === "B" ? "s-exp" : null })));
+  STUB.createdSections.length = 0;
+  assert.equal(sectionCards(), 2);
+  await openAddSection();
+  for (const label of Object.values(P.JOURNAL_SECTION_TYPE_LABELS)) assert.ok(presetButton(label), `${label} still offered`);
+  await click(presetButton("The Experience"));
+  await act(async () => new Promise((r) => setTimeout(r, 50)));
+  assert.equal(STUB.createdSections.length, 0, "no create request for an existing preset");
+  assert.equal(sectionCards(), 2, "section count unchanged");
+  assert.deepEqual(sectionThumbs("The Experience"), ["B"], "existing section keeps its photos");
+  const focused = document.querySelector("[data-focused]");
+  assert.ok(focused?.querySelector('ul[aria-label="Photos in The Experience"]'), "the existing card is the one highlighted");
+  assert.equal(document.querySelector('[role="dialog"]')?.getAttribute("aria-label"), "Add Photos To The Experience", "straight into its Add Photos flow");
+  assert.deepEqual(order, ["A", "B", "C", "D", "E"]);
+});
+
+test("Add Section → an unused preset is created normally, then reused", async () => {
+  await mount();
+  STUB.createdSections.length = 0;
+  await openAddSection();
+  await click(presetButton("Favorites"));
+  await act(async () => new Promise((r) => setTimeout(r, 50)));
+  assert.equal(STUB.createdSections.length, 1);
+  assert.equal(sectionCards(), 3);
+  await click(document.querySelector('[role="dialog"] button[aria-label="Close"]') ?? buttons("Cancel")[0] ?? document.body);
+  await openAddSection();
+  await click(presetButton("Favorites"));
+  await act(async () => new Promise((r) => setTimeout(r, 50)));
+  assert.equal(STUB.createdSections.length, 1, "second pick reuses it");
+  assert.equal(sectionCards(), 3);
+});
+
+test("rapid repeated taps on a new preset create exactly one section", async () => {
+  await mount();
+  STUB.createdSections.length = 0;
+  await openAddSection();
+  const btn = presetButton("People");
+  await act(async () => {
+    for (let i = 0; i < 4; i++) btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  await act(async () => new Promise((r) => setTimeout(r, 80)));
+  assert.equal(STUB.createdSections.length, 1);
+  assert.equal(sectionCards(), 3);
+});

@@ -51,6 +51,15 @@ export function journalSectionLabel(section: { section_type: string; title: stri
   return isJournalSectionType(section.section_type) ? JOURNAL_SECTION_TYPE_LABELS[section.section_type] : JOURNAL_SECTION_TYPE_LABELS.other;
 }
 
+/** Preset section types are unique within a Moment: choosing one that
+ * already exists means USE that section (the first, in section order —
+ * safe with any historical duplicates). "other" is the free-form type
+ * and may repeat. Null → create a new section. */
+export function existingPresetSection<S extends { section_type: string; display_order: number }>(sections: S[], type: string): S | null {
+  if (type === "other") return null;
+  return [...sections].sort((a, b) => a.display_order - b.display_order).find((s) => s.section_type === type) ?? null;
+}
+
 export interface JournalEntrySectionRow {
   id: string;
   journal_entry_id: string;
