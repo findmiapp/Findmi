@@ -39,6 +39,11 @@ export interface DiscoveryLane {
   market_id: string | null;
   item_limit: number;
   sort_order: number;
+  /** Discovery Lanes Placement & Density Refinement pass — which of the
+   * homepage's two Lane regions this Lane renders in. At most one Lane
+   * is ever "primary" (DB partial unique index backs the Admin
+   * single-select control); everything else is "explore_more". */
+  placement: "primary" | "explore_more";
 }
 
 export interface AreaRef {

@@ -20,11 +20,12 @@ const MARKERS = [
   ["Hero", "<HomeHero images={heroImages}"],
   ["SearchBar", "<SearchBar marketSlug={marketSlug}"],
   ["Bulletin Carousel", "<HomepageBulletinCarousel bulletins={bulletins} />"],
-  ["Discovery Lanes", "<DiscoveryLanes market={marketSlug} area={areaSlug} />"],
+  ["Primary Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="primary" />'],
   ["What's Happening", "{upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}"],
   ["Brands We Love", "isBrandsRow\n        />"],
   ["Findmi Moments", 'aria-labelledby="home-moments-heading"'],
   ["Featured Locations", 'title="Featured Locations"'],
+  ["Explore More Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />'],
   ["Start Here doorway", "New to Findmi? Start here"],
   ["Business Showcase", "<BusinessShowcaseCarousel />"],
   ["Remaining founder rows", "{otherRowIndices.map((i) => ("],
@@ -38,7 +39,7 @@ test("each approved section marker appears exactly once in page.tsx", () => {
   }
 });
 
-test("the approved homepage render order is: Weather, Hero, Search, Bulletin, Discovery Lanes, What's Happening, Brands We Love, Moments, Featured Locations, Start Here doorway, Business Showcase, remaining founder rows, Closing CTA", () => {
+test("the approved homepage render order is: Weather, Hero, Search, Bulletin, Primary Discovery, What's Happening, Brands We Love, Moments, Featured Locations, Explore More Discovery, Start Here doorway, Business Showcase, remaining founder rows, Closing CTA", () => {
   const positions = MARKERS.map(([name, marker]) => ({ name, index: PAGE.indexOf(marker) }));
   for (const p of positions) assert.ok(p.index !== -1, `${p.name} marker not found at all`);
   for (let i = 1; i < positions.length; i++) {

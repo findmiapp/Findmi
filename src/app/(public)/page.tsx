@@ -242,9 +242,15 @@ export default async function HomePage({
       {/* Discovery Intelligence V1 — Admin-ordered Lanes (Topics, one
           Topic's live results, a Market's Areas). Streams in after the
           above-the-fold content; renders nothing when no Lane has
-          anything to show. */}
+          anything to show.
+          Discovery Lanes Placement & Density Refinement pass — this is
+          now PRIMARY DISCOVERY only (the Admin-designated "primary"
+          Lane, today "Right Now" — see discovery_lanes.placement). The
+          remaining Lanes render as their own Explore More region further
+          down, after Featured Locations. Own Suspense boundary so a slow
+          Explore More fetch can never block What's Happening below. */}
       <Suspense fallback={<DiscoveryLanesSkeleton />}>
-        <DiscoveryLanes market={marketSlug} area={areaSlug} />
+        <DiscoveryLanes market={marketSlug} area={areaSlug} placement="primary" />
       </Suspense>
 
       {/* Public Experience Consolidation pass — "Must Dos" eyebrow removed
@@ -389,6 +395,18 @@ export default async function HomePage({
           </div>
         </Section>
       )}
+
+      {/* Discovery Lanes Placement & Density Refinement pass — EXPLORE
+          MORE: every visible Lane except the Admin-designated "primary"
+          one above (This Weekend, Experience Something, Food + Drink,
+          Culture + Interests, Explore NYC, today). Founder-managed
+          ordering within the group is preserved (still sort_order).
+          Same DiscoveryLanes component/query pipeline as Primary
+          Discovery; its own Suspense boundary, separate from the one
+          above, so the two regions stream independently. */}
+      <Suspense fallback={<DiscoveryLanesSkeleton />}>
+        <DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />
+      </Suspense>
 
       {/* Dual-Audience Join Doorway pass — a compact two-path onboarding
           block: one short headline, two small side-by-side cards

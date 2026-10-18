@@ -1,3 +1,4 @@
+import { cache } from "react";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import { DiscoveryRail, DiscoveryRailSkeleton } from "@/components/discovery/DiscoveryTile";
@@ -9,15 +10,24 @@ import { getVocabulary, runDiscovery, type DiscoveryLane, type DiscoveryTopic } 
 // "home" page, Admin-ordered). Three shapes: a row of Topic tiles, one
 // Topic's live results, or a Market's Areas. Anything that would render
 // empty is omitted — a Topic tile only shows while it has results.
-
-async function getHomeLanes(): Promise<DiscoveryLane[]> {
+//
+// Discovery Lanes Placement & Density Refinement pass — the homepage now
+// renders this component twice (placement="primary" before What's
+// Happening, placement="explore_more" after Featured Locations, each in
+// its own Suspense boundary). getHomeLanes() takes no arguments and is
+// wrapped in React's cache() (the same per-request-memoization pattern
+// getVocabulary/getCandidates/getPersonalContext in discovery/server.ts
+// already use) so both calls within one render resolve to the SAME
+// promise — one discovery_pages + discovery_lanes round trip total, not
+// two — and the placement split itself is just an in-memory filter.
+const getHomeLanes = cache(async (): Promise<DiscoveryLane[]> => {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data: page } = await supabase.from("discovery_pages").select("id").eq("is_system", true).limit(1).maybeSingle();
   if (!page) return [];
   const { data, error } = await supabase.from("discovery_lanes").select("*").eq("page_id", page.id).eq("is_visible", true).order("sort_order");
   return error ? [] : ((data ?? []) as DiscoveryLane[]);
-}
+});
 
 function LaneHeader({ title, subtitle, href }: { title: string; subtitle?: string | null; href?: string }) {
   return (
@@ -59,8 +69,9 @@ export function TileRail({ children }: { children: React.ReactNode }) {
   return <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 lg:grid-cols-6">{children}</div>;
 }
 
-export default async function DiscoveryLanes({ market, area }: { market?: string; area?: string }) {
-  const [lanes, vocab] = await Promise.all([getHomeLanes(), getVocabulary()]);
+export default async function DiscoveryLanes({ market, area, placement }: { market?: string; area?: string; placement: "primary" | "explore_more" }) {
+  const [allLanes, vocab] = await Promise.all([getHomeLanes(), getVocabulary()]);
+  const lanes = allLanes.filter((l) => l.placement === placement);
   if (lanes.length === 0) return null;
   const context = market ? { market, ...(area ? { area } : {}) } : {};
   const topicById = new Map(vocab.topicRows.map((t) => [t.id, t]));

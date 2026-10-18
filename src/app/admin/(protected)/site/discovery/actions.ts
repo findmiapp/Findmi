@@ -82,6 +82,28 @@ export async function saveLaneAction(formData: FormData) {
   done();
 }
 
+/** Discovery Lanes Placement & Density Refinement pass — single-select
+ * "Primary Discovery" control. Touches ONLY the placement column (never
+ * title/subtitle/order/items/visible/topics) on this Lane and on
+ * whichever Lane previously held "primary" on the same page — every
+ * other Lane setting is left exactly as the founder last saved it. The
+ * DB's own partial unique index (one "primary" per page_id) is the real
+ * backstop; the demote-then-promote order here just keeps a normal
+ * request from tripping it. */
+export async function setPrimaryLaneAction(formData: FormData) {
+  const admin = await requireAdminSupabase();
+  const id = str(formData, "id");
+  if (!id) fail("Missing Lane.");
+  const { data: lane, error: laneErr } = await admin.from("discovery_lanes").select("page_id").eq("id", id!).maybeSingle();
+  if (laneErr || !lane) fail("Lane not found.");
+  const { page_id } = lane as { page_id: string };
+  const { error: demoteErr } = await admin.from("discovery_lanes").update({ placement: "explore_more" }).eq("page_id", page_id).eq("placement", "primary");
+  if (demoteErr) fail(demoteErr.message);
+  const { error: promoteErr } = await admin.from("discovery_lanes").update({ placement: "primary" }).eq("id", id!);
+  if (promoteErr) fail(promoteErr.message);
+  done();
+}
+
 /** Event attributes Discovery filters on — explicit, never inferred:
  * unknown stays null (not shown as Free / Family Friendly). */
 export async function saveEventAttributesAction(formData: FormData) {

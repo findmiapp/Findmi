@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { searchHref } from "@/lib/discovery/query";
-import { saveEventAttributesAction, saveLaneAction, saveTopicAction } from "./actions";
+import { saveEventAttributesAction, saveLaneAction, saveTopicAction, setPrimaryLaneAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export default async function DiscoveryAdminPage({ searchParams }: { searchParam
     eventsQuery,
   ]);
   type Topic = { id: string; slug: string; name: string; description: string | null; image_url: string | null; aliases: string[]; query: unknown; is_active: boolean; sort_order: number };
-  type Lane = { id: string; title: string; subtitle: string | null; kind: string; topic_ids: string[]; topic_id: string | null; item_limit: number; sort_order: number; is_visible: boolean };
+  type Lane = { id: string; title: string; subtitle: string | null; kind: string; topic_ids: string[]; topic_id: string | null; item_limit: number; sort_order: number; is_visible: boolean; placement: "primary" | "explore_more" };
   const topicList = (topics ?? []) as Topic[];
   const laneList = (lanes ?? []) as Lane[];
   const eventList = (events ?? []) as { id: string; name: string; slug: string; start_date: string | null; is_free: boolean | null; family_friendly: boolean | null }[];
@@ -83,33 +83,46 @@ export default async function DiscoveryAdminPage({ searchParams }: { searchParam
 
       <section className="mt-8">
         <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">Homepage Lanes</h2>
+        <p className="mt-1 text-xs text-ink/50">Primary Discovery renders near the top, right before What&apos;s Happening. Everything else is Explore More, further down the page, in the order below.</p>
         <div className="mt-2 flex flex-col gap-3">
           {laneList.map((l) => (
-            <form key={l.id} action={saveLaneAction} className="flex flex-col gap-2 rounded-2xl border border-black/5 bg-white p-3">
-              <input type="hidden" name="id" value={l.id} />
-              <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">{l.kind === "topics" ? "Topic Tiles" : l.kind === "topic_results" ? "Topic Results" : "Areas"}</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className={label}>Title<input name="title" defaultValue={l.title} maxLength={60} autoCapitalize="words" className={input} /></label>
-                <label className={label}>Subtitle<input name="subtitle" defaultValue={l.subtitle ?? ""} autoCapitalize="sentences" className={input} /></label>
+            <div key={l.id} className="flex flex-col gap-2 rounded-2xl border border-black/5 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">{l.kind === "topics" ? "Topic Tiles" : l.kind === "topic_results" ? "Topic Results" : "Areas"}</p>
+                {l.placement === "primary" ? (
+                  <span className="shrink-0 rounded-full bg-findmi-50 px-3 py-1 text-xs font-bold text-findmi-700">Primary Discovery</span>
+                ) : (
+                  <form action={setPrimaryLaneAction}>
+                    <input type="hidden" name="id" value={l.id} />
+                    <button className="shrink-0 rounded-full border border-black/10 px-3 py-1 text-xs font-semibold text-ink/60">Make Primary</button>
+                  </form>
+                )}
               </div>
-              {l.kind === "topics" && (
-                <label className={label}>Topic Slugs (in order)<input name="topic_slugs" defaultValue={l.topic_ids.map((id) => topicList.find((t) => t.id === id)?.slug).filter(Boolean).join(", ")} autoCapitalize="none" className={input} /></label>
-              )}
-              {l.kind === "topic_results" && (
-                <label className={label}>
-                  Topic
-                  <select name="topic_id" defaultValue={l.topic_id ?? ""} className={input}>
-                    {topicList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </label>
-              )}
-              <div className="flex flex-wrap items-end gap-3">
-                <label className={label}>Order<input name="sort_order" type="number" defaultValue={l.sort_order} className={`${input} w-20`} /></label>
-                <label className={label}>Items<input name="item_limit" type="number" min={1} max={24} defaultValue={l.item_limit} className={`${input} w-20`} /></label>
-                <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" name="is_visible" defaultChecked={l.is_visible} /> Visible</label>
-                <button className="rounded-full border border-black/10 px-4 py-2 text-sm font-semibold text-ink">Save</button>
-              </div>
-            </form>
+              <form action={saveLaneAction} className="flex flex-col gap-2">
+                <input type="hidden" name="id" value={l.id} />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className={label}>Title<input name="title" defaultValue={l.title} maxLength={60} autoCapitalize="words" className={input} /></label>
+                  <label className={label}>Subtitle<input name="subtitle" defaultValue={l.subtitle ?? ""} autoCapitalize="sentences" className={input} /></label>
+                </div>
+                {l.kind === "topics" && (
+                  <label className={label}>Topic Slugs (in order)<input name="topic_slugs" defaultValue={l.topic_ids.map((id) => topicList.find((t) => t.id === id)?.slug).filter(Boolean).join(", ")} autoCapitalize="none" className={input} /></label>
+                )}
+                {l.kind === "topic_results" && (
+                  <label className={label}>
+                    Topic
+                    <select name="topic_id" defaultValue={l.topic_id ?? ""} className={input}>
+                      {topicList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </label>
+                )}
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className={label}>Order<input name="sort_order" type="number" defaultValue={l.sort_order} className={`${input} w-20`} /></label>
+                  <label className={label}>Items<input name="item_limit" type="number" min={1} max={24} defaultValue={l.item_limit} className={`${input} w-20`} /></label>
+                  <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" name="is_visible" defaultChecked={l.is_visible} /> Visible</label>
+                  <button className="rounded-full border border-black/10 px-4 py-2 text-sm font-semibold text-ink">Save</button>
+                </div>
+              </form>
+            </div>
           ))}
         </div>
       </section>
