@@ -37,7 +37,12 @@ function LaneHeader({ title, subtitle, href }: { title: string; subtitle?: strin
 
 export function TopicTile({ topic, href, count }: { topic: Pick<DiscoveryTopic, "name" | "image_url" | "description">; href: string; count?: number }) {
   return (
-    <Link href={href} className="group relative flex aspect-[4/3] w-full flex-col justify-end overflow-hidden rounded-2xl bg-findmi-50 p-3 transition active:scale-[0.98]">
+    // Discovery Lanes Density Refinement pass — mobile tile height cut
+    // ~33% (aspect-[4/3] -> aspect-[2/1]) by widening the aspect ratio
+    // only; sm:aspect-[4/3] keeps the existing grid layout byte-identical
+    // at sm/lg. Colors, rounded-2xl, text sizes/typography, live count,
+    // and the TileRail horizontal-swipe rail itself are untouched.
+    <Link href={href} className="group relative flex aspect-[2/1] w-full flex-col justify-end overflow-hidden rounded-2xl bg-findmi-50 p-3 transition active:scale-[0.98] sm:aspect-[4/3]">
       {topic.image_url && (
         <>
           <SupabaseImage src={topic.image_url} alt="" fill sizes="(min-width: 1024px) 18vw, 40vw" className="object-cover transition duration-500 group-hover:scale-[1.03] motion-reduce:transition-none" />
