@@ -52,6 +52,27 @@ export async function removeProductGeographyAction(formData: FormData) {
   redirect(`${PATH}?saved=1`);
 }
 
+/** Discovery Tile Visual System pass, Part B — optional editorial cover
+ * image for an Area's Discovery tile. Touches ONLY market_areas.image_url
+ * — never name/slug/market_id/parent_area_id/level/consumer_visible/
+ * sort_order, so an Area's geographic identity, parent relationship,
+ * market assignment, visibility and sorting are all untouched by this
+ * action. ImageField's text input can be cleared to blank; str() turns
+ * that into null (the same "no image" state new/unset Areas already
+ * have), so Upload/Replace/Paste-URL/Clear are all just this one update
+ * with a different value. Revalidates "/" too — the homepage's own
+ * "areas" Discovery Lane reads this same column. */
+export async function saveAreaImageAction(formData: FormData) {
+  const admin = await requireAdminSupabase();
+  const id = str(formData, "id");
+  if (!id) redirect(`${PATH}?error=${encodeURIComponent("Missing Area.")}`);
+  const { error } = await admin.from("market_areas").update({ image_url: str(formData, "image_url") }).eq("id", id!);
+  if (error) redirect(`${PATH}?error=${encodeURIComponent(error.message)}`);
+  revalidatePath(PATH);
+  revalidatePath("/");
+  redirect(`${PATH}?saved=1`);
+}
+
 // ── Canonical Entity Geography — backfill runner ────────────────────────
 // Dry Run writes nothing; Apply writes only empty geo_* columns, in
 // bounded batches, never a Market/Area/Market Request, never a guess

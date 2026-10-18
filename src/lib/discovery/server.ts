@@ -58,6 +58,11 @@ export interface AreaRef {
   consumer_visible: boolean;
   aliases: string[];
   sort_order: number;
+  /** Discovery Tile Visual System pass, Part B — optional editorial cover
+   * image for this Area's Discovery tile (market_areas.image_url), same
+   * shape as DiscoveryTopic.image_url. Admin-set only — never generated,
+   * never a stock image. */
+  image_url: string | null;
 }
 
 export interface Vocabulary extends ParseVocabulary {
@@ -90,7 +95,7 @@ export const getVocabulary = cache(async (): Promise<Vocabulary> => {
   type MarketRow = { id: string; slug: string; name: string; display_name: string | null; consumer_visible?: boolean | null };
   const marketRows = ((marketsRes.data ?? []) as MarketRow[]).map((m) => ({ id: m.id, slug: m.slug, name: m.display_name?.trim() || m.name, consumer_visible: m.consumer_visible !== false }));
   const marketById = new Map(marketRows.map((m) => [m.id, m]));
-  type AreaRow = { id: string; slug: string; name: string; display_name: string | null; market_id: string; parent_area_id?: string | null; level?: string | null; consumer_visible: boolean; aliases: string[] | null; sort_order: number };
+  type AreaRow = { id: string; slug: string; name: string; display_name: string | null; market_id: string; parent_area_id?: string | null; level?: string | null; consumer_visible: boolean; aliases: string[] | null; sort_order: number; image_url?: string | null };
   const areaRows: AreaRef[] = ((areasRes.data ?? []) as AreaRow[])
     .filter((a) => marketById.has(a.market_id))
     .map((a) => ({
@@ -105,6 +110,7 @@ export const getVocabulary = cache(async (): Promise<Vocabulary> => {
       consumer_visible: a.consumer_visible,
       aliases: a.aliases ?? [],
       sort_order: a.sort_order,
+      image_url: a.image_url ?? null,
     }));
   return {
     topicRows,

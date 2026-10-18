@@ -1,11 +1,12 @@
 import Link from "next/link";
+import ImageField from "@/components/admin/ImageField";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { getCensusStatus } from "@/lib/geo/census-import";
 import { CENSUS_IMPORT_ORDER, CENSUS_SOURCES, DEFAULT_CENSUS_VINTAGE, normalizeSearch } from "@/lib/geo/census-format";
 import { STATE_BY_USPS } from "@/lib/geo/states";
 import CensusImportRunner from "./CensusImportRunner";
 import BackfillRunner from "./BackfillRunner";
-import { addProductGeographyAction, removeProductGeographyAction } from "./actions";
+import { addProductGeographyAction, removeProductGeographyAction, saveAreaImageAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,13 +25,13 @@ export default async function GeographyAdminPage({ searchParams }: { searchParam
 
   const [{ data: markets }, { data: areas }, { data: mappings, error: mapErr }] = await Promise.all([
     admin.from("markets").select("id, name, slug, active").order("sort_order"),
-    admin.from("market_areas").select("id, name, slug, market_id, sort_order").order("sort_order"),
+    admin.from("market_areas").select("id, name, slug, market_id, sort_order, image_url").order("sort_order"),
     admin.from("product_geographies").select("id, market_id, market_area_id, geo_key, role").order("geo_key"),
   ]);
   type Mapping = { id: string; market_id: string; market_area_id: string | null; geo_key: string; role: string };
   const maps = (mappings ?? []) as Mapping[];
   const marketList = (markets ?? []) as { id: string; name: string; slug: string; active: boolean }[];
-  const areaList = (areas ?? []) as { id: string; name: string; slug: string; market_id: string }[];
+  const areaList = (areas ?? []) as { id: string; name: string; slug: string; market_id: string; image_url: string | null }[];
   const geoNames = new Map<string, string>();
   if (maps.length) {
     const { data } = await admin.from("census_geographies").select("geo_key, display_name, state_usps").in("geo_key", [...new Set(maps.map((m) => m.geo_key))]);
@@ -150,6 +151,34 @@ export default async function GeographyAdminPage({ searchParams }: { searchParam
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* Discovery Tile Visual System pass, Part B — optional editorial
+          cover image per Area, for the homepage "areas" Discovery Lane's
+          tiles (TopicTile). Each form touches ONLY market_areas.
+          image_url via saveAreaImageAction — never name/slug/market_id/
+          parent_area_id/level/consumer_visible/sort_order, so an Area's
+          geographic identity, parent relationship, market assignment,
+          visibility and sorting are all unaffected by editing its image.
+          ImageField already covers paste-a-URL, upload-a-file, and
+          clear-to-blank (str() turns an emptied field into null, the
+          same "no image" state an unset Area already has) — no new
+          upload infrastructure, no separate media system. Leaving an
+          Area's image blank keeps its existing pale-aqua text-only tile
+          exactly as it already renders today. */}
+      <section className="mt-8">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">Area Images</h2>
+        <p className="mt-1 text-xs text-ink/50">Optional editorial cover image for an Area&apos;s homepage Discovery tile. Leave blank to keep the existing text-only tile.</p>
+        <div className="mt-2 flex flex-col gap-3">
+          {areaList.map((a) => (
+            <form key={a.id} action={saveAreaImageAction} className="flex flex-col gap-2 rounded-2xl border border-black/5 bg-white p-3">
+              <input type="hidden" name="id" value={a.id} />
+              <p className="text-sm font-semibold text-ink">{marketList.find((m) => m.id === a.market_id)?.name ?? "Market"} · {a.name}</p>
+              <ImageField label="Image" name="image_url" defaultValue={a.image_url} />
+              <button className="self-start rounded-full border border-black/10 px-4 py-2 text-sm font-semibold text-ink">Save</button>
+            </form>
+          ))}
         </div>
       </section>
 

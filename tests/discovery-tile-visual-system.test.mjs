@@ -81,10 +81,10 @@ test("live counts and destination hrefs for date/status tiles are computed exact
 
 // ── Guardrails ────────────────────────────────────────────────────────────
 
-test("Area tiles are unaffected by this pass — still pass dateStatus=false (the default) and the hardcoded image_url: null pending the Part B migration", () => {
+test("Area tiles are unaffected by the dateStatus presentation — no dateStatus prop is ever passed for areas, so an Area's own image (Part B) can still render as a real photo", () => {
   const areasBranch = LANES.slice(LANES.lastIndexOf("const m = vocab.marketRows.find"), LANES.length);
-  assert.match(areasBranch, /<TopicTile topic=\{\{ name: a\.name, image_url: null, description: null \}\} href=\{`\/explore\/\$\{m\.slug\}\/\$\{a\.slug\}`\} \/>/);
   assert.doesNotMatch(areasBranch, /dateStatus/);
+  // Part B (tests/discovery-area-images.test.mjs) covers the real a.image_url wiring itself.
 });
 
 test("DiscoveryTile (event/business/location/moment preview cards) is a completely separate component, untouched by this pass", () => {

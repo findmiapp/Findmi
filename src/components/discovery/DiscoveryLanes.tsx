@@ -138,7 +138,7 @@ export default async function DiscoveryLanes({ market, area, placement }: { mark
           <TileRail>
             {areas.map((a) => (
               <div key={a.id} className="w-[40%] shrink-0 snap-start sm:w-auto">
-                <TopicTile topic={{ name: a.name, image_url: null, description: null }} href={`/explore/${m.slug}/${a.slug}`} />
+                <TopicTile topic={{ name: a.name, image_url: a.image_url, description: null }} href={`/explore/${m.slug}/${a.slug}`} />
               </div>
             ))}
           </TileRail>
