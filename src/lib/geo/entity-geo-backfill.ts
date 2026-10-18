@@ -112,6 +112,12 @@ async function candidateRows(admin: SupabaseClient, table: BackfillTable, limit:
     .is("geo_state_key", null)
     .not("city", "is", null)
     .not("state", "is", null);
+  // Idempotency closure — a ZCTA-only resolution (events/event_occurrences/
+  // businesses/locations) sets ONLY geo_zcta_key, leaving geo_place_key/
+  // geo_state_key both null; without this check such a row looked like it
+  // still had no canonical geography at all and stayed a "candidate"
+  // forever. Appearances has no geo_zcta_key column — nothing to add there.
+  if (HAS_ZCTA_COLUMN[table]) query = query.is("geo_zcta_key", null);
   if (HAS_LOCATION_ID_COLUMN[table]) query = query.is("location_id", null);
   const { data } = await query.limit(limit);
   // A dynamic (non-literal) select string loses supabase-js's own
@@ -167,6 +173,12 @@ async function runOne(admin: SupabaseClient, table: BackfillTable, limit: number
         .eq("id", row.id)
         .is("geo_place_key", null)
         .is("geo_state_key", null);
+      // Same idempotency closure as candidateRows above, re-checked at
+      // write time (not just at selection time) — a row that gained a
+      // ZCTA key (from this runner, a concurrent create/edit, or an
+      // import) between the candidate read and now must never be
+      // reprocessed or have its existing key silently reconfirmed.
+      if (HAS_ZCTA_COLUMN[table]) updateQuery = updateQuery.is("geo_zcta_key", null);
       // Re-guarded the same way the candidate read already is — a row
       // that got linked to a Location between the read above and now
       // must never receive a stale manual-geo write (see
