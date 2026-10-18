@@ -1,5 +1,6 @@
 import { cache } from "react";
 import Link from "next/link";
+import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import { DiscoveryRail, DiscoveryRailSkeleton } from "@/components/discovery/DiscoveryTile";
 import { getSupabase } from "@/lib/supabase";
@@ -45,7 +46,26 @@ function LaneHeader({ title, subtitle, href }: { title: string; subtitle?: strin
   );
 }
 
-export function TopicTile({ topic, href, count }: { topic: Pick<DiscoveryTopic, "name" | "image_url" | "description">; href: string; count?: number }) {
+export function TopicTile({
+  topic,
+  href,
+  count,
+  dateStatus = false,
+}: {
+  topic: Pick<DiscoveryTopic, "name" | "image_url" | "description">;
+  href: string;
+  count?: number;
+  /** Date/Status Tile Presentation pass — true for a topic whose query is
+   * keyed by `when` (Happening Now, Today, Tonight, This Weekend, …), set
+   * by the caller from the real topic.query.when field (never from the
+   * tile's title text). A live navigational state like this never shows
+   * decorative photography, even if an admin happens to have set
+   * image_url on it (the Topic form doesn't distinguish kinds) — it gets
+   * the same compact, text-first treatment with one consistent icon
+   * (NavIcon "calendar") instead. */
+  dateStatus?: boolean;
+}) {
+  const showImage = !dateStatus && Boolean(topic.image_url);
   return (
     // Discovery Lanes Density Refinement pass — mobile tile height cut
     // ~33% (aspect-[4/3] -> aspect-[2/1]) by widening the aspect ratio
@@ -53,14 +73,15 @@ export function TopicTile({ topic, href, count }: { topic: Pick<DiscoveryTopic, 
     // at sm/lg. Colors, rounded-2xl, text sizes/typography, live count,
     // and the TileRail horizontal-swipe rail itself are untouched.
     <Link href={href} className="group relative flex aspect-[2/1] w-full flex-col justify-end overflow-hidden rounded-2xl bg-findmi-50 p-3 transition active:scale-[0.98] sm:aspect-[4/3]">
-      {topic.image_url && (
+      {showImage && (
         <>
-          <SupabaseImage src={topic.image_url} alt="" fill sizes="(min-width: 1024px) 18vw, 40vw" className="object-cover transition duration-500 group-hover:scale-[1.03] motion-reduce:transition-none" />
+          <SupabaseImage src={topic.image_url!} alt="" fill sizes="(min-width: 1024px) 18vw, 40vw" className="object-cover transition duration-500 group-hover:scale-[1.03] motion-reduce:transition-none" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
         </>
       )}
-      <span className={`relative font-display text-sm font-bold leading-tight ${topic.image_url ? "text-white" : "text-findmi-700"}`}>{topic.name}</span>
-      {count !== undefined && <span className={`relative text-[11px] ${topic.image_url ? "text-white/80" : "text-findmi-700/70"}`}>{count === 1 ? "1 Thing" : `${count} Things`}</span>}
+      {dateStatus && <NavIcon name="calendar" className="relative mb-auto h-4 w-4 shrink-0 text-findmi-700/70" />}
+      <span className={`relative font-display text-sm font-bold leading-tight ${showImage ? "text-white" : "text-findmi-700"}`}>{topic.name}</span>
+      {count !== undefined && <span className={`relative text-[11px] ${showImage ? "text-white/80" : "text-findmi-700/70"}`}>{count === 1 ? "1 Thing" : `${count} Things`}</span>}
     </Link>
   );
 }
@@ -89,7 +110,7 @@ export default async function DiscoveryLanes({ market, area, placement }: { mark
             <TileRail>
               {live.map(({ t, n }) => (
                 <div key={t.id} className="w-[40%] shrink-0 snap-start sm:w-auto">
-                  <TopicTile topic={t} count={n} href={searchHref({ ...context, topics: [t.slug] })} />
+                  <TopicTile topic={t} count={n} href={searchHref({ ...context, topics: [t.slug] })} dateStatus={Boolean(t.query.when)} />
                 </div>
               ))}
             </TileRail>

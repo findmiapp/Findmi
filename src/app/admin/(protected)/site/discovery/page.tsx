@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ImageField from "@/components/admin/ImageField";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { searchHref } from "@/lib/discovery/query";
 import { saveEventAttributesAction, saveLaneAction, saveTopicAction, setPrimaryLaneAction } from "./actions";
@@ -65,7 +66,13 @@ export default async function DiscoveryAdminPage({ searchParams }: { searchParam
           )}
           <label className={label}>Name<input name="name" required defaultValue={editing?.name} maxLength={60} autoCapitalize="words" className={input} /></label>
           <label className={label}>Description<input name="description" defaultValue={editing?.description ?? ""} autoCapitalize="sentences" className={input} /></label>
-          <label className={label}>Image URL<input name="image_url" defaultValue={editing?.image_url ?? ""} autoCapitalize="none" className={input} /></label>
+          {/* Discovery Tile Visual System pass — same reusable "paste a URL
+              or upload a file" ImageField every other admin entity
+              (Products, Locations, Businesses, People, …) already uses,
+              instead of a plain URL input. Still fills the exact same
+              image_url column/string format TopicTile already reads —
+              no change to discovery queries, routing, or stored shape. */}
+          <ImageField label="Image" name="image_url" defaultValue={editing?.image_url} />
           <label className={label}>Search Aliases (comma separated)<input name="aliases" defaultValue={editing?.aliases.join(", ")} autoCapitalize="none" className={input} /></label>
           <label className={label}>
             Query
