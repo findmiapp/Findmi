@@ -44,20 +44,22 @@ test("DiscoveryLanes requires a placement prop and filters the one fetched list 
 
 // ── Homepage: placement + independent Suspense boundaries ───────────────
 
-test("Primary Discovery renders exactly once, with placement=\"primary\", before What's Happening", () => {
+test("Primary Discovery renders exactly once, with placement=\"primary\", after the Start Here doorway and before What's Happening", () => {
   const marker = '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="primary" />';
   assert.equal(PAGE.split(marker).length - 1, 1);
+  const doorway = "New to Findmi? Start here";
   const upcoming = '{upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}';
+  assert.ok(PAGE.indexOf(doorway) < PAGE.indexOf(marker), "Final CTA Repositioning pass — doorway now precedes Primary Discovery");
   assert.ok(PAGE.indexOf(marker) < PAGE.indexOf(upcoming));
 });
 
-test("Explore More Discovery renders exactly once, with placement=\"explore_more\", after Featured Locations and before the Start Here doorway", () => {
+test("Explore More Discovery renders exactly once, with placement=\"explore_more\", after Featured Locations and before Business Showcase", () => {
   const marker = '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />';
   assert.equal(PAGE.split(marker).length - 1, 1);
   const featuredLocations = 'title="Featured Locations"';
-  const doorway = "New to Findmi? Start here";
+  const businessShowcase = "<BusinessShowcaseCarousel />";
   assert.ok(PAGE.indexOf(featuredLocations) < PAGE.indexOf(marker));
-  assert.ok(PAGE.indexOf(marker) < PAGE.indexOf(doorway));
+  assert.ok(PAGE.indexOf(marker) < PAGE.indexOf(businessShowcase), "Final CTA Repositioning pass — the doorway moved away from this seam, Explore More now runs straight into Business Showcase");
 });
 
 test("each DiscoveryLanes call site has its own independent Suspense boundary (2 total) — a slow Explore More fetch can never block What's Happening", () => {

@@ -239,6 +239,158 @@ export default async function HomePage({
         </div>
       )}
 
+      {/* Dual-Audience Join Doorway pass — a compact two-path onboarding
+          block: one short headline, two small side-by-side cards
+          (Passbook / Business), one small supporting line.
+          Destinations reuse the EXACT existing onboarding-intent
+          mechanism /join's own two ValueCards already use
+          (/signup?next=/join/start?intent=passbook|business) — see that
+          page's own "Signup Repair + Join Card Intent" doc comment: a
+          non-binding `intent` riding inside the signup flow's existing
+          `next` redirect, never a new route, never a new account_type/
+          role flag. These cards go straight to that destination (not to
+          /join itself, which would just re-present the same choice).
+          ChevronGlyph is the same local glyph the Join/Native-Rose CTAs
+          below already use.
+          Start-Here CTA Polish pass — added the small aqua eyebrow (same
+          text-findmi-700 eyebrow treatment Section.tsx's own `eyebrow`
+          prop renders for "Showing Up" above Brands We Love); both cards
+          share one neutral white/bordered/shadow-sm treatment (the same
+          FeaturedLocationHappeningCard convention) instead of Passbook's
+          previous pale-aqua tint, which read as "selected".
+          Start-Here CTA Icon Micro-Polish pass — live mobile QA showed
+          the small inline icon + uppercase title truncating ("START YOUR
+          PASSBO…", "ADD BRAND / LOCATI…"). Copy shortened (Create
+          Passbook / Add Business) and titles switched to normal case (no
+          `uppercase`/`tracking-wide`, which was costing real width for no
+          reason) so they fit without truncation — the title's own <p> no
+          longer carries a `truncate` class at all, by design, so a future
+          regression shows as a real overflow instead of a silently
+          swallowed ellipsis. Icon treatment enlarged into its own
+          44px/soft-aqua "icon well" (`bg-findmi-50`, the same pale-aqua
+          token this file already uses for eyebrows/pills) holding a
+          28px NavIcon, vertically centered beside a title+description
+          text column — `shrink-0` on the well and chevron, `min-w-0
+          flex-1` on the text column, exactly as specced. Passbook keeps
+          its existing NavIcon "bookmark". Business drops the generic
+          retail "storefront" (no NavIcon key better fits "adding a place
+          to Findmi" on its own) for a composite "pin + plus" badge — the
+          exact map-pin-plus idiom this pass asked for, built entirely
+          from existing assets already in this codebase: NavIcon's own
+          "pin" glyph plus the same small circular plus-badge convention
+          BusinessScopedAction.tsx's CirclePlus already uses for every
+          other "add" action in the app (bg-findmi circle, white plus),
+          reproduced here as a local PlusBadgeGlyph (this file's own
+          established per-file local-glyph convention, see ChevronGlyph)
+          rather than importing a client-only account-flow module into
+          this Server Component tree. No new icon dependency added.
+          Onboarding CTA Micro-Polish pass — headline bumped one Tailwind
+          type step (text-base/sm:text-lg -> text-lg/sm:text-xl) for a
+          touch more authority beneath the eyebrow; still well short of
+          the hero headline's own size. Passbook CTA retitled "My
+          Journal" (copy/visual only — href is byte-identical, still
+          /signup?next=/join/start?intent=passbook). Audited NavIcon's
+          full icon set and every local glyph already in this codebase
+          (ChevronGlyph/PlusBadgeGlyph here, LockGlyph/GlobeGlyph in
+          JournalCreateWizard.tsx, etc.) for an existing journal/notebook/
+          pencil icon — none exists — so JournalGlyph below is a small
+          local composite built the same way PlusBadgeGlyph was: a simple
+          notebook outline with two text lines, plus a standard pencil
+          silhouette (the common Feather "edit-2" path, scaled/
+          translated via a <g> transform, not imported) overlapping its
+          bottom-right corner. No icon dependency added. Add Business's
+          pin+plus well is unchanged — already the same 44px size/
+          alignment as Passbook's well, so no adjustment was needed to
+          keep the two balanced.
+          Direct Homepage Intent pass — both cards no longer ride the
+          generic /join/start?intent= mechanism described above (that
+          intermediary "How would you like to start?" screen was an
+          unwanted extra step for an already-explicit homepage action).
+          My Journal now links straight to /my-world/journal (the
+          canonical Journal/My World destination); Add Business links
+          straight to /account/business/new (the canonical business
+          creation route, same one QuickCreateMenu's own Business row
+          already uses). Both routes are already middleware-gated (see
+          middleware.ts's matcher) — a signed-out visitor is bounced to
+          /login?next=<that route> and lands back on it directly after
+          authenticating, so no client-side auth branching was added
+          here, matching the exact plain-Link pattern QuickCreateMenu's
+          Business/Venue/Event rows already use for signed-in-or-out
+          navigation. /join/start itself is untouched and still reachable
+          from generic (non-explicit-intent) onboarding entry points.
+          Preservation-First Homepage Reorder pass — bottom padding
+          bumped (was pb-1/sm:pb-2, tuned for being immediately followed
+          by Search) now that this doorway is followed by the Business
+          Showcase instead, so it reads as its own complete block rather
+          than a tight pair with whatever used to sit right below it.
+          Top padding and every condition/destination/behavior above are
+          unchanged.
+          Final CTA Repositioning pass — moved again, now directly below
+          the Bulletin and immediately before Primary Discovery (Right
+          Now); was between Explore More Discovery and Business Showcase.
+          Padding reverted to the original pb-1/sm:pb-2 (tuned for being
+          immediately followed by Search, before the pass above bumped
+          it for Business Showcase) plus a matching pt-2/sm:pt-3 — the
+          same "tight, related block" gap Search/Bulletin already use
+          between each other above. This also fixes the excessive gap
+          mobile QA flagged around the Bulletin's nav dots/arrows: that
+          gap was never the carousel's own spacing (HomepageBulletinCarousel's
+          nav row is an unchanged mt-1.5) — it was this doorway's old
+          pt-3/sm:pt-5, tuned for a completely different neighbor
+          (Explore More Discovery), landing immediately after the
+          Bulletin once the two swapped positions. No change to
+          HomepageBulletinCarousel.tsx/HomepageBulletin.tsx. Every
+          condition/destination/behavior/copy in this block below is
+          otherwise byte-identical. */}
+      <div className="mx-auto max-w-6xl px-4 pb-1 pt-2 sm:px-6 sm:pb-2 sm:pt-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
+        <p className="mt-0.5 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:mt-1 sm:text-xl">
+          Find what you love. Get discovered.
+        </p>
+        <div className="mt-1.5 grid grid-cols-2 gap-2.5 sm:mt-2.5">
+          <Link
+            href="/my-world/journal"
+            className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
+              <JournalGlyph className="h-7 w-7 text-findmi-700" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">My Moments</span>
+                <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
+              </span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</span>
+            </span>
+          </Link>
+          <Link
+            href="/join/brand"
+            className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
+          >
+            <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
+              <NavIcon name="pin" className="h-7 w-7 text-findmi-700" />
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-findmi text-white ring-2 ring-white">
+                <PlusBadgeGlyph className="h-2.5 w-2.5" />
+              </span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">Add Business</span>
+                <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
+              </span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Get discovered and grow with Findmi.</span>
+            </span>
+          </Link>
+        </div>
+        <p className="mt-1 text-[11px] sm:mt-2">
+          <Link href="/join" className="mr-1.5 inline-flex items-center gap-0.5 font-semibold text-findmi-700 hover:underline">
+            Start for free here
+            <ChevronIcon direction="right" className="h-2.5 w-2.5" />
+          </Link>
+          <span className="italic text-ink/50">No credit card or app download required.</span>
+        </p>
+      </div>
+
       {/* Discovery Intelligence V1 — Admin-ordered Lanes (Topics, one
           Topic's live results, a Market's Areas). Streams in after the
           above-the-fold content; renders nothing when no Lane has
@@ -407,141 +559,6 @@ export default async function HomePage({
       <Suspense fallback={<DiscoveryLanesSkeleton />}>
         <DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />
       </Suspense>
-
-      {/* Dual-Audience Join Doorway pass — a compact two-path onboarding
-          block: one short headline, two small side-by-side cards
-          (Passbook / Business), one small supporting line.
-          Destinations reuse the EXACT existing onboarding-intent
-          mechanism /join's own two ValueCards already use
-          (/signup?next=/join/start?intent=passbook|business) — see that
-          page's own "Signup Repair + Join Card Intent" doc comment: a
-          non-binding `intent` riding inside the signup flow's existing
-          `next` redirect, never a new route, never a new account_type/
-          role flag. These cards go straight to that destination (not to
-          /join itself, which would just re-present the same choice).
-          ChevronGlyph is the same local glyph the Join/Native-Rose CTAs
-          below already use.
-          Start-Here CTA Polish pass — added the small aqua eyebrow (same
-          text-findmi-700 eyebrow treatment Section.tsx's own `eyebrow`
-          prop renders for "Showing Up" above Brands We Love); both cards
-          share one neutral white/bordered/shadow-sm treatment (the same
-          FeaturedLocationHappeningCard convention) instead of Passbook's
-          previous pale-aqua tint, which read as "selected".
-          Start-Here CTA Icon Micro-Polish pass — live mobile QA showed
-          the small inline icon + uppercase title truncating ("START YOUR
-          PASSBO…", "ADD BRAND / LOCATI…"). Copy shortened (Create
-          Passbook / Add Business) and titles switched to normal case (no
-          `uppercase`/`tracking-wide`, which was costing real width for no
-          reason) so they fit without truncation — the title's own <p> no
-          longer carries a `truncate` class at all, by design, so a future
-          regression shows as a real overflow instead of a silently
-          swallowed ellipsis. Icon treatment enlarged into its own
-          44px/soft-aqua "icon well" (`bg-findmi-50`, the same pale-aqua
-          token this file already uses for eyebrows/pills) holding a
-          28px NavIcon, vertically centered beside a title+description
-          text column — `shrink-0` on the well and chevron, `min-w-0
-          flex-1` on the text column, exactly as specced. Passbook keeps
-          its existing NavIcon "bookmark". Business drops the generic
-          retail "storefront" (no NavIcon key better fits "adding a place
-          to Findmi" on its own) for a composite "pin + plus" badge — the
-          exact map-pin-plus idiom this pass asked for, built entirely
-          from existing assets already in this codebase: NavIcon's own
-          "pin" glyph plus the same small circular plus-badge convention
-          BusinessScopedAction.tsx's CirclePlus already uses for every
-          other "add" action in the app (bg-findmi circle, white plus),
-          reproduced here as a local PlusBadgeGlyph (this file's own
-          established per-file local-glyph convention, see ChevronGlyph)
-          rather than importing a client-only account-flow module into
-          this Server Component tree. No new icon dependency added.
-          Onboarding CTA Micro-Polish pass — headline bumped one Tailwind
-          type step (text-base/sm:text-lg -> text-lg/sm:text-xl) for a
-          touch more authority beneath the eyebrow; still well short of
-          the hero headline's own size. Passbook CTA retitled "My
-          Journal" (copy/visual only — href is byte-identical, still
-          /signup?next=/join/start?intent=passbook). Audited NavIcon's
-          full icon set and every local glyph already in this codebase
-          (ChevronGlyph/PlusBadgeGlyph here, LockGlyph/GlobeGlyph in
-          JournalCreateWizard.tsx, etc.) for an existing journal/notebook/
-          pencil icon — none exists — so JournalGlyph below is a small
-          local composite built the same way PlusBadgeGlyph was: a simple
-          notebook outline with two text lines, plus a standard pencil
-          silhouette (the common Feather "edit-2" path, scaled/
-          translated via a <g> transform, not imported) overlapping its
-          bottom-right corner. No icon dependency added. Add Business's
-          pin+plus well is unchanged — already the same 44px size/
-          alignment as Passbook's well, so no adjustment was needed to
-          keep the two balanced.
-          Direct Homepage Intent pass — both cards no longer ride the
-          generic /join/start?intent= mechanism described above (that
-          intermediary "How would you like to start?" screen was an
-          unwanted extra step for an already-explicit homepage action).
-          My Journal now links straight to /my-world/journal (the
-          canonical Journal/My World destination); Add Business links
-          straight to /account/business/new (the canonical business
-          creation route, same one QuickCreateMenu's own Business row
-          already uses). Both routes are already middleware-gated (see
-          middleware.ts's matcher) — a signed-out visitor is bounced to
-          /login?next=<that route> and lands back on it directly after
-          authenticating, so no client-side auth branching was added
-          here, matching the exact plain-Link pattern QuickCreateMenu's
-          Business/Venue/Event rows already use for signed-in-or-out
-          navigation. /join/start itself is untouched and still reachable
-          from generic (non-explicit-intent) onboarding entry points.
-          Preservation-First Homepage Reorder pass — bottom padding
-          bumped (was pb-1/sm:pb-2, tuned for being immediately followed
-          by Search) now that this doorway is followed by the Business
-          Showcase instead, so it reads as its own complete block rather
-          than a tight pair with whatever used to sit right below it.
-          Top padding and every condition/destination/behavior above are
-          unchanged. */}
-      <div className="mx-auto max-w-6xl px-4 pb-4 pt-3 sm:px-6 sm:pb-5 sm:pt-5">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
-        <p className="mt-0.5 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:mt-1 sm:text-xl">
-          Find what you love. Get discovered.
-        </p>
-        <div className="mt-1.5 grid grid-cols-2 gap-2.5 sm:mt-2.5">
-          <Link
-            href="/my-world/journal"
-            className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
-          >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
-              <JournalGlyph className="h-7 w-7 text-findmi-700" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">My Moments</span>
-                <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
-              </span>
-              <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</span>
-            </span>
-          </Link>
-          <Link
-            href="/join/brand"
-            className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
-          >
-            <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
-              <NavIcon name="pin" className="h-7 w-7 text-findmi-700" />
-              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-findmi text-white ring-2 ring-white">
-                <PlusBadgeGlyph className="h-2.5 w-2.5" />
-              </span>
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">Add Business</span>
-                <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
-              </span>
-              <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Get discovered and grow with Findmi.</span>
-            </span>
-          </Link>
-        </div>
-        <p className="mt-1 text-[11px] sm:mt-2">
-          <Link href="/join" className="mr-1.5 inline-flex items-center gap-0.5 font-semibold text-findmi-700 hover:underline">
-            Start for free here
-            <ChevronIcon direction="right" className="h-2.5 w-2.5" />
-          </Link>
-          <span className="italic text-ink/50">No credit card or app download required.</span>
-        </p>
-      </div>
 
       {/* Homepage Content Priority pass — NATIVE ROSE DEMO, fourth and
           final major row (Homepage Section Reorder pass — now after

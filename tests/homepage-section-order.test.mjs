@@ -20,13 +20,13 @@ const MARKERS = [
   ["Hero", "<HomeHero images={heroImages}"],
   ["SearchBar", "<SearchBar marketSlug={marketSlug}"],
   ["Bulletin Carousel", "<HomepageBulletinCarousel bulletins={bulletins} />"],
+  ["Start Here doorway", "New to Findmi? Start here"],
   ["Primary Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="primary" />'],
   ["What's Happening", "{upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}"],
   ["Brands We Love", "isBrandsRow\n        />"],
   ["Findmi Moments", 'aria-labelledby="home-moments-heading"'],
   ["Featured Locations", 'title="Featured Locations"'],
   ["Explore More Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />'],
-  ["Start Here doorway", "New to Findmi? Start here"],
   ["Business Showcase", "<BusinessShowcaseCarousel />"],
   ["Remaining founder rows", "{otherRowIndices.map((i) => ("],
   ["Closing CTA", "{closingSec.visible && ("],
@@ -39,7 +39,7 @@ test("each approved section marker appears exactly once in page.tsx", () => {
   }
 });
 
-test("the approved homepage render order is: Weather, Hero, Search, Bulletin, Primary Discovery, What's Happening, Brands We Love, Moments, Featured Locations, Explore More Discovery, Start Here doorway, Business Showcase, remaining founder rows, Closing CTA", () => {
+test("the approved homepage render order is: Weather, Hero, Search, Bulletin, Start Here doorway, Primary Discovery, What's Happening, Brands We Love, Moments, Featured Locations, Explore More Discovery, Business Showcase, remaining founder rows, Closing CTA", () => {
   const positions = MARKERS.map(([name, marker]) => ({ name, index: PAGE.indexOf(marker) }));
   for (const p of positions) assert.ok(p.index !== -1, `${p.name} marker not found at all`);
   for (let i = 1; i < positions.length; i++) {
@@ -74,4 +74,34 @@ test("every section's own conditional guard is preserved exactly as before the r
   assert.match(PAGE, /\{momentFeed\.cards\.length > 0 && \(/);
   assert.match(PAGE, /\{featuredLocations\.length > 0 && \(/);
   assert.match(PAGE, /\{closingSec\.visible && \(/);
+});
+
+// ── Final CTA Repositioning pass ─────────────────────────────────────────
+
+test("the Start Here doorway's wrapper uses the tight pb-1/pt-2 (sm:pb-2/sm:pt-3) spacing — the same 'tight, related block' gap Search/Bulletin already use between each other, now that it sits directly between Bulletin and Primary Discovery", () => {
+  assert.match(PAGE, /<div className="mx-auto max-w-6xl px-4 pb-1 pt-2 sm:px-6 sm:pb-2 sm:pt-3">/);
+  // The previous pb-4/pt-3 (sm:pb-5/sm:pt-5), tuned for the doorway's old
+  // neighbor (Explore More Discovery -> Business Showcase), is gone.
+  assert.doesNotMatch(PAGE, /px-4 pb-4 pt-3 sm:px-6 sm:pb-5 sm:pt-5/);
+});
+
+test("the doorway's own content — My Moments / Add Business cards, copy, hrefs — is byte-identical to before the move", () => {
+  assert.match(PAGE, /Find what you love\. Get discovered\./);
+  assert.match(PAGE, /href="\/my-world\/journal"/);
+  assert.match(PAGE, /My Moments<\/span>/);
+  assert.match(PAGE, /Document your experiences\./);
+  assert.match(PAGE, /href="\/join\/brand"/);
+  assert.match(PAGE, /Add Business<\/span>/);
+  assert.match(PAGE, /Get discovered and grow with Findmi\./);
+  assert.match(PAGE, /href="\/join" className="mr-1\.5 inline-flex items-center gap-0\.5 font-semibold text-findmi-700 hover:underline"/);
+  assert.match(PAGE, /No credit card or app download required\./);
+});
+
+test("HomepageBulletinCarousel/HomepageBulletin are untouched by the repositioning — the excessive-gap fix lives entirely in page.tsx's own wrapper padding, never in the carousel's nav-row spacing or carousel functionality", () => {
+  const CAROUSEL = readFileSync("src/components/HomepageBulletinCarousel.tsx", "utf8");
+  const BULLETIN = readFileSync("src/components/HomepageBulletin.tsx", "utf8");
+  assert.match(CAROUSEL, /<div className="mt-1\.5 flex items-center justify-center gap-3">/);
+  assert.match(CAROUSEL, /ROTATE_INTERVAL_MS = 3000/);
+  assert.match(CAROUSEL, /SWIPE_THRESHOLD_PX = 45/);
+  assert.match(BULLETIN, /"flex items-center gap-3 rounded-2xl border border-black\/10 bg-white p-3 transition hover:border-black\/20"/);
 });
