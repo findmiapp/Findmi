@@ -206,6 +206,17 @@ export default async function HomePage({
           page never hardcodes it. */}
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
+      {/* Preservation-First Homepage Reorder pass — Search moved up to
+          directly follow Hero (was after the Bulletin + onboarding
+          doorway, several screens down). Component, route, and debounced-
+          suggestion behavior are completely untouched — position only.
+          Wrapper padding reuses the exact value the Bulletin block used
+          in this same "right after Hero" slot below, rather than
+          inventing a new one. */}
+      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
+      </div>
+
       {/* Homepage Bulletin Carousel — one or more admin-managed editorial
           announcements (see /admin/bulletins). Final Above-the-Fold pass
           moved this ABOVE Search (was below) per live mobile QA — same
@@ -216,9 +227,14 @@ export default async function HomePage({
           below (was below it): editorial/live content should lead,
           onboarding is secondary. Component itself, its query, carousel
           behavior and conditional rendering are untouched — ordering
-          only. */}
+          only.
+          Preservation-First Homepage Reorder pass — now follows Search
+          (was immediately after Hero); wrapper padding swapped with
+          Search's own former value for the same reason noted above —
+          reusing an already-tuned "tight, related block" gap rather than
+          inventing a new one. */}
       {bulletins.length > 0 && (
-        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
           <HomepageBulletinCarousel bulletins={bulletins} />
         </div>
       )}
@@ -230,6 +246,149 @@ export default async function HomePage({
       <Suspense fallback={<DiscoveryLanesSkeleton />}>
         <DiscoveryLanes market={marketSlug} area={areaSlug} />
       </Suspense>
+
+      {/* Public Experience Consolidation pass — "Must Dos" eyebrow removed
+          (the heading itself, "What's Happening", already says what this
+          is — an eyebrow above it read as a competing claim, not a real
+          product tier). Select Area stays a static, independently-anchored
+          control; the time filters to its right are now the shared
+          DISCOVERY_TIME_TABS/WINDOW_BY_TIME_KEY vocabulary /events already
+          uses (Up Next/Today/This Week/This Weekend/All), as ?when= links
+          on THIS SAME page (server-rendered, no client fetch, no duplicate
+          filtering system) rather than the previous two ad hoc Today/This
+          Weekend links out to /discover.
+          Preservation-First Homepage Reorder pass — now follows Discovery
+          Lanes directly (was immediately after Search). Top padding
+          reuses the exact "right after Discovery Lanes" gap the onboarding
+          doorway below used to open with (pt-3/sm:pt-5), rather than its
+          old pt-2 tuned specifically for following Search — every other
+          condition/behavior in this section (Area picker, time rail,
+          event rail, "View all" link) is unchanged. */}
+      <div className="mx-auto max-w-6xl pt-3 sm:pt-5">
+        <div className="px-4 sm:px-6">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+              {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
+            </h2>
+            <Link
+              href={
+                marketSlug
+                  ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
+                  : "/events"
+              }
+              className="shrink-0 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+            >
+              View all
+            </Link>
+          </div>
+          {upcomingSec.body && <p className="mt-1 text-sm text-ink/60">{upcomingSec.body}</p>}
+          <div className="mt-3 flex items-center gap-2">
+            {markets.length > 0 && (
+              <div className="shrink-0">
+                <AreaPicker
+                  unselectedLabel="Select Area"
+                  options={markets.map((m) => ({
+                    slug: m.slug,
+                    label: getMarketAreaLabel(m),
+                    areasIncluded: m.areas_included,
+                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                  }))}
+                />
+              </div>
+            )}
+            <HomeTimeFilterRail activeKey={timeKey} marketSlug={marketSlug} areaSlug={areaSlug} />
+          </div>
+        </div>
+        {nextEvents.length > 0 && (
+          <div className="mt-4">
+            <HorizontalScroller>
+              {nextEvents.slice(0, 6).map((event, i) => (
+                <div key={event.id} className="w-[80vw] max-w-[330px] shrink-0 sm:w-72">
+                  <HomeEventCard
+                    event={event}
+                    analyticsContext={{ pageType: "home", placement: "homepage_happening", position: i + 1 }}
+                  />
+                </div>
+              ))}
+            </HorizontalScroller>
+          </div>
+        )}
+      </div>
+
+      {/* Homepage Section Reorder pass — BRANDS WE LOVE, second major row,
+          right after What's Happening. Same existing row/component,
+          completely untouched logic and geometry (protected width fix) —
+          placement only. */}
+      {brandsRowIndex !== -1 && (
+        <HomepageRowSection
+          row={homepageRows[brandsRowIndex]}
+          resolved={resolvedRows[brandsRowIndex]}
+          marketSlug={marketSlug}
+          areaSlug={areaSlug}
+          isBrandsRow
+        />
+      )}
+
+      {/* Findmi Moments — real people's public Moments. Preservation-First
+          Homepage Reorder pass — now directly after Brands We Love (was
+          after Featured Locations, which itself used to follow Brands We
+          Love). Hidden entirely when no public Moment exists (never a
+          fake/empty showcase) — unchanged. Spacing unchanged: this
+          section's own py-6 is identical to Featured Locations' Section
+          py-6 default below, so the gap reads the same regardless of
+          which of the two comes first. */}
+      {momentFeed.cards.length > 0 && (
+        <section className="py-6" aria-labelledby="home-moments-heading">
+          <div className="mb-3 px-4 sm:px-6">
+            <BrandHeading
+              id="home-moments-heading"
+              accent="Moments"
+              size="home"
+              trailing={
+                <Link
+                  href="/moments"
+                  className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+                >
+                  See All
+                </Link>
+              }
+            />
+            <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>
+          </div>
+          <div className="px-4 sm:px-6">
+            <MomentsDiscovery cards={momentFeed.cards} layout="carousel" />
+          </div>
+        </section>
+      )}
+
+      {/* Horizontal Location Carousel pass — FEATURED LOCATIONS. Same data
+          path as before (getFeaturedLocations/lib/data.ts — still filters
+          to Locations with at least one real upcoming happening;
+          untouched), same dedicated card (FeaturedLocationCard) and
+          bespoke outer rail. Preservation-First Homepage Reorder pass —
+          now directly after Findmi Moments (was directly after Brands We
+          Love, with Moments following it). Section's own py-6 default is
+          identical to Moments' own py-6 above, so no spacing change was
+          needed for the swap. */}
+      {featuredLocations.length > 0 && (
+        <Section
+          title="Featured Locations"
+          subtitle="Places with something happening soon."
+          viewAllHref="/locations"
+          titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
+          subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
+        >
+          <div className="flex gap-4 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x snap-mandatory [overflow-anchor:none] sm:scroll-px-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {featuredLocations.map((location) => (
+              <FeaturedLocationCard
+                key={location.id}
+                location={location}
+                analyticsContext={{ pageType: "home", placement: "homepage_featured_locations" }}
+              />
+            ))}
+          </div>
+        </Section>
+      )}
 
       {/* Dual-Audience Join Doorway pass — a compact two-path onboarding
           block: one short headline, two small side-by-side cards
@@ -309,8 +468,15 @@ export default async function HomePage({
           here, matching the exact plain-Link pattern QuickCreateMenu's
           Business/Venue/Event rows already use for signed-in-or-out
           navigation. /join/start itself is untouched and still reachable
-          from generic (non-explicit-intent) onboarding entry points. */}
-      <div className="mx-auto max-w-6xl px-4 pb-1 pt-3 sm:px-6 sm:pb-2 sm:pt-5">
+          from generic (non-explicit-intent) onboarding entry points.
+          Preservation-First Homepage Reorder pass — bottom padding
+          bumped (was pb-1/sm:pb-2, tuned for being immediately followed
+          by Search) now that this doorway is followed by the Business
+          Showcase instead, so it reads as its own complete block rather
+          than a tight pair with whatever used to sit right below it.
+          Top padding and every condition/destination/behavior above are
+          unchanged. */}
+      <div className="mx-auto max-w-6xl px-4 pb-4 pt-3 sm:px-6 sm:pb-5 sm:pt-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
         <p className="mt-0.5 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:mt-1 sm:text-xl">
           Find what you love. Get discovered.
@@ -358,165 +524,6 @@ export default async function HomePage({
           <span className="italic text-ink/50">No credit card or app download required.</span>
         </p>
       </div>
-
-      {/* Search — behavior/route/sizing unchanged; only its position
-          (now after the Bulletin, was before) and this local top padding
-          moved, so it reads as related to but distinct from the
-          Bulletin above it. */}
-      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
-        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
-      </div>
-
-      {/* Public Experience Consolidation pass — "Must Dos" eyebrow removed
-          (the heading itself, "What's Happening", already says what this
-          is — an eyebrow above it read as a competing claim, not a real
-          product tier). Select Area stays a static, independently-anchored
-          control; the time filters to its right are now the shared
-          DISCOVERY_TIME_TABS/WINDOW_BY_TIME_KEY vocabulary /events already
-          uses (Up Next/Today/This Week/This Weekend/All), as ?when= links
-          on THIS SAME page (server-rendered, no client fetch, no duplicate
-          filtering system) rather than the previous two ad hoc Today/This
-          Weekend links out to /discover. Above-the-Fold Polish pass
-          tightened pt-6→pt-4 (this section only — no other homepage
-          section spacing changed) so the Bulletin visibly bridges into
-          What's Happening instead of leaving what read as an empty gap.
-          Final correction pass tightened pt-4→pt-2 (Search→What's
-          Happening gap only) and switched this row from items-end to
-          items-center — "View all" (text-xs) was sitting low against the
-          much larger font-display heading under bottom-edge alignment;
-          centering the two removes the mismatch without touching either
-          one's typography, and the pb-1 hack that previously compensated
-          for it is no longer needed. */}
-      <div className="mx-auto max-w-6xl pt-2">
-        <div className="px-4 sm:px-6">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-              {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
-            </h2>
-            <Link
-              href={
-                marketSlug
-                  ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
-                  : "/events"
-              }
-              className="shrink-0 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
-            >
-              View all
-            </Link>
-          </div>
-          {upcomingSec.body && <p className="mt-1 text-sm text-ink/60">{upcomingSec.body}</p>}
-          <div className="mt-3 flex items-center gap-2">
-            {markets.length > 0 && (
-              <div className="shrink-0">
-                <AreaPicker
-                  unselectedLabel="Select Area"
-                  options={markets.map((m) => ({
-                    slug: m.slug,
-                    label: getMarketAreaLabel(m),
-                    areasIncluded: m.areas_included,
-                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-                  }))}
-                />
-              </div>
-            )}
-            <HomeTimeFilterRail activeKey={timeKey} marketSlug={marketSlug} areaSlug={areaSlug} />
-          </div>
-        </div>
-        {nextEvents.length > 0 && (
-          <div className="mt-4">
-            <HorizontalScroller>
-              {nextEvents.slice(0, 6).map((event, i) => (
-                <div key={event.id} className="w-[80vw] max-w-[330px] shrink-0 sm:w-72">
-                  <HomeEventCard
-                    event={event}
-                    analyticsContext={{ pageType: "home", placement: "homepage_happening", position: i + 1 }}
-                  />
-                </div>
-              ))}
-            </HorizontalScroller>
-          </div>
-        )}
-      </div>
-
-      {/* Homepage Section Reorder pass — BRANDS WE LOVE, second major row,
-          right after What's Happening. Same existing row/component,
-          completely untouched logic and geometry (protected width fix) —
-          placement only. */}
-      {brandsRowIndex !== -1 && (
-        <HomepageRowSection
-          row={homepageRows[brandsRowIndex]}
-          resolved={resolvedRows[brandsRowIndex]}
-          marketSlug={marketSlug}
-          areaSlug={areaSlug}
-          isBrandsRow
-        />
-      )}
-
-      {/* Horizontal Location Carousel pass — FEATURED LOCATIONS, third major
-          row. Same data path as before (getFeaturedLocations/lib/data.ts —
-          still filters to Locations with at least one real upcoming
-          happening; untouched), but a new dedicated card
-          (FeaturedLocationCard) and a bespoke outer rail instead of the
-          generic Section.tsx HorizontalScroller/RailItem — this section's
-          card is now a SHORT, WIDE, horizontally-split [location photo |
-          events rail] shape, not the tall vertical grid card
-          LocationDiscoveryCard still owns unmodified for /locations and
-          /discover. Deliberately not built on RailItem's fixed vw-based
-          density tokens: those size a card as a fraction of the VIEWPORT
-          (tuned for a uniform vertical card), where this rail instead
-          targets a fraction of the CONTAINER for the common multi-event
-          case (flex-[0_0_90%], shrinking on larger breakpoints) while
-          letting a one-event card size to its own content instead — see
-          FeaturedLocationCard's own note on why. The peek of the next
-          Location card this leaves at the right edge is the rail's own
-          swipe affordance; pagination dots were never part of this rail
-          and still aren't added. */}
-      {featuredLocations.length > 0 && (
-        <Section
-          title="Featured Locations"
-          subtitle="Places with something happening soon."
-          viewAllHref="/locations"
-          titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
-          subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
-        >
-          <div className="flex gap-4 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x snap-mandatory [overflow-anchor:none] sm:scroll-px-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {featuredLocations.map((location) => (
-              <FeaturedLocationCard
-                key={location.id}
-                location={location}
-                analyticsContext={{ pageType: "home", placement: "homepage_featured_locations" }}
-              />
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Findmi Moments — real people's public Moments, after the primary
-          discovery rows and before the business promo. Hidden entirely
-          when no public Moment exists (never a fake/empty showcase). */}
-      {momentFeed.cards.length > 0 && (
-        <section className="py-6" aria-labelledby="home-moments-heading">
-          <div className="mb-3 px-4 sm:px-6">
-            <BrandHeading
-              id="home-moments-heading"
-              accent="Moments"
-              size="home"
-              trailing={
-                <Link
-                  href="/moments"
-                  className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
-                >
-                  See All
-                </Link>
-              }
-            />
-            <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>
-          </div>
-          <div className="px-4 sm:px-6">
-            <MomentsDiscovery cards={momentFeed.cards} layout="carousel" />
-          </div>
-        </section>
-      )}
 
       {/* Homepage Content Priority pass — NATIVE ROSE DEMO, fourth and
           final major row (Homepage Section Reorder pass — now after
