@@ -874,6 +874,32 @@ async function getMarketRollupGeoFilter(marketSlug: string): Promise<string | nu
   return geoScopeOrFilter(scope, { hasZcta: true });
 }
 
+/** Canonical Entity Geography completion pass — the geo_place_key/
+ * geo_zcta_key/geo_state_key values product_geographies maps to one of
+ * the given Area ids (never a market-level-only mapping — this queries
+ * product_geographies.market_area_id directly, which is null for a
+ * mapping that only ever names a Market, so a Market-only mapping can
+ * never broaden into every Area under it, per the locked rule). `areaIds`
+ * is expected to already be the caller's own Area scope (itself + its
+ * children, via getAreaScopeIds) — passing a parent Area's scope here is
+ * what lets a child Area's own canonical mapping correctly roll up into
+ * its parent's rollup too, same as the existing explicit business_market_
+ * areas scoping already does. */
+async function getAreaRollupGeoFilter(areaIds: string[]): Promise<string | null> {
+  if (areaIds.length === 0) return null;
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.from("product_geographies").select("geo_key").in("market_area_id", areaIds);
+  const keys = ((data ?? []) as { geo_key: string }[]).map((r) => r.geo_key);
+  if (keys.length === 0) return null;
+  const scope: CanonicalGeoScope = {
+    placeKeys: keys.filter((k) => k.startsWith("place:")),
+    zctaKeys: keys.filter((k) => k.startsWith("zcta:")),
+    stateKeys: keys.filter((k) => k.startsWith("state:")),
+  };
+  return geoScopeOrFilter(scope, { hasZcta: true });
+}
+
 export async function getBusinessIdsInMarket(marketSlug: string): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -966,21 +992,42 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
   const admin = getAdminSupabase();
   if (!admin) return [];
 
+  const areaScopeIds = await getAreaScopeIds(supabase, area.id);
+
   const { data: areaRows } = await admin
     .from("business_market_areas")
     .select("business_id")
     .eq("market_id", market.id)
-    .in("market_area_id", await getAreaScopeIds(supabase, area.id));
+    .in("market_area_id", areaScopeIds);
   const candidateIds = (areaRows ?? []).map((r) => r.business_id as string);
-  if (candidateIds.length === 0) return [];
 
-  const { data: activeMarketRows } = await admin
-    .from("business_markets")
-    .select("business_id")
-    .eq("market_id", market.id)
-    .eq("active", true)
-    .in("business_id", candidateIds);
-  return (activeMarketRows ?? []).map((r) => r.business_id as string);
+  let explicitIds: string[] = [];
+  if (candidateIds.length > 0) {
+    const { data: activeMarketRows } = await admin
+      .from("business_markets")
+      .select("business_id")
+      .eq("market_id", market.id)
+      .eq("active", true)
+      .in("business_id", candidateIds);
+    explicitIds = (activeMarketRows ?? []).map((r) => r.business_id as string);
+  }
+
+  // Canonical Entity Geography completion pass — Area-level read-time
+  // rollup: a business with no explicit business_market_areas row for
+  // this Area, but whose own canonical geography is mapped into it (or
+  // into one of its child Areas — areaScopeIds already includes them),
+  // becomes discoverable here too — WITHOUT rewriting the business row,
+  // and WITHOUT requiring an active business_markets row the way the
+  // explicit path above does (a rollup match has no Market membership of
+  // its own to be active or not). Explicit membership above is entirely
+  // unaffected; this only ever ADDS ids.
+  const rollupFilter = await getAreaRollupGeoFilter(areaScopeIds);
+  let rollupIds: string[] = [];
+  if (rollupFilter) {
+    const { data: rollupRows } = await admin.from("businesses").select("id").or(rollupFilter);
+    rollupIds = ((rollupRows ?? []) as { id: string }[]).map((r) => r.id);
+  }
+  return [...new Set([...explicitIds, ...rollupIds])];
 }
 
 /** The one centralized resolver for "does this Business have at least one
@@ -4371,8 +4418,17 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }
 
   let query = supabase.from("locations").select("*, category:categories(id, name, slug)").eq("is_demo", false);
-  if (areaId) query = query.in("market_area_id", areaIds);
-  else if (marketId) {
+  if (areaId) {
+    // Canonical Entity Geography completion pass — same read-time Area
+    // rollup as getBusinessIdsInArea: a Location with no explicit
+    // market_area_id for this Area (or one of its children — areaIds
+    // already includes them), but whose own canonical geography is
+    // mapped specifically into one of them, is additionally included.
+    // Never a Market-only mapping (see getAreaRollupGeoFilter's own doc
+    // comment) — that would incorrectly broaden into every Area.
+    const rollupFilter = await getAreaRollupGeoFilter(areaIds);
+    query = rollupFilter ? query.or(`market_area_id.in.(${areaIds.join(",")}),${rollupFilter}`) : query.in("market_area_id", areaIds);
+  } else if (marketId) {
     // Canonical Entity Geography completion pass — same read-time Market
     // rollup as getBusinessIdsInMarket: a Location with no explicit
     // market_id for this Market, but whose own canonical geography is
