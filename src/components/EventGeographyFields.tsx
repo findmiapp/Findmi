@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import EventLocationField, { type ManualVenueValues, type SelectedLocationDetail } from "@/components/account/EventLocationField";
 import { useGeographySuggestion } from "@/lib/useGeographySuggestion";
+import CanonicalGeographyPicker from "@/components/geo/CanonicalGeographyPicker";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -69,6 +70,14 @@ export default function EventGeographyFields({
   const [marketId, setMarketId] = useState(defaultMarketId);
   const [overridden, setOverridden] = useState(Boolean(defaultMarketId || defaultRequestedMarketText));
   const { status, suggestion } = useGeographySuggestion(city, state, !overridden);
+  // Canonical Entity Geography completion pass — see
+  // BusinessGeographyFields' identical addition for the full rule. Only
+  // offered on the manual-venue path (no Findmi place selected) — a real
+  // selected Location is already authoritative for its own canonical
+  // geography (see lib/geo/effective-entity-geo.ts), so there is nothing
+  // useful to pick separately here once one is chosen.
+  const [showCanonicalPicker, setShowCanonicalPicker] = useState(false);
+  const [explicitGeoKey, setExplicitGeoKey] = useState("");
 
   useEffect(() => {
     if (overridden) return;
@@ -84,6 +93,12 @@ export default function EventGeographyFields({
   const placeSelected = Boolean(locationName);
   useEffect(() => {
     if (placeSelected) setOverridden(false);
+  }, [placeSelected]);
+  useEffect(() => {
+    if (placeSelected) {
+      setShowCanonicalPicker(false);
+      setExplicitGeoKey("");
+    }
   }, [placeSelected]);
 
   const showManualPicker = overridden || status === "idle";
@@ -182,11 +197,30 @@ export default function EventGeographyFields({
         )}
 
         <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Event Manager.</p>
+
+        {!showCanonicalPicker ? (
+          <button
+            type="button"
+            onClick={() => setShowCanonicalPicker(true)}
+            className="mt-1.5 text-xs font-semibold text-ink/40 underline underline-offset-2"
+          >
+            Set an exact place (optional)
+          </button>
+        ) : (
+          <div className="mt-2">
+            <CanonicalGeographyPicker
+              label="Exact place (optional)"
+              placeholder="City, ZIP, or neighborhood"
+              onSelect={(hit) => setExplicitGeoKey(hit?.geo_key ?? "")}
+            />
+          </div>
+        )}
       </div>
       )}
 
       <input type="hidden" name="market_id" value={marketId} />
       <input type="hidden" name="requested_market_text" value={showManualPicker ? "" : requestedMarketText} />
+      <input type="hidden" name="explicit_geo_key" value={explicitGeoKey} />
     </>
   );
 }

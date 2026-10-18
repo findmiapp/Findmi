@@ -174,6 +174,15 @@ export interface Business {
   // events.postal_code). TEXT, not required on legacy rows.
   postal_code: string | null;
   country: string | null;
+  // Canonical Entity Geography — a real U.S. Census Place/ZCTA/State this
+  // business's own city/state resolved to, independent of any Findmi
+  // Market (see supabase/migrations/20261025000000_canonical_entity_geography.sql
+  // and lib/geo/entity-geo.ts). Optional on the type: a business created
+  // before this pass, or whose geography didn't resolve, has all three null.
+  geo_place_key?: string | null;
+  geo_zcta_key?: string | null;
+  geo_state_key?: string | null;
+  geo_resolution?: string | null;
   service_radius_miles: number | null;
   verified: boolean;
   founding_member: boolean;
@@ -577,6 +586,12 @@ export interface FindmiEvent {
   // replacement — event Market resolution precedence (lib/event-markets.ts)
   // is unchanged and does not read this field.
   market_area_id: string | null;
+  // Canonical Entity Geography — see Business's identical fields above for
+  // the full rule. Optional on the type for the same reason.
+  geo_place_key?: string | null;
+  geo_zcta_key?: string | null;
+  geo_state_key?: string | null;
+  geo_resolution?: string | null;
   // Business-Hosted Events V1 — the canonical host Business (zero or one).
   // Not participation (event_businesses), not a Location, not membership.
   // Optional on the type so hand-built Event objects keep compiling.
@@ -660,6 +675,15 @@ export interface EventOccurrence {
   // event's own Market later automatically flows through to any
   // occurrence that hasn't set this.
   market_id: string | null;
+  // Canonical Entity Geography — see Business's identical fields for the
+  // full rule. An occurrence's own explicit/manual geography; null means
+  // "inherit" (from its linked Location, then the parent Event — see
+  // lib/geo/effective-entity-geo.ts), same precedence shape as market_id
+  // above.
+  geo_place_key?: string | null;
+  geo_zcta_key?: string | null;
+  geo_state_key?: string | null;
+  geo_resolution?: string | null;
   /** RSVP override — Recurring Events V2. Null means "use the parent
    * event's own rsvp_url", same shape as the two overrides above. */
   rsvp_url_override: string | null;
@@ -782,6 +806,16 @@ export interface Appearance {
   // from the Business's own home market_area_id.
   market_id: string | null;
   market_area_id: string | null;
+  // Canonical Entity Geography — a standalone appearance's own resolved
+  // geography (see Business's identical fields above for the full rule).
+  // No geo_zcta_key column exists on appearances (place/state only — its
+  // venue is already covered by Place/State; a linked Location carries
+  // the ZCTA instead). ONLY meaningful when event_id is null — same
+  // "never meaningful on a linked row" rule market_id/market_area_id
+  // above already document.
+  geo_place_key?: string | null;
+  geo_state_key?: string | null;
+  geo_resolution?: string | null;
 }
 
 export interface BusinessWithCategories extends Business {
@@ -855,6 +889,13 @@ export interface FindmiLocation {
   // (only events.market_area_id feeds Event Area resolution — see
   // lib/event-markets.ts's own note that Area always comes from the Event).
   market_area_id: string | null;
+  // Canonical Entity Geography — see Business's identical fields above for
+  // the full rule. A real linked Location is always authoritative for its
+  // own physical geography (lib/geo/effective-entity-geo.ts).
+  geo_place_key?: string | null;
+  geo_zcta_key?: string | null;
+  geo_state_key?: string | null;
+  geo_resolution?: string | null;
   // Multi-Entity Self-Service V1, Stage 3 — minimal additive venue-profile
   // fields for real self-service (native creation/claim/Location Manager).
   description: string | null;

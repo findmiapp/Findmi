@@ -24,6 +24,8 @@ import {
   type NextAppearanceHint,
 } from "@/lib/data";
 import type { BusinessWithCategories, Category } from "@/lib/types";
+import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { isCanonicalGeoScopeEmpty } from "@/lib/geo/entity-geo-core";
 
 export const metadata: Metadata = {
   title: "Businesses",
@@ -61,6 +63,10 @@ interface Params {
   founding?: string;
   sort?: string;
   limit?: string;
+  /** Canonical Entity Geography completion pass — see /events' own Params
+   * field for the full rule: a canonical census_geographies key, additive
+   * alongside market/area/location. */
+  geo?: string;
 }
 
 /** Business Directory Browse Mode + Area-Aware Discovery Composition —
@@ -84,8 +90,9 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   const founding = params.founding === "1";
   const marketSlug = params.market;
   const areaSlug = params.market ? params.area : undefined;
+  const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
 
-  const isBrowseMode = !params.q && !params.category && !params.location && !featured && !founding && sort === "recommended";
+  const isBrowseMode = !params.q && !params.category && !params.location && !featured && !founding && sort === "recommended" && isCanonicalGeoScopeEmpty(canonicalGeo);
 
   const [categories, markets] = await Promise.all([getCategories(), getConsumerVisibleMarketsWithAreas()]);
 
@@ -102,6 +109,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
       location: params.location,
       marketSlug,
       areaSlug,
+      canonicalGeo,
       featuredOnly: featured,
       foundingMemberOnly: founding,
       sort,

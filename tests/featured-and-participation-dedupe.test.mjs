@@ -184,7 +184,7 @@ test("discovery: Findmi Featured Events lead (founder order, then date); the res
 
 test("discovery: /events and /discover opt in; homepage rows, search and /find keep date order; cards show Featured", () => {
   assert.match(read("src/app/(public)/events/page.tsx"), /limit: limit \+ 1,\s*featuredFirst: true[,\s}]/);
-  assert.match(read("src/app/(public)/discover/page.tsx"), /getEventsDiscovery\(\{ when: toDiscoveryWindow\(whenKey\), marketSlug, areaSlug, limit: 8, featuredFirst: true \}\)/);
+  assert.match(read("src/app/(public)/discover/page.tsx"), /getEventsDiscovery\(\{ when: toDiscoveryWindow\(whenKey\), marketSlug, areaSlug, canonicalGeo, limit: 8, featuredFirst: true \}\)/);
   for (const f of ["src/lib/homepage-rows.ts", "src/app/api/homepage-search/route.ts", "src/app/api/homepage-events/route.ts", "src/app/(public)/find/page.tsx"]) {
     assert.doesNotMatch(read(f), /featuredFirst/, f);
   }

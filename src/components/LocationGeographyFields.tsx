@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import { useGeographySuggestion } from "@/lib/useGeographySuggestion";
+import CanonicalGeographyPicker from "@/components/geo/CanonicalGeographyPicker";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -53,6 +54,10 @@ export default function LocationGeographyFields({
   const [state, setState] = useState(defaultState);
   const [overridden, setOverridden] = useState(Boolean(defaultMarketId || defaultAreaId || defaultRequestedMarketText));
   const { status, suggestion } = useGeographySuggestion(city, state, !overridden);
+  // Canonical Entity Geography completion pass — see BusinessGeographyFields'
+  // identical addition for the full rule.
+  const [showCanonicalPicker, setShowCanonicalPicker] = useState(false);
+  const [explicitGeoKey, setExplicitGeoKey] = useState("");
 
   // MarketAreaFields is a fully self-contained, uncontrolled picker (see
   // its own doc comment) — remounting it via `key` whenever a NEW
@@ -83,6 +88,22 @@ export default function LocationGeographyFields({
           <input autoCapitalize="words" type="text" name="state" value={state} onChange={(e) => setState(e.target.value)} className={inputClass} />
         </label>
       </div>
+
+      {!showCanonicalPicker ? (
+        <button
+          type="button"
+          onClick={() => setShowCanonicalPicker(true)}
+          className="text-xs font-semibold text-ink/40 underline underline-offset-2"
+        >
+          Set an exact place (optional)
+        </button>
+      ) : (
+        <CanonicalGeographyPicker
+          label="Exact place (optional)"
+          placeholder="City, ZIP, or neighborhood"
+          onSelect={(hit) => setExplicitGeoKey(hit?.geo_key ?? "")}
+        />
+      )}
 
       <div>
         {!showManualPicker && (
@@ -161,6 +182,7 @@ export default function LocationGeographyFields({
       </div>
 
       <input type="hidden" name="requested_market_text" value={requestedMarketText} />
+      <input type="hidden" name="explicit_geo_key" value={explicitGeoKey} />
     </>
   );
 }

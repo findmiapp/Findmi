@@ -125,9 +125,12 @@ test("8/9. Business/Event/Location creation no longer force a Market-or-request 
   assert.doesNotMatch(location, /createLinkedMarketRequest\(/, "owner-facing Location Market edit no longer calls it (the function name still appears in this pass's own explanatory comment)");
   assert.doesNotMatch(event.slice(event.indexOf("export async function updateMemberEventMarket")), /createLinkedMarketRequest\(/, "owner-facing Event Market edit no longer calls it");
 
-  // Every one of the three entity-save paths writes canonical geo_resolution.
+  // Every one of the three entity-save paths writes canonical geo_resolution
+  // — "derived" by default, or "selected" when the Canonical Entity
+  // Geography completion pass's own picker provided an explicit key (see
+  // tests/canonical-entity-geography-completion.test.mjs test 2b).
   for (const src of [business, event, location]) {
-    assert.match(src, /geo_resolution: "derived"/);
+    assert.match(src, /geo_resolution: explicitGeoKey \? "selected" : "derived"/);
   }
 });
 

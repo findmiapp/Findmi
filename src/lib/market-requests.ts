@@ -9,6 +9,7 @@
 // which calls into this file).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MarketRequestResolutionType } from "./types";
+import { resolveEntityGeography } from "./geo/entity-geo";
 
 const US_STATE_ABBREVIATIONS = new Set([
   "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -185,12 +186,21 @@ export async function findOrCreateConsumerMarketRequest(
   if (existing) return { requestId: existing.id, match, created: false };
 
   const resolutionType: MarketRequestResolutionType | null = match ? (match.type === "area" ? "existing_area" : "existing_market") : null;
+  // Canonical Entity Geography completion pass — an explicit request
+  // (this IS one — the consumer explicitly asked for this area) attaches
+  // a canonical geo_key when the typed city/state resolves to one,
+  // deterministic only, never a guess. Unaffected by whether a Findmi
+  // Market/Area also matched — both can be true at once.
+  const city = input.city?.trim() || null;
+  const state = input.state?.trim() || null;
+  const geo = city && state ? await resolveEntityGeography({ city, state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const geoKey = geo.status === "resolved" || geo.status === "partial" ? (geo.keys.place ?? geo.keys.state ?? null) : null;
   const { data, error } = await admin
     .from("market_requests")
     .insert({
       requested_text: input.text.trim(),
-      city: input.city?.trim() || null,
-      state: input.state?.trim() || null,
+      city,
+      state,
       normalized_key: normalizeMarketRequestKey(input.text),
       effective_normalized_key: effectiveKey,
       source: "consumer",
@@ -199,6 +209,7 @@ export async function findOrCreateConsumerMarketRequest(
       mapped_area_id: match?.areaId ?? null,
       resolution_type: resolutionType,
       reviewed_at: match ? new Date().toISOString() : null,
+      geo_key: geoKey,
     })
     .select("id")
     .single();

@@ -39,6 +39,7 @@ import { existingEventCategoryIds } from "../event-categories-server";
 import { cleanEventFormatIds } from "../event-formats";
 import { syncEventFormats } from "../event-formats-server";
 import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, normalizeReviewedUrl, type ReviewedAttendance } from "./attendance";
+import { resolveEntityGeography } from "../geo/entity-geo";
 
 export const REVIEW_MAX_DATES = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -423,14 +424,24 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
 
   const locations = await loadLocations(admin, toAdd.flatMap((d) => (d.place.locationId ? [d.place.locationId] : [])));
   // Existing Market/Area for each typed city (never creates one), looked up once per city.
-  const geoCache = new Map<string, { market_id: string | null; market_area_id: string | null }>();
-  const geographyFor = async (snap: ReturnType<typeof snapshotFor>) => {
+  type ResolvedGeography = { market_id: string | null; market_area_id: string | null; geo_place_key?: string | null; geo_state_key?: string | null; geo_resolution?: "import" };
+  const geoCache = new Map<string, ResolvedGeography>();
+  const geographyFor = async (snap: ReturnType<typeof snapshotFor>): Promise<ResolvedGeography> => {
+    // Canonical Entity Geography completion pass — a Location-linked date
+    // never stores its own copy of the Location's canonical geo_* (read-
+    // time authoritative via location_id — see getFindMiHereFeed's own
+    // effective-geography join); only a manual (no location) date
+    // resolves and stores its own, deterministic-only, never guessed.
     if (snap.location_id) return { market_id: null, market_area_id: null };
     const text = [snap.city, snap.state].filter(Boolean).join(", ");
     if (!text) return { market_id: null, market_area_id: null };
     if (!geoCache.has(text)) {
-      const match = await deps.geography(text);
-      geoCache.set(text, match ? { market_id: match.marketId, market_area_id: match.areaId } : { market_id: null, market_area_id: null });
+      const [match, geo] = await Promise.all([
+        deps.geography(text),
+        snap.city && snap.state ? resolveEntityGeography({ city: snap.city, state: snap.state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : Promise.resolve({ status: "unresolved" as const, reason: "" }),
+      ]);
+      const geoFields: Pick<ResolvedGeography, "geo_place_key" | "geo_state_key" | "geo_resolution"> = geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_state_key: geo.keys.state, geo_resolution: "import" } : {};
+      geoCache.set(text, { market_id: match ? match.marketId : null, market_area_id: match ? match.areaId : null, ...geoFields });
     }
     return geoCache.get(text)!;
   };
@@ -534,6 +545,16 @@ async function createSourceEvent(
   const eventPlace = eventPlaceFor(snaps);
   const geoText = [eventPlace.city ?? snaps[0].city, eventPlace.state ?? snaps[0].state].filter(Boolean).join(", ");
   const geo = geoText ? await deps.geography(geoText) : null;
+  // Canonical Entity Geography completion pass — the Event's OWN
+  // canonical geography (never inherited — see admin saveEvent's
+  // identical addition for the full rule), resolved deterministically
+  // from whatever city/state ends up representing this Event.
+  const eventCity = eventPlace.city ?? snaps[0].city;
+  const eventState = eventPlace.state ?? snaps[0].state;
+  const eventCanonicalGeo = eventCity && eventState ? await resolveEntityGeography({ city: eventCity, state: eventState }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const eventGeoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "import" }> =
+    eventCanonicalGeo.status === "resolved" || eventCanonicalGeo.status === "partial" ? { geo_place_key: eventCanonicalGeo.keys.place, geo_zcta_key: eventCanonicalGeo.keys.zcta, geo_state_key: eventCanonicalGeo.keys.state, geo_resolution: "import" } : {};
+  const occurrenceGeoFields = await resolveOccurrenceGeoFields(snaps);
   const cover = input.imageUrl ? await deps.storeImage(input.imageUrl) : null;
 
   // 2. The Event — published like every new Event (create_owned_event
@@ -557,6 +578,7 @@ async function createSourceEvent(
       market_id: geo?.marketId ?? null,
       market_area_id: geo?.areaId ?? null,
       ...eventPlace,
+      ...eventGeoFields,
       ...attendanceEventColumns(input.attendance, input.ticketsUrl),
     })
     .select("id")
@@ -579,7 +601,7 @@ async function createSourceEvent(
   const { data: occs } = await admin
     .from("event_occurrences")
     .insert(
-      input.occurrences.map((d, i) => occurrenceInsertRow(eventId, d, snaps[i]))
+      input.occurrences.map((d, i) => occurrenceInsertRow(eventId, d, snaps[i], occurrenceGeoFields.get(i)))
     )
     .select("id, occurrence_date, start_at, location_id, venue_name");
   const occRows = (occs ?? []) as OccurrenceRowRef[];
@@ -625,8 +647,15 @@ export async function persistDiscoveryEvent(input: NormalizedImport, businessId:
 }
 
 /** One event_occurrences insert: the real calendar date always, exact
- * times only when published (null otherwise — never a placeholder). */
-export function occurrenceInsertRow(eventId: string, d: NormalizedDate, snap: ReturnType<typeof snapshotFor>) {
+ * times only when published (null otherwise — never a placeholder).
+ *
+ * Canonical Entity Geography completion pass — `geo` is the resolved
+ * canonical geography for a MANUAL (no location_id) date only; a
+ * Location-linked date never stores its own copy (read-time authoritative
+ * via location_id — see getFindMiHereFeed's own effective-geography
+ * join) — see resolveOccurrenceGeoFields below, the one place that
+ * actually resolves it. */
+export function occurrenceInsertRow(eventId: string, d: NormalizedDate, snap: ReturnType<typeof snapshotFor>, geo?: { geo_place_key: string | null; geo_state_key: string | null; geo_resolution: "import" }) {
   return {
     event_id: eventId,
     occurrence_date: d.date,
@@ -638,7 +667,30 @@ export function occurrenceInsertRow(eventId: string, d: NormalizedDate, snap: Re
     city: snap.city,
     state: snap.state,
     postal_code: snap.postal_code,
+    ...(snap.location_id ? {} : geo ?? {}),
   };
+}
+
+/** Resolves deterministic canonical geography for each MANUAL
+ * (no location_id) snapshot, keyed by its own city/state text so an
+ * Event with several dates in the same place only resolves once. Never
+ * guesses — an ambiguous/unresolved date simply gets no geo_* (never
+ * blocks the import). */
+async function resolveOccurrenceGeoFields(snaps: ReturnType<typeof snapshotFor>[]): Promise<Map<number, { geo_place_key: string | null; geo_state_key: string | null; geo_resolution: "import" }>> {
+  const out = new Map<number, { geo_place_key: string | null; geo_state_key: string | null; geo_resolution: "import" }>();
+  const cache = new Map<string, { geo_place_key: string | null; geo_state_key: string | null; geo_resolution: "import" } | null>();
+  for (let i = 0; i < snaps.length; i++) {
+    const snap = snaps[i];
+    if (snap.location_id || !snap.city || !snap.state) continue;
+    const key = `${snap.city}|${snap.state}`;
+    if (!cache.has(key)) {
+      const geo = await resolveEntityGeography({ city: snap.city, state: snap.state }).catch(() => ({ status: "unresolved" as const, reason: "" }));
+      cache.set(key, geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_state_key: geo.keys.state, geo_resolution: "import" } : null);
+    }
+    const resolved = cache.get(key);
+    if (resolved) out.set(i, resolved);
+  }
+  return out;
 }
 
 /** Event-level place: the shared one, or — for a multi-place Event — only
@@ -683,6 +735,14 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
   const eventPlace = eventPlaceFor(snaps);
   const geoText = [eventPlace.city ?? snaps[0].city, eventPlace.state ?? snaps[0].state].filter(Boolean).join(", ");
   const geo = geoText ? await deps.geography(geoText) : null;
+  // Canonical Entity Geography completion pass — see createSourceEvent's
+  // identical addition for the full rule.
+  const eventCity = eventPlace.city ?? snaps[0].city;
+  const eventState = eventPlace.state ?? snaps[0].state;
+  const eventCanonicalGeo = eventCity && eventState ? await resolveEntityGeography({ city: eventCity, state: eventState }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const eventGeoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "import" }> =
+    eventCanonicalGeo.status === "resolved" || eventCanonicalGeo.status === "partial" ? { geo_place_key: eventCanonicalGeo.keys.place, geo_zcta_key: eventCanonicalGeo.keys.zcta, geo_state_key: eventCanonicalGeo.keys.state, geo_resolution: "import" } : {};
+  const occurrenceGeoFields = await resolveOccurrenceGeoFields(snaps);
 
   const { data: created, error } = await admin.rpc("create_owned_event", {
     p_user_id: deps.userId,
@@ -705,6 +765,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     .from("events")
     .update({
       ...eventPlace,
+      ...eventGeoFields,
       description: input.description,
       external_url: input.sourceUrl,
       ...(cover ? { cover_image_url: cover } : {}),
@@ -725,7 +786,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     const { data: occs } = await admin
       .from("event_occurrences")
       .insert(
-        input.occurrences.map((d, i) => occurrenceInsertRow(eventId, d, snaps[i]))
+        input.occurrences.map((d, i) => occurrenceInsertRow(eventId, d, snaps[i], occurrenceGeoFields.get(i)))
       )
       .select("id, occurrence_date, start_at, location_id, venue_name");
     const occRows = (occs ?? []) as OccurrenceRowRef[];

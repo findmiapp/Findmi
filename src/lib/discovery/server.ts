@@ -6,6 +6,8 @@ import { getEventsDiscovery, getFindMiHereFeed, getLocations, searchBusinesses }
 import { eventHref } from "@/lib/event-links";
 import { getProductMappings, resolvePhrase, resolveState, resolveZipCode, geoScopeFor, censusTargetByKey } from "@/lib/geo/resolve";
 import type { GeoTarget } from "@/lib/geo/resolve-core";
+import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { isCanonicalGeoScopeEmpty, type CanonicalGeoScope } from "@/lib/geo/entity-geo-core";
 import { executeDiscovery, type DiscoveryItem, type DiscoveryResult, type ExecuteContext, type GeoScope, type PersonalContext } from "./engine";
 import { entitiesFor, mergeQueries, topicQuerySchema, type DiscoveryQuery, type TopicQuery } from "./query";
 import { parseSearch, type ParsedSearch, type ParseVocabulary } from "./parse";
@@ -159,17 +161,28 @@ export interface CandidateScope {
 }
 
 /** One bounded candidate fetch per request (cached per render), through
- * the existing public helpers. */
-export const getCandidates = cache(async (market: string | undefined, area: string | undefined, kinds: string): Promise<DiscoveryItem[]> => {
+ * the existing public helpers.
+ *
+ * Canonical Entity Geography completion pass — `geoKey` (a canonical
+ * census_geographies key, from `?geo=`/`?census=` — see runDiscovery) is
+ * threaded into every fetcher's own `canonicalGeo` scope so the SAME
+ * bounded candidate fetch is scoped SERVER-SIDE, before the 200/120/80/80
+ * caps below are even applied — not just filtered in memory afterward by
+ * the executor's text-based GeoScope (which still runs too, as a fallback
+ * net for rows that predate the backfill — see runDiscovery). Part of the
+ * cache key (a distinct geoKey is a genuinely distinct candidate set). */
+export const getCandidates = cache(async (market: string | undefined, area: string | undefined, kinds: string, geoKey?: string): Promise<DiscoveryItem[]> => {
   const vocab = await getVocabulary();
   const want = new Set(kinds.split(","));
   const areaSlugById = new Map(vocab.areaRows.map((a) => [a.id, a.slug]));
   const scope = { marketSlug: market, areaSlug: market ? area : undefined };
+  const canonicalGeo: CanonicalGeoScope | null = geoKey ? await resolveCanonicalGeoScope(geoKey) : null;
+  const geoScope = canonicalGeo && !isCanonicalGeoScopeEmpty(canonicalGeo) ? { canonicalGeo } : {};
   const [events, appearances, places, brands] = await Promise.all([
-    want.has("event") || want.has("appearance") ? getEventsDiscovery({ when: "anytime", limit: 200, ...scope }) : Promise.resolve([]),
-    want.has("appearance") ? getFindMiHereFeed("anytime", 120, scope) : Promise.resolve([]),
-    want.has("place") ? getLocations({ limit: 80, ...scope }) : Promise.resolve([]),
-    want.has("business") ? searchBusinesses({ limit: 80, ...scope }) : Promise.resolve([]),
+    want.has("event") || want.has("appearance") ? getEventsDiscovery({ when: "anytime", limit: 200, ...scope, ...geoScope }) : Promise.resolve([]),
+    want.has("appearance") ? getFindMiHereFeed("anytime", 120, { ...scope, ...geoScope }) : Promise.resolve([]),
+    want.has("place") ? getLocations({ limit: 80, ...scope, ...geoScope }) : Promise.resolve([]),
+    want.has("business") ? searchBusinesses({ limit: 80, ...scope, ...geoScope }) : Promise.resolve([]),
   ]);
   const tax = await taxonomyFor([...new Set([...events.map((e) => e.id), ...appearances.map((a) => a.event_id).filter((x): x is string => Boolean(x))])], vocab);
   const items: DiscoveryItem[] = [];
@@ -354,7 +367,12 @@ export async function runDiscovery(q: DiscoveryQuery, opts: RunOptions = {}): Pr
   }
   const geoLabel = geo?.label ?? null;
   const kinds = entitiesFor(executed).sort().join(",");
-  const [candidates, personal] = await Promise.all([getCandidates(executed.market, executed.area, kinds), opts.personal ? getPersonalContext() : Promise.resolve(null)]);
+  // Canonical Entity Geography completion pass — the same resolved key
+  // `?geo=`/`?census=` already carries (executed.census — see
+  // discovery/query.ts's SCALAR_KEYS, where "census" IS the `geo` URL
+  // param) also scopes the underlying candidate fetch now, not just the
+  // in-memory GeoScope predicate below.
+  const [candidates, personal] = await Promise.all([getCandidates(executed.market, executed.area, kinds, executed.census), opts.personal ? getPersonalContext() : Promise.resolve(null)]);
   const taxonomyNames: Record<string, string> = {};
   for (const t of vocab.taxonomyById.values()) taxonomyNames[t.slug] = t.name;
   const ctx: ExecuteContext = {

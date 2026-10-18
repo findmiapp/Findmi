@@ -179,6 +179,18 @@ export async function saveEvent(id: string | null, formData: FormData) {
     if (location) matchedLocation = location;
   }
 
+  const eventCity = matchedLocation ? matchedLocation.city : str(formData, "city");
+  const eventState = matchedLocation ? matchedLocation.state : str(formData, "state");
+  // Canonical Entity Geography completion pass — the Event's OWN
+  // canonical geography (per the locked precedence: an Event's own
+  // geo_* is its Event-level/default/manual geography — never inherited
+  // from a matched Location the way an occurrence/appearance can be, see
+  // lib/geo/effective-entity-geo.ts). Same best-effort, never-guess, never-
+  // erase-on-edit resolution as every owner self-service action.
+  const eventGeo = eventCity && eventState ? await resolveEntityGeography({ city: eventCity, state: eventState }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const eventGeoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "derived" }> =
+    eventGeo.status === "resolved" || eventGeo.status === "partial" ? { geo_place_key: eventGeo.keys.place, geo_zcta_key: eventGeo.keys.zcta, geo_state_key: eventGeo.keys.state, geo_resolution: "derived" } : {};
+
   const payload = {
     name,
     slug,
@@ -190,9 +202,10 @@ export async function saveEvent(id: string | null, formData: FormData) {
     end_date: endDate,
     venue_name: matchedLocation ? matchedLocation.name : str(formData, "venue_name"),
     address: matchedLocation ? matchedLocation.address : str(formData, "address"),
-    city: matchedLocation ? matchedLocation.city : str(formData, "city"),
-    state: matchedLocation ? matchedLocation.state : str(formData, "state"),
+    city: eventCity,
+    state: eventState,
     postal_code: matchedLocation ? matchedLocation.postal_code : str(formData, "postal_code"),
+    ...eventGeoFields,
     // Only ever written when a real Location is matched — manual mode
     // omits these keys entirely (undefined is dropped from the request
     // body), leaving any existing latitude/longitude on the row untouched,
@@ -286,9 +299,10 @@ export async function saveEvent(id: string | null, formData: FormData) {
     // auto-create one for genuinely unmatched geography), so it keeps
     // creating a reviewable market_requests row exactly as before; the
     // only addition is attaching a canonical Census key when the typed
-    // city/state resolves to one, never a guess.
-    const geo = payload.city && payload.state ? await resolveEntityGeography({ city: payload.city, state: payload.state }).catch(() => null) : null;
-    const geoKey = geo && (geo.status === "resolved" || geo.status === "partial") ? (geo.keys.place ?? geo.keys.state ?? null) : null;
+    // city/state resolves to one, never a guess. Reuses eventGeo (same
+    // city/state, already resolved above for the Event's own geo_* —
+    // never a second resolution).
+    const geoKey = eventGeo.status === "resolved" || eventGeo.status === "partial" ? (eventGeo.keys.place ?? eventGeo.keys.state ?? null) : null;
     await createLinkedMarketRequest(supabase, {
       text: requestedMarketText,
       city: payload.city,

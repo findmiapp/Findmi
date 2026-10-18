@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useGeographySuggestion } from "@/lib/useGeographySuggestion";
 import type { GeographyMatch } from "@/lib/market-requests";
+import CanonicalGeographyPicker from "@/components/geo/CanonicalGeographyPicker";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -65,6 +66,15 @@ export default function BusinessGeographyFields({
   // fights a decision the visitor already made.
   const [overridden, setOverridden] = useState(Boolean(defaultMarketId || defaultRequestedMarketText));
   const { status, suggestion } = useGeographySuggestion(city, state, !overridden);
+  // Canonical Entity Geography completion pass — a genuinely optional,
+  // collapsed-by-default affordance alongside the existing Findmi area
+  // matching above: picking an exact Census place here saves
+  // geo_resolution="selected" (re-validated server-side regardless — see
+  // account/business/actions.ts); leaving it alone keeps the exact same
+  // best-effort derivation from City/State this pass's base commit
+  // already does. Never required, never replaces the Findmi area above.
+  const [showCanonicalPicker, setShowCanonicalPicker] = useState(false);
+  const [explicitGeoKey, setExplicitGeoKey] = useState("");
 
   useEffect(() => {
     if (overridden) return;
@@ -118,6 +128,23 @@ export default function BusinessGeographyFields({
           <p className="mt-1.5 text-xs text-ink/45">
             Enter where your business is based. Findmi will determine the best area for discovery.
           </p>
+        )}
+        {!showCanonicalPicker ? (
+          <button
+            type="button"
+            onClick={() => setShowCanonicalPicker(true)}
+            className="mt-1.5 text-xs font-semibold text-ink/40 underline underline-offset-2"
+          >
+            Set an exact place (optional)
+          </button>
+        ) : (
+          <div className="mt-2">
+            <CanonicalGeographyPicker
+              label="Exact place (optional)"
+              placeholder="City, ZIP, or neighborhood"
+              onSelect={(hit) => setExplicitGeoKey(hit?.geo_key ?? "")}
+            />
+          </div>
         )}
       </div>
 
@@ -193,6 +220,7 @@ export default function BusinessGeographyFields({
 
       <input type="hidden" name="market_id" value={marketId} />
       <input type="hidden" name="requested_market_text" value={overridden ? "" : requestedMarketText} />
+      <input type="hidden" name="explicit_geo_key" value={explicitGeoKey} />
     </>
   );
 }

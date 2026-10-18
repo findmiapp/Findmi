@@ -126,8 +126,10 @@ test("12 & 20. creating a Location never creates the Event, and grants no owners
   assert.doesNotMatch(component, /commitEventImport|persistEventImport|from\("events"\)/);
   const fn = INLINE_PLACE.slice(INLINE_PLACE.indexOf("export async function insertUnlistedPlace"));
   const body = fn.slice(0, fn.indexOf("\n}\n"));
-  // Profile values (Location Import V1) come first; is_demo: true always last, so nothing overrides it.
-  assert.match(body, /\.insert\(\{ \.\.\.profile, name, slug, address, city, state, postal_code: postalCode, is_demo: true \}\)/, "unlisted, never published");
+  // Profile values (Location Import V1) come first; is_demo: true always
+  // comes before the Canonical Entity Geography completion pass's own
+  // geoFields spread, so nothing can override it.
+  assert.match(body, /\.insert\(\{ \.\.\.profile, name, slug, address, city, state, postal_code: postalCode, is_demo: true, \.\.\.geoFields \}\)/, "unlisted, never published");
   assert.match(INLINE_PLACE, /export async function insertInlinePlace[\s\S]*?return insertUnlistedPlace\(admin, \{/, "member Quick Create uses the same core");
   assert.doesNotMatch(body, /location_members"\)\.insert|business_locations|create_owned_location|from\("events"\)/);
 });

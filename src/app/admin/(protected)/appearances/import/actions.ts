@@ -14,6 +14,7 @@ import {
   type ImportImage,
 } from "@/lib/admin/appearance-import";
 import { findDuplicateMatches, findEventMatches, type DuplicateCandidate, type EventMatchCandidate } from "@/lib/admin/appearance-matching";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 
 // ---------------------------------------------------------------------
 // Step 1 -> analyze. Never writes to the database — the result is plain
@@ -179,7 +180,7 @@ export async function createAppearancesBulk(businessId: string, rows: CreateRowI
   // formatAppearanceDateRange, lib/format.ts) shows "Time TBD" instead of
   // ever displaying that placeholder as if it were real — see that file's
   // own note on why this doesn't need a schema column.
-  const payloads = rows
+  const candidateRows = rows
     .filter((row) => Boolean(row.title?.trim()) && /^\d{4}-\d{2}-\d{2}$/.test(row.date))
     .map((row) => {
       const timeUnknown = !row.start_time;
@@ -190,6 +191,8 @@ export async function createAppearancesBulk(businessId: string, rows: CreateRowI
       // a TBD row's end_at is always null (never a real time to compare),
       // so this only ever rejects a genuine end-before-start mistake.
       if (end_at && new Date(end_at).getTime() < new Date(start_at).getTime()) return null;
+      const city = row.city?.trim() ? clip(row.city.trim(), MAX_FIELD_LEN) : null;
+      const state = row.state?.trim() ? clip(row.state.trim(), MAX_FIELD_LEN) : null;
       return {
         business_id: businessId,
         event_id: row.event_id && validEventIds.has(row.event_id) ? row.event_id : null,
@@ -199,8 +202,8 @@ export async function createAppearancesBulk(businessId: string, rows: CreateRowI
         end_at,
         venue_name: row.venue_name?.trim() ? clip(row.venue_name.trim(), MAX_FIELD_LEN) : null,
         address: row.address?.trim() ? clip(row.address.trim(), MAX_FIELD_LEN) : null,
-        city: row.city?.trim() ? clip(row.city.trim(), MAX_FIELD_LEN) : null,
-        state: row.state?.trim() ? clip(row.state.trim(), MAX_FIELD_LEN) : null,
+        city,
+        state,
         status: VALID_STATUSES.has(row.status) ? row.status : "confirmed",
         is_featured: false,
         bulletin_text: null,
@@ -209,6 +212,24 @@ export async function createAppearancesBulk(businessId: string, rows: CreateRowI
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
+
+  // Canonical Entity Geography completion pass — deterministic resolution
+  // only (city+state, same as every other entity-save path): an
+  // ambiguous/unresolved row is imported with geo_* left null rather than
+  // guessed — never blocks the import either way. Only ever reached for
+  // standalone (never event_id-linked — Appearance Import creates no
+  // Location/Event relationships) rows, so there's no effective-geography
+  // inheritance to consider here.
+  const payloads = await Promise.all(
+    candidateRows.map(async (row) => {
+      if (!row.city || !row.state) return { ...row, geo_place_key: null, geo_state_key: null, geo_resolution: null };
+      const geo = await resolveEntityGeography({ city: row.city, state: row.state }).catch(() => ({ status: "unresolved" as const, reason: "" }));
+      if (geo.status === "resolved" || geo.status === "partial") {
+        return { ...row, geo_place_key: geo.keys.place, geo_state_key: geo.keys.state, geo_resolution: "import" };
+      }
+      return { ...row, geo_place_key: null, geo_state_key: null, geo_resolution: null };
+    })
+  );
 
   if (payloads.length === 0) {
     redirect(errorRedirectUrl(businessPath, "None of the selected rows had valid required fields (title, date, and a start time no earlier than the end time)."));

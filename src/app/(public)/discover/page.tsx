@@ -22,6 +22,7 @@ import {
   type FindWindow,
 } from "@/lib/data";
 import type { DiscoveryWindow } from "@/lib/format";
+import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
 export const metadata: Metadata = {
   title: "Discover",
@@ -68,10 +69,14 @@ interface Params {
    * /events' own `category` param) — this filter is intentionally never
    * applied to the Events section below; see this pass's own report. */
   category?: string;
+  /** Canonical Entity Geography completion pass — see /events' own Params
+   * field for the full rule. */
+  geo?: string;
 }
 
 export default async function DiscoverPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
+  const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
   // Discovery V2 — defaults to "upcoming" (the widest window), matching
   // /events' own default ("upNext" = anytime): the safest choice against
   // a sparse-Area/early-stage-catalog page looking empty on first load,
@@ -84,8 +89,8 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   const [homeCategories, markets, happeningSoon, eventsSection, featuredBrands, featuredProducts] = await Promise.all([
     getHomeCategories(),
     getConsumerVisibleMarketsWithAreas(),
-    getFindMiHereFeed(toFindWindow(whenKey), 8, { marketSlug, areaSlug, categorySlug }),
-    getEventsDiscovery({ when: toDiscoveryWindow(whenKey), marketSlug, areaSlug, limit: 8, featuredFirst: true }),
+    getFindMiHereFeed(toFindWindow(whenKey), 8, { marketSlug, areaSlug, categorySlug, canonicalGeo }),
+    getEventsDiscovery({ when: toDiscoveryWindow(whenKey), marketSlug, areaSlug, canonicalGeo, limit: 8, featuredFirst: true }),
     // Active Featured Business Promotional Eligibility pass — this rail
     // is a genuine promotional placement (unlike /businesses' own
     // ?featured=1 filter checkbox, which stays plain editorial-only), so

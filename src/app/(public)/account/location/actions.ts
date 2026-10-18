@@ -148,6 +148,9 @@ export async function createMemberLocation(formData: FormData) {
   // this Market-scoped MarketAreaFields picker.
   const areaId = str(formData, "market_area_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
+  // Canonical Entity Geography completion pass — see
+  // account/business/actions.ts's identical field for the full rule.
+  const explicitGeoKey = str(formData, "explicit_geo_key");
   // /account V2 Pass 2 — optional Business context (Presence -> Locations
   // -> Add location). Same form, same validation, same is_demo=true
   // pending-review creation; the only additions are an up-front
@@ -255,11 +258,11 @@ export async function createMemberLocation(formData: FormData) {
   // already set one.
   if (city && state) {
     try {
-      const geo = await resolveEntityGeography({ city, state });
+      const geo = await resolveEntityGeography({ explicitKey: explicitGeoKey || undefined, city, state });
       if (geo.status === "resolved" || geo.status === "partial") {
         await admin
           .from("locations")
-          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" })
+          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: explicitGeoKey ? "selected" : "derived" })
           .eq("id", locationId);
         if (!effectiveMarketId && geo.marketSuggestion?.type === "findmi") {
           const { data: marketRow } = await admin.from("markets").select("id").eq("slug", geo.marketSuggestion.market).eq("active", true).maybeSingle();

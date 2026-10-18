@@ -6,6 +6,7 @@ import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import CategorySelect from "@/components/discover/CategorySelect";
 import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import { getConsumerVisibleMarketsWithAreas, getLocationCategories, getLocations, getMarketAreaLabel } from "@/lib/data";
+import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
 export const metadata: Metadata = {
   title: "Locations",
@@ -22,10 +23,14 @@ interface Params {
   category?: string;
   market?: string;
   area?: string;
+  /** Canonical Entity Geography completion pass — see /events' own Params
+   * field for the full rule. */
+  geo?: string;
 }
 
 export default async function LocationsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
+  const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
 
   const [categories, markets, locations] = await Promise.all([
     getLocationCategories(),
@@ -35,6 +40,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
       categorySlug: params.category,
       marketSlug: params.market,
       areaSlug: params.market ? params.area : undefined,
+      canonicalGeo,
       limit: RESULT_LIMIT,
     }),
   ]);

@@ -13,6 +13,9 @@ import {
 } from "./format";
 import { resolveEffectiveEventMarket } from "./event-markets";
 import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
+import { geoScopeOrFilter, isCanonicalGeoScopeEmpty, type CanonicalGeoScope } from "./geo/entity-geo-core";
+import { effectiveAppearanceCanonicalGeo, canonicalGeoMatchesScope, type EntityCanonicalGeo } from "./geo/effective-entity-geo";
+import { getProductMappings } from "./geo/resolve";
 import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { countUpcomingAppearances, groupAppearancesForPreview } from "./findmi-here";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
@@ -850,6 +853,27 @@ function reorderByIds<T extends { id: string }>(items: T[], ids: string[]): T[] 
  * right now. Callers must treat both cases identically: a scoped, empty
  * result, never an unfiltered one.
  */
+/** Canonical Entity Geography completion pass — the geo_place_key/
+ * geo_zcta_key/geo_state_key values product_geographies maps to this
+ * Market, as a ready-to-use `.or(...)` filter. Every mapping role
+ * (primary/includes/within — see /admin/site/geography) counts: each one
+ * already means "this canonical geography is part of this Market" in the
+ * admin's own vocabulary. Returns null when nothing is mapped yet — the
+ * Market's explicit membership (business_markets / locations.market_id)
+ * is entirely unaffected either way; this is a pure ADDITIVE rollup, never
+ * a narrowing. */
+async function getMarketRollupGeoFilter(marketSlug: string): Promise<string | null> {
+  const mappings = await getProductMappings();
+  const keys = mappings.filter((m) => m.market_slug === marketSlug).map((m) => m.geo_key);
+  if (keys.length === 0) return null;
+  const scope: CanonicalGeoScope = {
+    placeKeys: keys.filter((k) => k.startsWith("place:")),
+    zctaKeys: keys.filter((k) => k.startsWith("zcta:")),
+    stateKeys: keys.filter((k) => k.startsWith("state:")),
+  };
+  return geoScopeOrFilter(scope, { hasZcta: true });
+}
+
 export async function getBusinessIdsInMarket(marketSlug: string): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -871,8 +895,20 @@ export async function getBusinessIdsInMarket(marketSlug: string): Promise<string
     .eq("market_id", market.id)
     .eq("active", true)
     .in("relationship", ["primary", "additional"]);
+  const explicitIds = (rows ?? []).map((r) => r.business_id as string);
 
-  return (rows ?? []).map((r) => r.business_id as string);
+  // Canonical Entity Geography completion pass — Market/Area read-time
+  // rollup: a business with no explicit business_markets row for this
+  // Market, but whose own canonical geography is mapped into it (via
+  // product_geographies, set from /admin/site/geography), becomes
+  // discoverable here too — WITHOUT rewriting the business row. Explicit
+  // membership above is unaffected and stays authoritative; this only
+  // ever ADDS ids, never removes one.
+  const rollupFilter = await getMarketRollupGeoFilter(marketSlug);
+  if (!rollupFilter) return explicitIds;
+  const { data: rollupRows } = await admin.from("businesses").select("id").or(rollupFilter);
+  const rollupIds = ((rollupRows ?? []) as { id: string }[]).map((r) => r.id);
+  return [...new Set([...explicitIds, ...rollupIds])];
 }
 
 /** Market -> Area/Submarket Hierarchy V2, cut over by the Business Market
@@ -1039,6 +1075,14 @@ export interface SearchBusinessesParams {
   sort?: BusinessSort;
   limit?: number;
   offset?: number;
+  /** Canonical Entity Geography completion pass — a resolved discovery
+   * query scope (Place/ZCTA/State/County, see canonical-scope.ts),
+   * applied as a real `.or(...)` filter against the business's own
+   * indexed geo_place_key/geo_zcta_key/geo_state_key, BEFORE `.limit()`.
+   * Additive: combines (AND) with every other filter above, including
+   * marketSlug/areaSlug and the free-text `location` — this never
+   * replaces either, per the locked "both systems coexist" rule. */
+  canonicalGeo?: CanonicalGeoScope | null;
 }
 
 /** Real total isn't computed via a separate COUNT query (avoids doubling
@@ -1140,6 +1184,14 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
   }
   if (eligibleFeaturedIds) {
     query = query.in("id", eligibleFeaturedIds);
+  }
+  // Canonical Entity Geography completion pass — server-side, before
+  // pagination: a query scope with nothing to filter by (unresolved, or
+  // genuinely empty) is never applied, same "never match-nothing" rule
+  // geoScopeOrFilter's own doc comment states.
+  if (!isCanonicalGeoScopeEmpty(params.canonicalGeo)) {
+    const geoFilter = geoScopeOrFilter(params.canonicalGeo!, { hasZcta: true });
+    if (geoFilter) query = query.or(geoFilter);
   }
 
   if (params.sort === "newest") {
@@ -2300,6 +2352,11 @@ export interface EventDiscoveryParams {
   /** Shared Event filter scoping — see EffectiveUpcomingEventsOptions. */
   locationId?: string;
   businessId?: string;
+  /** Canonical Entity Geography completion pass — see
+   * SearchBusinessesParams' own identical field for the full rule.
+   * Additive alongside marketSlug/areaSlug/location — never a
+   * replacement for either. */
+  canonicalGeo?: CanonicalGeoScope | null;
 }
 
 /** Shared events query — backs /events' "All" browse state and
@@ -2339,6 +2396,43 @@ export function sortFeaturedFirst<R extends { event: { id: string; is_featured?:
     }
     return compareEffectiveRows(a, b);
   });
+}
+
+/** Canonical Entity Geography completion pass — resolves the bounded set
+ * of event ids "in" a discovery query scope, server-side, before anything
+ * else runs: an event's own geo_* (set at creation/edit — see
+ * account/event/actions.ts), OR any occurrence's own geo_* (a manual-venue
+ * date resolved independently of its parent Event), OR any occurrence
+ * whose LINKED LOCATION'S geo_* matches (the occurrence inherits the
+ * Location's canonical geography the same way it already inherits the
+ * Location's Market — see effective-entity-geo.ts). Three bounded id
+ * queries, unioned in JS — the same "resolve a bounded id set, then
+ * .in() it" discipline this function already uses for categorySlug/
+ * formatSlugs, never a nationwide fetch-then-filter. Returns null (no
+ * restriction) only when no geo scope was given at all. */
+async function resolveGeoEventIds(supabase: NonNullable<ReturnType<typeof getSupabase>>, canonicalGeo: CanonicalGeoScope | null | undefined): Promise<string[] | null> {
+  if (isCanonicalGeoScopeEmpty(canonicalGeo)) return null;
+  const geoFilter = geoScopeOrFilter(canonicalGeo!, { hasZcta: true });
+  if (!geoFilter) return [];
+
+  const [ownEvents, ownOccurrences, locatedOccurrences] = await Promise.all([
+    supabase.from("events").select("id").or(geoFilter),
+    supabase.from("event_occurrences").select("event_id").or(geoFilter),
+    supabase.from("event_occurrences").select("event_id, location_id").not("location_id", "is", null),
+  ]);
+  const ids = new Set<string>([
+    ...((ownEvents.data ?? []) as { id: string }[]).map((r) => r.id),
+    ...((ownOccurrences.data ?? []) as { event_id: string }[]).map((r) => r.event_id),
+  ]);
+
+  const locatedRows = (locatedOccurrences.data ?? []) as { event_id: string; location_id: string }[];
+  if (locatedRows.length > 0) {
+    const locationIds = [...new Set(locatedRows.map((r) => r.location_id))];
+    const { data: matchingLocations } = await supabase.from("locations").select("id").in("id", locationIds).or(geoFilter);
+    const matchingLocationIds = new Set(((matchingLocations ?? []) as { id: string }[]).map((l) => l.id));
+    for (const row of locatedRows) if (matchingLocationIds.has(row.location_id)) ids.add(row.event_id);
+  }
+  return [...ids];
 }
 
 export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Promise<FindmiEvent[]> {
@@ -2382,6 +2476,14 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
     const formatEventIds = new Set(((links ?? []) as { event_id: string }[]).map((l) => l.event_id));
     categoryEventIds = categoryEventIds ? categoryEventIds.filter((id) => formatEventIds.has(id)) : [...formatEventIds];
     if (categoryEventIds.length === 0) return [];
+  }
+
+  if (!isCanonicalGeoScopeEmpty(params.canonicalGeo)) {
+    const geoEventIds = await resolveGeoEventIds(supabase, params.canonicalGeo);
+    if (geoEventIds !== null) {
+      categoryEventIds = categoryEventIds ? categoryEventIds.filter((id) => geoEventIds.includes(id)) : geoEventIds;
+      if (categoryEventIds.length === 0) return [];
+    }
   }
 
   const bounds = params.date ? getExactDateBounds(params.date) : getDiscoveryWindowBounds(params.when ?? "anytime");
@@ -2893,7 +2995,7 @@ export type FindWindow = "live" | "today" | "weekend" | "anytime";
 export async function getFindMiHereFeed(
   when: FindWindow,
   limit = 30,
-  extra: { categorySlug?: string; marketSlug?: string; areaSlug?: string; q?: string } = {}
+  extra: { categorySlug?: string; marketSlug?: string; areaSlug?: string; q?: string; canonicalGeo?: CanonicalGeoScope | null } = {}
 ): Promise<AppearanceFeedItem[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -2929,6 +3031,12 @@ export async function getFindMiHereFeed(
     areaId = areaRow.id;
     areaScope = new Set(await getAreaScopeIds(supabase, areaRow.id));
   }
+  // Canonical Entity Geography completion pass — same optional, additive
+  // axis as marketId/areaId above: a resolved discovery query scope (see
+  // canonical-scope.ts), applied against each item's EFFECTIVE canonical
+  // geography (effective-entity-geo.ts) further below, alongside — never
+  // instead of — the existing Market/Area filter when both are present.
+  const canonicalGeo = extra.canonicalGeo && !isCanonicalGeoScopeEmpty(extra.canonicalGeo) ? extra.canonicalGeo : null;
 
   let categoryBusinessIds: string[] | null = null;
   if (extra.categorySlug) {
@@ -2964,7 +3072,7 @@ export async function getFindMiHereFeed(
   let query = supabase
     .from("appearances")
     .select(
-      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id), location:locations(id, name, slug, is_demo)"
+      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id, geo_place_key, geo_zcta_key, geo_state_key), location:locations(id, name, slug, is_demo, geo_place_key, geo_zcta_key, geo_state_key)"
     )
     .neq("status", "canceled");
 
@@ -3006,14 +3114,14 @@ export async function getFindMiHereFeed(
   const { data, error } = await query
     .order("is_featured", { ascending: false })
     .order("start_at", { ascending: true })
-    .limit(marketId ? 200 : limit * 2); // over-fetch since some may be filtered out as demo (or, with a Market filter, out of that geography)
+    .limit(marketId || canonicalGeo ? 200 : limit * 2); // over-fetch since some may be filtered out as demo (or, with a Market/canonical geography filter, out of that geography)
   // A failed query must never pass silently as "nothing happening" (the
   // ambiguous businesses embed did exactly that after featured_appearance_id).
   if (error) console.error("[getFindMiHereFeed] appearances query failed", error);
 
   type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
-  type JoinedEvent = { market_id: string | null; market_area_id: string | null };
-  type JoinedLocation = { id: string; name: string; slug: string };
+  type JoinedEvent = { market_id: string | null; market_area_id: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null };
+  type JoinedLocation = { id: string; name: string; slug: string; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null };
   let items = ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as Appearance & {
       business: JoinedBusiness | JoinedBusiness[];
@@ -3045,15 +3153,15 @@ export async function getFindMiHereFeed(
   // Location's Findmi area later is immediately reflected here with no
   // Appearance row rewrite. A standalone appearance with no location_id
   // keeps using its own stored snapshot exactly as before this pass.
-  if (marketId) {
+  if (marketId || canonicalGeo) {
     const occIds = Array.from(
       new Set(items.filter((i) => i.event_id && i.event_occurrence_id).map((i) => i.event_occurrence_id as string))
     );
-    const occById = new Map<string, { market_id: string | null; location_id: string | null }>();
+    const occById = new Map<string, { market_id: string | null; location_id: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null }>();
     if (occIds.length > 0) {
-      const { data: occRows } = await supabase.from("event_occurrences").select("id, market_id, location_id").in("id", occIds);
-      for (const o of (occRows ?? []) as { id: string; market_id: string | null; location_id: string | null }[]) {
-        occById.set(o.id, { market_id: o.market_id, location_id: o.location_id });
+      const { data: occRows } = await supabase.from("event_occurrences").select("id, market_id, location_id, geo_place_key, geo_zcta_key, geo_state_key").in("id", occIds);
+      for (const o of (occRows ?? []) as { id: string; market_id: string | null; location_id: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null }[]) {
+        occById.set(o.id, o);
       }
     }
     const standaloneLocationIds = items
@@ -3067,25 +3175,36 @@ export async function getFindMiHereFeed(
         ...standaloneLocationIds,
       ])
     );
-    const locationGeographyById = new Map<string, { market_id: string | null; market_area_id: string | null }>();
+    const locationGeographyById = new Map<string, { market_id: string | null; market_area_id: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null }>();
     if (locationIds.length > 0) {
-      const { data: locRows } = await supabase.from("locations").select("id, market_id, market_area_id").in("id", locationIds);
-      for (const l of (locRows ?? []) as { id: string; market_id: string | null; market_area_id: string | null }[]) {
-        locationGeographyById.set(l.id, { market_id: l.market_id, market_area_id: l.market_area_id });
+      const { data: locRows } = await supabase.from("locations").select("id, market_id, market_area_id, geo_place_key, geo_zcta_key, geo_state_key").in("id", locationIds);
+      for (const l of (locRows ?? []) as { id: string; market_id: string | null; market_area_id: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null }[]) {
+        locationGeographyById.set(l.id, l);
       }
     }
+    const asGeo = (g: { geo_place_key?: string | null; geo_zcta_key?: string | null; geo_state_key?: string | null } | null | undefined): EntityCanonicalGeo => ({ place: g?.geo_place_key ?? null, zcta: g?.geo_zcta_key ?? null, state: g?.geo_state_key ?? null });
 
     items = items.filter((item) => {
       let effectiveMarketId: string | null;
       let effectiveAreaId: string | null;
+      let effectiveGeo: EntityCanonicalGeo;
       if (item.event_id) {
         const occ = item.event_occurrence_id ? occById.get(item.event_occurrence_id) : undefined;
+        const occLocation = occ?.location_id ? locationGeographyById.get(occ.location_id) : undefined;
         effectiveMarketId = resolveEffectiveEventMarket({
           eventMarketId: item.event?.market_id ?? null,
           occurrenceMarketId: occ?.market_id ?? null,
-          locationMarketId: occ?.location_id ? (locationGeographyById.get(occ.location_id)?.market_id ?? null) : null,
+          locationMarketId: occLocation?.market_id ?? null,
         }).marketId;
         effectiveAreaId = item.event?.market_area_id ?? null;
+        effectiveGeo = effectiveAppearanceCanonicalGeo({
+          eventId: item.event_id,
+          appearanceGeo: null,
+          locationId: occ?.location_id ?? null,
+          locationGeo: occ?.location_id ? asGeo(occLocation) : null,
+          occurrenceGeo: occ ? asGeo(occ) : null,
+          eventGeo: asGeo(item.event),
+        });
       } else {
         const locationGeography = item.location_id ? locationGeographyById.get(item.location_id) : undefined;
         const effective = resolveEffectiveAppearanceGeography({
@@ -3097,8 +3216,16 @@ export async function getFindMiHereFeed(
         });
         effectiveMarketId = effective.marketId;
         effectiveAreaId = effective.areaId;
+        effectiveGeo = effectiveAppearanceCanonicalGeo({
+          eventId: null,
+          appearanceGeo: asGeo(item),
+          locationId: item.location_id ?? null,
+          locationGeo: item.location_id ? asGeo(locationGeography) : null,
+        });
       }
-      return areaId ? effectiveAreaId !== null && areaScope.has(effectiveAreaId) : effectiveMarketId === marketId;
+      const marketOk = marketId ? (areaId ? effectiveAreaId !== null && areaScope.has(effectiveAreaId) : effectiveMarketId === marketId) : true;
+      const geoOk = canonicalGeo ? canonicalGeoMatchesScope(effectiveGeo, canonicalGeo) : true;
+      return marketOk && geoOk;
     });
   }
 
@@ -4197,10 +4324,16 @@ export interface LocationsDiscoveryOptions {
    * resolved it's already guaranteed scoped to that Market — no need to
    * also intersect with market_id. */
   areaSlug?: string;
+  /** Canonical Entity Geography completion pass — see
+   * SearchBusinessesParams' own identical field for the full rule: a real
+   * `.or(...)` filter against the Location's own geo_* columns, applied
+   * server-side before `.limit()`, additive alongside marketSlug/areaSlug
+   * and the free-text `q`. */
+  canonicalGeo?: CanonicalGeoScope | null;
 }
 
 export async function getLocations(options: LocationsDiscoveryOptions = {}): Promise<LocationWithCategory[]> {
-  const { limit = 20, q, categorySlug, marketSlug, areaSlug } = options;
+  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo } = options;
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -4239,11 +4372,25 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
 
   let query = supabase.from("locations").select("*, category:categories(id, name, slug)").eq("is_demo", false);
   if (areaId) query = query.in("market_area_id", areaIds);
-  else if (marketId) query = query.eq("market_id", marketId);
+  else if (marketId) {
+    // Canonical Entity Geography completion pass — same read-time Market
+    // rollup as getBusinessIdsInMarket: a Location with no explicit
+    // market_id for this Market, but whose own canonical geography is
+    // mapped into it, is additionally included — never instead of the
+    // explicit match, never rewriting the Location row. Area-scoped
+    // requests (the branch above) don't roll up yet — only the plain
+    // Market case does.
+    const rollupFilter = await getMarketRollupGeoFilter(marketSlug!);
+    query = rollupFilter ? query.or(`market_id.eq.${marketId},${rollupFilter}`) : query.eq("market_id", marketId);
+  }
   if (categoryId) query = query.eq("category_id", categoryId);
   if (q?.trim()) {
     const pattern = `%${q.trim()}%`;
     query = query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern}`);
+  }
+  if (!isCanonicalGeoScopeEmpty(canonicalGeo)) {
+    const geoFilter = geoScopeOrFilter(canonicalGeo!, { hasZcta: true });
+    if (geoFilter) query = query.or(geoFilter);
   }
 
   const { data } = await query.order("name").limit(limit);

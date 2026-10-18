@@ -25,6 +25,7 @@ import {
   type EventFilter,
   type EventTimeKey,
 } from "@/lib/event-filter";
+import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
 export const metadata: Metadata = {
   title: "Events",
@@ -61,6 +62,13 @@ interface Params {
    * scoped WITHIN `market` (never meaningful alone). */
   area?: string;
   limit?: string;
+  /** Canonical Entity Geography completion pass — a canonical
+   * census_geographies key (Place/ZCTA/State/County — e.g.
+   * `place:4752006`), independent of and additive alongside `market`/
+   * `area`/`location` above. "NYC still integrates with the NYC Market"
+   * et al. are unaffected — this is a SEPARATE filter axis, never a
+   * replacement for the Findmi Market/Area system. */
+  geo?: string;
 }
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<Params> }) {
@@ -70,6 +78,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const params = { ...filter, limit: typeof rawParams.limit === "string" ? rawParams.limit : undefined };
   const timeKey: EventTimeKey = filter.when ?? "next";
   const limit = Math.min(Math.max(Number(params.limit) || PAGE_SIZE, PAGE_SIZE), 240);
+  const canonicalGeo = typeof rawParams.geo === "string" ? await resolveCanonicalGeoScope(rawParams.geo) : null;
 
   // Event category options are EVENT taxonomy only (event_categories via
   // getEventCategories()) — never business categories (Discovery/Archive
@@ -78,7 +87,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const [eventCategories, markets, fetchedRaw, formatOptions] = await Promise.all([
     getEventCategories(),
     getConsumerVisibleMarketsWithAreas(),
-    getEventsDiscovery(eventDiscoveryParams(filter, { limit: limit + 1, featuredFirst: true })),
+    getEventsDiscovery({ ...eventDiscoveryParams(filter, { limit: limit + 1, featuredFirst: true }), canonicalGeo }),
     getEventFormatOptions(),
   ]);
   // Event Formats V1 — offer the Formats that can return an upcoming Event,

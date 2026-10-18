@@ -71,7 +71,11 @@ test("2. every Event-page Location link goes through publicLocationHref (no raw 
 
 test("2. Location rows reaching Event pages carry is_demo (select * or the embed adds it)", () => {
   assert.equal((DATA.match(/location:locations\(id, name, slug\)/g) ?? []).length, 0);
-  assert.equal((DATA.match(/location:locations\(id, name, slug, is_demo\)/g) ?? []).length, 5);
+  // Canonical Entity Geography completion pass — one of these five embeds
+  // (getFindMiHereFeed's) additionally selects geo_place_key/geo_zcta_key/
+  // geo_state_key for the Appearance effective-geography join; is_demo is
+  // still carried by every one of them.
+  assert.equal((DATA.match(/location:locations\(id, name, slug, is_demo(?:, geo_place_key, geo_zcta_key, geo_state_key)?\)/g) ?? []).length, 5);
   assert.match(DATA, /const \{ data: locs \} = await supabase\.from\("locations"\)\.select\("\*"\)\.in\("id", locationIds\);/);
   assert.match(read("src/lib/types.ts"), /export interface FindmiLocation \{[\s\S]*?is_demo\?: boolean;/);
 });

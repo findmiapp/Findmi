@@ -284,7 +284,7 @@ test("businessId: hosted + approved all-dates Events, and only the approved date
 // ── CALLERS + SURFACES ────────────────────────────────────────────────────
 
 test("existing getEventsDiscovery callers keep their parameters; /events reads/writes the shared contract", () => {
-  assert.match(read("src/app/(public)/discover/page.tsx"), /getEventsDiscovery\(\{ when: toDiscoveryWindow\(whenKey\), marketSlug, areaSlug, limit: 8, featuredFirst: true \}\)/);
+  assert.match(read("src/app/(public)/discover/page.tsx"), /getEventsDiscovery\(\{ when: toDiscoveryWindow\(whenKey\), marketSlug, areaSlug, canonicalGeo, limit: 8, featuredFirst: true \}\)/);
   assert.match(read("src/app/api/homepage-search/route.ts"), /getEventsDiscovery\(\{ q, limit: 4, marketSlug \}\)/);
   const data = read("src/lib/data.ts");
   for (const k of ["q?: string;", "when?: DiscoveryWindow;", "date?: string;", "categorySlug?: string;", "city?: string;", "location?: string;", "featuredFirst?: boolean;", "marketSlug?: string;", "areaSlug?: string;", "access?: EventAccess[];", "locationId?: string;", "businessId?: string;"]) {
@@ -292,7 +292,7 @@ test("existing getEventsDiscovery callers keep their parameters; /events reads/w
   }
   const page = read("src/app/(public)/events/page.tsx");
   assert.match(page, /const filter: EventFilter = parseEventFilter\(/);
-  assert.match(page, /getEventsDiscovery\(eventDiscoveryParams\(filter, \{ limit: limit \+ 1, featuredFirst: true \}\)\)/);
+  assert.match(page, /getEventsDiscovery\(\{ \.\.\.eventDiscoveryParams\(filter, \{ limit: limit \+ 1, featuredFirst: true \}\), canonicalGeo \}\)/);
   assert.match(page, /const baseParams = eventFilterToSearchParams\(filter\);/);
   assert.match(page, /const TIME_TABS = EVENT_TIME_KEYS\.map/);
   assert.match(read("src/components/discover/EventFilters.tsx"), /name="access" value=\{kind\}/);

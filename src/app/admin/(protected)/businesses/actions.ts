@@ -12,6 +12,7 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { transitionBusinesses, type BusinessTransition } from "@/lib/admin/business-lifecycle";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 
 /**
  * Tabbed Business Edit pass — every save action below that's scoped to
@@ -64,6 +65,17 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     bulletin_url = result.value;
   }
 
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+  // Canonical Entity Geography completion pass — same best-effort,
+  // never-guess resolution as every owner self-service action. Absent
+  // from `payload` (never null) when unresolved, so an edit with
+  // ambiguous/unresolved geography never erases a previously resolved
+  // key — only a real resolved/partial match is ever written here.
+  const geo = city && state ? await resolveEntityGeography({ city, state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const geoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "derived" }> =
+    geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" } : {};
+
   const payload = {
     name,
     slug,
@@ -77,9 +89,10 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     tiktok_url: str(formData, "tiktok_url"),
     email: str(formData, "email"),
     phone: str(formData, "phone"),
-    city: str(formData, "city"),
-    state: str(formData, "state"),
+    city,
+    state,
     postal_code: str(formData, "postal_code"),
+    ...geoFields,
     country: str(formData, "country") ?? "US",
     service_radius_miles: num(formData, "service_radius_miles"),
     verified: bool(formData, "verified"),
@@ -263,6 +276,14 @@ export async function saveBusinessProfile(id: string, formData: FormData) {
     bulletin_url = result.value;
   }
 
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+  // Canonical Entity Geography completion pass — see saveBusiness's
+  // identical addition above for the full rule.
+  const geo = city && state ? await resolveEntityGeography({ city, state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const geoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "derived" }> =
+    geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" } : {};
+
   const payload = {
     name,
     slug,
@@ -276,9 +297,10 @@ export async function saveBusinessProfile(id: string, formData: FormData) {
     tiktok_url: str(formData, "tiktok_url"),
     email: str(formData, "email"),
     phone: str(formData, "phone"),
-    city: str(formData, "city"),
-    state: str(formData, "state"),
+    city,
+    state,
     postal_code: str(formData, "postal_code"),
+    ...geoFields,
     country: str(formData, "country") ?? "US",
     service_radius_miles: num(formData, "service_radius_miles"),
     inquiry_cta_label: str(formData, "inquiry_cta_label"),

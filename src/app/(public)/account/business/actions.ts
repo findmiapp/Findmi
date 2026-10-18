@@ -1232,6 +1232,12 @@ export async function createMemberBusiness(formData: FormData) {
   // Brand is created with no city/state, no Market and no Market Request.
   const city = brandOnboarding ? null : str(formData, "city");
   const state = brandOnboarding ? null : str(formData, "state");
+  // Canonical Entity Geography completion pass — an explicit pick from
+  // CanonicalGeographyPicker (BusinessGeographyFields' own optional "Set
+  // an exact place" disclosure), re-validated server-side below
+  // regardless (resolveEntityGeography never trusts a client-picked key
+  // blind — see entity-geo-core.ts's own resolveExplicitKey).
+  const explicitGeoKey = brandOnboarding ? null : str(formData, "explicit_geo_key");
   const websiteUrl = str(formData, "website_url");
   const instagramUrl = str(formData, "instagram_url");
   // Brand Onboarding V1.1B — optional, owner-editable (website analysis
@@ -1554,11 +1560,11 @@ export async function createMemberBusiness(formData: FormData) {
   // creates a Market, never touches an explicit/matched choice.
   if (!brandOnboarding && city && state) {
     try {
-      const geo = await resolveEntityGeography({ city, state });
+      const geo = await resolveEntityGeography({ explicitKey: explicitGeoKey || undefined, city, state });
       if (geo.status === "resolved" || geo.status === "partial") {
         await admin
           .from("businesses")
-          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" })
+          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: explicitGeoKey ? "selected" : "derived" })
           .eq("id", businessId);
         if (!effectiveMarketId && geo.marketSuggestion?.type === "findmi") {
           const { data: marketRow } = await admin.from("markets").select("id").eq("slug", geo.marketSuggestion.market).eq("active", true).maybeSingle();

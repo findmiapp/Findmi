@@ -118,7 +118,7 @@ export async function createImportedLocation(admin: SupabaseClient, input: Locat
   if (issue) return { status: "error", error: issue };
   const postalCode = cleanPostalCode(input.postalCode ?? null);
   const categoryIds = input.categoryId ? await deps.locationCategoryIds().catch(() => new Set<string>()) : new Set<string>();
-  const result = await insertUnlistedPlace(admin, { name, address, city, state, postalCode, force: opts.force === true, profile: profileOf(input, categoryIds) });
+  const result = await insertUnlistedPlace(admin, { name, address, city, state, postalCode, force: opts.force === true, profile: profileOf(input, categoryIds), geoResolutionKind: "import" });
   if (result.status !== "created") return result;
 
   const media = { logo: "none" as "stored" | "failed" | "none", cover: "none" as "stored" | "failed" | "none" };

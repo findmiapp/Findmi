@@ -57,9 +57,14 @@ test("Brand creation needs no geography; ordinary creation keeps City/State requ
   // geography); the old "choose a Market or request one" fail() is gone.
   assert.doesNotMatch(CREATE, /fail\("Choose a Primary Market, or request one below\."\);/);
   assert.match(CREATE, /if \(marketId && requestedMarketText\) \{\s*fail\("Choose an existing Market OR request one, not both\."\);/);
-  // The shared geography component is unchanged for the ordinary form.
+  // The shared geography component's City/State themselves are unchanged
+  // for the ordinary form — still required, never labeled optional. (The
+  // Canonical Entity Geography completion pass does add a genuinely
+  // optional "Set an exact place" disclosure further down in this same
+  // file — see tests/canonical-entity-geography-completion.test.mjs test
+  // 2 — which is why "optional" is only asserted absent ABOVE that point.)
   assert.equal((FIELDS.match(/^\s*required\s*$/gm) ?? []).length, 2, "city and state required");
-  assert.doesNotMatch(FIELDS, /optional/);
+  assert.doesNotMatch(FIELDS.slice(0, FIELDS.indexOf("Set an exact place")), /optional/);
   // Genuinely unmatched geography no longer forwards to
   // p_requested_market_text at all (no automatic market_requests row) —
   // the RPC call itself is unchanged, but what feeds its
@@ -78,7 +83,7 @@ test("Canonical Entity Geography — unmatched business geography is normal: no 
   // market_requests row for the unmatched case any more.
   assert.doesNotMatch(body, /createLinkedMarketRequest/);
   assert.match(body, /if \(!brandOnboarding && city && state\) \{/, "best-effort canonical geo resolution runs after creation");
-  assert.match(body, /geo_resolution: "derived"/);
+  assert.match(body, /geo_resolution: explicitGeoKey \? "selected" : "derived"/);
 });
 
 test("no National/Online Market, ZIP, address, country or HQ inference added", () => {

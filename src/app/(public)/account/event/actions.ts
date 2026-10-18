@@ -212,6 +212,11 @@ export async function createMemberEvent(formData: FormData) {
     state: str(formData, "state"),
     postal_code: str(formData, "postal_code"),
   };
+  // Canonical Entity Geography completion pass — see
+  // account/business/actions.ts's identical field for the full rule.
+  // Only meaningful on the manual-venue path (EventGeographyFields hides
+  // this disclosure once a real Findmi place is selected).
+  const explicitGeoKey = str(formData, "explicit_geo_key");
   const preservedFields = {
     // Business-Hosted Events V1 — the Business this Event is being hosted
     // AS (Host Something). Never trusted on its own: validated below
@@ -327,11 +332,11 @@ export async function createMemberEvent(formData: FormData) {
   // Market only when nothing above already set one.
   if (manualVenue.city && manualVenue.state) {
     try {
-      const geo = await resolveEntityGeography({ city: manualVenue.city, state: manualVenue.state });
+      const geo = await resolveEntityGeography({ explicitKey: explicitGeoKey || undefined, city: manualVenue.city, state: manualVenue.state });
       if (geo.status === "resolved" || geo.status === "partial") {
         await admin
           .from("events")
-          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" })
+          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: explicitGeoKey ? "selected" : "derived" })
           .eq("id", eventId);
         if (!effectiveMarketId && geo.marketSuggestion?.type === "findmi") {
           const { data: marketRow } = await admin.from("markets").select("id").eq("slug", geo.marketSuggestion.market).eq("active", true).maybeSingle();
@@ -605,6 +610,10 @@ type OccurrenceVenueFields = {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  geo_place_key?: string | null;
+  geo_zcta_key?: string | null;
+  geo_state_key?: string | null;
+  geo_resolution?: string | null;
 };
 
 /** Event Manager Location UX pass — same server-side-authoritative
@@ -635,6 +644,13 @@ async function resolveOccurrenceVenue(
       .select("name, address, city, state, postal_code")
       .eq("id", locationId)
       .maybeSingle();
+    // Canonical Entity Geography completion pass — a Location-linked
+    // occurrence never stores its own copy of the Location's canonical
+    // geo_* (the Location is read-time authoritative via location_id —
+    // see lib/geo/effective-entity-geo.ts / getEventsDiscovery's own
+    // resolveGeoEventIds); any STALE manual-venue geo_* from before this
+    // occurrence was linked is explicitly cleared here so it can never be
+    // mistaken for this occurrence's own geography once superseded.
     if (location) {
       return {
         venue_name: location.name,
@@ -642,11 +658,21 @@ async function resolveOccurrenceVenue(
         city: location.city,
         state: location.state,
         postal_code: location.postal_code,
+        geo_place_key: null,
+        geo_zcta_key: null,
+        geo_state_key: null,
+        geo_resolution: null,
       };
     }
-    return { venue_name: null, address: null, city: null, state: null, postal_code: null };
+    return { venue_name: null, address: null, city: null, state: null, postal_code: null, geo_place_key: null, geo_zcta_key: null, geo_state_key: null, geo_resolution: null };
   }
-  return manualVenue;
+  // Canonical Entity Geography completion pass — a manual (no Location)
+  // occurrence resolves its OWN canonical geography, same best-effort,
+  // never-guess resolution as every other entity-save path.
+  const geo = manualVenue.city && manualVenue.state ? await resolveEntityGeography({ city: manualVenue.city, state: manualVenue.state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const geoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "derived" }> =
+    geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" } : {};
+  return { ...manualVenue, ...geoFields };
 }
 
 function manualVenueFromFormData(formData: FormData): OccurrenceVenueFields {

@@ -30,6 +30,23 @@ const HAS_ZCTA_COLUMN: Record<BackfillTable, boolean> = {
   appearances: false,
 };
 
+/** Canonical Entity Geography completion pass — event_occurrences and
+ * appearances each have a location_id column; once linked, the Location
+ * is read-time authoritative for canonical geography (see
+ * lib/geo/effective-entity-geo.ts) and never stores its own copy — see
+ * account/event/actions.ts's resolveOccurrenceVenue, which explicitly
+ * clears geo_* on link. The backfill must never resolve/write one for a
+ * Location-linked row either, or it would create a stale, misleading
+ * value a later Location correction could never reach. events/locations/
+ * businesses have no location_id column at all (not applicable). */
+const HAS_LOCATION_ID_COLUMN: Record<BackfillTable, boolean> = {
+  events: false,
+  event_occurrences: true,
+  locations: false,
+  businesses: false,
+  appearances: true,
+};
+
 export interface BackfillCounts {
   resolved: number;
   partial: number;
@@ -65,14 +82,15 @@ export async function isCensusImportComplete(admin: SupabaseClient): Promise<boo
 }
 
 async function candidateRows(admin: SupabaseClient, table: BackfillTable, limit: number): Promise<{ id: string; city: string | null; state: string | null }[]> {
-  const { data } = await admin
+  let query = admin
     .from(table)
     .select("id, city, state")
     .is("geo_place_key", null)
     .is("geo_state_key", null)
     .not("city", "is", null)
-    .not("state", "is", null)
-    .limit(limit);
+    .not("state", "is", null);
+  if (HAS_LOCATION_ID_COLUMN[table]) query = query.is("location_id", null);
+  const { data } = await query.limit(limit);
   return (data ?? []) as { id: string; city: string | null; state: string | null }[];
 }
 
@@ -106,13 +124,18 @@ async function runOne(admin: SupabaseClient, table: BackfillTable, limit: number
       // construction, not just by intent.
       const update: Record<string, string | null> = { geo_place_key: geo.keys.place, geo_state_key: geo.keys.state, geo_resolution: "backfill" };
       if (HAS_ZCTA_COLUMN[table]) update.geo_zcta_key = geo.keys.zcta;
-      const { data: updated } = await admin
+      let updateQuery = admin
         .from(table)
         .update(update)
         .eq("id", row.id)
         .is("geo_place_key", null)
-        .is("geo_state_key", null)
-        .select("id");
+        .is("geo_state_key", null);
+      // Re-guarded the same way the candidate read already is — a row
+      // that got linked to a Location between the read above and now
+      // must never receive a stale manual-geo write (see
+      // HAS_LOCATION_ID_COLUMN's own doc comment).
+      if (HAS_LOCATION_ID_COLUMN[table]) updateQuery = updateQuery.is("location_id", null);
+      const { data: updated } = await updateQuery.select("id");
       if (updated && updated.length > 0) applied++;
     }
   }

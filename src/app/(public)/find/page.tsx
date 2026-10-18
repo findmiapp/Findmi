@@ -17,6 +17,7 @@ import LiveDot from "@/components/LiveDot";
 import ChevronIcon from "@/components/ChevronIcon";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
+import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
 export const metadata: Metadata = {
   title: "Find",
@@ -58,6 +59,9 @@ interface Params {
   market?: string;
   area?: string;
   q?: string;
+  /** Canonical Entity Geography completion pass — see /events' own Params
+   * field for the full rule. */
+  geo?: string;
 }
 
 /** Carousel-First pass — stable round-robin by business.id, preserving
@@ -93,7 +97,8 @@ function diversifyByBusiness<T extends { business: { id: string } }>(list: T[]):
 }
 
 export default async function FindPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam } = await searchParams;
+  const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam, geo: geoParam } = await searchParams;
+  const canonicalGeo = geoParam ? await resolveCanonicalGeoScope(geoParam) : null;
   // Findmi Here Clarity pass — default is Next Up ("anytime"), not Now
   // ("live"): explicit ?when=live/today/weekend still select exactly that
   // window (TABS.some(...) below is unchanged), only the no-param fallback
@@ -123,12 +128,12 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const [categories, markets, items, matchingEvents, continuationItems] = await Promise.all([
     getCategories(),
     getConsumerVisibleMarketsWithAreas(),
-    getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q }),
-    category || marketSlug
-      ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, limit: 6 })
+    getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }),
+    category || marketSlug || canonicalGeo
+      ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, canonicalGeo, limit: 6 })
       : Promise.resolve([]),
     isConstrainedWindow
-      ? getFindMiHereFeed("anytime", 20, { categorySlug: category, marketSlug, areaSlug, q })
+      ? getFindMiHereFeed("anytime", 20, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo })
       : Promise.resolve([]),
   ]);
 

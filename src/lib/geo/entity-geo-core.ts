@@ -16,6 +16,14 @@
 // Mirrors the CHECK constraints in
 // supabase/migrations/20261025000000_canonical_entity_geography.sql —
 // change both together.
+//
+// Canonical Entity Geography — COMPLETION pass. A DISCOVERY-time query
+// scope is a different shape from the save-time EntityGeoKeys above: a
+// query can be a County (never stored on an entity) or a State, and must
+// expand to every geo_place_key/geo_zcta_key value it covers. The server
+// half (canonical-scope.ts) resolves that expansion via
+// census_geography_links; this file only owns the resulting shape and the
+// pure PostgREST filter string it turns into — never a second resolver.
 
 import { normalizeSearch } from "./census-format";
 
@@ -176,4 +184,41 @@ export function resolvePlaceForEntity(
   const ordered = [...pool].sort((a, b) => (b.aland_m2 ?? 0) - (a.aland_m2 ?? 0) || censusLabel(a).localeCompare(censusLabel(b)));
   const choices: EntityGeoChoice[] = ordered.slice(0, 8).map((h) => ({ geo_key: h.geo_key, kind: h.kind, label: censusLabel(h) }));
   return { status: "ambiguous", choices };
+}
+
+// ---------------------------------------------------------------- discovery-time query scope
+
+/** A resolved discovery query, expanded to every geo_place_key/
+ * geo_zcta_key/geo_state_key value an entity could carry to be "in" it.
+ * For a Place/ZCTA/State query this is just that one key in the matching
+ * bucket; for a County query (never stored on an entity) it's every Place
+ * and ZCTA linked to that county — see canonical-scope.ts's
+ * resolveCanonicalGeoScope, the only thing that builds one of these. */
+export interface CanonicalGeoScope {
+  placeKeys: string[];
+  zctaKeys: string[];
+  stateKeys: string[];
+}
+
+export const EMPTY_CANONICAL_GEO_SCOPE: CanonicalGeoScope = { placeKeys: [], zctaKeys: [], stateKeys: [] };
+
+export function isCanonicalGeoScopeEmpty(scope: CanonicalGeoScope | null | undefined): boolean {
+  return !scope || (scope.placeKeys.length === 0 && scope.zctaKeys.length === 0 && scope.stateKeys.length === 0);
+}
+
+/** A PostgREST `.or(...)` filter string matching any entity whose own
+ * geo_place_key/geo_zcta_key/geo_state_key falls in the scope — applied
+ * directly against the real indexed columns, BEFORE any `.limit()`, so
+ * geography narrows the candidate set at the database rather than being
+ * filtered in memory after a bounded, unscoped fetch. `hasZcta` excludes
+ * the zcta bucket for tables that have no geo_zcta_key column
+ * (appearances). Returns null when the scope has nothing to filter by —
+ * callers skip applying any geo filter in that case, never match-nothing. */
+export function geoScopeOrFilter(scope: CanonicalGeoScope, opts: { hasZcta?: boolean } = {}): string | null {
+  const hasZcta = opts.hasZcta ?? true;
+  const clauses: string[] = [];
+  if (scope.placeKeys.length) clauses.push(`geo_place_key.in.(${scope.placeKeys.join(",")})`);
+  if (hasZcta && scope.zctaKeys.length) clauses.push(`geo_zcta_key.in.(${scope.zctaKeys.join(",")})`);
+  if (scope.stateKeys.length) clauses.push(`geo_state_key.in.(${scope.stateKeys.join(",")})`);
+  return clauses.length ? clauses.join(",") : null;
 }

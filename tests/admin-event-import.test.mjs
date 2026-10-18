@@ -310,7 +310,7 @@ test("I. Quick Create works through the Admin flow — same rules, Admin-session
   // Location Import V1: Admin creation goes through lib/location-import,
   // which inserts through the SAME unlisted core as member Quick Create.
   assert.match(ACTIONS, /return createImportedLocation\(/);
-  assert.match(read("src/lib/location-import/server.ts"), /await insertUnlistedPlace\(admin, \{ name, address, city, state, postalCode, force: opts\.force === true, profile: profileOf\(input, categoryIds\) \}\);/);
+  assert.match(read("src/lib/location-import/server.ts"), /await insertUnlistedPlace\(admin, \{ name, address, city, state, postalCode, force: opts\.force === true, profile: profileOf\(input, categoryIds\), geoResolutionKind: "import" \}\);/);
   assert.match(LOC_ACTIONS, /return insertInlinePlace\(admin, formData\);/, "member path shares the same core");
   // Same rules: address required; likely duplicate offered (nothing inserted); unlisted on create.
   globalThis.__ADMIN = fakeClient();

@@ -11,6 +11,7 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { notifyLocationManagers } from "@/lib/admin/location-publication";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
 import { isPlaceType } from "@/lib/place-types";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 
 /** Physical Presence Pass 2 — trg_locations_hierarchy's own exceptions
  * ("cannot be its own parent", "hierarchy cycle", "deeper than 64
@@ -97,12 +98,24 @@ export async function saveLocation(id: string | null, formData: FormData) {
   const placeTypeRaw = str(formData, "place_type");
   const placeType = isPlaceType(placeTypeRaw) ? placeTypeRaw : null;
 
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+
+  // Canonical Entity Geography completion pass — same best-effort,
+  // never-guess resolution as the owner self-service Location actions.
+  // Absent from `payload` (never set to null) when unresolved, so an
+  // ambiguous/unresolved edit never erases a previously resolved key —
+  // only a real resolved/partial match ever writes here.
+  const geo = city && state ? await resolveEntityGeography({ city, state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const geoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "derived" }> =
+    geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" } : {};
+
   const payload = {
     name,
     slug,
     address: str(formData, "address"),
-    city: str(formData, "city"),
-    state: str(formData, "state"),
+    city,
+    state,
     postal_code: str(formData, "postal_code"),
     latitude: num(formData, "latitude"),
     longitude: num(formData, "longitude"),
@@ -119,6 +132,7 @@ export async function saveLocation(id: string | null, formData: FormData) {
     hours,
     parent_location_id: parentLocationId,
     place_type: placeType,
+    ...geoFields,
   };
 
   let locationId = id;
@@ -205,6 +219,12 @@ export async function createInlineAdminLocation(formData: FormData): Promise<Cre
   if (!baseSlug) return { status: "error", error: "Location name is required to generate a URL." };
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
 
+  // Canonical Entity Geography completion pass — same best-effort,
+  // never-guess resolution as saveLocation above.
+  const geo = city && state ? await resolveEntityGeography({ city, state }).catch(() => ({ status: "unresolved" as const, reason: "" })) : { status: "unresolved" as const, reason: "" };
+  const geoFields: Partial<{ geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null; geo_resolution: "derived" }> =
+    geo.status === "resolved" || geo.status === "partial" ? { geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" } : {};
+
   const { data: created, error } = await supabase
     .from("locations")
     .insert({
@@ -218,6 +238,7 @@ export async function createInlineAdminLocation(formData: FormData): Promise<Cre
       // default a brand-new Location gets from the standalone admin form
       // (LocationForm), never the member-facing is_demo=true review gate.
       is_demo: false,
+      ...geoFields,
     })
     .select("id, name, slug, address, city, state, postal_code")
     .single();

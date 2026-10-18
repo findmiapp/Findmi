@@ -29,6 +29,7 @@ import {
   type IdeaStatus,
   type IdeaType,
 } from "@/lib/brand-audit-domain";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 
 // Findmi Brand Audit + Opportunity Intelligence V1 — server data access.
 // Every table is server-only (RLS on, no client policies/grants — see
@@ -287,8 +288,23 @@ export async function saveBrandAuditMarkets(businessId: string, input: { scope: 
     if (error) return { ok: false, error: SAVE_FAILED };
   }
   if (geo.value.length) {
+    // Canonical Entity Geography completion pass — a Brand-named "place"
+    // (level='place': a free-text market Findmi doesn't curate yet) is
+    // the one geo level that can genuinely be a real U.S. place; resolve
+    // it against canonical Census geography, deterministic only (never
+    // guessed — an ambiguous bare name, e.g. "Springfield" with no
+    // state, simply gets no geo_key). Findmi's own curated levels
+    // (market/area/neighborhood) are product geography, never converted
+    // into a fake Census key — see this function's own locked rule.
+    const geoKeys = await Promise.all(
+      geo.value.map(async (g) => {
+        if (g.level !== "place") return null;
+        const resolved = await resolveEntityGeography({ city: g.label }).catch(() => ({ status: "unresolved" as const, reason: "" }));
+        return resolved.status === "resolved" || resolved.status === "partial" ? (resolved.keys.place ?? resolved.keys.state ?? null) : null;
+      })
+    );
     const { error } = await admin.from("brand_audit_markets").upsert(
-      geo.value.map((g) => ({ ...g, business_id: businessId, source: "declared", updated_by_user_id: auth.userId })),
+      geo.value.map((g, i) => ({ ...g, geo_key: geoKeys[i], business_id: businessId, source: "declared", updated_by_user_id: auth.userId })),
       { onConflict: "business_id,intent,level,place_key,source" }
     );
     if (error) return { ok: false, error: missing(error) ? UNAVAILABLE : SAVE_FAILED };
