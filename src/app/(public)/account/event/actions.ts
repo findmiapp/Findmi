@@ -19,7 +19,8 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
-import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { findExistingGeographyMatch } from "@/lib/market-requests";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import {
@@ -274,13 +275,18 @@ export async function createMemberEvent(formData: FormData) {
   // that Area must be captured, not silently dropped on the floor.
   let effectiveMarketId = marketId;
   let effectiveAreaId: string | null = null;
-  let effectiveRequestedMarketText = requestedMarketTextRaw;
+  // Canonical Entity Geography pass — genuinely unmatched geography no
+  // longer forwards to p_requested_market_text at all (that used to
+  // create an automatic market_requests row inside create_owned_event()
+  // itself). A canonical Place outside an established Market is normal
+  // now; canonical geography (resolved further below) carries the real
+  // signal instead.
+  const effectiveRequestedMarketText: string | null = null;
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
       effectiveMarketId = match.marketId;
       effectiveAreaId = match.areaId ?? null;
-      effectiveRequestedMarketText = null;
     }
   }
 
@@ -312,6 +318,36 @@ export async function createMemberEvent(formData: FormData) {
   // either way, this just avoids losing an Area the matcher already found.
   if (effectiveAreaId) {
     await admin.from("events").update({ market_area_id: effectiveAreaId }).eq("id", eventId);
+  }
+
+  // Canonical Entity Geography pass — best-effort, same posture as the
+  // Area follow-up above. Only resolved when a manual venue city/state was
+  // actually given (an Event hosted at a Findmi Location/venue hint has no
+  // free-text geography of its own to resolve here). Auto-assigns a
+  // Market only when nothing above already set one.
+  if (manualVenue.city && manualVenue.state) {
+    try {
+      const geo = await resolveEntityGeography({ city: manualVenue.city, state: manualVenue.state });
+      if (geo.status === "resolved" || geo.status === "partial") {
+        await admin
+          .from("events")
+          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" })
+          .eq("id", eventId);
+        if (!effectiveMarketId && geo.marketSuggestion?.type === "findmi") {
+          const { data: marketRow } = await admin.from("markets").select("id").eq("slug", geo.marketSuggestion.market).eq("active", true).maybeSingle();
+          if (marketRow) {
+            let areaId: string | null = null;
+            if (geo.marketSuggestion.area) {
+              const { data: areaRow } = await admin.from("market_areas").select("id").eq("slug", geo.marketSuggestion.area).eq("market_id", marketRow.id).eq("active", true).maybeSingle();
+              areaId = areaRow?.id ?? null;
+            }
+            await admin.from("events").update({ market_id: marketRow.id, market_area_id: areaId }).eq("id", eventId);
+          }
+        }
+      }
+    } catch {
+      // Never blocks/undoes the already-created event.
+    }
   }
 
   // Event Taxonomy V1 — the optional primary category picked at creation
@@ -1250,37 +1286,37 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
     if (match) {
       effectiveMarketId = match.marketId;
       effectiveAreaId = match.areaId ?? null;
-    } else {
-      const { data: event } = await admin.from("events").select("name, city, state").eq("id", eventId).maybeSingle();
-      const linked = await createLinkedMarketRequest(admin, {
-        text: requestedMarketTextRaw,
-        city: event?.city ?? null,
-        state: event?.state ?? null,
-        source: "event_creation",
-        sourceEventId: eventId,
-      });
-      if (linked.created) {
-        // Admin Notification Email Copy Polish pass — event name already
-        // fetched above (just added to the select), so the email reads
-        // with the real event name instead of a raw id.
-        const eventName = event?.name ?? "Unknown event";
-        await notifyAdmin({
-          subject: `Market/Area request: ${eventName}`,
-          heading: "New Market/Area request",
-          body: [`Requested: ${requestedMarketTextRaw}`, `Event: ${eventName}`],
-          actionLabel: "Review Market Requests",
-          actionUrl: "/admin/market-requests",
-        });
-      }
     }
+    // Canonical Entity Geography pass — a genuinely unmatched request no
+    // longer creates an automatic market_requests row here (removed
+    // createLinkedMarketRequest + admin-notify branch): a canonical Place
+    // outside an established Market is normal, not something that needs
+    // an admin to resolve. The event's own canonical geo_* keys (below)
+    // carry the real signal instead.
   }
   if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {
     effectiveAreaId = null;
   }
 
+  const geoUpdate: Record<string, string | null> = {};
+  const { data: event } = await admin.from("events").select("city, state").eq("id", eventId).maybeSingle();
+  if (event?.city && event?.state) {
+    try {
+      const geo = await resolveEntityGeography({ city: event.city, state: event.state });
+      if (geo.status === "resolved" || geo.status === "partial") {
+        geoUpdate.geo_place_key = geo.keys.place;
+        geoUpdate.geo_zcta_key = geo.keys.zcta;
+        geoUpdate.geo_state_key = geo.keys.state;
+        geoUpdate.geo_resolution = "derived";
+      }
+    } catch {
+      // Market/Area below still saves even if canonical resolution fails.
+    }
+  }
+
   const { error } = await admin
     .from("events")
-    .update({ market_id: effectiveMarketId, market_area_id: effectiveAreaId })
+    .update({ market_id: effectiveMarketId, market_area_id: effectiveAreaId, ...geoUpdate })
     .eq("id", eventId);
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 

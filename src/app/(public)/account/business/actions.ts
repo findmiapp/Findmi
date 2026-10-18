@@ -21,6 +21,7 @@ import { isRecurringCheckoutConfigured } from "@/lib/commerce/subscriptionPricin
 import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptionTypes";
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { findBusinessMatches } from "@/lib/business-matching";
 import { BRAND_SOURCE, SHORT_DESCRIPTION_MAX_LENGTH, parseBrandSource } from "@/lib/brand-candidate";
 import { clearBrandDraftCookie, readBrandDraft } from "@/lib/brand-draft";
@@ -975,18 +976,39 @@ async function resolveStandaloneAppearanceGeography(
   city: string | null,
   state: string | null,
   locationId: string | null
-): Promise<{ market_id: string | null; market_area_id: string | null }> {
-  if (locationId) return { market_id: null, market_area_id: null };
+): Promise<{ market_id: string | null; market_area_id: string | null; geo_place_key: string | null; geo_state_key: string | null; geo_resolution: string | null }> {
+  // Canonical Entity Geography pass — resolved independently of the
+  // Market/Area match below (a canonical key is real geography regardless
+  // of whether any Findmi Market/Area happens to cover it yet). Skipped,
+  // same as the Market match, once a first-class Location is linked —
+  // that Location's OWN canonical key is authoritative then (see
+  // lib/appearance-geography.ts's effective-geography precedence).
+  const canonical =
+    !locationId && (city || state)
+      ? await resolveEntityGeography({ city, state }).catch(() => ({ status: "unresolved" as const, reason: "" }))
+      : { status: "unresolved" as const, reason: "" };
+  const geoKeys =
+    canonical.status === "resolved" || canonical.status === "partial"
+      ? { geo_place_key: canonical.keys.place, geo_state_key: canonical.keys.state, geo_resolution: "derived" as const }
+      : { geo_place_key: null, geo_state_key: null, geo_resolution: null };
+
+  if (locationId) return { market_id: null, market_area_id: null, ...geoKeys };
 
   const text = [city, state].filter(Boolean).join(", ");
-  if (!text) return { market_id: null, market_area_id: null };
+  if (!text) return { market_id: null, market_area_id: null, ...geoKeys };
 
   const match = await findExistingGeographyMatch(admin, text);
-  if (match) return { market_id: match.marketId, market_area_id: match.areaId ?? null };
+  if (match) return { market_id: match.marketId, market_area_id: match.areaId ?? null, ...geoKeys };
 
   // Informational only, deliberately no market_requests row and no
   // "Review" CTA — see this function's own doc comment for why creating
   // one here isn't safe without a schema change this pass doesn't make.
+  // Canonical Entity Geography pass — this is no longer the ONLY signal
+  // geography left behind: the canonical geo_* keys above still get
+  // written even when no Findmi Market/Area matches, which is now the
+  // expected, normal outcome for a real Place outside an established
+  // Market — never treated as something that needs admin review on its
+  // own. The informational notify below is unchanged.
   const { data: businessRow } = await admin.from("businesses").select("name").eq("id", businessId).maybeSingle();
   const businessName = businessRow?.name ?? "Unknown business";
   await notifyAdmin({
@@ -999,7 +1021,7 @@ async function resolveStandaloneAppearanceGeography(
       "For awareness only. This does not create a resolvable Market Request and never affects the business's own discovery Market.",
     ],
   });
-  return { market_id: null, market_area_id: null };
+  return { market_id: null, market_area_id: null, ...geoKeys };
 }
 
 /** Option 2 — "Add an appearance manually." Creates a standalone
@@ -1315,9 +1337,11 @@ export async function createMemberBusiness(formData: FormData) {
   // re-validates existence/active status/exactly-one-choice itself
   // (market_required/invalid_market/market_choice_ambiguous) as the real,
   // untrusted-client-input enforcement — this is only a UX shortcut.
-  if (!brandOnboarding && !marketId && !requestedMarketText) {
-    fail("Choose a Primary Market, or request one below.");
-  }
+  // Canonical Entity Geography pass — a Market/Area is now optional at
+  // creation (city/state alone resolve to canonical geography below;
+  // "neither" has been a valid create_owned_business() outcome since VCL
+  // A2b — see that migration). Choosing both a Market AND typing a
+  // request is still rejected as ambiguous input.
   if (marketId && requestedMarketText) {
     fail("Choose an existing Market OR request one, not both.");
   }
@@ -1372,13 +1396,20 @@ export async function createMemberBusiness(formData: FormData) {
   // unmatched geography still goes through the existing
   // p_requested_market_text path unchanged.
   let effectiveMarketId = marketId;
-  let effectiveRequestedMarketText = requestedMarketText;
+  // Canonical Entity Geography pass — genuinely unmatched geography no
+  // longer falls back to p_requested_market_text at all: it used to
+  // (creating an automatic market_requests row inside
+  // create_owned_business() itself), but a canonical Place outside an
+  // established Market is normal now, not something that needs an admin
+  // to resolve. The business is still created exactly the same way, just
+  // with Market/Area left null — canonical geography (resolved further
+  // below, after the business exists) carries the real signal instead.
+  const effectiveRequestedMarketText: string | null = null;
   let matchedAreaId: string | null = null;
   if (requestedMarketText) {
     const match = await findExistingGeographyMatch(admin, requestedMarketText);
     if (match) {
       effectiveMarketId = match.marketId;
-      effectiveRequestedMarketText = null;
       if (match.type === "area") matchedAreaId = match.areaId ?? null;
     }
   }
@@ -1512,6 +1543,40 @@ export async function createMemberBusiness(formData: FormData) {
       market_id: effectiveMarketId,
       market_area_id: matchedAreaId,
     });
+  }
+
+  // Canonical Entity Geography pass — best-effort, same posture as the
+  // Area follow-up above: the business already exists either way. Writes
+  // the real canonical key (city/state resolved against Census, not a
+  // guess) and, ONLY when nothing has already set a Market (no explicit
+  // choice, no fuzzy-text match above), auto-assigns a Market when the
+  // canonical key itself carries one via product_geographies — never
+  // creates a Market, never touches an explicit/matched choice.
+  if (!brandOnboarding && city && state) {
+    try {
+      const geo = await resolveEntityGeography({ city, state });
+      if (geo.status === "resolved" || geo.status === "partial") {
+        await admin
+          .from("businesses")
+          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" })
+          .eq("id", businessId);
+        if (!effectiveMarketId && geo.marketSuggestion?.type === "findmi") {
+          const { data: marketRow } = await admin.from("markets").select("id").eq("slug", geo.marketSuggestion.market).eq("active", true).maybeSingle();
+          if (marketRow) {
+            await admin.from("business_markets").insert({ business_id: businessId, market_id: marketRow.id, relationship: "primary", provenance: "self_selected", active: true });
+            if (geo.marketSuggestion.area) {
+              const { data: areaRow } = await admin.from("market_areas").select("id").eq("slug", geo.marketSuggestion.area).eq("market_id", marketRow.id).eq("active", true).maybeSingle();
+              if (areaRow) {
+                await admin.from("businesses").update({ market_area_id: areaRow.id }).eq("id", businessId);
+                await admin.from("business_market_areas").insert({ business_id: businessId, market_id: marketRow.id, market_area_id: areaRow.id });
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Never blocks/undoes the already-created business.
+    }
   }
 
   // Admin Action Email Notifications V1 — every successful call here

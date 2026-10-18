@@ -50,20 +50,35 @@ test("extracted city/state can't become submitted Brand geography: the server ig
   assert.doesNotMatch(fn, /draft\??\.(city|state)/);
 });
 
-test("Brand creation needs no geography; ordinary creation keeps City/State + Market-or-request required", () => {
+test("Brand creation needs no geography; ordinary creation keeps City/State required (Market/Area now optional)", () => {
   assert.match(CREATE, /if \(!brandOnboarding && \(!city \|\| !state\)\) fail\("City and state are required\."\);/);
-  assert.match(CREATE, /if \(!brandOnboarding && !marketId && !requestedMarketText\) \{\s*fail\("Choose a Primary Market, or request one below\."\);/);
+  // Canonical Entity Geography pass — a Market/Area is no longer a hard
+  // requirement at creation (city/state alone resolve to canonical
+  // geography); the old "choose a Market or request one" fail() is gone.
+  assert.doesNotMatch(CREATE, /fail\("Choose a Primary Market, or request one below\."\);/);
   assert.match(CREATE, /if \(marketId && requestedMarketText\) \{\s*fail\("Choose an existing Market OR request one, not both\."\);/);
   // The shared geography component is unchanged for the ordinary form.
   assert.equal((FIELDS.match(/^\s*required\s*$/gm) ?? []).length, 2, "city and state required");
   assert.doesNotMatch(FIELDS, /optional/);
-  // Nothing manufactures geography: the RPC gets exactly what was resolved
-  // (all null for a Brand — no Market, no request).
+  // Genuinely unmatched geography no longer forwards to
+  // p_requested_market_text at all (no automatic market_requests row) —
+  // the RPC call itself is unchanged, but what feeds its
+  // p_requested_market_text argument now only ever carries null.
   const rpc = CREATE.slice(CREATE.indexOf('admin.rpc("create_owned_business"'), CREATE.indexOf("});", CREATE.indexOf('admin.rpc("create_owned_business"')));
   assert.match(rpc, /p_city: city,\s*p_state: state,/);
   assert.match(rpc, /p_market_id: effectiveMarketId,\s*p_requested_market_text: effectiveRequestedMarketText,/);
-  assert.match(CREATE, /let effectiveMarketId = marketId;\s*let effectiveRequestedMarketText = requestedMarketText;/);
+  assert.match(CREATE, /const effectiveRequestedMarketText: string \| null = null;/, "never forwards free text to the RPC — see Canonical Entity Geography pass");
   assert.match(CREATE, /if \(requestedMarketText\) \{\s*const match = await findExistingGeographyMatch/, "matching only runs on real requested text");
+});
+
+test("Canonical Entity Geography — unmatched business geography is normal: no automatic Market Request", () => {
+  const fn = CREATE.slice(CREATE.indexOf("export async function createMemberBusiness"));
+  const body = fn.slice(0, fn.indexOf("\nexport async function", 10));
+  // The matched-area follow-up still exists; nothing creates a
+  // market_requests row for the unmatched case any more.
+  assert.doesNotMatch(body, /createLinkedMarketRequest/);
+  assert.match(body, /if \(!brandOnboarding && city && state\) \{/, "best-effort canonical geo resolution runs after creation");
+  assert.match(body, /geo_resolution: "derived"/);
 });
 
 test("no National/Online Market, ZIP, address, country or HQ inference added", () => {
@@ -85,7 +100,7 @@ test("one forward-only migration, after the BD foundation, replacing only create
   // Its own position: right after the BD foundation (a later pass — Event
   // attendance — adds its own migration after it).
   assert.equal(files[files.indexOf(FILE) - 1], "20261013000000_bd_foundation.sql");
-  assert.deepEqual(files.slice(files.indexOf(FILE) + 1), ["20261014010000_event_attendance_cta_and_location_visibility.sql", "20261015000000_business_location_availability.sql", "20261016000000_event_taxonomy_v1.sql" /* a later pass (Event Taxonomy V1) */, "20261017000000_event_formats_v1.sql" /* a later pass (Event Formats V1) */, "20261018000000_event_occurrence_details.sql" /* a later pass (Event Occurrence details) */, "20261019000000_event_date_time_precision.sql" /* Event date/time precision pass */, "20261020000000_moment_authorship_and_access_history.sql" /* Identity & Authorship V1 pass */, "20261021000000_brand_audit_and_opportunity_ideas.sql" /* Brand Audit + Opportunity Ideas V1 pass */, "20261022000000_admin_intelligence_reviews.sql" /* Brand Intelligence V1.1 pass */, "20261023000000_brand_intelligence_v1_2.sql" /* Brand Intelligence V1.2 pass */, "20261024000000_discovery_intelligence_v1.sql" /* Discovery Intelligence V1 pass */]);
+  assert.deepEqual(files.slice(files.indexOf(FILE) + 1), ["20261014010000_event_attendance_cta_and_location_visibility.sql", "20261015000000_business_location_availability.sql", "20261016000000_event_taxonomy_v1.sql" /* a later pass (Event Taxonomy V1) */, "20261017000000_event_formats_v1.sql" /* a later pass (Event Formats V1) */, "20261018000000_event_occurrence_details.sql" /* a later pass (Event Occurrence details) */, "20261019000000_event_date_time_precision.sql" /* Event date/time precision pass */, "20261020000000_moment_authorship_and_access_history.sql" /* Identity & Authorship V1 pass */, "20261021000000_brand_audit_and_opportunity_ideas.sql" /* Brand Audit + Opportunity Ideas V1 pass */, "20261022000000_admin_intelligence_reviews.sql" /* Brand Intelligence V1.1 pass */, "20261023000000_brand_intelligence_v1_2.sql" /* Brand Intelligence V1.2 pass */, "20261024000000_discovery_intelligence_v1.sql" /* Discovery Intelligence V1 pass */, "20261025000000_canonical_entity_geography.sql" /* Canonical Entity Geography pass */]);
   const statements = MIGRATION.split(/\$function\$;/)[1].trim();
   assert.equal(statements, "", "nothing but the function replacement");
   assert.equal((MIGRATION.match(/create or replace function/gi) ?? []).length, 1);

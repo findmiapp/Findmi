@@ -6,6 +6,7 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { str } from "@/lib/admin/form-helpers";
 import { runCensusImportStep, type StepResult } from "@/lib/geo/census-import";
 import type { CensusDataset } from "@/lib/geo/census-format";
+import { runBackfillDryRun, runBackfillApply, isCensusImportComplete, type BackfillReport, type BackfillTable } from "@/lib/geo/entity-geo-backfill";
 
 const PATH = "/admin/site/geography";
 
@@ -49,4 +50,27 @@ export async function removeProductGeographyAction(formData: FormData) {
   if (id) await admin.from("product_geographies").delete().eq("id", id);
   revalidatePath(PATH);
   redirect(`${PATH}?saved=1`);
+}
+
+// ── Canonical Entity Geography — backfill runner ────────────────────────
+// Dry Run writes nothing; Apply writes only empty geo_* columns, in
+// bounded batches, never a Market/Area/Market Request, never a guess
+// (ambiguous/unresolved rows are reported, never resolved). Refuses to
+// run at all unless the Census import is complete (see
+// isCensusImportComplete) — see lib/geo/entity-geo-backfill.ts.
+export type BackfillOutcome = { ok: true; report: BackfillReport } | { ok: false; error: string };
+
+export async function backfillDryRunAction(table: BackfillTable): Promise<BackfillOutcome> {
+  const admin = await requireAdminSupabase();
+  if (!(await isCensusImportComplete(admin))) return { ok: false, error: "The Census import must be complete before the backfill can run." };
+  const report = await runBackfillDryRun(admin, table);
+  return { ok: true, report };
+}
+
+export async function backfillApplyAction(table: BackfillTable): Promise<BackfillOutcome> {
+  const admin = await requireAdminSupabase();
+  if (!(await isCensusImportComplete(admin))) return { ok: false, error: "The Census import must be complete before the backfill can run." };
+  const report = await runBackfillApply(admin, table);
+  revalidatePath(PATH);
+  return { ok: true, report };
 }

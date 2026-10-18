@@ -227,7 +227,10 @@ test("scope guard: matcher, safe-fetch and geography untouched by this correctio
   // Geography: city/state/market still required for ordinary creation
   // (optional for Brand onboarding since VCL A2b), RPC args unchanged.
   assert.match(CREATE, /if \(!brandOnboarding && \(!city \|\| !state\)\) fail\("City and state are required\."\);/);
-  assert.match(CREATE, /if \(!brandOnboarding && !marketId && !requestedMarketText\) \{/);
+  // Canonical Entity Geography pass — Market/Area is no longer a hard
+  // requirement at creation (see that pass's own test file); city/state
+  // alone now resolve to canonical geography instead.
+  assert.doesNotMatch(CREATE, /fail\("Choose a Primary Market, or request one below\."\);/);
   assert.match(CREATE, /p_market_id: effectiveMarketId,/);
   assert.doesNotMatch(read("src/lib/brand-website-analysis.ts"), /safeFetchHtml\(url, \{/, "default safe-fetch options");
 });

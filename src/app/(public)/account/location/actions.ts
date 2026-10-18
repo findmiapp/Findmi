@@ -12,11 +12,11 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
-import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
-import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { normalizeLocationHours } from "@/lib/locationHours";
@@ -203,13 +203,17 @@ export async function createMemberLocation(formData: FormData) {
   // a Market Request" shape createMemberBusiness/createMemberEvent use.
   let effectiveMarketId = marketId;
   let effectiveAreaId = areaId;
-  let effectiveRequestedMarketText = requestedMarketTextRaw;
+  // Canonical Entity Geography pass — genuinely unmatched geography no
+  // longer forwards to p_requested_market_text at all (that used to
+  // create an automatic market_requests row inside create_owned_location()
+  // itself). Canonical geography (resolved further below) carries the
+  // real signal instead.
+  const effectiveRequestedMarketText: string | null = null;
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
       effectiveMarketId = match.marketId;
       effectiveAreaId = match.type === "area" ? (match.areaId ?? null) : null;
-      effectiveRequestedMarketText = null;
     }
   }
   // Server-side backstop — never trusts the client-side MarketAreaFields
@@ -245,6 +249,35 @@ export async function createMemberLocation(formData: FormData) {
   if (effectiveAreaId) {
     await admin.from("locations").update({ market_area_id: effectiveAreaId }).eq("id", locationId);
   }
+
+  // Canonical Entity Geography pass — best-effort, same posture as the
+  // Area follow-up above. Auto-assigns a Market only when nothing above
+  // already set one.
+  if (city && state) {
+    try {
+      const geo = await resolveEntityGeography({ city, state });
+      if (geo.status === "resolved" || geo.status === "partial") {
+        await admin
+          .from("locations")
+          .update({ geo_place_key: geo.keys.place, geo_zcta_key: geo.keys.zcta, geo_state_key: geo.keys.state, geo_resolution: "derived" })
+          .eq("id", locationId);
+        if (!effectiveMarketId && geo.marketSuggestion?.type === "findmi") {
+          const { data: marketRow } = await admin.from("markets").select("id").eq("slug", geo.marketSuggestion.market).eq("active", true).maybeSingle();
+          if (marketRow) {
+            let suggestedAreaId: string | null = null;
+            if (geo.marketSuggestion.area) {
+              const { data: areaRow } = await admin.from("market_areas").select("id").eq("slug", geo.marketSuggestion.area).eq("market_id", marketRow.id).eq("active", true).maybeSingle();
+              suggestedAreaId = areaRow?.id ?? null;
+            }
+            await admin.from("locations").update({ market_id: marketRow.id, market_area_id: suggestedAreaId }).eq("id", locationId);
+          }
+        }
+      }
+    } catch {
+      // Never blocks/undoes the already-created location.
+    }
+  }
+
   revalidatePath("/account");
   if (businessId) {
     // The creator is already this Location's owner (create_owned_location
@@ -427,38 +460,39 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
     if (match) {
       effectiveMarketId = match.marketId;
       effectiveAreaId = match.type === "area" ? (match.areaId ?? null) : null;
-    } else {
-      const { data: location } = await admin.from("locations").select("name, city, state").eq("id", locationId).maybeSingle();
-      const linked = await createLinkedMarketRequest(admin, {
-        text: requestedMarketTextRaw,
-        city: location?.city ?? null,
-        state: location?.state ?? null,
-        source: "location_creation",
-        sourceLocationId: locationId,
-      });
-      if (linked.created) {
-        // Admin Notification Email Copy Polish pass — venue name already
-        // fetched above (just added to the select), so the email reads
-        // with the real venue name instead of a raw id.
-        const venueName = location?.name ?? "Unknown venue";
-        await notifyAdmin({
-          subject: `Market/Area request: ${venueName}`,
-          heading: "New Market/Area request",
-          body: [`Requested: ${requestedMarketTextRaw}`, `Venue: ${venueName}`],
-          actionLabel: "Review Market Requests",
-          actionUrl: "/admin/market-requests",
-        });
-      }
     }
+    // Canonical Entity Geography pass — a genuinely unmatched request no
+    // longer creates an automatic market_requests row here (removed
+    // createLinkedMarketRequest + admin-notify branch, which was also
+    // passing a source value the market_requests table's own CHECK
+    // constraint never actually allowed — see that migration). A
+    // canonical Place outside an established Market is normal now; the
+    // location's own canonical geo_* keys (below) carry the real signal.
   }
 
   if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {
     effectiveAreaId = null;
   }
 
+  const geoUpdate: Record<string, string | null> = {};
+  const { data: location } = await admin.from("locations").select("city, state").eq("id", locationId).maybeSingle();
+  if (location?.city && location?.state) {
+    try {
+      const geo = await resolveEntityGeography({ city: location.city, state: location.state });
+      if (geo.status === "resolved" || geo.status === "partial") {
+        geoUpdate.geo_place_key = geo.keys.place;
+        geoUpdate.geo_zcta_key = geo.keys.zcta;
+        geoUpdate.geo_state_key = geo.keys.state;
+        geoUpdate.geo_resolution = "derived";
+      }
+    } catch {
+      // Market/Area below still saves even if canonical resolution fails.
+    }
+  }
+
   const { error } = await admin
     .from("locations")
-    .update({ market_id: effectiveMarketId, market_area_id: effectiveAreaId })
+    .update({ market_id: effectiveMarketId, market_area_id: effectiveAreaId, ...geoUpdate })
     .eq("id", locationId);
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 

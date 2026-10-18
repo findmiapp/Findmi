@@ -235,6 +235,14 @@ export interface LinkedMarketRequestInput {
   sourceBusinessId?: string | null;
   sourceEventId?: string | null;
   sourceLocationId?: string | null;
+  /** Canonical Entity Geography pass — when the caller already resolved
+   * a canonical Census key for this request's city/state (see
+   * lib/geo/entity-geo.ts), it's stored alongside the free-text request.
+   * Never resolved by this function itself — explicit requests are the
+   * one case this pass keeps creating market_requests rows for (see this
+   * file's own header note), just with real geography attached when one
+   * is available. */
+  geoKey?: string | null;
 }
 
 /** Business/event/location creation each get their OWN request row (1:1
@@ -274,6 +282,7 @@ export async function createLinkedMarketRequest(
       source_event_id: input.sourceEventId ?? null,
       source_location_id: input.sourceLocationId ?? null,
       status: "pending",
+      geo_key: input.geoKey ?? null,
     })
     .select("id")
     .single();

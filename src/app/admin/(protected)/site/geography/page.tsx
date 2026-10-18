@@ -4,6 +4,7 @@ import { getCensusStatus } from "@/lib/geo/census-import";
 import { CENSUS_IMPORT_ORDER, CENSUS_SOURCES, DEFAULT_CENSUS_VINTAGE, normalizeSearch } from "@/lib/geo/census-format";
 import { STATE_BY_USPS } from "@/lib/geo/states";
 import CensusImportRunner from "./CensusImportRunner";
+import BackfillRunner from "./BackfillRunner";
 import { addProductGeographyAction, removeProductGeographyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +108,17 @@ export default async function GeographyAdminPage({ searchParams }: { searchParam
             Mappings waiting for the import: {status.unmatchedMappings.map((m) => `${m.area ?? m.market} → ${m.geo_key}`).join(", ")}
           </p>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">Canonical Entity Geography Backfill</h2>
+        <p className="mt-1 text-xs text-ink/50">
+          Fills geo_place_key/geo_zcta_key/geo_state_key on existing rows that have none yet. Dry Run first — it writes
+          nothing.
+        </p>
+        <div className="mt-2">
+          <BackfillRunner />
+        </div>
       </section>
 
       <section className="mt-8">

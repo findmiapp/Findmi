@@ -11,6 +11,7 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, DEFAULT_ADMIN_TIMEZONE, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
@@ -280,12 +281,21 @@ export async function saveEvent(id: string | null, formData: FormData) {
   // creates its own row, same as business/event creation always creating
   // a fresh request rather than editing a prior one.
   if (requestedMarketText) {
+    // Canonical Entity Geography pass — this is an EXPLICIT admin
+    // request (unlike the owner-facing creation forms, which no longer
+    // auto-create one for genuinely unmatched geography), so it keeps
+    // creating a reviewable market_requests row exactly as before; the
+    // only addition is attaching a canonical Census key when the typed
+    // city/state resolves to one, never a guess.
+    const geo = payload.city && payload.state ? await resolveEntityGeography({ city: payload.city, state: payload.state }).catch(() => null) : null;
+    const geoKey = geo && (geo.status === "resolved" || geo.status === "partial") ? (geo.keys.place ?? geo.keys.state ?? null) : null;
     await createLinkedMarketRequest(supabase, {
       text: requestedMarketText,
       city: payload.city,
       state: payload.state,
       source: "event_creation",
       sourceEventId: eventId,
+      geoKey,
     });
   }
 
