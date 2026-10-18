@@ -83,13 +83,18 @@ export async function saveLaneAction(formData: FormData) {
 }
 
 /** Discovery Lanes Placement & Density Refinement pass — single-select
- * "Primary Discovery" control. Touches ONLY the placement column (never
- * title/subtitle/order/items/visible/topics) on this Lane and on
- * whichever Lane previously held "primary" on the same page — every
- * other Lane setting is left exactly as the founder last saved it. The
- * DB's own partial unique index (one "primary" per page_id) is the real
- * backstop; the demote-then-promote order here just keeps a normal
- * request from tripping it. */
+ * "Primary Discovery" control. The demote-and-promote swap itself is the
+ * set_primary_lane(uuid, uuid) Postgres function (see the "set primary
+ * lane rpc" migrations) — ONE transaction, so a failure between the two
+ * writes is impossible: either both land or neither does, and the
+ * previous primary Lane is left exactly as it was. That function also
+ * locks every Lane row on this page for the duration (serializing a
+ * second concurrent "Make Primary" click for the SAME page) and
+ * validates the selected Lane actually belongs to the given page before
+ * changing anything. This action's own job is just: resolve the page id
+ * for a friendly early "Lane not found" message, call the RPC, and turn
+ * any failure into a clear Admin-facing message — nothing here ever
+ * touches title/subtitle/order/items/visible/topics on any Lane. */
 export async function setPrimaryLaneAction(formData: FormData) {
   const admin = await requireAdminSupabase();
   const id = str(formData, "id");
@@ -97,10 +102,8 @@ export async function setPrimaryLaneAction(formData: FormData) {
   const { data: lane, error: laneErr } = await admin.from("discovery_lanes").select("page_id").eq("id", id!).maybeSingle();
   if (laneErr || !lane) fail("Lane not found.");
   const { page_id } = lane as { page_id: string };
-  const { error: demoteErr } = await admin.from("discovery_lanes").update({ placement: "explore_more" }).eq("page_id", page_id).eq("placement", "primary");
-  if (demoteErr) fail(demoteErr.message);
-  const { error: promoteErr } = await admin.from("discovery_lanes").update({ placement: "primary" }).eq("id", id!);
-  if (promoteErr) fail(promoteErr.message);
+  const { error } = await admin.rpc("set_primary_lane", { p_lane_id: id!, p_page_id: page_id });
+  if (error) fail(`Couldn't make this Lane primary — nothing changed. ${error.message}`);
   done();
 }
 

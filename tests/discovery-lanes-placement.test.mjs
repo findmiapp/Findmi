@@ -71,17 +71,12 @@ test("no other DiscoveryLanes call site exists beyond these two (duplicate-rende
 
 // ── Admin: single-select Primary control touches only placement ────────
 
-test("setPrimaryLaneAction demotes whichever Lane currently holds \"primary\" on the same page BEFORE promoting the selected one, and touches ONLY the placement column on both writes", () => {
+test("setPrimaryLaneAction delegates the actual swap to the atomic set_primary_lane RPC — it no longer runs two independent .update() calls itself", () => {
   const fn = ACTIONS.slice(ACTIONS.indexOf("export async function setPrimaryLaneAction"), ACTIONS.indexOf("/** Event attributes"));
-  const demoteAt = fn.indexOf('.update({ placement: "explore_more" })');
-  const promoteAt = fn.indexOf('.update({ placement: "primary" })');
-  assert.ok(demoteAt > -1 && promoteAt > -1 && demoteAt < promoteAt, "demote runs before promote");
-  assert.match(fn, /\.update\(\{ placement: "explore_more" \}\)\.eq\("page_id", page_id\)\.eq\("placement", "primary"\)/);
-  assert.match(fn, /\.update\(\{ placement: "primary" \}\)\.eq\("id", id!\)/);
-  // No other column name appears in either .update({...}) call in this action.
-  const updateCalls = fn.match(/\.update\(\{[^}]*\}\)/g) ?? [];
-  assert.equal(updateCalls.length, 2);
-  for (const call of updateCalls) assert.doesNotMatch(call, /title|subtitle|sort_order|item_limit|is_visible|topic_id/);
+  assert.match(fn, /admin\.rpc\("set_primary_lane", \{ p_lane_id: id!, p_page_id: page_id \}\)/);
+  assert.doesNotMatch(fn, /\.update\(\{\s*placement:/);
+  // Any RPC failure is surfaced as a clear, non-silent Admin-facing message.
+  assert.match(fn, /if \(error\) fail\(`[^`]*\$\{error\.message\}`\);/);
 });
 
 test("saveLaneAction's own patch never includes placement — an ordinary Title/Order/Visible save can never silently change which Lane is primary", () => {
