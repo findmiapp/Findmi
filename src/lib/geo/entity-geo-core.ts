@@ -45,6 +45,15 @@ export interface EntityGeoKeys {
 
 const EMPTY_KEYS: EntityGeoKeys = { place: null, zcta: null, state: null };
 
+/** True when at least one of place/zcta/state is an actual key — the
+ * invariant a caller (the backfill runner) must check before writing
+ * geo_resolution: a "resolved"/"partial" status alone is never enough,
+ * since a county-kind match (never stored — see keysFor) legitimately
+ * carries EMPTY_KEYS under either status. */
+export function hasAnyKey(keys: EntityGeoKeys): boolean {
+  return keys.place !== null || keys.zcta !== null || keys.state !== null;
+}
+
 export interface EntityGeoChoice {
   geo_key: string;
   kind: CensusHit["kind"];
@@ -138,13 +147,18 @@ export function resolveFindmiAlias(phrase: string, areas: FindmiAreaRef[]): Enti
   if (!match) return null;
   const label = match.areaName ? `${match.areaName}, ${match.marketName}` : match.marketName;
   const target: GeoTarget = { type: "findmi", market: match.marketSlug, area: match.areaSlug, label: match.areaName ?? match.marketName };
-  if (!match.geo_key || !match.geo_kind) {
-    // Findmi recognizes the name but has no canonical Census key mapped
-    // for it yet (see /admin/site/geography) — real, usable, just not
-    // backed by a canonical key. Never invented here.
+  if (!match.geo_key || !match.geo_kind || match.geo_kind === "county") {
+    // Either Findmi recognizes the name but has no canonical Census key
+    // mapped for it yet (see /admin/site/geography), OR it does have one
+    // and it's county-kind (every NYC borough alias today) — a County is
+    // never stored directly on an entity (see keysFor's own county
+    // branch, same rule this file enforces everywhere else). Both are
+    // real, named, usable results, just not backed by a storable key —
+    // reported as partial, never as a successful "resolved" with nothing
+    // to show for it, and never invented.
     return { status: "partial", keys: EMPTY_KEYS, label, marketSuggestion: target };
   }
-  const keys: EntityGeoKeys = match.geo_kind === "place" ? { place: match.geo_key, zcta: null, state: null } : match.geo_kind === "zcta" ? { place: null, zcta: match.geo_key, state: null } : match.geo_kind === "state" ? { place: null, zcta: null, state: match.geo_key } : EMPTY_KEYS;
+  const keys: EntityGeoKeys = match.geo_kind === "place" ? { place: match.geo_key, zcta: null, state: null } : match.geo_kind === "zcta" ? { place: null, zcta: match.geo_key, state: null } : { place: null, zcta: null, state: match.geo_key };
   return { status: "resolved", keys, label, marketSuggestion: target };
 }
 

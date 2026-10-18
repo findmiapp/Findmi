@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
-import { BACKFILL_TABLES, type BackfillTable } from "@/lib/geo/entity-geo-core";
+import { BACKFILL_TABLES, hasAnyKey, type BackfillTable } from "@/lib/geo/entity-geo-core";
 
 // Canonical Entity Geography — the Admin-only backfill runner. Dry Run
 // first (writes nothing, just reports), Apply runs in bounded batches and
@@ -23,6 +23,22 @@ import { BACKFILL_TABLES, type BackfillTable } from "@/lib/geo/entity-geo-core";
 export { BACKFILL_TABLES, type BackfillTable };
 
 const HAS_ZCTA_COLUMN: Record<BackfillTable, boolean> = {
+  events: true,
+  event_occurrences: true,
+  locations: true,
+  businesses: true,
+  appearances: false,
+};
+
+/** Precision fix — same four tables that carry geo_zcta_key also carry
+ * their own postal_code (appearances has neither). Reading it here never
+ * touches/rewrites the column — see candidateRows' plain SELECT below —
+ * it only lets resolveEntityGeography try its own existing, already-
+ * deterministic ZIP/ZCTA path FIRST, the same precedence every other
+ * caller already gets, instead of the backfill skipping straight to
+ * city/state and letting a county-kind Findmi alias (Manhattan, Brooklyn,
+ * Queens, Staten Island, Astoria) shadow a perfectly usable ZIP. */
+const HAS_POSTAL_COLUMN: Record<BackfillTable, boolean> = {
   events: true,
   event_occurrences: true,
   locations: true,
@@ -81,17 +97,28 @@ export async function isCensusImportComplete(admin: SupabaseClient): Promise<boo
   return data.every((row) => (row as { status: string }).status === "complete");
 }
 
-async function candidateRows(admin: SupabaseClient, table: BackfillTable, limit: number): Promise<{ id: string; city: string | null; state: string | null }[]> {
+async function candidateRows(admin: SupabaseClient, table: BackfillTable, limit: number): Promise<{ id: string; city: string | null; state: string | null; postal_code?: string | null }[]> {
+  // Cast to plain `string` — passing a ternary of two different literals
+  // straight to `.select()` makes supabase-js's own literal-template
+  // result-type parser choke on the union (a TS-inference quirk, not a
+  // real type mismatch); the row shape below is asserted explicitly
+  // either way, same as the unconditional single-literal call already
+  // did before this fix.
+  const selectCols = (HAS_POSTAL_COLUMN[table] ? "id, city, state, postal_code" : "id, city, state") as string;
   let query = admin
     .from(table)
-    .select("id, city, state")
+    .select(selectCols)
     .is("geo_place_key", null)
     .is("geo_state_key", null)
     .not("city", "is", null)
     .not("state", "is", null);
   if (HAS_LOCATION_ID_COLUMN[table]) query = query.is("location_id", null);
   const { data } = await query.limit(limit);
-  return (data ?? []) as { id: string; city: string | null; state: string | null }[];
+  // A dynamic (non-literal) select string loses supabase-js's own
+  // column-level typing by design — same cast-through-unknown it
+  // recommends for this exact case; the real row shape is exactly what
+  // selectCols above asked for.
+  return (data ?? []) as unknown as { id: string; city: string | null; state: string | null; postal_code?: string | null }[];
 }
 
 async function runOne(admin: SupabaseClient, table: BackfillTable, limit: number, apply: boolean): Promise<BackfillReport> {
@@ -101,7 +128,12 @@ async function runOne(admin: SupabaseClient, table: BackfillTable, limit: number
   let applied = 0;
 
   for (const row of rows) {
-    const geo = await resolveEntityGeography({ city: row.city, state: row.state }).catch(() => ({ status: "unresolved" as const, reason: "lookup failed" }));
+    // ZIP (where this table has one) is always tried first —
+    // resolveEntityGeography's own existing precedence (explicit key >
+    // ZIP > Findmi alias > city/state phrase > state-only) already puts
+    // a valid ZCTA ahead of a county-kind Findmi alias; the backfill
+    // only needed to start supplying the zip it was already sitting on.
+    const geo = await resolveEntityGeography({ zip: HAS_POSTAL_COLUMN[table] ? row.postal_code : null, city: row.city, state: row.state }).catch(() => ({ status: "unresolved" as const, reason: "lookup failed" }));
     if (geo.status === "resolved") counts.resolved++;
     else if (geo.status === "partial") counts.partial++;
     else if (geo.status === "ambiguous") counts.ambiguous++;
@@ -117,7 +149,12 @@ async function runOne(admin: SupabaseClient, table: BackfillTable, limit: number
       });
     }
 
-    if (apply && (geo.status === "resolved" || geo.status === "partial")) {
+    // A backfill write requires at least one real canonical key — never
+    // just a "resolved"/"partial" label. A county-kind Findmi alias (or
+    // an unmapped one) legitimately carries EMPTY_KEYS under either
+    // status (see entity-geo-core.ts's hasAnyKey) and must never stamp
+    // geo_resolution with nothing to show for it.
+    if (apply && (geo.status === "resolved" || geo.status === "partial") && hasAnyKey(geo.keys)) {
       // Double-checked immediately before writing — never overwrites a
       // key another process (a concurrent create/edit, an import) set
       // between the candidate read above and now. Idempotent by
