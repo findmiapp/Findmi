@@ -7,6 +7,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember, requireEventMember, requireLocationMember } from "@/lib/permissions";
 import { isManagingRole, linkBusinessLocation } from "@/lib/business-locations";
+import { isPageManagerRole, parseLocationIntent } from "@/lib/capabilities";
 import { errorRedirectUrl, errorRedirectUrlWithFields, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -114,15 +115,18 @@ const CREATE_LOCATION_FRIENDLY_ERROR: Record<string, string> = {
   invalid_market: "That market isn't available. Choose another.",
 };
 
-/** Creates a brand-new Location natively — free, no entitlement gate,
- * starting is_demo=true (hidden from every public discovery/detail query
- * — see getLocationBySlug()/getLocations() in lib/data.ts) via
- * create_owned_location(), never accepted as input here or by that RPC.
- * The authenticated creator becomes its owner atomically with the
- * location itself (same RPC, one transaction). Location ownership is
- * deliberately independent of Business ownership — see this stage's
- * Locked Product Model — so this action never touches business_members or
- * requires any existing business. */
+/** Submits a Location to Findmi — free, open to anyone signed in (Personal,
+ * a Business, or a Location adding a child Location). Starts is_demo=true
+ * (pending Admin review; hidden from public reads).
+ *
+ * Submitting a Location NEVER grants management (lib/capabilities.ts):
+ *   - intent "adding" — "I'm Just Adding It To Findmi": no management;
+ *   - intent "manage" — "I Manage This Location": files a PENDING
+ *     location_claim_requests row; management (location_members) is granted
+ *     only when Admin approves it (approve_location_claim).
+ * Existence, hierarchy (parent_location_id — containment only), a
+ * Business's relationship (business_locations) and management are
+ * independent facts. */
 export async function createMemberLocation(formData: FormData) {
   const sessionSupabase = await getServerSupabase();
   const {
@@ -157,8 +161,13 @@ export async function createMemberLocation(formData: FormData) {
   // owner/manager check on that Business and, after the Location exists,
   // connecting it to the Business (first connection becomes primary).
   const businessId = str(formData, "business_id");
+  // A child Location (inside a Location the submitter manages).
+  const parentLocationId = str(formData, "parent_location_id");
+  const intent = parseLocationIntent(formData.get("intent"));
   const preservedFields = {
     business_id: businessId,
+    parent_location_id: parentLocationId,
+    intent: intent ?? "",
     name,
     address,
     city,
@@ -181,6 +190,17 @@ export async function createMemberLocation(formData: FormData) {
     if (!canManageBusiness) fail("You need to be an owner or manager of that business to add a location to it.");
   }
 
+  if (parentLocationId) {
+    let canManageParent = false;
+    try {
+      canManageParent = isPageManagerRole((await requireLocationMember(parentLocationId)).role);
+    } catch {
+      canManageParent = false;
+    }
+    if (!canManageParent) fail("You need to manage that Location to add a Location inside it.");
+  }
+
+  if (!intent) fail("Choose whether you manage this Location or are just adding it to Findmi.");
   if (!name) fail("Venue name is required.");
 
   if (marketId && requestedMarketTextRaw) {
@@ -207,11 +227,8 @@ export async function createMemberLocation(formData: FormData) {
   let effectiveMarketId = marketId;
   let effectiveAreaId = areaId;
   // Canonical Entity Geography pass — genuinely unmatched geography no
-  // longer forwards to p_requested_market_text at all (that used to
-  // create an automatic market_requests row inside create_owned_location()
-  // itself). Canonical geography (resolved further below) carries the
-  // real signal instead.
-  const effectiveRequestedMarketText: string | null = null;
+  // longer creates a market_requests row; canonical geography (resolved
+  // further below) carries the real signal instead.
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
@@ -227,23 +244,42 @@ export async function createMemberLocation(formData: FormData) {
     effectiveAreaId = null;
   }
 
-  const { data: created, error } = await admin.rpc("create_owned_location", {
-    p_user_id: user.id,
-    p_name: name,
-    p_slug: slug,
-    p_address: address,
-    p_city: city,
-    p_state: state,
-    p_market_id: effectiveMarketId,
-    p_requested_market_text: effectiveRequestedMarketText,
-  });
-
-  if (error || !created) {
-    const message = CREATE_LOCATION_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your venue. Please try again.";
-    fail(message);
+  if (effectiveMarketId) {
+    const { data: market } = await admin.from("markets").select("id").eq("id", effectiveMarketId).eq("active", true).maybeSingle();
+    if (!market) fail(CREATE_LOCATION_FRIENDLY_ERROR.invalid_market);
   }
+  // The same columns create_owned_location() wrote — WITHOUT its automatic
+  // owner membership (submission never grants management).
+  const clean = (v: string | null) => (v && v.trim() ? v.trim() : null);
+  const { data: created, error } = await admin
+    .from("locations")
+    .insert({
+      name: name!.trim(),
+      slug,
+      address: clean(address),
+      city: clean(city),
+      state: clean(state),
+      market_id: effectiveMarketId || null,
+      is_demo: true,
+      ...(parentLocationId ? { parent_location_id: parentLocationId } : {}),
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) fail("Couldn't add this Location. Please try again.");
 
   const locationId = (created as { id: string }).id;
+  // "I Manage This Location" — a request for Admin review, never a grant.
+  if (intent === "manage") {
+    const { data: profile } = await admin.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
+    await admin.from("location_claim_requests").insert({
+      user_id: user.id,
+      location_id: locationId,
+      full_name: (profile as { display_name: string | null } | null)?.display_name ?? null,
+      email: user.email ?? null,
+      message: businessId ? "Requested while adding this Location for a Business." : parentLocationId ? "Requested while adding this Location inside a managed Location." : "Requested while adding this Location.",
+    });
+  }
   // Best-effort only — the atomic RPC above already succeeded and never
   // accepts an Area itself (only p_market_id), so this just attaches the
   // already-validated Area as a normal follow-up update, same "best-effort,
@@ -283,9 +319,9 @@ export async function createMemberLocation(formData: FormData) {
 
   revalidatePath("/account");
   if (businessId) {
-    // The creator is already this Location's owner (create_owned_location
-    // above), and owner/manager of the Business (checked up front) — the
-    // same two-sided authority connectBusinessLocation requires.
+    // The Business's relationship to this Location (business_locations) —
+    // independent of whether anyone manages the Location. The submitter is
+    // Owner/Manager of the Business (checked up front).
     const linked = await linkBusinessLocation(admin, businessId, locationId);
     revalidatePath(`/account/business/${businessId}`);
     const params = new URLSearchParams(
@@ -295,7 +331,8 @@ export async function createMemberLocation(formData: FormData) {
     );
     redirect(`/account/business/${businessId}?tab=findmi-here&view=locations&${params.toString()}`);
   }
-  redirect(`/account/location/${locationId}?created=1`);
+  if (parentLocationId) redirect(`/account/location/${parentLocationId}?child_location=${intent}`);
+  redirect(`/account?location_submitted=${intent}`);
 }
 
 // ── INLINE EVENT LOCATION CREATION ──────────────────────────────────────

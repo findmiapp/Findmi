@@ -11,7 +11,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { ORGANIZER_APPROVAL_BLOCKED_MESSAGE, organizerApprovalBlocked } from "@/lib/event-participation";
-import { isEmailVerified, requireEventMember } from "@/lib/permissions";
+import { isEmailVerified, requireEventMember, requireLocationMember } from "@/lib/permissions";
+import { eventCreationContext } from "@/lib/capabilities";
 import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
 import { getHostEventEligibility } from "@/lib/entitlements";
 import { errorRedirectUrl, errorRedirectUrlWithFields, isoToLocalDateTime, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
@@ -174,12 +175,13 @@ const CREATE_EVENT_FRIENDLY_ERROR: Record<string, string> = {
  * becomes its owner atomically with the event itself (same RPC, one
  * transaction).
  *
- * Free Event Creation: being signed in is the only requirement to create
- * an Event as a member — no Pro, Pro Invite, event_management entitlement
- * or Business. Hosting AS a Business (business_id) is still authorized
- * here server-side (Owner/Manager of that Business) and again inside
- * create_owned_event(). Management of the new Event stays scoped to it:
- * the creator gets its owner event_members row from the same RPC. */
+ * Identity capabilities (lib/capabilities.ts): an Event is created
+ * through a Page — hosting AS a Business (business_id; Owner/Manager,
+ * re-checked inside create_owned_event()) or at a Location the creator
+ * manages (location_id; Owner/Manager). Personal alone is refused. No Pro
+ * or entitlement is needed. The creator also gets the RPC's owner
+ * event_members row (a Location can't be an Event's managing Page in the
+ * current schema — only events.host_business_id exists). */
 export async function createMemberEvent(formData: FormData) {
   const sessionSupabase = await getServerSupabase();
   const {
@@ -250,6 +252,31 @@ export async function createMemberEvent(formData: FormData) {
           : "You don't have access to host an Event for that Business."
       );
     }
+  }
+
+  // Identity capabilities (lib/capabilities.ts) — an Event is published
+  // through a Page: a Business the user hosts as (checked above), or a
+  // Location they manage (Owner/Manager). Personal alone never creates one.
+  let locationRole: string | null = null;
+  if (!hostBusinessId && locationHintId) {
+    try {
+      locationRole = (await requireLocationMember(locationHintId)).role;
+    } catch {
+      locationRole = null;
+    }
+  }
+  const creationContext = eventCreationContext({
+    businessId: hostBusinessId || null,
+    businessEligible: true, // a failed host check already redirected above
+    locationId: locationHintId || null,
+    locationRole,
+  });
+  if (!creationContext.ok) {
+    fail(
+      creationContext.reason === "location_role"
+        ? "Only an Owner or Manager of that Location can create an Event for it."
+        : "Events are published by a Business or Location you manage. Open that Page and choose Create Event."
+    );
   }
 
   if (!name) fail("Event name is required.");

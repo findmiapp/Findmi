@@ -44,10 +44,12 @@ export function isOrganizable(type: string): type is OrganizableType {
  * rows. Only truthful collections exist (no "Must Haves"). */
 export type SavedCollectionKey = "all" | "must-do" | "want" | "have-been";
 
+/** Consumer labels: "Want" covers Product Want, Event Interested and Place
+ * Want To Go (all the existing `want` relation) without exposing that. */
 export const SAVED_COLLECTIONS: readonly { key: SavedCollectionKey; label: string; relations: readonly Relationship[] }[] = [
   { key: "all", label: "All Saved", relations: [] },
-  { key: "must-do", label: "Must Dos", relations: ["must_do"] },
-  { key: "want", label: "Want & Interested", relations: ["want"] },
+  { key: "want", label: "Want", relations: ["want"] },
+  { key: "must-do", label: "Must Do", relations: ["must_do"] },
   { key: "have-been", label: "Have & Been", relations: ["have", "been"] },
 ];
 

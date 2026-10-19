@@ -14,6 +14,30 @@ import { PUBLIC_PRODUCT_COLUMNS } from "./data";
 export const MIGHT_LIKE_MIN = 2;
 export const MIGHT_LIKE_LIMIT = 8;
 export const FROM_BRANDS_LIMIT = 8;
+/** Products You Might Like: at most this many from one Brand in the
+ * visible set while other Brands can fill it. */
+export const MAX_PER_BRAND = 2;
+
+/** Deterministic Brand diversity — keeps the existing order, but while
+ * alternatives exist no Brand takes more than `maxPerBrand` of the first
+ * `limit` slots; only when they run out does a Brand get more. */
+export function diversifyByBrand<T extends { business_id: string }>(items: readonly T[], limit: number, maxPerBrand = MAX_PER_BRAND): T[] {
+  const picked: T[] = [];
+  const overflow: T[] = [];
+  const perBrand = new Map<string, number>();
+  for (const item of items) {
+    const n = perBrand.get(item.business_id) ?? 0;
+    if (n < maxPerBrand && picked.length < limit) {
+      picked.push(item);
+      perBrand.set(item.business_id, n + 1);
+    } else overflow.push(item);
+  }
+  for (const item of overflow) {
+    if (picked.length >= limit) break;
+    picked.push(item);
+  }
+  return picked;
+}
 
 /** One tile on a mixed Account Home rail (Products, Moments, Events,
  * Brands, Places side by side — and later other content types) — the
@@ -149,7 +173,8 @@ export async function getProductsYouMightLike(
     .order("is_featured", { ascending: false })
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name", { ascending: true })
-    .limit(limit + excludeProductIds.size);
-  const out = ((data ?? []) as unknown as ProductRow[]).map(toHomeProduct).filter((p) => !excludeProductIds.has(p.id)).slice(0, limit);
+    .limit(limit * 3 + excludeProductIds.size);
+  const ranked = ((data ?? []) as unknown as ProductRow[]).map(toHomeProduct).filter((p) => !excludeProductIds.has(p.id));
+  const out = diversifyByBrand(ranked, limit);
   return out.length >= MIGHT_LIKE_MIN ? out : [];
 }

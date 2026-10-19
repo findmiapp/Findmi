@@ -15,6 +15,8 @@ import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import EventForm from "../EventForm";
 import { hideEvent, publishEvent, restoreEvent, shutDownEvent } from "../lifecycle-actions";
 import { EVENT_VISIBILITY_LABEL, eventVisibility } from "@/lib/event-publication";
+import { getEventManagement } from "@/lib/admin/entity-management";
+import { EventOwnershipPanel } from "../../ownership/OwnershipPanels";
 
 // User Identity + Follow Foundation pass — no organizer/member management
 // SURFACE exists for events yet (event_members is schema-only, populated
@@ -43,10 +45,10 @@ export default async function EditEventPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; result?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; result?: string; ownership?: string; ownership_error?: string }>;
 }) {
   const { id } = await params;
-  const { error, saved, result: visibilityResult } = await searchParams;
+  const { error, saved, result: visibilityResult, ownership, ownership_error: ownershipError } = await searchParams;
   const marketsAdmin = getAdminSupabase();
   const [result, categories, selectedCategoryIds, locations, markets, marketsWithAreas, formats, selectedFormatIds] = await Promise.all([
     getAdminEventById(id),
@@ -76,7 +78,10 @@ export default async function EditEventPage({
   // Publish / Unpublish / Archive / Restore (events/lifecycle-actions.ts).
   const visibility = eventVisibility(result.event);
   const publicHref = visibility === "live" ? `/event/${result.event.slug}` : null;
-  const followerCount = await getEventFollowerCount(id);
+  const [followerCount, management] = await Promise.all([
+    getEventFollowerCount(id),
+    marketsAdmin ? getEventManagement(marketsAdmin, id, result.event.host_business_id ?? null) : Promise.resolve(null),
+  ]);
   const legacyReview = result.event.publication_status === "pending_review" || result.event.publication_status === "rejected";
 
   return (
@@ -148,6 +153,9 @@ export default async function EditEventPage({
           )}
         </div>
       </div>
+      {management && (
+        <EventOwnershipPanel eventId={id} eventName={result.event.name} management={management} notice={ownership} error={ownershipError} />
+      )}
       {visibilityResult && (
         <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{visibilityResult}</p>
       )}

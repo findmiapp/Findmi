@@ -58,7 +58,7 @@ test("resolver: only the user's OWN Business that is still pending review is con
 });
 
 test("Account Home: own memberships come from the session-scoped client for THIS user; card only for the resolved Business", () => {
-  assert.match(HOME, /searchParams: Promise<\{ error\?: string; event_management\?: string; created\?: string \}>/);
+  assert.match(HOME, /searchParams: Promise<\{ error\?: string; event_management\?: string; created\?: string; location_submitted\?: string \}>/);
   assert.match(HOME, /supabase\s*\.from\("business_members"\)\s*\.select\("business_id, businesses\(name, slug, publication_status, logo_url, cover_image_url\)"\)\s*\.eq\("user_id", user\.id\)/);
   assert.match(HOME, /pendingReview: business\.publication_status === "pending_review",/);
   assert.match(HOME, /const createdBusiness = resolveCreatedBusiness\(created, myBusinesses\);/);

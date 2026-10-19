@@ -126,9 +126,9 @@ async function getProBusinessIdSet(
 export default async function AccountHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; event_management?: string; created?: string }>;
+  searchParams: Promise<{ error?: string; event_management?: string; created?: string; location_submitted?: string }>;
 }) {
-  const { error, event_management: eventManagementGranted, created } = await searchParams;
+  const { error, event_management: eventManagementGranted, created, location_submitted: locationSubmitted } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
@@ -453,18 +453,10 @@ export default async function AccountHomePage({
   // standalone managed Events/Locations, so those lead the compact
   // preview here. imageUrl precedence unchanged: a small management row
   // reads a logo more clearly than a wide cover (Events have no logo).
+  // Pages I Manage — real managed Page identities only (Businesses and
+  // Locations: business_members / location_members). An Event is content
+  // published through a Page, never a Page itself.
   const managedEntities: ManagedEntity[] = [
-    ...myEvents.map(
-      (e): ManagedEntity => ({
-        kind: "event",
-        id: e.id,
-        name: e.name,
-        pills: [e.isDemo ? { label: "In Review", tone: "warning" as const } : null],
-        href: `/account/event/${e.id}`,
-        cta: e.isDemo ? "Finish Your Event" : "Manage",
-        imageUrl: e.coverImageUrl,
-      })
-    ),
     ...myLocations.map(
       (l): ManagedEntity => ({
         kind: "location",
@@ -494,7 +486,24 @@ export default async function AccountHomePage({
       })
     ),
   ];
-  const hasAnyManaged = managedEntities.length > 0;
+  // Events You Manage — direct event_members management (e.g. an Event
+  // created before Events were published through Pages). Listed on its own
+  // so it stays reachable without being called a Page; Admin can move it
+  // to its managing Page (Admin → Event → Ownership & Management).
+  const managedEvents: ManagedEntity[] = [
+    ...myEvents.map(
+      (e): ManagedEntity => ({
+        kind: "event",
+        id: e.id,
+        name: e.name,
+        pills: [e.isDemo ? { label: "In Review", tone: "warning" as const } : null],
+        href: `/account/event/${e.id}`,
+        cta: e.isDemo ? "Finish Your Event" : "Manage",
+        imageUrl: e.coverImageUrl,
+      })
+    ),
+  ];
+  const hasAnyManaged = managedEntities.length > 0 || managedEvents.length > 0;
 
   // New user: nothing personal, nothing to manage, nothing waiting — one
   // intentional starter instead of a page of empty modules.
@@ -539,6 +548,14 @@ export default async function AccountHomePage({
       {eventManagementGranted === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
           Event Management access activated. You can now add an Event below.
+        </p>
+      )}
+
+      {(locationSubmitted === "manage" || locationSubmitted === "adding") && !error && (
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
+          {locationSubmitted === "manage"
+            ? "Location added. Findmi will review it and your request to manage it — you'll see it under Pages I Manage once approved."
+            : "Thanks — Location added. Findmi will review it before it appears."}
         </p>
       )}
 
@@ -587,7 +604,9 @@ export default async function AccountHomePage({
         )}
 
         {brandTiles.length > 0 && (
-          <HomeSection id="from-brands" title="From Brands You Follow" href="/account/following" linkLabel="See All">
+          // No See All: there's no feed of followed Brands' content yet,
+          // and their Brand list (/account/following) isn't what this shows.
+          <HomeSection id="from-brands" title="From Brands You Follow">
             <div className={RAIL_CLASS + " lg:grid-cols-4"}>
               {brandTiles.map((tile) => (
                 <WorldTileCard key={tile.key} tile={tile} />
@@ -660,7 +679,7 @@ export default async function AccountHomePage({
         {/* Pages I Manage — a secondary utility list (not cards): up to 3
             rows, the rest behind a native View All disclosure. Only when
             this person manages something. */}
-        {hasAnyManaged && (
+        {managedEntities.length > 0 && (
           <HomeSection id="pages-i-manage" title="Pages I Manage">
             <div className="divide-y divide-black/[0.06]">
               {managedEntities.slice(0, MANAGING_PREVIEW).map((entity) => (
@@ -676,6 +695,30 @@ export default async function AccountHomePage({
                 </summary>
                 <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
                   {managedEntities.slice(MANAGING_PREVIEW).map((entity) => (
+                    <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
+                  ))}
+                </div>
+              </details>
+            )}
+          </HomeSection>
+        )}
+
+        {managedEvents.length > 0 && (
+          <HomeSection id="events-you-manage" title="Events You Manage">
+            <div className="divide-y divide-black/[0.06]">
+              {managedEvents.slice(0, MANAGING_PREVIEW).map((entity) => (
+                <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
+              ))}
+            </div>
+            {managedEvents.length > MANAGING_PREVIEW && (
+              <details className="group">
+                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 py-2 text-metadata font-semibold text-accent hover:underline [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">View All ({managedEvents.length})</span>
+                  <span className="hidden group-open:inline">Show Less</span>
+                  <ChevronIcon direction="down" className="h-3 w-3 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
+                  {managedEvents.slice(MANAGING_PREVIEW).map((entity) => (
                     <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
                   ))}
                 </div>

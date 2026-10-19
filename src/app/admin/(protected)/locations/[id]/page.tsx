@@ -6,6 +6,8 @@ import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import LocationForm from "../LocationForm";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getOperatorsForLocation } from "@/lib/business-locations";
+import { getLocationManagement } from "@/lib/admin/entity-management";
+import { LocationOwnershipPanel } from "../../ownership/OwnershipPanels";
 
 export const dynamic = "force-dynamic";
 
@@ -14,21 +16,23 @@ export default async function EditLocationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; ownership?: string; ownership_error?: string }>;
 }) {
   const { id } = await params;
-  const { error, saved } = await searchParams;
+  const { error, saved, ownership, ownership_error: ownershipError } = await searchParams;
   const [location, marketsWithAreas, categories] = await Promise.all([
     getAdminLocationById(id),
     getActiveMarketsWithAreaOptions(),
     getAllCategories("location"),
   ]);
   if (!location) notFound();
-  const [initialParent, operators] = await Promise.all([
+  const admin = getAdminSupabase();
+  const [initialParent, operators, management] = await Promise.all([
     getLocationOptionById(location.parent_location_id ?? null),
     // /account V2 Pass 2 — Businesses connected to this Location
     // (business_locations). Managed from each Business's Locations tab.
-    getOperatorsForLocation(getAdminSupabase(), id),
+    getOperatorsForLocation(admin, id),
+    admin ? getLocationManagement(admin, id, location.parent_location_id ?? null) : Promise.resolve(null),
   ]);
   const publicHref = !location.is_demo ? `/location/${location.slug}` : null;
 
@@ -54,6 +58,9 @@ export default async function EditLocationPage({
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Saved.
         </p>
+      )}
+      {management && (
+        <LocationOwnershipPanel locationId={id} locationName={location.name} isPending={Boolean(location.is_demo)} management={management} notice={ownership} error={ownershipError} />
       )}
       <div className="mt-5 rounded-2xl border border-black/10 bg-white p-4">
         <p className="text-sm font-semibold text-ink">Connected businesses</p>

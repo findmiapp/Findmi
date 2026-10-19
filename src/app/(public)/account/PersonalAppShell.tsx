@@ -60,7 +60,10 @@ const NAV_ITEMS: NavItem[] = [
   { key: "home", label: "Home", href: "/account", icon: <NavIcon name="home" className="h-[22px] w-[22px]" />, match: (p) => p === "/account", primary: true },
   // My Moments — the personal Moments destination (route unchanged).
   { key: "myworld", label: "My Moments", href: "/my-world/journal", icon: <NavIcon name="moments" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/my-world/journal"), primary: true },
-  { key: "schedule", label: "Schedule", href: "/account/schedule", icon: <NavIcon name="calendar" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/schedule"), primary: true },
+  // No "Schedule" here: /account/schedule is the operator schedule of the
+  // Pages you manage (business/event/location memberships), not a plan of
+  // Events you're going to — it stays reachable from each Business's More
+  // menu. Which Personal destination takes this slot is a product decision.
   { key: "inbox", label: "Inbox", href: "/account/messages", icon: <InboxGlyph className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/messages"), primary: true },
   { key: "saved", label: "Saved", href: "/account/saved", icon: <NavIcon name="bookmark" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/saved"), primary: false },
   { key: "following", label: "Following", href: "/account/following", icon: <NavIcon name="person" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/following"), primary: false },
@@ -124,7 +127,7 @@ export default function PersonalAppShell({ displayName, children }: { displayNam
         aria-label="Personal account"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.07] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
       >
-        <div className="mx-auto grid max-w-lg grid-cols-5">
+        <div className="mx-auto grid max-w-lg grid-cols-4">
           {primaryItems.map((item) => {
             const active = item.match(pathname);
             return (

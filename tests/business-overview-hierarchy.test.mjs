@@ -186,7 +186,9 @@ test("one definition + one icon system: Home rail, + sheet and More menu share l
   assert.doesNotMatch(read(`${B}/v2/MoreMenu.tsx`), /function QrGlyph/);
   assert.match(read(`${B}/v2/PresenceViews.tsx`), /\+ Add a Location/);
   assert.match(PAGE, /"\+ Add a Product"/);
-  assert.match(EVENT_NEW, /\{businessContext \? "Host an Event" : "Add An Event"\}/, "global vs Business context labels stay distinct");
+  // Identity capabilities: Business context "Host an Event"; Location
+  // context names the Location; no Personal "Add An Event" form.
+  assert.match(EVENT_NEW, /\{businessContext \? "Host an Event" : `Create An Event At \$\{managedLocation\?\.name \?\? "Your Location"\}`\}/, "Business vs Location context labels stay distinct");
 });
 
 // ── Needs Attention rules (real function) ─────────────────────────────────

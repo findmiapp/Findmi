@@ -12,7 +12,6 @@ import { PlusGlyph, type BusinessOption } from "@/app/(public)/account/BusinessS
  * flows (never duplicating them):
  *
  *   Add Moment      /my-world/journal/new   (Moments V2 cold composer)
- *   Add An Event    /account/event/new
  *   Add A Business  /account/business/new
  *   Add A Location  /account/location/new
  *
@@ -27,7 +26,8 @@ import { PlusGlyph, type BusinessOption } from "@/app/(public)/account/BusinessS
  * Deliberately NOT here: Findmi Here (a Business's real-world presence,
  * created from its own workspace — Host Something / Go Somewhere) and
  * Product (always created inside a specific Business; there's no general
- * Add Product flow).
+ * Add Product flow), and Events (published through a Business or Location
+ * you manage — created from that Page; see lib/capabilities.ts).
  */
 export default function QuickCreateMenu({
   authenticated,
@@ -90,13 +90,6 @@ export default function QuickCreateMenu({
             label="Add Moment"
             description="Capture something you experienced."
             icon={<PencilGlyph className="h-4 w-4" />}
-            onNavigate={handleNavigate}
-          />
-          <MenuLink
-            href="/account/event/new"
-            label="Add An Event"
-            description="Share something that's happening."
-            icon={<NavIcon name="calendar" className="h-4 w-4" />}
             onNavigate={handleNavigate}
           />
           <MenuLink

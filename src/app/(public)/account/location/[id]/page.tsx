@@ -6,6 +6,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember, resolveBusinessNavContext } from "@/lib/permissions";
+import { isPageManagerRole } from "@/lib/capabilities";
 import { getAccountContexts } from "@/lib/accountContext";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
@@ -89,10 +90,10 @@ export default async function ManageLocationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; saved?: string; error?: string; created?: string; event_added?: string; business_id?: string }>;
+  searchParams: Promise<{ tab?: string; saved?: string; error?: string; created?: string; event_added?: string; business_id?: string; child_location?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, saved, error, created, event_added: eventAdded, business_id: businessIdParam } = await searchParams;
+  const { tab: tabParam, saved, error, created, event_added: eventAdded, business_id: businessIdParam, child_location: childLocation } = await searchParams;
   const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   // Location Manager V3 — a bookmarked/typed legacy tab key (details/
@@ -108,9 +109,13 @@ export default async function ManageLocationPage({
   // location_members row OR an explicit founder admin session — see
   // lib/permissions.ts), never impersonation, never a fake membership row.
   let isAdminElevated = false;
+  // Owner / Manager act for this Location Page (create Events, add a child
+  // Location); Staff don't (lib/capabilities.ts).
+  let canActForLocation = false;
   try {
     const membership = await requireLocationMember(id);
     isAdminElevated = Boolean(membership.viaAdmin);
+    canActForLocation = isAdminElevated || isPageManagerRole(membership.role);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to that Location.";
     redirect(errorRedirectUrl("/account", message));
@@ -401,6 +406,12 @@ export default async function ManageLocationPage({
           Location created. Findmi will review it before it appears in discovery.
         </p>
       )}
+      {(childLocation === "manage" || childLocation === "adding") && !error && (
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          Location added inside {location.name}. Findmi will review it
+          {childLocation === "manage" ? ", along with your request to manage it" : ""}.
+        </p>
+      )}
       {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
       {saved && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">Saved.</p>
@@ -447,11 +458,16 @@ export default async function ManageLocationPage({
               )}
             </div>
 
-            <div>
-              <Link href={`/account/event/new?location_id=${id}`} className={`inline-flex w-fit ${primaryButtonClass}`}>
-                + Create Event Here
-              </Link>
-            </div>
+            {canActForLocation && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href={`/account/event/new?location_id=${id}`} className={`inline-flex w-fit ${primaryButtonClass}`}>
+                  + Create Event Here
+                </Link>
+                <Link href={`/account/location/new?parent_location_id=${id}`} className="text-sm font-semibold text-findmi-700 hover:underline">
+                  + Add A Location Inside
+                </Link>
+              </div>
+            )}
 
             {profileAttentionMessage && (
               <p className="text-sm text-ink/50">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { isPageManagerRole } from "@/lib/capabilities";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -69,14 +70,12 @@ const inputClass =
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
-/** Native Event creation entry point (Global + → Add An Event). Free
- * Event Creation: ANY signed-in Findmi member may create/submit an Event —
- * no Pro, Pro Invite, event_management entitlement or Business required.
- * New Events are public right away (lib/event-publication.ts) and the
- * creator becomes their owner; management stays scoped per Event.
- * The only remaining gate here is HOSTING: with ?business_id (Business →
- * Findmi Here → Host Something) the caller must be an Owner/Manager of
- * that Business. createMemberEvent re-checks that server-side. */
+/** Native Event creation entry point. Identity capabilities (lib/
+ * capabilities.ts): an Event is published THROUGH a Page — a Business the
+ * caller hosts as (?business_id, Owner/Manager) or a Location they manage
+ * (?location_id, Owner/Manager). Without one, this page lists the Pages
+ * they can create from (or how to add one) instead of a Personal form.
+ * createMemberEvent re-checks all of this server-side. No Pro required. */
 export default async function AddEventPage({
   searchParams,
 }: {
@@ -129,6 +128,19 @@ export default async function AddEventPage({
   // Free Event Creation — only hosting AS a Business is gated (Owner/
   // Manager of that Business); creating an Event as a member never is.
   const canHost = businessContext ? Boolean(hostEligibility?.ok) : true;
+  // A Location the caller manages (Owner/Manager) — the other eligible
+  // publishing context.
+  const managedLocation =
+    !businessContext && locationHint
+      ? await supabase
+          .from("location_members")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("location_id", locationHint.id)
+          .maybeSingle()
+          .then(({ data }) => (isPageManagerRole((data as { role: string } | null)?.role) ? locationHint : null))
+      : null;
+  if (!businessContext && !managedLocation) return <ChooseEventPage userId={user.id} />;
   const backToBusiness = businessContext ? (
     <Link
       href={`/account/business/${businessContext.id}?tab=findmi-here`}
@@ -146,7 +158,7 @@ export default async function AddEventPage({
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <p className="text-body font-semibold text-primary">Only an Owner or Manager of {businessContext.name} can host Events for it.</p>
           <Link href="/account/event/new" className={`mt-5 ${primaryButtonClass}`}>
-            Add An Event Instead
+            Choose Another Page
           </Link>
         </div>
       </div>
@@ -157,9 +169,14 @@ export default async function AddEventPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
+      {backToBusiness ??
+        (managedLocation ? (
+          <Link href={`/account/location/${managedLocation.id}`} className="text-metadata font-semibold text-muted hover:text-primary">
+            &larr; {managedLocation.name}
+          </Link>
+        ) : null)}
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-        {businessContext ? "Host an Event" : "Add An Event"}
+        {businessContext ? "Host an Event" : `Create An Event At ${managedLocation?.name ?? "Your Location"}`}
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext
@@ -231,6 +248,57 @@ export default async function AddEventPage({
           {!businessContext && <p className="text-center text-metadata text-subtle">Free for every Findmi member.</p>}
         </form>
       </div>
+    </div>
+  );
+}
+
+/** No eligible publishing context: the Pages this person can create an
+ * Event from (Owner/Manager), or how to add one. Never a Personal form. */
+async function ChooseEventPage({ userId }: { userId: string }) {
+  const supabase = await getServerSupabase();
+  const [{ data: biz }, { data: locs }] = await Promise.all([
+    supabase.from("business_members").select("role, business:businesses(id, name)").eq("user_id", userId).in("role", ["owner", "manager"]),
+    supabase.from("location_members").select("role, location:locations(id, name)").eq("user_id", userId).in("role", ["owner", "manager"]),
+  ]);
+  type Row<K extends string> = { role: string } & Record<K, { id: string; name: string } | { id: string; name: string }[] | null>;
+  const pick = <K extends string>(rows: unknown, key: K) =>
+    ((rows ?? []) as Row<K>[]).map((r) => (Array.isArray(r[key]) ? (r[key] as { id: string; name: string }[])[0] : r[key]) as { id: string; name: string } | null).filter((x): x is { id: string; name: string } => Boolean(x));
+  const pages = [
+    ...pick(biz, "business").map((b) => ({ key: `b:${b.id}`, name: b.name, kind: "Business", href: `/account/event/new?business_id=${b.id}` })),
+    ...pick(locs, "location").map((l) => ({ key: `l:${l.id}`, name: l.name, kind: "Location", href: `/account/event/new?location_id=${l.id}` })),
+  ];
+  return (
+    <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
+      <h1 className="font-display text-page-title font-bold text-primary sm:text-display">Create An Event</h1>
+      <p className="mt-2 text-body text-muted">Events are published by a Business or Location you manage. Choose where this Event comes from.</p>
+      {pages.length > 0 ? (
+        <ul className="mt-6 flex flex-col gap-2">
+          {pages.map((p) => (
+            <li key={p.key}>
+              <Link href={p.href} className="flex items-center justify-between gap-3 rounded-2xl border border-black/[0.08] bg-white px-4 py-3 transition hover:border-black/15">
+                <span className="min-w-0">
+                  <span className="block truncate text-body font-semibold text-primary">{p.name}</span>
+                  <span className="block text-metadata text-subtle">{p.kind}</span>
+                </span>
+                <span className="shrink-0 text-metadata font-semibold text-accent">Create As {p.kind}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+          <p className="text-body font-semibold text-primary">You don&rsquo;t manage a Business or Location yet.</p>
+          <p className="mt-1 text-body text-muted">Add or claim one first — then create Events as it.</p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Link href="/account/business/new" className={primaryButtonClass}>
+              Add A Business
+            </Link>
+            <Link href="/account/location/new" className="flex h-12 w-full items-center justify-center rounded-2xl border border-black/10 text-button font-bold uppercase text-primary">
+              Add A Location
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

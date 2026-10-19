@@ -5,12 +5,13 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import LocationGeographyFields from "@/components/LocationGeographyFields";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { requireBusinessMember } from "@/lib/permissions";
+import { requireBusinessMember, requireLocationMember } from "@/lib/permissions";
+import { isPageManagerRole } from "@/lib/capabilities";
 import { isManagingRole } from "@/lib/business-locations";
 import { createMemberLocation } from "../actions";
 
 export const metadata: Metadata = {
-  title: "Add a Venue",
+  title: "Add A Location",
   robots: { index: false },
 };
 export const dynamic = "force-dynamic";
@@ -20,12 +21,10 @@ const inputClass =
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
-/** Multi-Entity Self-Service V1, Stage 3 — native Location (venue) creation
- * entry point. FREE for every signed-in user — no Business Pro, no Event
- * Management entitlement, no Location subscription (see this stage's
- * Locked LOCATION ACCESS/ENTITLEMENT rule) — so unlike /account/event/new
- * this page has no membership-required explainer branch, only the plain
- * sign-in gate every native creation flow needs. */
+/** Add A Location — open to anyone signed in (Personal, a Business via
+ * ?business_id, or a managed Location adding a child via
+ * ?parent_location_id). Free. The submitter says whether they manage it;
+ * either way submitting never grants management (createMemberLocation). */
 export default async function AddLocationPage({
   searchParams,
 }: {
@@ -41,6 +40,8 @@ export default async function AddLocationPage({
     market_area_id?: string;
     requested_market_text?: string;
     business_id?: string;
+    parent_location_id?: string;
+    intent?: string;
   }>;
 }) {
   const {
@@ -55,6 +56,8 @@ export default async function AddLocationPage({
     market_area_id: submittedAreaId,
     requested_market_text: submittedRequestedMarketText,
     business_id: businessIdParam,
+    parent_location_id: parentIdParam,
+    intent: submittedIntent,
   } = await searchParams;
 
   const supabase = await getServerSupabase();
@@ -68,10 +71,12 @@ export default async function AddLocationPage({
   // location). Honored only for an owner/manager of that Business; anyone
   // else just gets the ordinary standalone form. createMemberLocation
   // re-checks this server-side regardless.
-  const [marketsWithAreas, business] = await Promise.all([
+  const [marketsWithAreas, business, parent] = await Promise.all([
     getActiveMarketsWithAreaOptions(),
     resolveBusinessContext(businessIdParam),
+    resolveParentContext(parentIdParam),
   ]);
+  const we = Boolean(business || parent);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -83,19 +88,25 @@ export default async function AddLocationPage({
           >
             &larr; {business.name}
           </Link>
-          <h1 className="mt-2 font-display text-page-title font-bold text-primary sm:text-display">Add a location</h1>
+          <h1 className="mt-2 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
           <p className="mt-2 text-body text-muted">
-            Create a location for {business.name}. You&rsquo;ll manage it right away, and it will appear publicly once
-            Findmi reviews it.
+            Add a place connected to {business.name} — your storefront, a retailer, a venue or somewhere you&rsquo;ll appear. It appears
+            publicly once Findmi reviews it.
           </p>
+        </>
+      ) : parent ? (
+        <>
+          <Link href={`/account/location/${parent.id}`} className="text-metadata font-semibold text-muted hover:text-primary">
+            &larr; {parent.name}
+          </Link>
+          <h1 className="mt-2 font-display text-page-title font-bold text-primary sm:text-display">Add A Location Inside {parent.name}</h1>
+          <p className="mt-2 text-body text-muted">A building, hall, space or venue within {parent.name}. It appears publicly once Findmi reviews it.</p>
         </>
       ) : (
         <>
           <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
-          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add a Venue</h1>
-          <p className="mt-2 text-body text-muted">
-            You&rsquo;ll own and manage it right away in your Location Manager, free, with no separate Venue fee, ever.
-          </p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
+          <p className="mt-2 text-body text-muted">Add a place people can find on Findmi. It appears publicly once Findmi reviews it. Free.</p>
         </>
       )}
 
@@ -113,14 +124,15 @@ export default async function AddLocationPage({
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberLocation} className="flex flex-col gap-4">
           {business && <input type="hidden" name="business_id" value={business.id} />}
+          {parent && <input type="hidden" name="parent_location_id" value={parent.id} />}
           <label className="block">
-            <span className="mb-1.5 block text-body font-medium text-primary">Venue name</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">Location name</span>
             <input autoCapitalize="words"
               type="text"
               name="name"
               required
               defaultValue={submittedName ?? ""}
-              placeholder="Your venue name"
+              placeholder="Location name"
               className={inputClass}
             />
           </label>
@@ -143,10 +155,33 @@ export default async function AddLocationPage({
             defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
           />
 
+          {/* Submission intent — management is a request Findmi reviews,
+              never granted by adding a Location. */}
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1.5 block text-body font-medium text-primary">Your Connection To This Location</legend>
+            <label className="flex items-start gap-2.5 rounded-xl border border-black/10 px-3.5 py-3">
+              <input type="radio" name="intent" value="manage" required defaultChecked={submittedIntent === "manage"} className="mt-1 accent-findmi" />
+              <span>
+                <span className="block text-body font-semibold text-primary">{we ? "We Manage This Location" : "I Manage This Location"}</span>
+                <span className="block text-metadata text-muted">
+                  {we ? "We own, operate or are authorized to represent it." : "I own, operate, work for or am authorized to represent it."} Findmi reviews the request
+                  before you can manage it.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 rounded-xl border border-black/10 px-3.5 py-3">
+              <input type="radio" name="intent" value="adding" required defaultChecked={submittedIntent === "adding"} className="mt-1 accent-findmi" />
+              <span>
+                <span className="block text-body font-semibold text-primary">{we ? "We're Just Adding It To Findmi" : "I'm Just Adding It To Findmi"}</span>
+                <span className="block text-metadata text-muted">It&rsquo;s missing from Findmi. No management is requested.</span>
+              </span>
+            </label>
+          </fieldset>
+
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            {business ? "Create location" : "Create My Venue"}
+            Add Location
           </button>
-          <p className="text-center text-metadata text-subtle">Free, no separate Venue fee, ever.</p>
+          <p className="text-center text-metadata text-subtle">Free — always.</p>
         </form>
       </div>
     </div>
@@ -163,5 +198,20 @@ async function resolveBusinessContext(businessId: string | undefined): Promise<{
   const admin = getAdminSupabase();
   if (!admin) return null;
   const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
+  return (data as { id: string; name: string } | null) ?? null;
+}
+
+/** A Location the caller manages (Owner/Manager) — the parent of a child
+ * Location. Hierarchy is containment only; it never shares management. */
+async function resolveParentContext(locationId: string | undefined): Promise<{ id: string; name: string } | null> {
+  if (!locationId) return null;
+  try {
+    if (!isPageManagerRole((await requireLocationMember(locationId)).role)) return null;
+  } catch {
+    return null;
+  }
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data } = await admin.from("locations").select("id, name").eq("id", locationId).maybeSingle();
   return (data as { id: string; name: string } | null) ?? null;
 }

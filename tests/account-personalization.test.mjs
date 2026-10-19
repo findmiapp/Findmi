@@ -217,7 +217,7 @@ test("counts match the collection contents; no fake Must Haves collection", () =
     const m = S.collectionMembers(key, RELS, { event: ["e-saved"] });
     assert.equal(counts[key], m.product.length + m.event.length + m.location.length, key);
   }
-  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All Saved", "Must Dos", "Want & Interested", "Have & Been"]);
+  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All Saved", "Want", "Must Do", "Have & Been"]);
   assert.equal(S.parseCollection("must-have"), "all");
   const page = read("src/app/(public)/account/saved/page.tsx");
   assert.match(page, /collectionMembers\(collection, relations, saved\)/);
@@ -294,7 +294,7 @@ test("Home order + copy: no People rails, Saved/Your Moments/Pages I Manage, emp
   assert.ok(at.every((i) => i > 0), JSON.stringify(at));
   assert.deepEqual([...at].sort((a, b) => a - b), at, "rendered in the planned order");
   assert.doesNotMatch(HOME, /People You Might Like|Moments From People You Follow|title="My World"|title="Coming Up"|title="Managing"|title="Recent Moments"/);
-  for (const cond of ["comingUpCards.length > 0", "brandTiles.length > 0", "eventsYouMightLike.length > 0", "placesYouMightLike.length > 0", "productTiles.length > 0", "brandsYouMightLike.length > 0", "savedTiles.length > 0", "momentTiles.length > 0", "hasAnyManaged"]) {
+  for (const cond of ["comingUpCards.length > 0", "brandTiles.length > 0", "eventsYouMightLike.length > 0", "placesYouMightLike.length > 0", "productTiles.length > 0", "brandsYouMightLike.length > 0", "savedTiles.length > 0", "momentTiles.length > 0", "managedEntities.length > 0"]) {
     assert.ok(HOME.includes(`{${cond} && (`), cond);
   }
   assert.match(read("src/app/(public)/account/business/[id]/v2/Greeting.tsx"), /"Good Evening"/);
