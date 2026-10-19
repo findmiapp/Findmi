@@ -155,22 +155,29 @@ export function TopicTile({
     return (
       // Compact, text-first date/status tile — white card, 1px light-
       // gray border (replacing the photo tile's pale-aqua bg-findmi-50),
-      // icon left of a vertically stacked title/count, fixed ~72px
-      // height (inside the Design pass's approved 68-80px mobile range,
-      // kept uniform at every breakpoint rather than the photo tile's
-      // viewport-scaled aspect ratio, since a compact icon+text row has
-      // no reason to grow taller on larger screens). The outer w-[40%]
-      // shrink-0 snap-start sm:w-auto wrapper around every TopicTile
-      // (TileRail's children, below) is completely unchanged, so
-      // horizontal swipe, partial-next-tile visibility, and the tile's
-      // full-card tap target are all preserved exactly as before.
+      // small icon left of a vertically stacked title/count, rounded-2xl
+      // kept. Height Reduction + Label Readability pass — min-h-16 (64px,
+      // inside the approved ~60-68px mobile range) instead of the prior
+      // pass's fixed h-[72px]; MIN not a hard cap, so a title that still
+      // needs its full two lines at this width can never be clipped —
+      // "approximately 60-68px" is a soft target, "every title must be
+      // fully readable... do not use ellipsis" is not. Tighter p-2/gap-2
+      // (was p-3/gap-2.5) and a smaller h-4 icon (was h-5) are what
+      // actually buy back the ~8px this pass removes. `truncate` is gone
+      // — the single-line-with-ellipsis behavior that produced
+      // "Happenin…" — replaced with ordinary text wrap (up to two lines
+      // via the smaller text-xs) and no clamp/ellipsis of any kind. The
+      // outer w-[40%] shrink-0 snap-start sm:w-auto wrapper around every
+      // TopicTile (TileRail's children, below) is completely unchanged,
+      // so horizontal swipe, partial-next-tile visibility, and the
+      // tile's full-card tap target are all preserved exactly as before.
       <Link
         href={href}
-        className="group flex h-[72px] w-full items-center gap-2.5 rounded-2xl border border-black/10 bg-white p-3 transition hover:border-findmi-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi-300 active:scale-[0.98]"
+        className="group flex min-h-16 w-full items-center gap-2 rounded-2xl border border-black/10 bg-white p-2 transition hover:border-findmi-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi-300 active:scale-[0.98]"
       >
-        <DateStatusIcon kind={dateStatusKind} className="h-5 w-5 shrink-0 text-findmi-700" />
+        <DateStatusIcon kind={dateStatusKind} className="h-4 w-4 shrink-0 text-findmi-700" />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-display text-sm font-semibold leading-tight text-ink">{topic.name}</span>
+          <span className="font-display text-xs font-semibold leading-tight text-ink">{topic.name}</span>
           {count !== undefined && <span className="mt-0.5 text-[11px] font-normal text-ink/55">{count === 1 ? "1 Thing" : `${count} Things`}</span>}
         </span>
       </Link>
@@ -207,6 +214,20 @@ export default async function DiscoveryLanes({ market, area, placement }: { mark
   if (lanes.length === 0) return null;
   const context = market ? { market, ...(area ? { area } : {}) } : {};
   const topicById = new Map(vocab.topicRows.map((t) => [t.id, t]));
+  // Right Now Heading Removal + Gap Tightening pass — presentation only:
+  // the Primary Discovery region (today, always the "Right Now" lane —
+  // the DB's own partial unique index guarantees at most one primary
+  // lane) no longer shows its LaneHeader (title/subtitle) at all. The
+  // Lane's title/subtitle/sort_order/is_visible/topic_ids and every
+  // other Admin-configured field are completely untouched in the
+  // database and still editable at /admin/site/discovery — this only
+  // skips rendering them here. The section's own top margin also drops
+  // from mt-8 to mt-3 for Primary Discovery specifically, tightening the
+  // gap to the Start Here CTA now that there's no heading to visually
+  // separate from it; Explore More's lanes (still headed) are
+  // byte-identical, mt-8 included.
+  const isPrimary = placement === "primary";
+  const sectionTopClass = isPrimary ? "mt-3" : "mt-8";
 
   const rendered = await Promise.all(
     lanes.map(async (lane) => {
@@ -216,8 +237,8 @@ export default async function DiscoveryLanes({ market, area, placement }: { mark
         const live = counted.filter((c) => c.n > 0).slice(0, lane.item_limit);
         if (live.length === 0) return null;
         return (
-          <section key={lane.id} className="mt-8">
-            <LaneHeader title={lane.title} subtitle={lane.subtitle} />
+          <section key={lane.id} className={sectionTopClass}>
+            {!isPrimary && <LaneHeader title={lane.title} subtitle={lane.subtitle} />}
             <TileRail>
               {live.map(({ t, n }) => (
                 <div key={t.id} className="w-[40%] shrink-0 snap-start sm:w-auto">
@@ -234,8 +255,8 @@ export default async function DiscoveryLanes({ market, area, placement }: { mark
         const r = await runDiscovery({ topics: [t.slug], limit: lane.item_limit }, { context });
         if (r.items.length === 0) return null;
         return (
-          <section key={lane.id} className="mt-8">
-            <LaneHeader title={lane.title} subtitle={lane.subtitle} href={searchHref({ ...context, topics: [t.slug] })} />
+          <section key={lane.id} className={sectionTopClass}>
+            {!isPrimary && <LaneHeader title={lane.title} subtitle={lane.subtitle} href={searchHref({ ...context, topics: [t.slug] })} />}
             <DiscoveryRail items={r.items.map((x) => x.item)} />
           </section>
         );
@@ -244,8 +265,8 @@ export default async function DiscoveryLanes({ market, area, placement }: { mark
       const areas = vocab.areaRows.filter((a) => a.market_id === lane.market_id && a.consumer_visible && a.level === "area").slice(0, lane.item_limit);
       if (!m || areas.length === 0) return null;
       return (
-        <section key={lane.id} className="mt-8">
-          <LaneHeader title={lane.title} subtitle={lane.subtitle} />
+        <section key={lane.id} className={sectionTopClass}>
+          {!isPrimary && <LaneHeader title={lane.title} subtitle={lane.subtitle} />}
           <TileRail>
             {areas.map((a) => (
               <div key={a.id} className="w-[40%] shrink-0 snap-start sm:w-auto">

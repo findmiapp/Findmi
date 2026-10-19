@@ -93,22 +93,33 @@ test("the five new local glyphs are never added to NavIcon.tsx's curated NAV_ICO
 
 test("the date/status tile is white with a 1px light-gray border (replacing the pale-aqua photo-tile background), and keeps rounded-2xl corners", () => {
   const dateStatusBranch = TILE.slice(TILE.indexOf("if (dateStatusKind)"), TILE.indexOf("const showImage"));
-  assert.match(dateStatusBranch, /className="group flex h-\[72px\] w-full items-center gap-2\.5 rounded-2xl border border-black\/10 bg-white/);
+  assert.match(dateStatusBranch, /className="group flex min-h-16 w-full items-center gap-2 rounded-2xl border border-black\/10 bg-white/);
 });
 
 test("the icon sits left of a vertically stacked title (dark, semibold) over count (muted gray, regular weight)", () => {
   const dateStatusBranch = TILE.slice(TILE.indexOf("if (dateStatusKind)"), TILE.indexOf("const showImage"));
-  assert.match(dateStatusBranch, /className="group flex h-\[72px\] w-full items-center gap-2\.5/, "icon-left row layout, not the photo tile's flex-col");
-  assert.match(dateStatusBranch, /<DateStatusIcon kind=\{dateStatusKind\} className="h-5 w-5 shrink-0 text-findmi-700" \/>/);
+  assert.match(dateStatusBranch, /className="group flex min-h-16 w-full items-center gap-2/, "icon-left row layout, not the photo tile's flex-col");
+  assert.match(dateStatusBranch, /<DateStatusIcon kind=\{dateStatusKind\} className="h-4 w-4 shrink-0 text-findmi-700" \/>/);
   assert.match(dateStatusBranch, /<span className="flex min-w-0 flex-1 flex-col">/, "title/count stacked vertically, to the right of the icon");
   assert.match(dateStatusBranch, /font-semibold leading-tight text-ink/, "title: dark charcoal (text-ink), semibold — not font-bold like the photo tile");
   assert.match(dateStatusBranch, /text-\[11px\] font-normal text-ink\/55/, "count: muted gray, regular weight");
 });
 
-test("the tile height is fixed at 72px — inside the approved ~68-80px mobile range, uniform at every breakpoint (no sm: override, unlike the photo tile's responsive aspect ratio)", () => {
-  const dateStatusBranch = TILE.slice(TILE.indexOf("if (dateStatusKind)"), TILE.indexOf("const showImage"));
-  assert.match(dateStatusBranch, /h-\[72px\]/);
-  assert.doesNotMatch(dateStatusBranch, /sm:h-|sm:aspect/);
+test("Height Reduction + Label Readability pass — the tile height is a MINIMUM of 64px (inside the approved ~60-68px mobile range), not a hard cap, and uniform at every breakpoint", () => {
+  // Sliced from the real JSX only (the <Link> and below) — the branch's
+  // own explanatory comment legitimately mentions the OLD h-[72px]/
+  // truncate classes it replaced, which would otherwise false-fail a
+  // doesNotMatch check scoped too broadly.
+  const dateStatusJsx = TILE.slice(TILE.indexOf("<Link", TILE.indexOf("if (dateStatusKind)")), TILE.indexOf("const showImage"));
+  assert.match(dateStatusJsx, /min-h-16/);
+  assert.doesNotMatch(dateStatusJsx, /\bh-\[72px\]\b|\bh-16\b(?!\s*w-)/, "no hard-capped height remains — a long title can still grow the tile rather than being clipped");
+  assert.doesNotMatch(dateStatusJsx, /sm:h-|sm:min-h-|sm:aspect/);
+});
+
+test("Height Reduction + Label Readability pass — the title never truncates: no `truncate`/line-clamp/ellipsis class, smaller text-xs typography, and ordinary text wrap onto up to two lines", () => {
+  const dateStatusJsx = TILE.slice(TILE.indexOf("<Link", TILE.indexOf("if (dateStatusKind)")), TILE.indexOf("const showImage"));
+  assert.doesNotMatch(dateStatusJsx, /\btruncate\b|line-clamp|text-ellipsis/, "the exact class that produced \"Happenin…\" is gone");
+  assert.match(dateStatusJsx, /font-display text-xs font-semibold leading-tight text-ink/, "slightly smaller mobile typography than the prior pass's text-sm");
 });
 
 test("a subtle teal border/focus treatment exists for hover and keyboard focus, using the existing findmi brand token — never a new color", () => {
@@ -145,4 +156,40 @@ test("DiscoveryTile (event/business/location/moment cards) and homepage ordering
   assert.doesNotMatch(TILE_FILE, /dateStatusKind|DateStatusIcon|h-\[72px\]/);
   const PAGE = readFileSync("src/app/(public)/page.tsx", "utf8");
   assert.doesNotMatch(PAGE, /dateStatusKind|DateStatusIcon/);
+});
+
+// ── Right Now Heading Removal + Gap Tightening pass ──────────────────────
+
+const COMPONENT = LANES.slice(LANES.indexOf("export default async function DiscoveryLanes"), LANES.length);
+
+test("Primary Discovery suppresses its LaneHeader (title/subtitle) entirely — presentation only, scoped to placement === \"primary\"", () => {
+  assert.match(COMPONENT, /const isPrimary = placement === "primary";/);
+  assert.equal((COMPONENT.match(/\{!isPrimary && <LaneHeader/g) ?? []).length, 3, "one guard per lane kind (topics/topic_results/areas) — whichever kind is ever made primary, its header is suppressed the same way");
+});
+
+test("every LaneHeader call site (title, subtitle, and the topic_results kind's href) is otherwise byte-identical — only whether it renders changed, never its own props", () => {
+  assert.match(COMPONENT, /<LaneHeader title=\{lane\.title\} subtitle=\{lane\.subtitle\} \/>\}/g);
+  assert.match(COMPONENT, /<LaneHeader title=\{lane\.title\} subtitle=\{lane\.subtitle\} href=\{searchHref\(\{ \.\.\.context, topics: \[t\.slug\] \}\)\} \/>/);
+});
+
+test("the Lane's own title/subtitle/sort_order/is_visible/topic_ids are never written or altered by this pass — this file has no write path at all (DiscoveryLanes is read-only), the Admin actions file is untouched", () => {
+  assert.doesNotMatch(LANES, /\.update\(|\.insert\(|\.delete\(/);
+});
+
+test("Explore More (placement !== \"primary\") keeps its LaneHeader and its original mt-8 top margin — unchanged by this pass", () => {
+  assert.match(COMPONENT, /const sectionTopClass = isPrimary \? "mt-3" : "mt-8";/);
+});
+
+test("the gap between the navigation rail and What's Happening is tightened in page.tsx — pt-2/sm:pt-3, not the prior pt-3/sm:pt-5", () => {
+  const PAGE = readFileSync("src/app/(public)/page.tsx", "utf8");
+  assert.match(PAGE, /<div className="mx-auto max-w-6xl pt-2 sm:pt-3">/);
+  assert.doesNotMatch(PAGE, /mx-auto max-w-6xl pt-3 sm:pt-5/);
+});
+
+test("What's Happening's own heading, Area picker, time rail, event rail, and \"View all\" link are otherwise unchanged — only the wrapper's top padding changed", () => {
+  const PAGE = readFileSync("src/app/(public)/page.tsx", "utf8");
+  assert.match(PAGE, /\{upcomingSec\.heading \?\? HOMEPAGE_SECTIONS\.featured_events\.heading!\}/);
+  assert.match(PAGE, /<AreaPicker/);
+  assert.match(PAGE, /<HomeTimeFilterRail activeKey=\{timeKey\} marketSlug=\{marketSlug\} areaSlug=\{areaSlug\} \/>/);
+  assert.match(PAGE, />\s*View all\s*</);
 });

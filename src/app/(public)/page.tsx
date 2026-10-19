@@ -417,12 +417,15 @@ export default async function HomePage({
           Weekend links out to /discover.
           Preservation-First Homepage Reorder pass — now follows Discovery
           Lanes directly (was immediately after Search). Top padding
-          reuses the exact "right after Discovery Lanes" gap the onboarding
-          doorway below used to open with (pt-3/sm:pt-5), rather than its
-          old pt-2 tuned specifically for following Search — every other
-          condition/behavior in this section (Area picker, time rail,
-          event rail, "View all" link) is unchanged. */}
-      <div className="mx-auto max-w-6xl pt-3 sm:pt-5">
+          reused the exact "right after Discovery Lanes" gap the onboarding
+          doorway below used to open with (pt-3/sm:pt-5) at the time.
+          Right Now Heading Removal + Gap Tightening pass — tightened
+          further (pt-2/sm:pt-3) now that Primary Discovery no longer
+          shows a heading before this one, so the two sit closer together
+          by design, not by accident. Every other condition/behavior in
+          this section (Area picker, time rail, event rail, "View all"
+          link) is unchanged. */}
+      <div className="mx-auto max-w-6xl pt-2 sm:pt-3">
         <div className="px-4 sm:px-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
