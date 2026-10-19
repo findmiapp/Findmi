@@ -358,7 +358,9 @@ test("shared: From Link still runs the existing URL engine unchanged", async () 
   const engine = read("src/lib/event-import/engine.ts");
   const url = engine.slice(engine.indexOf("export async function analyzeEventUrl"), engine.indexOf("// ── Paste Details / Upload"));
   assert.match(url, /const source = classifySource\(page\.html, page\.url, now\);/, "calendar / multi-Event detection");
-  assert.match(url, /if \(needsAiAssist\(candidate\)\) candidate = \(await assistWithAi\(/);
+  assert.match(url, /if \(needsAiAssist\(candidate\)\) \{\s*\n\s*const filled = await assistWithAi\(/);
+  // Involved-Business pass (opt-in): otherBusinesses only, never the fill step.
+  assert.match(url, /if \(deps\.involvedBusinesses && !aiCalled && !candidate\.otherBusinesses\?\.length\)/);
   assert.match(url, /isRegistrationPlatformEventUrl\(candidate\.sourceUrl\)/, "verified single-Event platform pages (Luma, Eventbrite, Partiful)");
   assert.doesNotMatch(url, /text-source|extractTextEventCandidate|readEventTextWithAi/);
 });

@@ -78,6 +78,7 @@ function operatorDeps(admin: SupabaseClient): EventImportDeps {
     // Event image guard: a page's fallback image that Brand Import already
     // read as this site's logo / cover is generic site imagery.
     siteBrandImages: (host) => brandImportSiteImages(admin, host),
+    involvedBusinesses: true,
     matchOrganizer: async (name, city, state) => {
       const exact = (await findBusinessMatches(admin, { name, city, state })).filter((m) => m.reasons.includes("name_location"));
       if (exact.length !== 1) return null;
@@ -447,7 +448,7 @@ export async function adminApplyExistingEvent(
   review: EventImportReview,
   business: { id: string; name: string } | null,
   choices: Partial<Record<ExistingField, "fill" | "replace">>
-): Promise<{ ok: true; applied: ExistingField[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; applied: ExistingField[]; participants?: string[] } | { ok: false; error: string }> {
   const admin = await adminClient();
   if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
   if (business) {
@@ -456,11 +457,18 @@ export async function adminApplyExistingEvent(
   }
   try {
     const deps = discoveryDeps(admin);
-    const result = await applyExistingEventEnrichment(admin, String(eventId), choices ?? {}, proposalFromReview(review ?? {}, business), {
-      storeImage: deps.storeImage,
-      propagateDates: deps.propagateDates,
-    });
-    if (result.ok && result.applied.length > 0) {
+    // Involved Businesses: only the operator's explicit Match / Create
+    // resolutions, validated exactly as a new Event's are.
+    const participantIds = await resolveOtherBusinessIds(admin, review ?? {}, business?.id ?? null);
+    const result = await applyExistingEventEnrichment(
+      admin,
+      String(eventId),
+      choices ?? {},
+      proposalFromReview(review ?? {}, business),
+      { storeImage: deps.storeImage, propagateDates: deps.propagateDates },
+      participantIds
+    );
+    if (result.ok && (result.applied.length > 0 || (result.participants?.length ?? 0) > 0)) {
       revalidatePath("/admin/events");
       revalidatePath("/events");
     }

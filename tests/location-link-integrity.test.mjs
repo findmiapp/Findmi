@@ -136,7 +136,7 @@ test("8. Import Complete counts only real outcomes", () => {
   assert.match(CLIENT, /if \(result\.status === "created"\) record\("location", result\.location\.id\);/);
   assert.match(CLIENT, /record\("business", result\.business\.id\);\n\s+onCreated\(result\.business\);/);
   assert.match(CLIENT, /if \(!result\.existing\) record\("business", result\.business\.id\);/);
-  assert.match(CLIENT, /if \(result\.applied\.length > 0\) record\("event", eventId\);/);
+  assert.match(CLIENT, /if \(result\.applied\.length > 0 \|\| \(result\.participants\?\.length \?\? 0\) > 0\) record\("event", eventId\);/);
   // Location Import V1's step reports only a Location it actually created.
   assert.match(CLIENT, /onCreated=\{\(id\) => record\("location", id\)\}/);
   assert.match(read("src/components/admin/location-import/EventLocationCreate.tsx"), /if \(r\.status === "created"\) \{\n\s+onCreated\(r\.location\.id\);/);

@@ -149,6 +149,18 @@ export interface SanitizedAi {
 }
 
 const MAX_OTHER_BUSINESSES = 5;
+
+/** Explicit involvement wording — the only phrasing that makes a named
+ * organization an involved Business ("hosted by", "presented by", "in
+ * partnership with", "sponsored by", "featuring", "collab", "X & Y teams",
+ * "participating brands"…). Gates the involved-Business enrichment call
+ * (engine) and, in that mode, every evidence phrase it returns. */
+export const INVOLVEMENT_CUE =
+  /\b(?:hosted\s+by|co-?hosted\s+by|presented\s+by|brought\s+to\s+you\s+by|in\s+partnership\s+with|partnered\s+with|partnering\s+with|sponsored\s+by|powered\s+by|featuring|feat\.|collab(?:oration)?s?\b|in\s+collaboration\s+with|teams\b|participating\s+(?:brands|businesses|vendors)|vendors\s+include|with\s+our\s+(?:friends|partners)\s+(?:at|from))/i;
+
+export function hasInvolvementEvidence(text: string | null | undefined): boolean {
+  return typeof text === "string" && INVOLVEMENT_CUE.test(text);
+}
 const OTHER_BUSINESS_NAME_MAX = 160;
 
 /** Grounded "other businesses": each name must be evidenced by its OWN
@@ -161,7 +173,8 @@ const OTHER_BUSINESS_NAME_MAX = 160;
 function sanitizeOtherBusinesses(
   raw: { name: string; evidence: string }[] | undefined,
   pageText: string,
-  exclude: (string | null)[]
+  exclude: (string | null)[],
+  requireCue = false
 ): string[] {
   const page = ` ${norm(pageText)} `;
   const excluded = new Set(exclude.filter((v): v is string => Boolean(v)).map(norm));
@@ -171,6 +184,9 @@ function sanitizeOtherBusinesses(
     if (out.length >= MAX_OTHER_BUSINESSES) break;
     const evidence = cleanText(entry?.evidence, 300);
     if (!evidence || !page.includes(` ${norm(evidence)} `)) continue;
+    // Involved-Business enrichment: the quoted phrase itself must say how
+    // the organization is involved — a bare proper noun is never enough.
+    if (requireCue && !hasInvolvementEvidence(evidence)) continue;
     const name = cleanText(entry?.name, OTHER_BUSINESS_NAME_MAX);
     if (!name || !evidenced(name, evidence)) continue;
     const key = norm(name);
@@ -190,7 +206,8 @@ export function sanitizeEventAiOutput(
   raw: EventAiOutput | null | undefined,
   pageText: string,
   ctx: ScheduleContext = { now: Date.now(), yearHint: null },
-  excludeOtherBusinesses: (string | null)[] = []
+  excludeOtherBusinesses: (string | null)[] = [],
+  requireInvolvementCue = false
 ): SanitizedAi {
   const empty: SanitizedAi = { title: null, occurrences: [], venue: { ...EMPTY_VENUE }, organizer: null, otherBusinesses: [] };
   if (!raw) return empty;
@@ -241,18 +258,35 @@ export function sanitizeEventAiOutput(
       postalCode: postal && /^[A-Za-z0-9 -]{3,12}$/.test(postal) && pageText.includes(postal) ? postal : null,
     },
     organizer: resolvedOrganizer,
-    otherBusinesses: sanitizeOtherBusinesses(raw.other_businesses, pageText, [...excludeOtherBusinesses, resolvedOrganizer]),
+    // Involved-Business pass: the record's organizer is never replaced, so an
+    // organizer the AI read from "Hosted by …" is offered as an involved
+    // Business instead (same grounding + cue rules) rather than dropped.
+    otherBusinesses: requireInvolvementCue
+      ? sanitizeOtherBusinesses(
+          [...(raw.organizer && raw.organizer_evidence ? [{ name: raw.organizer, evidence: raw.organizer_evidence }] : []), ...(raw.other_businesses ?? [])],
+          pageText,
+          excludeOtherBusinesses,
+          true
+        )
+      : sanitizeOtherBusinesses(raw.other_businesses, pageText, [...excludeOtherBusinesses, resolvedOrganizer]),
   };
 }
 
 /** Fills ONLY the candidate's missing fields from one structured call.
  * Never throws; returns the candidate unchanged when AI is unavailable or
- * fails. */
+ * fails.
+ *
+ * mode "involved_businesses" — the same call, used when the page's own
+ * data is already complete (title/dates/venue) but its text explicitly
+ * names involved organizations: ONLY otherBusinesses is merged (each
+ * evidence phrase must carry involvement wording); every other field the
+ * page already supplied stays exactly as it was. */
 export async function assistWithAi(
   candidate: EventCandidate,
   excerpt: string,
   client: EventAiClient | null = defaultEventAiClient(),
-  ctx: ScheduleContext = { now: Date.now(), yearHint: null }
+  ctx: ScheduleContext = { now: Date.now(), yearHint: null },
+  mode: "fill" | "involved_businesses" = "fill"
 ): Promise<{ candidate: EventCandidate; called: boolean }> {
   if (!client || !excerpt.trim()) return { candidate, called: false };
   try {
@@ -267,7 +301,13 @@ export async function assistWithAi(
       { timeout: EVENT_AI_TIMEOUT_MS, maxRetries: 0 }
     );
     if (response.stop_reason === "refusal" || !response.parsed_output) return { candidate, called: true };
-    const ai = sanitizeEventAiOutput(response.parsed_output, excerpt, ctx, [candidate.organizer]);
+    const ai = sanitizeEventAiOutput(response.parsed_output, excerpt, ctx, [candidate.organizer], mode === "involved_businesses");
+    if (mode === "involved_businesses") {
+      // Nothing but grounded involved-Business candidates — never a title,
+      // date, venue, address, organizer, image or registration-link change.
+      if (ai.otherBusinesses.length === 0 || (candidate.otherBusinesses?.length ?? 0) > 0) return { candidate, called: true };
+      return { candidate: { ...candidate, otherBusinesses: ai.otherBusinesses }, called: true };
+    }
     const next: EventCandidate = { ...candidate, occurrences: [...candidate.occurrences], sources: { ...candidate.sources } };
     if (!next.title && ai.title) {
       next.title = ai.title;

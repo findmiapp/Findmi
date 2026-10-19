@@ -620,7 +620,12 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
   const [error, setError] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, "fill" | "replace" | "keep">>({});
   const [applied, setApplied] = useState<string[] | null>(null);
+  const [addedParticipants, setAddedParticipants] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Involved Businesses the operator resolved above (Match / Create) — the
+  // only ones Apply adds; ignored or unresolved candidates never are.
+  const resolvedOthers = Object.values(review.otherBusinessChoices ?? {}).filter((c): c is { id: string; name: string } => c !== "ignored" && Boolean(c?.id) && c.id !== business?.id);
+  const newParticipants = data ? resolvedOthers.filter((o, i) => !data.snapshot.businesses.some((b) => b.id === o.id) && resolvedOthers.findIndex((x) => x.id === o.id) === i) : [];
 
   async function load() {
     setError(null);
@@ -644,7 +649,8 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
       if (!result.ok) setError(result.error);
       else {
         setApplied(result.applied);
-        if (result.applied.length > 0) record("event", eventId);
+        setAddedParticipants(result.participants?.length ?? 0);
+        if (result.applied.length > 0 || (result.participants?.length ?? 0) > 0) record("event", eventId);
         setData(null);
       }
     } catch {
@@ -665,7 +671,13 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
           Open Event
         </Link>
       </p>
-      {applied && <p className="text-metadata text-findmi-700">{applied.length > 0 ? `Updated: ${applied.map((f) => LABEL[f] ?? f).join(", ")}.` : "Nothing was changed."}</p>}
+      {applied && (
+        <p className="text-metadata text-findmi-700">
+          {applied.length > 0 || addedParticipants > 0
+            ? [applied.length > 0 ? `Updated: ${applied.map((f) => LABEL[f] ?? f).join(", ")}.` : null, addedParticipants > 0 ? `Added ${addedParticipants} involved ${addedParticipants === 1 ? "Business" : "Businesses"}.` : null].filter(Boolean).join(" ")
+            : "Nothing was changed."}
+        </p>
+      )}
       {!data ? (
         <button type="button" onClick={load} className="w-fit text-metadata font-semibold text-accent hover:underline">
           {applied ? "Compare Again" : "Compare With Findmi"}
@@ -676,7 +688,13 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
             On Findmi: {data.snapshot.occurrenceCount} {data.snapshot.occurrenceCount === 1 ? "date" : "dates"}
             {data.snapshot.occurrencesWithoutLocation > 0 ? ` (${data.snapshot.occurrencesWithoutLocation} without a Findmi Location — edit those in the Event)` : ""}. Dates and places aren&rsquo;t changed from here.
           </p>
-          {data.comparisons.length === 0 && <p className="text-metadata text-muted">This import has nothing to add.</p>}
+          {data.comparisons.length === 0 && newParticipants.length === 0 && <p className="text-metadata text-muted">This import has nothing to add.</p>}
+          {newParticipants.length > 0 && (
+            <div className="rounded-lg bg-white px-3 py-2">
+              <p className="text-metadata font-semibold text-primary">Involved Businesses</p>
+              <p className="text-microcopy text-secondary">Added on Apply (as you resolved them above): {newParticipants.map((o) => o.name).join(", ")}</p>
+            </div>
+          )}
           <ul className="flex flex-col gap-2">
             {data.comparisons.map((c) => (
               <li key={c.field} className="rounded-lg bg-white px-3 py-2">
@@ -707,7 +725,7 @@ function ExistingEventReview({ eventId, review, business }: { eventId: string; r
               </li>
             ))}
           </ul>
-          <button type="button" onClick={apply} disabled={busy || !Object.values(choices).some((v) => v !== "keep")} className={`${smallPrimary} w-fit`}>
+          <button type="button" onClick={apply} disabled={busy || (!Object.values(choices).some((v) => v !== "keep") && newParticipants.length === 0)} className={`${smallPrimary} w-fit`}>
             {busy ? "Updating…" : "Apply To Existing Event"}
           </button>
         </>

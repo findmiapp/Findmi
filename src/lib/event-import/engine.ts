@@ -30,6 +30,7 @@ import {
   assistWithAi,
   EVENT_AI_TIMEOUT_MS,
   defaultEventAiClient,
+  hasInvolvementEvidence,
   readEventImageWithAi,
   readEventTextWithAi,
   sanitizeEventAiOutput,
@@ -80,6 +81,13 @@ export interface EventImportDeps {
    * from this site (read-only). Admin-only (Brand Import tables are Admin
    * data — lib/admin/brand-import.ts); absent → that evidence isn't used. */
   siteBrandImages?: (host: string) => Promise<string[]>;
+  /** Involved-Business pass: when the page's own data is already complete
+   * (so the fill-in AI step never runs) but its text carries explicit
+   * involvement wording ("Hosted by", "in partnership with", "X & Y
+   * teams"…), ask the same AI schema for otherBusinesses ONLY — no other
+   * field is touched. Candidates stay review-only (Match / Create / Ignore).
+   * Admin Event Import opts in; absent → no extra AI call. */
+  involvedBusinesses?: boolean;
 }
 
 // ── rate limit: 20 analyses per user per 10 minutes (in-memory, per instance) ──
@@ -348,7 +356,19 @@ export async function analyzeEventUrl(
     pageRecordAttendance(record),
     pageAttendance(extracted.evidence.controls, extracted.evidence.lines, page.url)
   );
-  if (needsAiAssist(candidate)) candidate = (await assistWithAi(candidate, extracted.excerpt, deps.ai, { now, yearHint: extracted.yearHint })).candidate;
+  const aiCtx = { now, yearHint: extracted.yearHint };
+  let aiCalled = false;
+  if (needsAiAssist(candidate)) {
+    const filled = await assistWithAi(candidate, extracted.excerpt, deps.ai, aiCtx);
+    candidate = filled.candidate;
+    aiCalled = filled.called;
+  }
+  if (deps.involvedBusinesses && !aiCalled && !candidate.otherBusinesses?.length) {
+    const sourceText = [extracted.excerpt, candidate.description].filter(Boolean).join("\n");
+    if (hasInvolvementEvidence(sourceText)) {
+      candidate = (await assistWithAi(candidate, sourceText, deps.ai, aiCtx, "involved_businesses")).candidate;
+    }
+  }
   if (evidence.onlineMode && !candidate.occurrences.some((o) => venueKey(o.venue))) candidate = { ...candidate, online: true };
   // The source's privacy decision wins over anything read or filled in: a
   // hidden address leaves no venue/street to show or to match a Location.

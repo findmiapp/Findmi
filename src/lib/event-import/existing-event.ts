@@ -178,14 +178,22 @@ export interface ExistingEventDeps {
 
 /** Applies ONLY the fields Admin chose. "fill" writes a field only while it
  * is still empty; "replace" (allowed for text/link/image fields only)
- * writes the import's value over the current one. */
+ * writes the import's value over the current one.
+ *
+ * participantIds: involved Businesses the operator explicitly resolved in
+ * this review (Match Existing / Create — never "ignored", never an
+ * unresolved candidate), already validated as real Business ids by the
+ * caller. Each joins through the same participation the primary Business
+ * uses (event_businesses approved, all dates → the existing date sync);
+ * a Business already approved on the Event is left as it is. */
 export async function applyExistingEventEnrichment(
   admin: SupabaseClient,
   eventId: string,
   choices: Partial<Record<ExistingField, "fill" | "replace">>,
   p: ExistingEventProposal,
-  deps: ExistingEventDeps
-): Promise<{ ok: true; applied: ExistingField[] } | { ok: false; error: string }> {
+  deps: ExistingEventDeps,
+  participantIds: string[] = []
+): Promise<{ ok: true; applied: ExistingField[]; participants?: string[] } | { ok: false; error: string }> {
   const snapshot = await loadExistingEventSnapshot(admin, eventId);
   if (!snapshot) return { ok: false, error: "That Event is no longer on Findmi." };
   const comparisons = new Map(compareExistingEvent(snapshot, p).map((c) => [c.field, c]));
@@ -226,16 +234,23 @@ export async function applyExistingEventEnrichment(
   }
   // Business: the same participation Admin import gives a new Event —
   // added to the roster, never the host, never replacing anyone.
-  if (allowed("business") && p.business) {
-    const { error } = await admin
-      .from("event_businesses")
-      .upsert({ event_id: eventId, business_id: p.business.id, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" });
-    if (!error) {
-      const { data: occs } = await admin.from("event_occurrences").select("id").eq("event_id", eventId);
-      const ids = ((occs ?? []) as { id: string }[]).map((o) => o.id);
-      if (ids.length) await deps.propagateDates(eventId, ids);
-      applied.push("business");
-    }
+  const joinRoster = async (businessId: string) =>
+    !(
+      await admin
+        .from("event_businesses")
+        .upsert({ event_id: eventId, business_id: businessId, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" })
+    ).error;
+  if (allowed("business") && p.business && (await joinRoster(p.business.id))) applied.push("business");
+  const onRoster = new Set(snapshot.businesses.map((b) => b.id));
+  if (p.business) onRoster.add(p.business.id);
+  const participants: string[] = [];
+  for (const id of [...new Set(participantIds)]) {
+    if (!onRoster.has(id) && (await joinRoster(id))) participants.push(id);
   }
-  return { ok: true, applied };
+  if (applied.includes("business") || participants.length > 0) {
+    const { data: occs } = await admin.from("event_occurrences").select("id").eq("event_id", eventId);
+    const ids = ((occs ?? []) as { id: string }[]).map((o) => o.id);
+    if (ids.length) await deps.propagateDates(eventId, ids);
+  }
+  return participants.length > 0 ? { ok: true, applied, participants } : { ok: true, applied };
 }
