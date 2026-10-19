@@ -285,7 +285,10 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             photos: "what real-world experience was this?" */}
         {primaryKind && (
           <div className="mt-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
+              <AddYourMomentPill href={addMomentHref} />
+            </div>
             <div className="mt-1.5">
               {primaryKind === "event" && primaryEvent && (
                 <ContextCard
@@ -318,12 +321,15 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        {/* First "+ Add Your Moment": right under the context card, before
-            the story, category tabs and photos. The second is the
+        {/* First "+ Add Your Moment": in the "This Moment Is From" heading
+            row above. A Moment with no context card has no heading to sit
+            beside, so it keeps its own row here. The second is the
             existing one after the photo story below. */}
-        <div className="mt-3 flex">
-          <AddYourMomentPill href={addMomentHref} />
-        </div>
+        {!primaryKind && (
+          <div className="mt-3 flex">
+            <AddYourMomentPill href={addMomentHref} />
+          </div>
+        )}
 
         {/* The author's overall story — plain, restrained text. */}
         {entry.notes && (

@@ -87,12 +87,12 @@ test("8. clearing a Section removes the photo from that preview without changing
   assert.deepEqual(ids(O.filterBySection(cleared, "place")), ["A"]);
 });
 
-test("9. the final Moment renders TWO Add Your Moment CTAs: one right after This Moment Is From, one after the story", () => {
-  assert.equal((PAGE.match(/<AddYourMomentPill /g) ?? []).length, 2);
+test("9. the final Moment renders TWO Add Your Moment CTAs: one on the This Moment Is From heading row, one after the story", () => {
+  assert.equal((PAGE.match(/<AddYourMomentPill /g) ?? []).length, 3, "heading-row + context-less top (never both) + no-photos bottom fallback");
   assert.match(PAGE, /\{!hasGallery && \(\s*<div className="mt-5 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>/, "bottom fallback only when there is no gallery");
   assert.match(MOMENT, /\{addMomentHref && \(\s*<Link/, "otherwise the gallery's own end-of-story CTA");
-  const source = PAGE.slice(PAGE.indexOf("{primaryKind && ("), PAGE.indexOf("<AddYourMomentPill href={addMomentHref} />"));
-  assert.doesNotMatch(source, /AddYourMomentPill/, "nothing INSIDE the This Moment Is From block");
+  const source = PAGE.slice(PAGE.indexOf("{primaryKind && ("), PAGE.indexOf("{!primaryKind && ("));
+  assert.match(source, /This Moment Is From<\/p>\s*<AddYourMomentPill href=\{addMomentHref\} \/>/, "the top CTA is on the This Moment Is From heading row");
   assert.ok(PAGE.indexOf("{!hasGallery && (") < PAGE.indexOf("Visit Details"), "Visit Details stays after the story");
 });
 

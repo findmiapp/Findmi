@@ -66,28 +66,31 @@ test("Event creation stays identity/Page gated (Add Your Moment never touches it
   assert.match(eventNew, /Events on Findmi are published through a Business or Location Page\./);
 });
 
-test("'This Moment Is From' block introduces ONLY the relationship card (the CTA sits just after it, not inside it)", () => {
-  const block = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("<AddYourMomentPill href={addMomentHref} />"));
-  assert.match(block, /<p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From<\/p>\s*<div className="mt-1\.5">\s*\{primaryKind === "event"/);
-  assert.doesNotMatch(block, /AddYourMomentPill|justify-between/);
+test("'This Moment Is From': the heading and the top CTA share ONE row (heading left, pill right, vertically centred), the card sits below", () => {
+  const block = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("{!primaryKind && ("));
+  assert.match(
+    block,
+    /<div className="flex items-center justify-between gap-3">\s*<p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From<\/p>\s*<AddYourMomentPill href=\{addMomentHref\} \/>\s*<\/div>\s*<div className="mt-1\.5">\s*\{primaryKind === "event"/
+  );
   const pill = C.slice(C.indexOf("function AddYourMomentPill"));
-  assert.match(pill, /inline-flex h-8 shrink-0 items-center rounded-full border border-findmi\/40 bg-white px-3\.5 text-metadata font-bold text-findmi-700/, "same secondary pill as before");
+  assert.match(pill, /inline-flex h-8 shrink-0 items-center rounded-full border border-findmi\/40 bg-white px-3\.5 text-metadata font-bold text-findmi-700/, "same compact secondary pill as before");
   assert.match(pill, />\s*\+ Add Your Moment\s*</);
 });
 
-test("TWO Add Your Moment CTAs: first right after the context card (before story, category tabs and photos); second is the existing one after the photo story", () => {
+test("TWO Add Your Moment CTAs: first in the context heading row (before story, category tabs and photos); second is the existing one after the photo story", () => {
   assert.equal((C.match(/This Moment Is From/g) ?? []).length, 1, "the source label only exists inside the real source block");
-  assert.equal((C.match(/<AddYourMomentPill /g) ?? []).length, 2, "top CTA + the no-photos bottom fallback");
+  assert.equal((C.match(/<AddYourMomentPill /g) ?? []).length, 3, "heading-row CTA + the context-less top CTA (never both) + the no-photos bottom fallback");
   const card = C.indexOf("{primaryKind && (");
   const top = C.indexOf("<AddYourMomentPill href={addMomentHref} />");
+  const contextless = C.indexOf("{!primaryKind && (");
   const notes = C.indexOf("{entry.notes && (");
   const gallery = C.indexOf("{hasGallery && <JournalMomentGallery");
   const fallback = C.indexOf("{!hasGallery && (");
-  assert.ok(card > 0 && top > card, "after the This Moment Is From card");
-  assert.ok(top < notes && top < gallery, "before the story, the category tabs and every photo");
+  assert.ok(card > 0 && top > card && top < contextless, "inside the This Moment Is From block, on its heading row");
+  assert.ok(contextless < notes && notes < gallery, "a Moment with no context card keeps its own top row, still before the story and photos");
   assert.ok(gallery > notes && fallback > gallery, "bottom CTA position unchanged: after the relationship card and the story");
   assert.ok(fallback < C.indexOf("Visit Details"), "before Visit Details");
-  assert.match(C.slice(top - 40, top + 60), /<div className="mt-3 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>/);
+  assert.match(C.slice(contextless), /^\{!primaryKind && \(\s*<div className="mt-3 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>\s*<\/div>\s*\)\}/);
   assert.match(C.slice(fallback), /^\{!hasGallery && \(\s*<div className="mt-5 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>\s*<\/div>\s*\)\}/);
   // With photos, the gallery's own end-of-story CTA is the bottom one (kept).
   const g = code(GALLERY);
@@ -95,7 +98,7 @@ test("TWO Add Your Moment CTAs: first right after the context card (before story
 });
 
 test("both CTAs share the exact same destination", () => {
-  assert.equal((C.match(/addMomentHref/g) ?? []).length, 5, "one const, then the top pill, the gallery prop (name + value) and the fallback pill — no second href anywhere");
+  assert.equal((C.match(/addMomentHref/g) ?? []).length, 6, "one const, then the heading-row pill, the context-less pill, the gallery prop (name + value) and the fallback pill — no second href anywhere");
   assert.match(C, /addMomentHref=\{addMomentHref\}/);
 });
 
