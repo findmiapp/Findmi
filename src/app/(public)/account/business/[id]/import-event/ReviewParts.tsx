@@ -170,7 +170,7 @@ export function WhenWhereEditor({
                 </ul>
               </details>
             )}
-            <p className="text-microcopy text-subtle">Times are Eastern Time. An end time earlier than the start means it ends after midnight.</p>
+            <p className="text-microcopy text-subtle">Times are Eastern Time. An end time earlier than the start means it ends after midnight; a span into a later day keeps its own end date.</p>
           </section>
 
           {/* Where — one place for every date. */}
@@ -249,7 +249,8 @@ export function OccurrenceRow({
   const sum = occurrenceSummary(d);
   const where = placeLine(d.place, matches);
   const label = numbered ? `Date ${index + 1}` : "Date";
-  const endsAfterMidnight = Boolean(d.startTime && d.endTime && d.endTime < d.startTime);
+  const endsLaterDay = Boolean(d.endDate && d.endDate > d.date);
+  const endsAfterMidnight = Boolean(!endsLaterDay && d.startTime && d.endTime && d.endTime < d.startTime);
   return (
     <li className={collapsible ? "rounded-xl border border-black/[0.08] bg-white" : ""}>
       {collapsible && (
@@ -291,15 +292,25 @@ export function OccurrenceRow({
               Starts
             </label>
             {/* Optional — blank means no time is published (never guessed). */}
-            <input id={`start-${id}`} type="time" value={d.startTime} onChange={(e) => onChange({ startTime: e.target.value, ...(e.target.value ? {} : { endTime: "" }) })} className={inputClass} />
+            <input id={`start-${id}`} type="time" value={d.startTime} onChange={(e) => onChange({ startTime: e.target.value, ...(e.target.value ? {} : { endTime: "", endDate: null }) })} className={inputClass} />
           </div>
           <div>
             <label htmlFor={`end-${id}`} className={labelClass}>
               Ends
             </label>
-            <input id={`end-${id}`} type="time" value={d.endTime} disabled={!d.startTime} onChange={(e) => onChange({ endTime: e.target.value })} className={`${inputClass} disabled:opacity-50`} />
+            <input id={`end-${id}`} type="time" value={d.endTime} disabled={!d.startTime} onChange={(e) => onChange({ endTime: e.target.value, ...(e.target.value ? {} : { endDate: null }) })} className={`${inputClass} disabled:opacity-50`} />
           </div>
+          {d.startTime && d.endTime && (
+            <div className="col-span-2">
+              <label htmlFor={`end-date-${id}`} className={labelClass}>
+                Ends On (If A Later Day)
+              </label>
+              {/* One continuous span into a later day — never split into made-up per-day dates. */}
+              <input id={`end-date-${id}`} type="date" value={d.endDate ?? ""} min={d.date || undefined} onChange={(e) => onChange({ endDate: e.target.value || null })} className={inputClass} />
+            </div>
+          )}
           {endsAfterMidnight && <p className="col-span-2 text-microcopy text-subtle">Ends after midnight.</p>}
+          {endsLaterDay && <p className="col-span-2 text-microcopy text-subtle">Runs continuously until {sum.time.split(" – ")[1] ?? "the end time"}.</p>}
           {!d.startTime && <p className="col-span-2 text-microcopy text-subtle">{REVIEW_TIME_NOT_LISTED} — leave blank when no time is published.</p>}
           {d.startTime && !d.endTime && <p className="col-span-2 text-microcopy text-subtle">No end time listed — Findmi won&rsquo;t show a closing time.</p>}
           {showPlace && (

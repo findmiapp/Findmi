@@ -42,14 +42,18 @@ const nextDay = (date: string) => {
   return t.toISOString().slice(0, 10);
 };
 
-export function reviewDateFor(d: { start: string; end: string | null; hasTime: boolean }): { date: string; startTime: string; endTime: string } {
+export function reviewDateFor(d: { start: string; end: string | null; hasTime: boolean }): { date: string; startTime: string; endTime: string; endDate?: string } {
   if (!d.hasTime) return { date: d.start, startTime: "", endTime: "" };
   const s = toEasternParts(d.start);
   const e = d.end ? toEasternParts(d.end) : null;
-  // Same day, or an evening that ends after midnight (6pm–12am); a longer
-  // multi-day span is reviewed as its first day and the Business adjusts.
-  const overnight = e && e.date === nextDay(s.date) && e.time <= s.time;
-  return { date: s.date, startTime: s.time, endTime: e && (e.date === s.date || overnight) ? e.time : "" };
+  if (!e) return { date: s.date, startTime: s.time, endTime: "" };
+  // Same day, or an evening that ends after midnight (6pm–12am).
+  const overnight = e.date === nextDay(s.date) && e.time <= s.time;
+  if (e.date === s.date || overnight) return { date: s.date, startTime: s.time, endTime: e.time };
+  // One continuous span into a later day ("Oct 19, 10 AM – Oct 20, 4 PM"):
+  // kept whole — its real end day and time — never split into made-up
+  // per-day dates and never cut down to its first day.
+  return e.date > s.date ? { date: s.date, startTime: s.time, endTime: e.time, endDate: e.date } : { date: s.date, startTime: s.time, endTime: "" };
 }
 
 export function placeFromVenue(v: ImportedVenue, matches: EventImportMatches): ReviewPlace {
@@ -154,10 +158,11 @@ export const REVIEW_TIME_NOT_LISTED = "Time Not Listed";
 
 /** One-line summary of a reviewed date: "Thu, Sep 24 · 1:00 PM – 7:00 PM",
  * "… · Starts 1:00 PM" (no published end) or "… · Time Not Listed". */
-export function occurrenceSummary(o: { date: string; startTime: string; endTime: string }): { day: string; time: string } {
+export function occurrenceSummary(o: { date: string; startTime: string; endTime: string; endDate?: string | null }): { day: string; time: string } {
   const start = formatTime(o.startTime);
   const end = formatTime(o.endTime);
-  return { day: formatDay(o.date), time: start && end ? `${start} – ${end}` : start ? `Starts ${start}` : end ? "" : REVIEW_TIME_NOT_LISTED };
+  const endDay = o.endDate && o.endDate > o.date ? formatDay(o.endDate) : "";
+  return { day: formatDay(o.date), time: start && end ? `${start} – ${endDay ? `${endDay}, ` : ""}${end}` : start ? `Starts ${start}` : end ? "" : REVIEW_TIME_NOT_LISTED };
 }
 
 /** Business-facing success sentence — never "Appearance". */
@@ -223,7 +228,7 @@ export type BatchStatusKind = "ready" | "needs_details" | "possible_match" | "ne
  * "needs_review", same as an unanswered possible Location match — never
  * silently "ready". This never BLOCKS creation (Admin may still choose
  * Create with these open) — only the label stops overclaiming. */
-export function batchItemStatus(review: EventImportReview, matches: EventImportMatches): { kind: BatchStatusKind; missing: string[] } {
+export function batchItemStatus(review: EventImportReview, matches: EventImportMatches, involvedNames: string[] = []): { kind: BatchStatusKind; missing: string[] } {
   const missing: string[] = [];
   if (!review.title.trim()) missing.push("Name");
   if (!review.useEventId) {
@@ -236,7 +241,24 @@ export function batchItemStatus(review: EventImportReview, matches: EventImportM
   if (review.useEventId) return { kind: "joins_existing", missing };
   if (matches.event || pendingPlaceMatches(review, matches).length > 0) return { kind: "possible_match", missing };
   if (unresolvedLocations(review).length > 0) return { kind: "needs_review", missing };
+  // An involved-Business candidate the operator hasn't Matched, Created or
+  // Ignored is open entity-resolution work — never "Ready" (still never
+  // blocks creation).
+  if (unresolvedInvolvedBusinesses(review, involvedNames).length > 0) return { kind: "needs_review", missing };
   return { kind: "ready", missing };
+}
+
+/** The reviewable involved-Business names for one Event: the structured
+ * paste's own field plus the grounded AI reading — the same list the
+ * Admin review's Match / Create / Ignore section shows. */
+export function involvedBusinessNames(candidate: Pick<EventCandidate, "otherBusinesses" | "structured">): string[] {
+  return [...new Set([...(candidate.structured?.otherBusinesses ?? []), ...(candidate.otherBusinesses ?? [])].map((n) => n.trim()).filter(Boolean))];
+}
+
+/** Involved-Business names with no Match / Create / Ignore choice yet. */
+export function unresolvedInvolvedBusinesses(review: EventImportReview, names: string[]): string[] {
+  const choices = review.otherBusinessChoices ?? {};
+  return [...new Set(names.map((n) => n.trim()).filter(Boolean))].filter((n) => !choices[n]);
 }
 
 export const END_WITHOUT_START = "Start time for an end time";

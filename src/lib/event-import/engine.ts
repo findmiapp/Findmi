@@ -12,7 +12,7 @@ import { findEventMatches, findDuplicateMatches, type EventMatchCandidate, type 
 import type { AppearanceDraft } from "../admin/appearance-import";
 import { findLikelyDuplicateLocations, findPossibleLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
-import { extractEventCandidate, needsAiAssist, isPastDate, platformForHost, siteIdentityImages, type ExtractionResult } from "./extract";
+import { extractEventCandidate, needsAiAssist, isPastDate, platformForHost, siteIdentityImages, structuredPersonNames, type ExtractionResult } from "./extract";
 import { genericImageEvidence, GENERIC_IMAGE_WARNING } from "./image-guard";
 import { classifySource, pageEventRecord } from "./sources";
 import {
@@ -357,16 +357,19 @@ export async function analyzeEventUrl(
     pageAttendance(extracted.evidence.controls, extracted.evidence.lines, page.url)
   );
   const aiCtx = { now, yearHint: extracted.yearHint };
+  // People the page's own structured data names (schema.org Person) — never
+  // offered as involved Businesses, however the AI reads them.
+  const people = structuredPersonNames(extracted.evidence.primary);
   let aiCalled = false;
   if (needsAiAssist(candidate)) {
-    const filled = await assistWithAi(candidate, extracted.excerpt, deps.ai, aiCtx);
+    const filled = await assistWithAi(candidate, extracted.excerpt, deps.ai, aiCtx, "fill", people);
     candidate = filled.candidate;
     aiCalled = filled.called;
   }
   if (deps.involvedBusinesses && !aiCalled && !candidate.otherBusinesses?.length) {
     const sourceText = [extracted.excerpt, candidate.description].filter(Boolean).join("\n");
     if (hasInvolvementEvidence(sourceText)) {
-      candidate = (await assistWithAi(candidate, sourceText, deps.ai, aiCtx, "involved_businesses")).candidate;
+      candidate = (await assistWithAi(candidate, sourceText, deps.ai, aiCtx, "involved_businesses", people)).candidate;
     }
   }
   if (evidence.onlineMode && !candidate.occurrences.some((o) => venueKey(o.venue))) candidate = { ...candidate, online: true };

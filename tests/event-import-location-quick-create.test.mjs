@@ -222,7 +222,7 @@ test("15–16. batch rows sharing the place key resolve to the ONE created Locat
   }
   assert.match(MULTI, /setCreatedLocations\(\(prev\) => \[\.\.\.prev\.filter\(\(c\) => c\.key !== location\.key\), location\]\);/);
   assert.match(MULTI, /for \(const k of Object\.keys\(next\)\) next\[k\] = applyCreatedLocation\(next\[k\], location\);/);
-  assert.match(MULTI, /const statusOf = \(key: string\) => batchItemStatus\(reviews\[key\], matchesOf\(byKey\.get\(key\)!\)\);/);
+  assert.match(MULTI, /const statusOf = \(key: string\) => batchItemStatus\(reviews\[key\], matchesOf\(byKey\.get\(key\)!\), operator \? involvedBusinessNames\(byKey\.get\(key\)!\.candidate\) : \[\]\);/);
   assert.match(MULTI, /matches=\{matchesOf\(e\)\}/);
 });
 

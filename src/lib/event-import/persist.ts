@@ -187,15 +187,22 @@ export function normalizeReview(review: EventImportReview): { ok: true; value: N
     if (startText) {
       start = localDateTimeToIso(`${d.date}T${startText}`);
       if (!start) return { ok: false, error: "A start time couldn't be read. Fix it or leave it blank.", field: "dates" };
-      if (endText) {
+      const endDateText = (d.endDate ?? "").trim();
+      if (endDateText && !/^\d{4}-\d{2}-\d{2}$/.test(endDateText)) return { ok: false, error: "An end date couldn't be read. Fix it or clear it.", field: "dates" };
+      if (endDateText && endDateText < d.date) return { ok: false, error: "The end date can't be before the start date.", field: "dates" };
+      if (endDateText && !endText) return { ok: false, error: "An end date needs an end time. Add the end time, or clear the end date.", field: "dates" };
+      if (endText && endDateText > d.date) {
+        // A continuous span into a later day: its own end day, as reviewed.
+        end = localDateTimeToIso(`${endDateText}T${endText}`);
+      } else if (endText) {
         end = localDateTimeToIso(`${d.date}T${endText}`);
         // 6 PM – 12 AM: an end before the start ends after midnight.
         if (end && Date.parse(end) <= Date.parse(start) && endText < startText) {
           const overnight = localDateTimeToIso(`${nextDay(d.date)}T${endText}`);
           end = overnight && Date.parse(overnight) - Date.parse(start) <= MAX_OVERNIGHT_MS ? overnight : end;
         }
-        if (!end || Date.parse(end) <= Date.parse(start)) return { ok: false, error: "End time must be after the start time.", field: "dates" };
       }
+      if (endText && (!end || Date.parse(end) <= Date.parse(start))) return { ok: false, error: "End time must be after the start time.", field: "dates" };
     }
     const place = shared ?? normalizePlace(d.place);
     const next: NormalizedDate = { date: d.date, start, end, place, details: cleanOccurrenceDetails(d.details) };

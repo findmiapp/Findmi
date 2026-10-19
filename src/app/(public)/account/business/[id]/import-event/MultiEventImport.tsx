@@ -5,7 +5,7 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
-import { BATCH_STATUS_LABEL, END_WITHOUT_START, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
+import { BATCH_STATUS_LABEL, END_WITHOUT_START, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, involvedBusinessNames, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
 import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction, type LocationCreateRenderer } from "./ReviewParts";
 import { businessEvidenceKey, eventBusinessEvidence, operatorImportSummary, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness, type OperatorSessionStats } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
@@ -225,7 +225,9 @@ export default function MultiEventImport({
     });
   }
 
-  const statusOf = (key: string) => batchItemStatus(reviews[key], matchesOf(byKey.get(key)!));
+  // Operator review: unresolved involved-Business candidates (Match / Create
+  // / Ignore) count as open review work, like an unresolved Location.
+  const statusOf = (key: string) => batchItemStatus(reviews[key], matchesOf(byKey.get(key)!), operator ? involvedBusinessNames(byKey.get(key)!.candidate) : []);
   const ready = chosen.filter((e) => reviews[e.key] && statusOf(e.key).kind !== "needs_details");
   const incomplete = chosen.length - ready.length;
   // Operator: an Event resolved as already on Findmi is updated only by its

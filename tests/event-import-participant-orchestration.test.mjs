@@ -53,7 +53,7 @@ function lumaPage(description, bodyText = description) {
 /** AI stub: records every request; answers with `output`. The output also
  * proposes a DIFFERENT title / venue / organizer, to prove the involved-
  * Business pass never lets those through. */
-function aiStub(otherBusinesses, organizer = { name: "Alpha", evidence: "Hosted by the Alpha & Beta teams" }) {
+function aiStub(otherBusinesses, organizer = { name: "Alpha", evidence: "Hosted by the Alpha & Beta teams", type: "organization" }) {
   const calls = [];
   return {
     calls,
@@ -73,7 +73,8 @@ function aiStub(otherBusinesses, organizer = { name: "Alpha", evidence: "Hosted 
               postal_code: null,
               organizer: organizer?.name ?? null,
               organizer_evidence: organizer?.evidence ?? null,
-              other_businesses: otherBusinesses,
+              organizer_entity_type: organizer?.type ?? "unknown",
+              other_businesses: otherBusinesses.map((b) => ({ entity_type: "organization", ...b })),
             },
           };
         },
@@ -152,8 +153,8 @@ test("3. explicit 'Hosted by the Alpha & Beta teams' evidence reaches otherBusin
   assert.deepEqual(writes, []);
 });
 
-test("3b. a host the AI reports only as 'organizer' becomes an involved-Business candidate — the record's organizer is never replaced", async () => {
-  const ai = aiStub([], { name: "Alpha", evidence: "Hosted by the Alpha & Beta teams" });
+test("3b. an ORGANIZATION host the AI reports only as 'organizer' becomes an involved-Business candidate — the record's organizer is never replaced", async () => {
+  const ai = aiStub([], { name: "Alpha", evidence: "Hosted by the Alpha & Beta teams", type: "organization" });
   const c = await analyze(FIXTURE, ai.client);
   assert.deepEqual(c.otherBusinesses, ["Alpha"]);
   assert.notEqual(c.organizer, "Alpha");

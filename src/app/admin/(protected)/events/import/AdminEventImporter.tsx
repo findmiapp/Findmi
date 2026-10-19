@@ -39,7 +39,7 @@ import { LocationPrepContext, type LocationPrepState } from "@/components/admin/
 import type { BusinessPrepareResult } from "@/lib/entity-prepare";
 import type { EntityMediaState, FindMediaResult } from "@/lib/entity-media";
 import { businessEvidenceKey } from "@/lib/event-import/operator";
-import { canResearchLocation } from "@/lib/event-import/review";
+import { canResearchLocation, involvedBusinessNames } from "@/lib/event-import/review";
 import { venueKey, type ReviewPlace } from "@/lib/event-import/types";
 
 /** Admin Event Import — the operator orchestration over Findmi's existing
@@ -1141,7 +1141,7 @@ function EventDetails({
       <AttendanceEditor review={review} set={set} evidence={candidate.attendance} idPrefix={`${id}-`} />
       <MediaCompleteness review={review} business={business} businessWebsite={s?.businessWebsite ?? null} eventName={candidate.title} />
       <OtherBusinessSection
-        names={[...(s?.otherBusinesses ?? []), ...(candidate.otherBusinesses ?? [])]}
+        names={involvedBusinessNames(candidate)}
         review={review}
         set={set}
         preps={otherBusinessPreps}

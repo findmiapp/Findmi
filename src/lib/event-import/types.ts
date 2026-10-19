@@ -294,6 +294,10 @@ export interface ReviewOccurrence {
   date: string;
   startTime: string;
   endTime: string;
+  /** YYYY-MM-DD when the end falls on a LATER calendar day than `date`
+   * beyond a short overnight (a source's "Oct 19, 10 AM – Oct 20, 4 PM"):
+   * endTime is on this day. Absent/blank → same day (or after midnight). */
+  endDate?: string | null;
   place: ReviewPlace;
   /** This date's own details / programming (event_occurrences.details). */
   details?: string | null;

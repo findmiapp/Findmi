@@ -265,6 +265,24 @@ export function nameOf(value: unknown): string | null {
   return null;
 }
 
+/** Names the Event's own structured data explicitly types as people
+ * (schema.org Person under organizer / performer / host-like fields) —
+ * entity-typing evidence only; never a value written anywhere. */
+export function structuredPersonNames(node: JsonObject | null | undefined): string[] {
+  if (!node) return [];
+  const out: string[] = [];
+  for (const key of ["organizer", "performer", "performers", "host", "hosts", "author", "contributor", "attendee", "actor"]) {
+    const v = node[key];
+    for (const entry of (Array.isArray(v) ? v : v ? [v] : []).slice(0, 20)) {
+      if (entry && typeof entry === "object" && typeList((entry as JsonObject)["@type"]).some((t) => t.toLowerCase() === "person")) {
+        const name = cleanText(str((entry as JsonObject).name), 160);
+        if (name) out.push(name);
+      }
+    }
+  }
+  return out;
+}
+
 /** Same page, ignoring scheme, "www.", query, hash and a trailing slash. */
 export function sameEventUrl(a: string | URL | null | undefined, b: string | URL | null | undefined): boolean {
   if (!a || !b) return false;

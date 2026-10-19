@@ -30,7 +30,9 @@ Schedule: return one entry per schedule line on the page, keeping each date toge
 
 Organizer: only a person or organization the page explicitly calls the organizer, host or presenter ("organized by", "hosted by", "presented by", "produced by"). A brand that is featured, sampled or sponsoring is not the organizer unless the page says so. Copy the phrase that says so into "organizer_evidence".
 
-Other involved brands/businesses: list any OTHER named brand, business or organization the page explicitly describes as featured, co-hosting, collaborating, sponsoring or participating — never the organizer already reported above. Only when the page names them this way (e.g. "X & Y team", "X x Y", "featuring X", "in collaboration with X", "presented by X, featuring Y") — never a brand merely mentioned in passing, part of the venue's own name, or inferred from context. For each, copy the exact phrase that names them into its own "evidence".`;
+Other involved brands/businesses: list any OTHER named brand, business or organization the page explicitly describes as featured, co-hosting, collaborating, sponsoring or participating — never the organizer already reported above. Only when the page names them this way (e.g. "X & Y team", "X x Y", "featuring X", "in collaboration with X", "presented by X, featuring Y") — never a brand merely mentioned in passing, part of the venue's own name, or inferred from context. For each, copy the exact phrase that names them into its own "evidence", and set "entity_type": "organization" for a business, brand, company, team or other organization; "person" for an individual human (or several individuals, e.g. "Hosted by Jane Smith & John Doe" — people are never businesses, even when they host); "unknown" when the text doesn't make it clear. List each organization separately — never join two names into one entry.
+
+Organizer type: set "organizer_entity_type" the same way for the organizer you reported ("person" for one or more individuals, "organization", or "unknown" — also "unknown" when there is no organizer).`;
 
 const ScheduleEntrySchema = z.object({
   evidence: z.string(),
@@ -40,7 +42,8 @@ const ScheduleEntrySchema = z.object({
   venue_name: z.string().nullable(),
   street_address: z.string().nullable(),
 });
-const OtherBusinessSchema = z.object({ name: z.string(), evidence: z.string() });
+const EntityTypeSchema = z.enum(["organization", "person", "unknown"]);
+const OtherBusinessSchema = z.object({ name: z.string(), evidence: z.string(), entity_type: EntityTypeSchema });
 export const EventAiSchema = z.object({
   title: z.string().nullable(),
   schedule: z.array(ScheduleEntrySchema),
@@ -51,6 +54,7 @@ export const EventAiSchema = z.object({
   postal_code: z.string().nullable(),
   organizer: z.string().nullable(),
   organizer_evidence: z.string().nullable(),
+  organizer_entity_type: EntityTypeSchema,
   other_businesses: z.array(OtherBusinessSchema),
 });
 export type EventAiOutput = z.infer<typeof EventAiSchema>;
@@ -70,7 +74,9 @@ Schedule: return one entry per schedule line, keeping each date together with th
 
 Organizer: only a person or organization the material explicitly calls the organizer, host or presenter ("organized by", "hosted by", "presented by", "produced by"). A brand that is featured, named in the title, sampled or sponsoring is not the organizer unless the material says so. Copy the phrase that says so into "organizer_evidence".
 
-Other involved brands/businesses: list any OTHER named brand, business or organization the material explicitly describes as featured, co-hosting, collaborating, sponsoring or participating — never the organizer already reported above. Only when the material names them this way (e.g. "X & Y team", "X x Y", "featuring X", "in collaboration with X") — never a brand merely mentioned in passing or inferred from context. For each, copy the exact phrase that names them into its own "evidence".
+Other involved brands/businesses: list any OTHER named brand, business or organization the material explicitly describes as featured, co-hosting, collaborating, sponsoring or participating — never the organizer already reported above. Only when the material names them this way (e.g. "X & Y team", "X x Y", "featuring X", "in collaboration with X") — never a brand merely mentioned in passing or inferred from context. For each, copy the exact phrase that names them into its own "evidence", and set "entity_type": "organization" for a business, brand, company, team or other organization; "person" for an individual human (or several individuals, e.g. "Hosted by Jane Smith & John Doe" — people are never businesses, even when they host); "unknown" when the text doesn't make it clear. List each organization separately — never join two names into one entry.
+
+Organizer type: set "organizer_entity_type" the same way for the organizer you reported ("person" for one or more individuals, "organization", or "unknown" — also "unknown" when there is no organizer).
 
 Multiple events: set "multiple_events" to true only when the material describes two or more SEPARATE events (different event names). One event with several dates or stops is one event.`;
 
@@ -158,8 +164,23 @@ const MAX_OTHER_BUSINESSES = 5;
 export const INVOLVEMENT_CUE =
   /\b(?:hosted\s+by|co-?hosted\s+by|presented\s+by|brought\s+to\s+you\s+by|in\s+partnership\s+with|partnered\s+with|partnering\s+with|sponsored\s+by|powered\s+by|featuring|feat\.|collab(?:oration)?s?\b|in\s+collaboration\s+with|teams\b|participating\s+(?:brands|businesses|vendors)|vendors\s+include|with\s+our\s+(?:friends|partners)\s+(?:at|from))/i;
 
+/** Collaboration notation between two names: "EHVM × Tangent", "Knix x
+ * Nordstrom" (case-sensitive: a capitalized name before the "x", so
+ * "5 x 7" or "x-ray" never counts). */
+const COLLAB_NOTATION = /(?:^|[\s(])[A-Z][\w'.&-]*\s+[x×]\s+[A-Z0-9]|[A-Za-z][\w'.&-]*\s*×\s*[A-Z0-9]/;
+
 export function hasInvolvementEvidence(text: string | null | undefined): boolean {
-  return typeof text === "string" && INVOLVEMENT_CUE.test(text);
+  return typeof text === "string" && (INVOLVEMENT_CUE.test(text) || COLLAB_NOTATION.test(text));
+}
+
+/** Entity typing, deterministic half (the AI's entity_type is the other):
+ * one candidate that joins two MULTI-word names ("Jane Smith & John Doe",
+ * "Warby Parker and Glossier Studio") names two parties, never one
+ * Business — real single names joined by "&" have a one-word side
+ * ("Ben & Jerry's", "Bed Bath & Beyond", "Procter & Gamble"). */
+export function namesSeveralParties(name: string): boolean {
+  const parts = name.split(/\s+(?:&|and|\+)\s+|\s*,\s+/i).map((p) => p.trim()).filter(Boolean);
+  return parts.length >= 2 && parts.filter((p) => p.split(/\s+/).length >= 2).length >= 2;
 }
 const OTHER_BUSINESS_NAME_MAX = 160;
 
@@ -171,11 +192,13 @@ const OTHER_BUSINESS_NAME_MAX = 160;
  * never includes the already-resolved organizer or the reviewing Business
  * (a Business can't be its own featured participant). */
 function sanitizeOtherBusinesses(
-  raw: { name: string; evidence: string }[] | undefined,
+  raw: { name: string; evidence: string; entity_type?: string }[] | undefined,
   pageText: string,
   exclude: (string | null)[],
-  requireCue = false
+  requireCue = false,
+  people: string[] = []
 ): string[] {
+  const persons = new Set(people.map(norm).filter(Boolean));
   const page = ` ${norm(pageText)} `;
   const excluded = new Set(exclude.filter((v): v is string => Boolean(v)).map(norm));
   const seen = new Set<string>();
@@ -189,6 +212,11 @@ function sanitizeOtherBusinesses(
     if (requireCue && !hasInvolvementEvidence(evidence)) continue;
     const name = cleanText(entry?.name, OTHER_BUSINESS_NAME_MAX);
     if (!name || !evidenced(name, evidence)) continue;
+    // A person (or several) is never a Business, however they're involved:
+    // the AI's own typing (structured output always carries it), the
+    // page's structured Person data, and a name that joins two parties.
+    if (entry?.entity_type !== undefined && entry.entity_type !== "organization") continue;
+    if (persons.has(norm(name)) || namesSeveralParties(name)) continue;
     const key = norm(name);
     if (!key || excluded.has(key) || seen.has(key)) continue;
     seen.add(key);
@@ -207,7 +235,8 @@ export function sanitizeEventAiOutput(
   pageText: string,
   ctx: ScheduleContext = { now: Date.now(), yearHint: null },
   excludeOtherBusinesses: (string | null)[] = [],
-  requireInvolvementCue = false
+  requireInvolvementCue = false,
+  people: string[] = []
 ): SanitizedAi {
   const empty: SanitizedAi = { title: null, occurrences: [], venue: { ...EMPTY_VENUE }, organizer: null, otherBusinesses: [] };
   if (!raw) return empty;
@@ -260,15 +289,23 @@ export function sanitizeEventAiOutput(
     organizer: resolvedOrganizer,
     // Involved-Business pass: the record's organizer is never replaced, so an
     // organizer the AI read from "Hosted by …" is offered as an involved
-    // Business instead (same grounding + cue rules) rather than dropped.
+    // Business instead — ONLY when the AI typed it as an organization
+    // ("organizer" is not "Business": hosts are often people), and under
+    // the same grounding, cue and person rules as every other candidate.
     otherBusinesses: requireInvolvementCue
       ? sanitizeOtherBusinesses(
-          [...(raw.organizer && raw.organizer_evidence ? [{ name: raw.organizer, evidence: raw.organizer_evidence }] : []), ...(raw.other_businesses ?? [])],
+          [
+            ...(raw.organizer && raw.organizer_evidence && raw.organizer_entity_type === "organization"
+              ? [{ name: raw.organizer, evidence: raw.organizer_evidence, entity_type: "organization" }]
+              : []),
+            ...(raw.other_businesses ?? []),
+          ],
           pageText,
           excludeOtherBusinesses,
-          true
+          true,
+          people
         )
-      : sanitizeOtherBusinesses(raw.other_businesses, pageText, [...excludeOtherBusinesses, resolvedOrganizer]),
+      : sanitizeOtherBusinesses(raw.other_businesses, pageText, [...excludeOtherBusinesses, resolvedOrganizer], false, people),
   };
 }
 
@@ -286,7 +323,9 @@ export async function assistWithAi(
   excerpt: string,
   client: EventAiClient | null = defaultEventAiClient(),
   ctx: ScheduleContext = { now: Date.now(), yearHint: null },
-  mode: "fill" | "involved_businesses" = "fill"
+  mode: "fill" | "involved_businesses" = "fill",
+  /** Names the page's structured data types as people (schema.org Person). */
+  people: string[] = []
 ): Promise<{ candidate: EventCandidate; called: boolean }> {
   if (!client || !excerpt.trim()) return { candidate, called: false };
   try {
@@ -301,7 +340,7 @@ export async function assistWithAi(
       { timeout: EVENT_AI_TIMEOUT_MS, maxRetries: 0 }
     );
     if (response.stop_reason === "refusal" || !response.parsed_output) return { candidate, called: true };
-    const ai = sanitizeEventAiOutput(response.parsed_output, excerpt, ctx, [candidate.organizer], mode === "involved_businesses");
+    const ai = sanitizeEventAiOutput(response.parsed_output, excerpt, ctx, [candidate.organizer], mode === "involved_businesses", people);
     if (mode === "involved_businesses") {
       // Nothing but grounded involved-Business candidates — never a title,
       // date, venue, address, organizer, image or registration-link change.
