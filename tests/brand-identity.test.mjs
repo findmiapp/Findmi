@@ -488,7 +488,7 @@ test("review: draft verified against the CURRENT user; previews only after full 
   assert.match(NEW_PAGE, /Logo and Cover Image are\s+ALWAYS shown on Brand Review/);
   assert.match(NEW_PAGE, /name="description"\s+rows=\{5\}\s+maxLength=\{ABOUT_MAX_LENGTH\}/);
   assert.match(NEW_PAGE, /\{!brandOnboarding && geography\}/, "normal form keeps its geography position");
-  assert.match(NEW_PAGE, /\) : brandOnboarding \? null : \(\s*<div>/, "no Free/Pro for brand onboarding");
+  assert.match(NEW_PAGE, /\) : brandOnboarding \? null : \(\s*<div className="relative/, "no Free value section for brand onboarding");
 });
 
 test("creation: images imported only after the RPC, only if selected, from the signed draft, stored by Findmi, best-effort; draft cleared", () => {

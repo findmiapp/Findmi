@@ -85,7 +85,6 @@ test("1/7/8. Business + Brand onboarding: name words; descriptions/About sentenc
   assert.equal(byName(NEW_BIZ, "description").cap, "sentences", "About");
   assert.equal(byName(NEW_BIZ, "website_url").cap, "none");
   assert.equal(byName(NEW_BIZ, "instagram_url").cap, "none");
-  assert.equal(byName(NEW_BIZ, "invite").cap, "none");
   assert.equal(byName(NEW_BIZ, "ref").cap, "none");
   for (const f of fields("src/app/(public)/join/brand/page.tsx").filter(isText)) assert.equal(f.cap, "none", "Brand lookup is search/URL");
   assert.equal(byName(BIZ, "name").cap, "words");

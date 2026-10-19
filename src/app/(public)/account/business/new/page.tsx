@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getActiveMarkets, getCategories } from "@/lib/data";
+import { getCategories } from "@/lib/data";
 import BusinessGeographyFields from "@/components/BusinessGeographyFields";
 import { createMemberBusiness } from "../actions";
 import BrandImageInput from "./BrandImageInput";
@@ -51,7 +51,6 @@ export default async function AddBusinessPage({
     error?: string;
     duplicate_slug?: string;
     duplicate_name?: string;
-    plan?: string;
     invite?: string;
     ref?: string;
     name?: string;
@@ -67,17 +66,13 @@ export default async function AddBusinessPage({
     description?: string;
     use_logo?: string;
     use_cover?: string;
-    market_id?: string;
-    requested_market_text?: string;
     authorized?: string;
-    plan_choice?: string;
   }>;
 }) {
   const {
     error,
     duplicate_slug: duplicateSlug,
     duplicate_name: duplicateName,
-    plan,
     invite,
     ref,
     name: submittedName,
@@ -93,25 +88,23 @@ export default async function AddBusinessPage({
     description: submittedAbout,
     use_logo: submittedUseLogo,
     use_cover: submittedUseCover,
-    market_id: submittedMarketId,
-    requested_market_text: submittedRequestedMarketText,
     authorized: submittedAuthorized,
-    plan_choice: submittedPlanChoice,
   } = await searchParams;
-  // Join + Add Business Plan UX Alignment pass — /join's Pro card links
-  // here with ?plan=pro so Pro intent is preselected instead of the
-  // default Free radio. Free needs no param (it's already the default).
-  // Event Creation + Pending Review UX pass — a rejected resubmission
-  // round-trips its own plan_choice too (see createMemberBusiness), so
-  // either source keeps Pro selected.
-  const wantsPro = plan === "pro" || submittedPlanChoice === "pro";
+  // Business Creation UX Cleanup pass — Business creation no longer asks
+  // the visitor to choose a plan (see the Free value section below), so
+  // an incoming ?plan=pro (e.g. an old /join/business link) is simply
+  // unused now — Free is the only create-time outcome. Pro remains fully
+  // available afterward from Business Manager's own Upgrade path; nothing
+  // about that infrastructure changes here.
 
   // Pro Invite / Complimentary Access Codes pass — /redeem/[code] links
   // here with ?invite=CODE when a signed-in-but-business-less visitor
-  // needs to create a business before applying their invite. An invite
-  // in play always wins over ?plan=pro: Pro here would mean Stripe
-  // checkout, and an invited business should never be routed through
-  // Stripe (see createMemberBusiness's own invite-first branch).
+  // needs to create a business before applying their invite. This is the
+  // one remaining Pro-adjacent entry point in normal creation: it never
+  // asks the visitor to choose anything, it just confirms a complimentary
+  // grant already in motion (see createMemberBusiness's own invite-first
+  // branch) — so it stays, independent of the Free/Pro picker removed
+  // elsewhere on this page.
   const hasInvite = Boolean(invite);
 
   const supabase = await getServerSupabase();
@@ -119,25 +112,24 @@ export default async function AddBusinessPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    // Preserve ?plan=pro/?invite=CODE through sign-in using the existing
-    // safe `next` redirect mechanism (lib/auth/safe-redirect.ts already
+    // Preserve ?invite=CODE through sign-in using the existing safe
+    // `next` redirect mechanism (lib/auth/safe-redirect.ts already
     // round-trips a path's query string) — no new auth infrastructure,
     // just not dropping the query string this redirect used to hardcode
     // away.
     const params = new URLSearchParams();
     if (hasInvite) params.set("invite", invite!);
-    else if (wantsPro) params.set("plan", "pro");
     // Referral Partner + Discount Foundation — preserved through sign-in
-    // the same way, independent of invite/plan: a referral code and a
-    // Pro Invite are separate systems and can both survive the same
-    // login round-trip.
+    // the same way, independent of invite: a referral code and a Pro
+    // Invite are separate systems and can both survive the same login
+    // round-trip.
     if (ref) params.set("ref", ref);
     const query = params.toString();
     const next = `/account/business/new${query ? `?${query}` : ""}`;
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }
 
-  const [categories, markets] = await Promise.all([getCategories(), getActiveMarkets()]);
+  const categories = await getCategories();
 
   // Brand Onboarding V1.1B — set only by /join/brand's website analysis
   // (lib/brand-candidate.ts). Display-only: the fields below are the
@@ -145,10 +137,10 @@ export default async function AddBusinessPage({
   // everything on submit.
   const prefillStatus = parseBrandPrefillStatus(prefill);
   // Brand Onboarding presentation (source=brand from /join/brand): "Review
-  // Your Brand", no Free/Pro picker (the business is created Free, exactly
-  // as when no plan is chosen), Business Profile landing after creation.
-  // Presentation only — an explicit ?invite= still shows its own existing
-  // invite block, and a stray ?plan=pro never brings the picker back here.
+  // Your Brand" and Business Profile landing after creation, instead of
+  // the ordinary form's copy/redirect — the business is still created
+  // Free either way. Presentation only — an explicit ?invite= still shows
+  // its own existing invite block regardless of this flag.
   const brandOnboarding = parseBrandSource(source);
   // V1.1C — the enriched Brand Identity draft (signed, short-lived cookie,
   // verified against the CURRENT Supabase user). On a validation round-
@@ -222,15 +214,7 @@ export default async function AddBusinessPage({
             ? `${prefillHost ?? "This website"} doesn't let Findmi read it automatically. You can still add the brand details yourself.`
             : null;
 
-  const geography = (
-    <BusinessGeographyFields
-      markets={markets}
-      defaultCity={values.city}
-      defaultState={values.state}
-      defaultMarketId={submittedMarketId ?? ""}
-      defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
-    />
-  );
+  const geography = <BusinessGeographyFields defaultCity={values.city} defaultState={values.state} />;
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -255,7 +239,7 @@ export default async function AddBusinessPage({
       ) : (
         <p className="mt-2 text-body text-muted">
           Get started free, no credit card required. You&rsquo;ll own and manage your business right away, and
-          Findmi will review it before it appears in discovery. Pro is available anytime below if you want more.
+          Findmi will review it before it appears in discovery.
         </p>
       )}
 
@@ -323,14 +307,11 @@ export default async function AddBusinessPage({
             </select>
           </label>
 
-          {/* Geography Foundation Pass 2, corrected by the Business
-              Geography Onboarding UX Correction pass — city/state (now
-              required) drive a live Findmi area suggestion, shown only
-              once the owner has actually typed something, instead of
-              leaving them to separately solve Findmi's own taxonomy. See
-              BusinessGeographyFields' own doc comment. Brand Onboarding
-              (VCL A2b) shows no geography at all: a new Brand establishes
-              its identity without being asked where it is based. */}
+          {/* Business Creation UX Cleanup pass — factual City/State only;
+              no Findmi Market/Area UI at all (see BusinessGeographyFields'
+              own doc comment). Brand Onboarding (VCL A2b) shows no
+              geography at all: a new Brand establishes its identity
+              without being asked where it is based. */}
           {!brandOnboarding && geography}
 
           <label className="block">
@@ -404,35 +385,31 @@ export default async function AddBusinessPage({
             </label>
           )}
 
-          {/* Plan choice — Native Business Onboarding Pass 3, restyled by
-              the Pro Positioning pass to match /join's card treatment,
-              then flipped by the P0 Safe-to-Share Acquisition pass: Free
-              is now first/dominant for a normal, no-intent visitor, with
-              Pro first/dominant only when `wantsPro` (explicit ?plan=pro
-              or a round-tripped plan_choice) is true — see ProPlanOption/
-              FreePlanOption below. Join Conversion Copy Cleanup pass —
-              dropped the "basic index"/"basic listing" framing and the
-              strike-through denial line, which had gone stale after Free
-              gained About/Website/Instagram; Free Tier Entitlement Reset
-              V1 further expanded this to the complete core presence
-              (products, gallery, contact info, complete schedule,
-              unlimited markets) — Free now states its own real benefits
-              instead. Radio values/names and the default selection logic
-              are UNCHANGED — whichever plan is dominant is also the one
-              defaultChecked, and `wantsPro` alone still decides which
-              that is — so createMemberBusiness (untouched) submits
-              identically to before. Every bullet below is a CURRENT
-              entitlement (see account/business/actions.ts's
-              requireBusinessMemberWithDetails/PROFILE_FREE_COLUMNS and
-              BusinessPublicView.tsx's remaining `pro &&` gates) — nothing
-              promised here that doesn't already exist. Choosing Pro
-              doesn't create the business as Pro directly: it's still
-              created Free + pending_review first (same RPC), then this
-              action immediately continues into native Stripe
-              checkout for that exact business — see createMemberBusiness. */}
+          {/* Business Creation UX Cleanup pass — replaces the former
+              Free/Pro plan-choice radio (ProPlanOption/FreePlanOption,
+              $20/month Pro · $49/month Managed Pro, "Want more?"/"Choose
+              a paid plan after creation") with a single Free value
+              section: creating and using a Findmi Business Page is free
+              right now, and this form never asks the visitor to choose a
+              plan. createMemberBusiness is untouched — no plan_choice
+              field is submitted at all, so every normal creation takes
+              the exact same "created Free, land on the business
+              workspace" path that function already has for a Free
+              choice; Stripe/Pro checkout infrastructure, /upgrade/pro and
+              Business Manager's own Plan & Status tab are unaffected and
+              still let an existing business upgrade later. Every bullet
+              below is a CURRENT Free entitlement (see
+              account/business/actions.ts's requireBusinessMemberWithDetails/
+              PROFILE_FREE_COLUMNS, business/location-actions.ts,
+              qr-manager-actions.ts and moment-authorship.ts — none of
+              which gate on isBusinessPro) — nothing promised here that
+              doesn't already exist. Performance analytics, Discovery
+              source & QR attribution, Follower insights and Customer
+              Inquiries remain genuinely Pro-only (BusinessPublicView.tsx's
+              `pro &&` gates) and are deliberately not claimed below. */}
           {hasInvite ? (
             // Pro Invite / Complimentary Access Codes pass — an invite in
-            // play replaces the Free/Pro/Stripe choice entirely: this
+            // play never asks the visitor to choose anything: this
             // business is still created Free + pending_review first (same
             // RPC as always), then createMemberBusiness hands off to
             // /redeem/[code] to apply the invite — never to Stripe.
@@ -447,80 +424,24 @@ export default async function AddBusinessPage({
               </div>
             </>
           ) : brandOnboarding ? null : (
-            <div>
-              {/* Business Acquisition + Stale Plan Copy Cleanup pass —
-                  was unconditionally "Choose your plan", framing every
-                  normal (no-intent) visitor as being asked to buy
-                  software before they've created anything. The normal
-                  path now reads "Get started" (Free is the obvious
-                  default below, not a competing decision); explicit Pro
-                  intent (?plan=pro) keeps "Choose your plan" since that
-                  visitor arrived specifically to weigh the two — nothing
-                  about defaultChecked/plan_choice/Stripe routing changed,
-                  this is the label text only. */}
-              <span className="mb-1.5 block text-body font-medium text-primary">
-                {wantsPro ? "Choose your plan" : "Get started"}
-              </span>
-              {/* P0 Safe-to-Share Acquisition pass — the dominant/quiet
-                  visual treatment and render order now both follow
-                  `wantsPro` instead of Pro always being first/dominant.
-                  Explicit Pro intent (?plan=pro, or a rejected
-                  resubmission's own round-tripped plan_choice) is fully
-                  preserved: wantsPro still drives defaultChecked exactly
-                  as before, and now ALSO keeps Pro visually dominant/first
-                  for that one visitor — nothing about that path changed.
-                  A normal, no-intent visitor (the common case) now sees
-                  Free first and dominant, with "$99/year" no longer the
-                  first monetary message on the page. */}
-              <div className="flex flex-col gap-3">
-                {wantsPro ? (
-                  <>
-                    <ProPlanOption dominant />
-                    <FreePlanOption dominant={false} />
-                  </>
-                ) : (
-                  <>
-                    <FreePlanOption dominant />
-                    <ProPlanOption dominant={false} />
-                  </>
-                )}
-              </div>
-              <p className="mt-1.5 text-metadata text-subtle">
-                Pro starts at $20/month, Managed Pro at $49/month — choose after your business is created.
-              </p>
-
-              {/* Make Pro Invite First-Class pass — a first-time vendor
-                  with a complimentary code should never have to choose
-                  paid Pro and land in Stripe just to get here. This is a
-                  plain field inside the SAME create-business form (not a
-                  separate ProInviteCodeEntry mini-form that would navigate
-                  away before the business even exists) — name="invite"
-                  submits alongside name/category/plan_choice/etc., and
-                  createMemberBusiness's own existing invite-first branch
-                  (account/business/actions.ts) already takes priority
-                  over plan_choice whenever this is non-blank, regardless
-                  of which Free/Pro radio is selected: the business is
-                  still created via the exact same safe native RPC
-                  (Free + pending_review, owner membership granted), then
-                  handed off to /redeem/[code] instead of Stripe. Leaving
-                  this blank changes nothing — plan_choice behaves exactly
-                  as before. Collapsed by default so it stays secondary to
-                  the primary Free/Pro choice above, not a third
-                  competing option. */}
-              <details className="group mt-3">
-                <summary className="cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                  Have a Pro Invite Code?
-                </summary>
-                <input autoCapitalize="none"
-                  type="text"
-                  name="invite"
-                  placeholder="Enter Invite Code"
-                  className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
-                />
-                <p className="mt-1.5 text-metadata text-subtle">
-                  A valid code applies complimentary Pro after your business is created. No payment required.
+            <div className="relative flex flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-label font-bold uppercase text-accent">Get Started Free</p>
+                <p className="flex items-baseline gap-1.5">
+                  <span className="font-display text-display font-bold text-primary">$0</span>
+                  <span className="text-metadata font-medium text-subtle">No credit card required</span>
                 </p>
-              </details>
+              </div>
+              <p className="text-body text-muted">Everything you need to show up on Findmi.</p>
+              <ul className="flex flex-col gap-1.5 text-metadata text-muted">
+                <PlanBullet>Your complete Business Page</PlanBullet>
+                <PlanBullet>Products, photos, links &amp; contact info</PlanBullet>
+                <PlanBullet>Events &amp; your upcoming schedule</PlanBullet>
+                <PlanBullet>Locations, stockists &amp; where to find you</PlanBullet>
+                <PlanBullet>Moments from your real-world activity</PlanBullet>
+                <PlanBullet>Findmi search &amp; discovery</PlanBullet>
+              </ul>
+              <p className="mt-0.5 text-metadata text-subtle">Free. No trial. No credit card.</p>
             </div>
           )}
 
@@ -567,151 +488,17 @@ export default async function AddBusinessPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             {brandOnboarding ? "Add My Brand" : "Create My Business"}
           </button>
-          {/* Add Business Copy Compression (#19) — this restated, word for
-              word, what the Free/Pro cards directly above the submit
-              button already say ("No credit card required" / "Create
-              your business first, then choose Pro or Managed Pro with
-              monthly or annual billing"). Dropped as a pure duplicate;
-              neither card's own copy, nor the plan_choice radio/pricing
-              logic, changed. */}
         </form>
       </div>
     </div>
   );
 }
 
-/** P0 Safe-to-Share Acquisition pass — Pro's plan-chooser option,
- * extracted so its dominant/quiet visual treatment can be driven by a
- * prop (see the parent's own comment on why: whichever plan the visitor
- * actually wants — explicit ?plan=pro, or the normal no-intent case —
- * gets both the dominant styling AND the pre-selected radio).
- *
- * Recurring Pricing Rollout pass — this is no longer a "Findmi Pro ·
- * $99/year" card. Architecture decision for this pass: business creation
- * never chooses between Pro/Managed Pro or Monthly/Annual — that choice
- * happens once, after creation, on the canonical /upgrade/pro picker
- * (see createMemberBusiness in ../actions.ts, which redirects there
- * instead of starting Stripe checkout directly). This radio's `value`
- * stays "pro" for that exact reason: it's paid INTENT, not a Pro-specific
- * selection — createMemberBusiness's `planChoiceRaw === "pro"` check is
- * unchanged, only what happens after it changed. */
-function ProPlanOption({ dominant }: { dominant: boolean }) {
-  if (!dominant) {
-    return (
-      <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-body font-semibold text-secondary">Want more?</p>
-          <input type="radio" name="plan_choice" value="pro" className="h-4 w-4 accent-findmi" />
-        </div>
-        <p className="text-body font-bold text-primary">Choose a paid plan after creation</p>
-        <p className="text-metadata text-muted">
-          Create your business first, then choose Pro or Managed Pro with monthly or annual billing.
-        </p>
-      </label>
-    );
-  }
-  return (
-    <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-label font-bold uppercase text-accent">Choose a paid plan after creation</p>
-        <input type="radio" name="plan_choice" value="pro" defaultChecked className="h-4 w-4 accent-findmi" />
-      </div>
-      <p className="text-body text-muted">
-        Create your business first, then choose Pro or Managed Pro with monthly or annual billing.
-      </p>
-
-      <div className="rounded-2xl bg-findmi-50 p-3">
-        <p className="text-body font-bold text-primary">Analytics, or let Findmi maintain it for you</p>
-        <p className="mt-0.5 text-metadata font-semibold text-secondary">Pro: see what&rsquo;s working and grow it.</p>
-        <p className="mt-1 text-metadata text-muted">Managed Pro: Findmi keeps your profile updated for you.</p>
-      </div>
-
-      {/* Free Tier Entitlement Reset V1 — the previous list here (Full
-          Findmi Here schedule, Gallery, Contact info, Business updates,
-          Custom Findmi URL) named exactly the features this reset makes
-          Free; those bullets are retired. Rewritten to only the
-          capabilities that are still genuinely Pro-only — see
-          lib/entitlements.ts / PerformanceTab.tsx — plus Customer
-          Inquiries, a separate, still-gated feature unaffected by this
-          pass (see BusinessPublicView.tsx's own canInquire check). */}
-      <ul className="flex flex-col gap-1.5 text-metadata text-muted">
-        <PlanBullet>Performance analytics</PlanBullet>
-        <PlanBullet>Discovery source &amp; QR attribution</PlanBullet>
-        <PlanBullet>Follower insights</PlanBullet>
-        <PlanBullet>Customer Inquiries</PlanBullet>
-        <PlanBullet>Expanded discovery</PlanBullet>
-      </ul>
-    </label>
-  );
-}
-
-/** P0 Safe-to-Share Acquisition pass — Free's plan-chooser option, same
- * extraction/reasoning as ProPlanOption above. The quiet-treatment
- * content (used when an explicit Pro visitor has Pro dominant instead) is
- * byte-identical to the small Free card that always rendered here before
- * this pass. The dominant treatment is new: Free previously never had a
- * "led with" presentation at all, since Pro was always dominant — this
- * mirrors Pro's own dominant layout (spotlight box + fuller bullet list)
- * so Free reads as a complete, legitimate primary offer, not a shrunken
- * fallback. No feature/entitlement claim here is new: every bullet is the
- * same current Free entitlement the quiet version already listed. */
-function FreePlanOption({ dominant }: { dominant: boolean }) {
-  if (!dominant) {
-    return (
-      <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-body font-semibold text-secondary">Prefer to start free?</p>
-          <input type="radio" name="plan_choice" value="free" className="h-4 w-4 accent-findmi" />
-        </div>
-        <p className="flex items-baseline gap-1.5">
-          <span className="text-body font-bold text-primary">Findmi Free</span>
-          <span className="text-body text-subtle">· $0 · No credit card required</span>
-        </p>
-        {/* Free Tier Entitlement Reset V1 — was "...show your next 3
-            appearances." Free's public profile shows the complete
-            schedule now, not just 3. */}
-        <p className="text-metadata text-muted">Create your Findmi page and show your complete upcoming schedule.</p>
-        <p className="mt-1 text-metadata text-subtle">Upgrade anytime for Analytics and more.</p>
-      </label>
-    );
-  }
-  return (
-    <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-label font-bold uppercase text-accent">Get Started Free</p>
-        <input type="radio" name="plan_choice" value="free" defaultChecked className="h-4 w-4 accent-findmi" />
-      </div>
-      <p className="flex items-baseline gap-1.5">
-        <span className="font-display text-display font-bold text-primary">$0</span>
-        <span className="text-metadata font-medium text-subtle">No credit card required</span>
-      </p>
-
-      <div className="rounded-2xl bg-findmi-50 p-3">
-        <p className="text-body font-bold text-primary">Your Findmi page, live today</p>
-        <p className="mt-0.5 text-metadata font-semibold text-secondary">Show customers who you are and where you&rsquo;ll be next.</p>
-        <p className="mt-1 text-metadata text-muted">Create your business page now. Upgrade anytime, no pressure.</p>
-      </div>
-
-      {/* Free Tier Entitlement Reset V1 — was "Next 3 upcoming
-          appearances" / "Up to 5 markets"; both are unlimited/complete
-          Free capabilities now. Products &amp; Gallery and Contact &amp;
-          Social added — also genuinely Free now, previously omitted here
-          entirely. */}
-      <ul className="flex flex-col gap-1.5 text-metadata text-muted">
-        <PlanBullet>Business profile, products &amp; gallery</PlanBullet>
-        <PlanBullet>Contact info &amp; social links</PlanBullet>
-        <PlanBullet>Complete upcoming schedule</PlanBullet>
-        <PlanBullet>Unlimited relevant markets</PlanBullet>
-        <PlanBullet>Findmi search &amp; discovery</PlanBullet>
-      </ul>
-    </label>
-  );
-}
-
-/** Same aqua checkmark bullet /join's PlanCard uses (join/page.tsx),
- * recreated locally rather than imported — that component lives in a
- * page file, not a shared module, and this is cheap enough not to
- * warrant a new shared abstraction (Plan UX Alignment pass). */
+/** Business Creation UX Cleanup pass — the Free value section's bullet,
+ * same aqua checkmark /join's PlanCard uses (join/page.tsx), recreated
+ * locally rather than imported — that component lives in a page file,
+ * not a shared module, and this is cheap enough not to warrant a new
+ * shared abstraction. */
 function PlanBullet({ children }: { children: ReactNode }) {
   return (
     <li className="flex items-start gap-1.5">

@@ -77,7 +77,6 @@ test("F. no migration: existing columns default to visible, so current public Ar
 });
 
 test("G/H/I. creation never depends on visibility: pickers list ACTIVE geography and the database checks `active` only", () => {
-  assert.match(read("src/app/(public)/account/business/new/page.tsx"), /getActiveMarkets\(\)/);
   assert.match(read("src/app/(public)/account/event/new/page.tsx"), /getActiveMarkets\(\)/);
   // Personal/Account UX Correction pass — Add A Location no longer shows
   // any Findmi Market/Area picker at all (it's Admin's own editorial
@@ -86,6 +85,11 @@ test("G/H/I. creation never depends on visibility: pickers list ACTIVE geography
   // against; Admin's own Location form (which still needs this) is
   // untouched and covered elsewhere.
   assert.doesNotMatch(read("src/app/(public)/account/location/new/page.tsx"), /getActiveMarketsWithAreaOptions\(\)|MarketAreaFields/);
+  // Business Creation UX Cleanup pass — Add A Business no longer shows
+  // any Findmi Market/Area picker either, same reasoning as Location
+  // above: createMemberBusiness's own best-effort canonical-geography
+  // Market auto-assignment (untouched) replaces it entirely.
+  assert.doesNotMatch(read("src/app/(public)/account/business/new/page.tsx"), /getActiveMarkets\(\)/);
   for (const f of readdirSync("supabase/migrations")) {
     const sql = read(`supabase/migrations/${f}`);
     for (const fn of ["create_owned_business", "create_owned_event", "create_owned_location"]) {

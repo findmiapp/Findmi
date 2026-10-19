@@ -141,8 +141,8 @@ test("23b. Appearance Location-privacy masking is untouched by this pass — wit
 });
 
 // ── 2. Explicit canonical selection in a real form ───────────────────────
-test("2. CanonicalGeographyPicker is wired into Business/Event's shared GeographyFields, each emitting explicit_geo_key", () => {
-  for (const file of ["src/components/BusinessGeographyFields.tsx", "src/components/EventGeographyFields.tsx"]) {
+test("2. CanonicalGeographyPicker is wired into Event's shared GeographyFields, emitting explicit_geo_key", () => {
+  for (const file of ["src/components/EventGeographyFields.tsx"]) {
     const src = read(file);
     assert.match(src, /import CanonicalGeographyPicker/, `${file} imports the picker`);
     assert.match(src, /<CanonicalGeographyPicker/, `${file} renders it`);
@@ -156,6 +156,14 @@ test("2. CanonicalGeographyPicker is wired into Business/Event's shared Geograph
   // location/actions.ts — this is a UI-only removal on one component.
   const locGeo = read("src/components/LocationGeographyFields.tsx");
   assert.doesNotMatch(locGeo, /CanonicalGeographyPicker|name="explicit_geo_key"/);
+  // Business Creation UX Cleanup pass — removed from the user-facing
+  // Business form too ("Set an exact place (optional)" read as a second,
+  // confusing geography step right after City/State on a basic creation
+  // form). resolveEntityGeography and createMemberBusiness's own
+  // explicit-key handling are untouched — see test 2b below, which still
+  // passes for account/business/actions.ts — this is a UI-only removal.
+  const bizGeo = read("src/components/BusinessGeographyFields.tsx");
+  assert.doesNotMatch(bizGeo, /CanonicalGeographyPicker|name="explicit_geo_key"/);
 });
 
 test("2b. Every owner self-service create action reads explicit_geo_key and, when present, resolves with explicitKey and writes geo_resolution:\"selected\"", () => {

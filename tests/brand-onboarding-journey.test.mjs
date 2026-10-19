@@ -195,7 +195,7 @@ test("Review Your Brand presentation: same form, no Free/Pro picker, Add My Bran
   assert.match(NEW_PAGE, /const brandOnboarding = parseBrandSource\(source\);/);
   assert.match(NEW_PAGE, /\{brandOnboarding \? "Review Your Brand" : "Add a Business"\}/);
   assert.match(NEW_PAGE, /\{brandOnboarding && <input type="hidden" name="source" value=\{BRAND_SOURCE\} \/>\}/);
-  assert.match(NEW_PAGE, /\{hasInvite \? \([\s\S]*?\) : brandOnboarding \? null : \(\s*<div>/, "invite block kept; plan picker skipped for brand");
+  assert.match(NEW_PAGE, /\{hasInvite \? \([\s\S]*?\) : brandOnboarding \? null : \(\s*<div className="relative/, "invite block kept; Free value section skipped for brand");
   assert.match(NEW_PAGE, /\{brandOnboarding \? "Add My Brand" : "Create My Business"\}/);
   assert.equal((NEW_PAGE.match(/<form action=\{createMemberBusiness\}/g) ?? []).length, 1, "one form, not a duplicate");
   assert.ok(!C.BRAND_CANDIDATE_FIELDS.includes("authorized") && !C.BRAND_CANDIDATE_FIELDS.includes("plan_choice"));

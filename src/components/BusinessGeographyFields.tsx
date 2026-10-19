@@ -1,226 +1,62 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useGeographySuggestion } from "@/lib/useGeographySuggestion";
-import type { GeographyMatch } from "@/lib/market-requests";
-import CanonicalGeographyPicker from "@/components/geo/CanonicalGeographyPicker";
-
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 
 export interface BusinessGeographyFieldsProps {
-  markets: { id: string; name: string }[];
   defaultCity: string;
   defaultState: string;
-  defaultMarketId: string;
-  defaultRequestedMarketText: string;
-}
-
-/** "Staten Island · New York City" for an Area match, plain "North Jersey"
- * for a Market-only match — a presentation-only reformatting of the
- * existing GeographyMatch fields (never touches findExistingGeographyMatch
- * or GeographyMatch.label itself, which stays an em-dash "Area — Market"
- * string used elsewhere, e.g. the admin Market Requests queue). */
-function formatSuggestionHeadline(suggestion: GeographyMatch): string {
-  if (suggestion.type === "area" && suggestion.areaLabel) {
-    return `${suggestion.areaLabel} · ${suggestion.marketLabel}`;
-  }
-  return suggestion.marketLabel;
 }
 
 /**
- * Business Geography Onboarding UX Correction pass — closes the gap Pass 2
- * left open: that pass wired up live city/state -> Findmi area matching,
- * but still showed the plain "Choose a market…" select immediately in the
- * blank/idle state (same as before Pass 2 existed), so a brand-new visitor
- * still saw an unexplained Findmi taxonomy dropdown before ever typing
- * anything. Root cause was `showManualPicker = overridden || status ===
- * "idle"` — "idle" (nothing typed yet) was treated the same as "the owner
- * wants the manual picker," which was backwards.
+ * Business Creation UX Cleanup pass — a submitter provides FACTUAL
+ * geography only: City, State. No Findmi Market/Area UI of any kind
+ * (internal editorial organization — createMemberBusiness already best-
+ * effort auto-assigns a Market from canonical City/State geography after
+ * creation when one resolves, with no market_id/requested_market_text
+ * submitted here; Admin's own Market/Area tools remain the way to adjust
+ * it afterward). Same reasoning this pass already applied to
+ * LocationGeographyFields.tsx: the live suggestion banner and manual
+ * "Choose an area" override were a second, confusing geography decision
+ * on a basic creation form, not something a visitor should have to
+ * weigh. A plain Server Component now — no client state is needed once
+ * the live matching UI is gone.
  *
- * Fixed by making the ENTIRE "Findmi area" section (suggestion banner,
- * no-match notice, or the manual selector) appear only once city OR state
- * has real input (`hasInput` below) — before that, this renders only the
- * plain City/State fields under a "Business location" heading, with no
- * mention of Markets/Areas at all. The manual `<select>` itself is now
- * reachable ONLY via the explicit "Change area" / "Choose an existing area
- * instead" actions (`overridden`), never automatically.
- *
- * City/State are now `required` (see this pass's own report for why no
- * existing Business type needed them optional) — still plain text
- * fields, no geocoding, no country field added.
+ * City/State remain required (createMemberBusiness still enforces this
+ * server-side) — still plain text fields, no geocoding, no country field
+ * added.
  */
-export default function BusinessGeographyFields({
-  markets,
-  defaultCity,
-  defaultState,
-  defaultMarketId,
-  defaultRequestedMarketText,
-}: BusinessGeographyFieldsProps) {
-  const [city, setCity] = useState(defaultCity);
-  const [state, setState] = useState(defaultState);
-  const [marketId, setMarketId] = useState(defaultMarketId);
-  // A prior explicit choice (a real submitted market_id/requested text —
-  // including one round-tripped back after a validation error) is
-  // treated as an override from the very first render, so this never
-  // fights a decision the visitor already made.
-  const [overridden, setOverridden] = useState(Boolean(defaultMarketId || defaultRequestedMarketText));
-  const { status, suggestion } = useGeographySuggestion(city, state, !overridden);
-  // Canonical Entity Geography completion pass — a genuinely optional,
-  // collapsed-by-default affordance alongside the existing Findmi area
-  // matching above: picking an exact Census place here saves
-  // geo_resolution="selected" (re-validated server-side regardless — see
-  // account/business/actions.ts); leaving it alone keeps the exact same
-  // best-effort derivation from City/State this pass's base commit
-  // already does. Never required, never replaces the Findmi area above.
-  const [showCanonicalPicker, setShowCanonicalPicker] = useState(false);
-  const [explicitGeoKey, setExplicitGeoKey] = useState("");
-
-  useEffect(() => {
-    if (overridden) return;
-    if (status === "matched" && suggestion) {
-      setMarketId(suggestion.marketId);
-    } else if (status === "no_match" || status === "idle") {
-      setMarketId("");
-    }
-  }, [status, suggestion, overridden]);
-
-  const hasInput = Boolean(city.trim() || state.trim());
-  const requestedMarketText =
-    !overridden && status === "no_match" ? [city.trim(), state.trim()].filter(Boolean).join(", ") : "";
-  const enteredPlace = [city.trim(), state.trim()].filter(Boolean).join(", ");
-
+export default function BusinessGeographyFields({ defaultCity, defaultState }: BusinessGeographyFieldsProps) {
   return (
-    <>
-      <div>
-        {/* Business Account Correction Pass (#18) — "Business location"
-            read as the same concept as Findmi Here -> Locations (a real
-            Findmi Location relationship), which this isn't: it's just the
-            city/state this business is based in, feeding the Findmi area
-            match below. Copy-only fix; City/State fields and the area
-            matching logic above are unchanged. */}
-        <span className="mb-1.5 block text-sm font-medium text-ink">Where is your business based?</span>
-        <div className="grid grid-cols-2 gap-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink/60">City</span>
-            <input autoCapitalize="words"
-              type="text"
-              name="city"
-              required
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className={inputClass}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-ink/60">State</span>
-            <input autoCapitalize="words"
-              type="text"
-              name="state"
-              required
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className={inputClass}
-            />
-          </label>
-        </div>
-        {!hasInput && (
-          <p className="mt-1.5 text-xs text-ink/45">
-            Enter where your business is based. Findmi will determine the best area for discovery.
-          </p>
-        )}
-        {!showCanonicalPicker ? (
-          <button
-            type="button"
-            onClick={() => setShowCanonicalPicker(true)}
-            className="mt-1.5 text-xs font-semibold text-ink/40 underline underline-offset-2"
-          >
-            Set an exact place (optional)
-          </button>
-        ) : (
-          <div className="mt-2">
-            <CanonicalGeographyPicker
-              label="Exact place (optional)"
-              placeholder="City, ZIP, or neighborhood"
-              onSelect={(hit) => setExplicitGeoKey(hit?.geo_key ?? "")}
-            />
-          </div>
-        )}
+    <div>
+      {/* Business Account Correction Pass (#18) — "Business location"
+          read as the same concept as Findmi Here -> Locations (a real
+          Findmi Location relationship), which this isn't: it's just the
+          city/state this business is based in. Copy-only fix. */}
+      <span className="mb-1.5 block text-sm font-medium text-ink">Where is your business based?</span>
+      <div className="grid grid-cols-2 gap-4">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-ink/60">City</span>
+          <input autoCapitalize="words"
+            type="text"
+            name="city"
+            required
+            defaultValue={defaultCity}
+            className={inputClass}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-ink/60">State</span>
+          <input autoCapitalize="words"
+            type="text"
+            name="state"
+            required
+            defaultValue={defaultState}
+            className={inputClass}
+          />
+        </label>
       </div>
-
-      {hasInput && (
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-ink">Findmi area</span>
-
-          {!overridden && status === "checking" && (
-            <p className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/50">
-              Checking Findmi…
-            </p>
-          )}
-
-          {!overridden && status === "matched" && suggestion && (
-            <div className="rounded-xl border border-findmi/25 bg-findmi-50 px-3.5 py-3">
-              <p className="text-sm font-bold text-findmi-700">{formatSuggestionHeadline(suggestion)}</p>
-              <p className="mt-0.5 text-xs text-findmi-700/70">Suggested from {enteredPlace}</p>
-              <button
-                type="button"
-                onClick={() => setOverridden(true)}
-                className="mt-1.5 text-xs font-semibold text-findmi-700 underline underline-offset-2"
-              >
-                Change area
-              </button>
-            </div>
-          )}
-
-          {!overridden && status === "no_match" && (
-            <div className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-3">
-              <p className="text-sm font-semibold text-ink/70">You&rsquo;re bringing Findmi to {enteredPlace}!</p>
-              <p className="mt-0.5 text-xs text-ink/50">
-                We&rsquo;re excited to expand into your area. Continue creating your business and we&rsquo;ll take care
-                of the rest.
-              </p>
-              <button
-                type="button"
-                onClick={() => setOverridden(true)}
-                className="mt-1.5 text-xs font-semibold text-ink/60 underline underline-offset-2"
-              >
-                Choose a different area
-              </button>
-            </div>
-          )}
-
-          {overridden && (
-            <>
-              <select
-                value={marketId}
-                onChange={(e) => setMarketId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Choose an area</option>
-                {markets.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-xs text-ink/45">
-                This controls your primary discovery area. Your appearances can be anywhere.
-              </p>
-              <button
-                type="button"
-                onClick={() => setOverridden(false)}
-                className="mt-1.5 text-xs font-semibold text-ink/50 underline underline-offset-2"
-              >
-                Use Findmi&rsquo;s suggestion instead
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      <input type="hidden" name="market_id" value={marketId} />
-      <input type="hidden" name="requested_market_text" value={overridden ? "" : requestedMarketText} />
-      <input type="hidden" name="explicit_geo_key" value={explicitGeoKey} />
-    </>
+      <p className="mt-1.5 text-xs text-ink/45">
+        Enter where your business is based. Findmi will determine the best area for discovery.
+      </p>
+    </div>
   );
 }
