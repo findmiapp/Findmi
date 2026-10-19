@@ -42,8 +42,8 @@ export default function JournalMomentGallery({
   sections: MomentGallerySection[];
   /** Viewer alt text (the Moment's title). */
   title: string;
-  /** Where "Add Your Moment" goes: the source Event's entry point
-   * (/event/<slug>/journal) when there is one, else the generic composer.
+  /** Where "Add Your Moment" goes: the composer, prefilled with the
+   * source Event (/my-world/journal/new?event=<id>) when there is one.
    * Omitted/null → no end-of-stream CTA. */
   addMomentHref?: string | null;
 }) {

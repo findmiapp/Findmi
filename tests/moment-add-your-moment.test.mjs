@@ -1,9 +1,11 @@
-// Public Moment — "+ Add Your Moment" is offered on EVERY Moment. A real
-// connected Event only scopes the destination (/event/<slug>/journal →
-// sign-up gateway when signed out → /my-world/journal/new?event=<id>
-// prefill); without an Event it opens the canonical generic composer
-// (/my-world/journal/new — the global "Add Moment" route). Never an
-// invented Event, source label or card. Source-level guards (no rendering
+// Public Moment — "+ Add Your Moment" is offered on EVERY Moment, TWICE:
+// right after the "This Moment Is From" card and again after the photo
+// story. Both use ONE href straight into the guest-capable composer: a real
+// connected Event only scopes it via the existing ?event= prefill
+// (/my-world/journal/new?event=<id>); without an Event it is the canonical
+// generic composer (/my-world/journal/new). No auth logic in either CTA — a
+// guest's account is only asked for at the composer's final Save/Publish.
+// Never an invented Event, source label or card. Source-level guards (no rendering
 // harness); no network, no database.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,32 +26,48 @@ const C = code(PAGE);
 const hrefExpr = PAGE.match(/const addMomentHref = (.+);/)[1];
 const resolveHref = new Function("events", `return ${hrefExpr};`);
 
-test("destination: Event-scoped when a real Event exists, else the canonical generic composer", () => {
-  assert.equal(hrefExpr, 'events[0]?.slug ? `/event/${events[0].slug}/journal` : "/my-world/journal/new"');
-  // Illy / Lavazza shape: an Event connection with a slug.
-  assert.equal(resolveHref([{ id: "710dc3f5", slug: "illy-cup-of-love" }]), "/event/illy-cup-of-love/journal");
+test("destination: straight into the composer, Event-scoped via the existing ?event= prefill when a real Event exists", () => {
+  assert.equal(hrefExpr, 'events[0]?.id ? `/my-world/journal/new?event=${encodeURIComponent(events[0].id)}` : "/my-world/journal/new"');
+  assert.equal(resolveHref([{ id: "710dc3f5", slug: "illy-cup-of-love" }]), "/my-world/journal/new?event=710dc3f5");
   // Babylist's actual shape: no connections at all → no events.
   assert.equal(resolveHref([]), "/my-world/journal/new");
-  // An Event row without a slug never yields a broken Event link.
-  assert.equal(resolveHref([{ id: "x", slug: null }]), "/my-world/journal/new");
+  assert.equal(resolveHref([{ id: null, slug: "x" }]), "/my-world/journal/new", "no id, no invented Event");
 });
 
-test("both entry points are existing routes — no new composer, route or context param", () => {
-  assert.match(EVENT_VIEW, /href=\{`\/event\/\$\{event\.slug\}\/journal`\}/, "the Event page's own + Add Moment");
+test("guest CTA never points at Login, Create Account/Sign Up or an intermediary gateway", () => {
+  assert.doesNotMatch(hrefExpr, /login|signup|\/event\/.*\/journal/);
+  assert.doesNotMatch(C, /\/login|\/signup/, "the Moment page itself carries no auth routing");
+  // The stale Event gateway no longer bounces a signed-out visitor to sign-up.
+  assert.doesNotMatch(code(ENTRY), /\/signup|\/login|getUser\(\)/);
+});
+
+test("both entry routes land in the same composer; only the existing ?event= param carries context", () => {
+  assert.match(EVENT_VIEW, /href=\{`\/event\/\$\{event\.slug\}\/journal`\}/, "the Event page's own + Add Moment (now guest-capable too)");
   assert.match(ENTRY, /redirect\(`\/my-world\/journal\/new\?event=\$\{encodeURIComponent\(event\.id\)\}`\);/);
   assert.match(QUICK_CREATE, /href="\/my-world\/journal\/new"/, "the global Add Moment uses the same generic composer");
   assert.match(NEW_MOMENT, /export default async function NewJournalEntryPage/);
-  assert.doesNotMatch(PAGE, /[?&](occurrence|event|location|business)=/, "no speculative context params");
+  assert.doesNotMatch(PAGE, /[?&](occurrence|location|business|product)=/, "no speculative context params");
+  assert.match(NEW_MOMENT, /event\?: string/, "?event= is the composer's own existing param");
 });
 
-test("auth: existing behavior for both destinations", () => {
-  assert.match(ENTRY, /redirect\(`\/signup\?next=\$\{encodeURIComponent\(`\/event\/\$\{slug\}\/journal`\)\}`\);/, "Event-scoped: sign-up gateway, back to the same Event");
+test("auth: nothing in the CTAs; the composer stays open to guests and only its other journal routes stay gated", () => {
   assert.match(MIDDLEWARE, /if \(pathname\.startsWith\("\/my-world\/journal"\)\)/);
-  assert.match(MIDDLEWARE, /loginUrl\.searchParams\.set\("next", getSafeRedirect\(pathname \+ request\.nextUrl\.search\)\);/, "generic: login, then back to the composer");
+  assert.match(MIDDLEWARE, /if \(!user && pathname === "\/my-world\/journal\/new"\) return response;/, "guests reach the composer");
+  assert.match(MIDDLEWARE, /loginUrl\.searchParams\.set\("next", getSafeRedirect\(pathname \+ request\.nextUrl\.search\)\);/, "every other journal route still redirects");
+  // Final Save/Publish authentication is the composer's own, unchanged.
+  const composer = readFileSync("src/components/journal/MomentComposer.tsx", "utf8");
+  assert.match(composer, /finishAsGuest\(action === "publish" \? "publish" : "draft"\);/);
+  assert.match(composer, /Your Moment Is Ready/);
 });
 
-test("'This Moment Is From' introduces ONLY the relationship card — no CTA beside it (Moment UX polish)", () => {
-  const block = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("{entry.notes && ("));
+test("Event creation stays identity/Page gated (Add Your Moment never touches it)", () => {
+  assert.match(MIDDLEWARE, /GUEST_ACCESSIBLE_PATHS = new Set\(\["\/account\/business\/new", "\/account\/location\/new", "\/account\/event\/new"\]\);/);
+  const eventNew = readFileSync("src/app/(public)/account/event/new/page.tsx", "utf8");
+  assert.match(eventNew, /Events on Findmi are published through a Business or Location Page\./);
+});
+
+test("'This Moment Is From' block introduces ONLY the relationship card (the CTA sits just after it, not inside it)", () => {
+  const block = C.slice(C.indexOf("{primaryKind && ("), C.indexOf("<AddYourMomentPill href={addMomentHref} />"));
   assert.match(block, /<p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From<\/p>\s*<div className="mt-1\.5">\s*\{primaryKind === "event"/);
   assert.doesNotMatch(block, /AddYourMomentPill|justify-between/);
   const pill = C.slice(C.indexOf("function AddYourMomentPill"));
@@ -57,18 +75,28 @@ test("'This Moment Is From' introduces ONLY the relationship card — no CTA bes
   assert.match(pill, />\s*\+ Add Your Moment\s*</);
 });
 
-test("ONE Add Your Moment CTA, after the photo story — never a top pill (Moment UX polish)", () => {
-  assert.doesNotMatch(C, /\{!primaryKind && \(/, "no standalone top pill row");
+test("TWO Add Your Moment CTAs: first right after the context card (before story, category tabs and photos); second is the existing one after the photo story", () => {
   assert.equal((C.match(/This Moment Is From/g) ?? []).length, 1, "the source label only exists inside the real source block");
-  assert.equal((C.match(/<AddYourMomentPill /g) ?? []).length, 1, "only the no-photos fallback");
+  assert.equal((C.match(/<AddYourMomentPill /g) ?? []).length, 2, "top CTA + the no-photos bottom fallback");
+  const card = C.indexOf("{primaryKind && (");
+  const top = C.indexOf("<AddYourMomentPill href={addMomentHref} />");
+  const notes = C.indexOf("{entry.notes && (");
   const gallery = C.indexOf("{hasGallery && <JournalMomentGallery");
   const fallback = C.indexOf("{!hasGallery && (");
-  assert.ok(gallery > C.indexOf("{primaryKind && (") && fallback > gallery, "after the relationship card and the story");
+  assert.ok(card > 0 && top > card, "after the This Moment Is From card");
+  assert.ok(top < notes && top < gallery, "before the story, the category tabs and every photo");
+  assert.ok(gallery > notes && fallback > gallery, "bottom CTA position unchanged: after the relationship card and the story");
   assert.ok(fallback < C.indexOf("Visit Details"), "before Visit Details");
+  assert.match(C.slice(top - 40, top + 60), /<div className="mt-3 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>/);
   assert.match(C.slice(fallback), /^\{!hasGallery && \(\s*<div className="mt-5 flex">\s*<AddYourMomentPill href=\{addMomentHref\} \/>\s*<\/div>\s*\)\}/);
-  // With photos, the gallery's own end-of-story CTA is the only one.
+  // With photos, the gallery's own end-of-story CTA is the bottom one (kept).
   const g = code(GALLERY);
   assert.equal((g.match(/Add Your Moment/g) ?? []).length, 1);
+});
+
+test("both CTAs share the exact same destination", () => {
+  assert.equal((C.match(/addMomentHref/g) ?? []).length, 5, "one const, then the top pill, the gallery prop (name + value) and the fallback pill — no second href anywhere");
+  assert.match(C, /addMomentHref=\{addMomentHref\}/);
 });
 
 test("bottom CTA: universal for any Moment with a gallery — Event only changes the destination", () => {

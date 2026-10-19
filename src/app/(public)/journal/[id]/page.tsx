@@ -73,12 +73,16 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   // for that Event — never a guessed/first occurrence.
   const occurrenceForEvent = (eventId: string) => occurrences.find((o) => o.event_id === eventId) ?? null;
   const primaryOccurrence = events.length > 0 ? occurrenceForEvent(events[0].id) : null;
-  // "+ Add Your Moment" — offered on every Moment. A real connected Event
-  // only SCOPES it: the Event's own Add Moment entry point (the same one
-  // every Event page links to — sign-in, then a NEW Moment prefilled with
-  // that Event). Without an Event it opens the canonical generic composer
-  // (the global "Add Moment" route) — never an invented Event.
-  const addMomentHref = events[0]?.slug ? `/event/${events[0].slug}/journal` : "/my-world/journal/new";
+  // "+ Add Your Moment" — offered on every Moment, TWICE (right after the
+  // "This Moment Is From" card, and again after the photo story), both
+  // using this one href. A real connected Event only SCOPES it, via the
+  // composer's existing ?event= prefill; without an Event it opens the
+  // generic composer — never an invented Event. It goes straight to the
+  // canonical, guest-capable composer: no auth logic lives here (a guest's
+  // identity is only asked for at the composer's final Save/Publish). It
+  // used to point at /event/<slug>/journal, whose signed-out branch
+  // redirected to /signup before the composer could ever open.
+  const addMomentHref = events[0]?.id ? `/my-world/journal/new?event=${encodeURIComponent(events[0].id)}` : "/my-world/journal/new";
   // Visit Details' time line prefers the connected occurrence's real
   // start–end range (authoritative) over the manually-typed entry_time —
   // available data this pass surfaces without redesigning the section.
@@ -313,6 +317,13 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             </div>
           </div>
         )}
+
+        {/* First "+ Add Your Moment": right under the context card, before
+            the story, category tabs and photos. The second is the
+            existing one after the photo story below. */}
+        <div className="mt-3 flex">
+          <AddYourMomentPill href={addMomentHref} />
+        </div>
 
         {/* The author's overall story — plain, restrained text. */}
         {entry.notes && (
