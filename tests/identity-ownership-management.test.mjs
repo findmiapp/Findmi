@@ -156,9 +156,31 @@ test("a Business adding a Location keeps the Business↔Location relationship in
   assert.doesNotMatch(createLoc, /business_members"\)\.insert/);
 });
 
+test("a failed management-claim insert is never silently dropped, never retried as a duplicate, and never deletes the Location", () => {
+  // The error is captured, not ignored.
+  assert.match(createLoc, /const \{ error: claimError \} = await admin\.from\("location_claim_requests"\)\.insert\(\{/);
+  assert.match(createLoc, /if \(claimError\) \{\s*\n\s*claimRequestError = /);
+  // Exactly one insert attempt — no retry-as-duplicate-request loop.
+  assert.equal((createLoc.match(/\.from\("location_claim_requests"\)\.insert\(/g) ?? []).length, 1);
+  // The already-created Location is never rolled back to "simulate"
+  // atomicity — it stays, for Admin review, regardless of the claim outcome.
+  assert.doesNotMatch(createLoc, /\.from\("locations"\)\.delete\(/);
+  // Every redirect branch (Business-linked, child-of-a-Location, default)
+  // accounts for the failure instead of unconditionally claiming success.
+  const afterCreate = createLoc.slice(createLoc.indexOf("revalidatePath(\"/account\");"));
+  const businessBranch = afterCreate.slice(afterCreate.indexOf("if (businessId) {"), afterCreate.indexOf("if (parentLocationId) {"));
+  assert.match(businessBranch, /claimRequestError/);
+  const parentBranch = afterCreate.slice(afterCreate.indexOf("if (parentLocationId) {"), afterCreate.indexOf("redirect(claimRequestError"));
+  assert.match(parentBranch, /claimRequestError/);
+  assert.match(afterCreate.slice(afterCreate.indexOf("redirect(claimRequestError")), /location_submitted: intent|location_submitted=\$\{intent\}/);
+  // The truthful message says what actually happened: the Location is in,
+  // the request for management specifically is what failed.
+  assert.match(createLoc, /Location was submitted, but your management request could not be recorded/);
+});
+
 // ── ADMIN: EVENT OWNERSHIP & MANAGEMENT ────────────────────────────────
 
-test("Free Bean plan: host already Free Bean → only the Personal management relationship is removed", () => {
+test("Free Bean plan: host already Free Bean → only the Personal management relationship is removed, never called a reassignment", () => {
   const plan = PLAN.planEventReassignment({
     eventName: "Free Bean / Free Coffee NYC Pop-Up Cafe",
     currentHost: { id: FREE_BEAN, name: "Free Bean" },
@@ -171,7 +193,59 @@ test("Free Bean plan: host already Free Bean → only the Personal management re
   assert.match(plan.message, /Free Bean stays the managing Page/);
   assert.match(plan.message, /Direct management will be removed for: Personal Account\./);
   assert.match(plan.message, /will not recreate the Event or change its dates, Location, participating Businesses, media, URLs, analytics or Findmi Here appearances/);
-  assert.equal(plan.title, "Reassign This Event To Free Bean?");
+  // The Free Bean scenario never implies the host is changing — the host
+  // was already Free Bean, so this must read as a removal, not a
+  // reassignment.
+  assert.equal(plan.hostChanged, false);
+  assert.equal(plan.actionable, true);
+  assert.equal(plan.title, "Remove Direct Management For Free Bean / Free Coffee NYC Pop-Up Cafe?");
+});
+
+test("plan: an actual host change always uses Reassign language, regardless of manager removal", () => {
+  const changed = PLAN.planEventReassignment({
+    eventName: "Free Bean / Free Coffee NYC Pop-Up Cafe",
+    currentHost: { id: FREE_BEAN, name: "Free Bean" },
+    nextHost: { id: PERSONAL_MEMBER, name: "A Different Business" },
+    directManagers: [],
+    removeDirect: false,
+  });
+  assert.equal(changed.hostChanged, true);
+  assert.equal(changed.actionable, true);
+  assert.equal(changed.title, "Reassign This Event To A Different Business?");
+  assert.match(changed.message, /will become the managing Page/);
+
+  const noPriorHost = PLAN.planEventReassignment({
+    eventName: "New Event",
+    currentHost: null,
+    nextHost: { id: FREE_BEAN, name: "Free Bean" },
+    directManagers: [],
+    removeDirect: false,
+  });
+  assert.equal(noPriorHost.hostChanged, true);
+  assert.equal(noPriorHost.title, "Reassign This Event To Free Bean?");
+});
+
+test("plan: same host + nothing selected for removal is not actionable (cannot submit)", () => {
+  const plan = PLAN.planEventReassignment({
+    eventName: "Free Bean / Free Coffee NYC Pop-Up Cafe",
+    currentHost: { id: FREE_BEAN, name: "Free Bean" },
+    nextHost: { id: FREE_BEAN, name: "Free Bean" },
+    directManagers: [{ memberId: PERSONAL_MEMBER, label: "Personal Account" }],
+    removeDirect: false,
+  });
+  assert.equal(plan.hostChanged, false);
+  assert.deepEqual(plan.removeMemberIds, []);
+  assert.equal(plan.actionable, false, "nothing would change — the UI must disable submission");
+  const controls = read("src/app/admin/(protected)/ownership/OwnershipControls.tsx");
+  assert.match(controls, /disabled=\{!plan \|\| !plan\.actionable\}/);
+});
+
+test("Event reassign form: direct-management removal is opt-in, never preselected by default", () => {
+  const controls = read("src/app/admin/(protected)/ownership/OwnershipControls.tsx");
+  assert.match(controls, /const \[removeDirect, setRemoveDirect\] = useState\(false\);/);
+  assert.doesNotMatch(controls, /useState\(directManagers\.length > 0\)/);
+  // The confirm action's own label must match what the plan says it is.
+  assert.match(controls, /confirmLabel=\{plan\.hostChanged \? "Confirm Reassignment" : "Confirm Removal"\}/);
 });
 
 test("reassignment changes ONLY events.host_business_id + the chosen event_members row; the Event graph is untouched", async () => {
@@ -210,7 +284,7 @@ test("Event panel reads management separately from participation", async () => {
   const panel = read("src/app/admin/(protected)/ownership/OwnershipPanels.tsx");
   assert.match(panel, /Participating Businesses \(not management\)/);
   assert.match(panel, /Ownership &amp; Management/);
-  assert.match(read("src/app/admin/(protected)/ownership/OwnershipControls.tsx"), /confirmLabel="Confirm Reassignment"/);
+  assert.match(read("src/app/admin/(protected)/ownership/OwnershipControls.tsx"), /confirmLabel=\{plan\.hostChanged \? "Confirm Reassignment" : "Confirm Removal"\}/);
   assert.match(read("src/app/admin/(protected)/ownership/OwnershipControls.tsx"), /entity="businesses"/, "searchable existing Businesses only");
 });
 

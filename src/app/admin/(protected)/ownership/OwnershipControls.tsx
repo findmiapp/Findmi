@@ -68,7 +68,10 @@ export function EventReassignForm({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [next, setNext] = useState<{ id: string; name: string } | null>(currentHost);
-  const [removeDirect, setRemoveDirect] = useState(directManagers.length > 0);
+  // Removing direct management is destructive and must be an explicit
+  // Admin choice every time, never preselected just because managers
+  // exist (see the Free Bean review finding this fixes).
+  const [removeDirect, setRemoveDirect] = useState(false);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const plan = next ? planEventReassignment({ eventName, currentHost, nextHost: next, directManagers, removeDirect }) : null;
@@ -92,7 +95,7 @@ export function EventReassignForm({
       {plan?.removeMemberIds.map((id) => <input key={id} type="hidden" name="remove_member_id" value={id} />)}
       <button
         type="button"
-        disabled={!plan || (next?.id === currentHost?.id && plan.removeMemberIds.length === 0)}
+        disabled={!plan || !plan.actionable}
         onClick={() => setOpen(true)}
         className="w-fit rounded-lg bg-findmi px-3 py-1.5 text-sm font-semibold text-white hover:bg-findmi-600 disabled:opacity-40"
       >
@@ -103,8 +106,8 @@ export function EventReassignForm({
           title={plan.title}
           message={plan.message}
           cancelLabel="Cancel"
-          confirmLabel="Confirm Reassignment"
-          pendingLabel="Reassigning…"
+          confirmLabel={plan.hostChanged ? "Confirm Reassignment" : "Confirm Removal"}
+          pendingLabel={plan.hostChanged ? "Reassigning…" : "Removing…"}
           pending={pending}
           onCancel={() => setOpen(false)}
           onConfirm={() => {

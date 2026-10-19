@@ -7,6 +7,12 @@ export interface EventReassignPlan {
   hostBusinessId: string;
   /** event_members rows removed (direct user management). */
   removeMemberIds: string[];
+  /** False when the managing Page isn't actually changing — only direct
+   * management is. Never call that case a "reassignment". */
+  hostChanged: boolean;
+  /** False when there's nothing for this plan to do (same host, nothing
+   * selected for removal) — the UI must not let that submit. */
+  actionable: boolean;
   title: string;
   message: string;
 }
@@ -23,11 +29,12 @@ export function planEventReassignment(input: {
   removeDirect: boolean;
 }): EventReassignPlan {
   const { eventName, currentHost, nextHost, directManagers, removeDirect } = input;
+  const hostChanged = !currentHost || currentHost.id !== nextHost.id;
   const removing = removeDirect ? directManagers : [];
   const parts = [
-    currentHost && currentHost.id === nextHost.id
-      ? `${nextHost.name} stays the managing Page for ${eventName}.`
-      : `${nextHost.name} will become the managing Page for ${eventName}${currentHost ? `, replacing ${currentHost.name}` : ""}; its Owners and Managers can edit it.`,
+    hostChanged
+      ? `${nextHost.name} will become the managing Page for ${eventName}${currentHost ? `, replacing ${currentHost.name}` : ""}; its Owners and Managers can edit it.`
+      : `${nextHost.name} stays the managing Page for ${eventName}.`,
     removing.length > 0
       ? `Direct management will be removed for: ${removing.map((m) => m.label).join(", ")}.`
       : directManagers.length > 0
@@ -38,7 +45,12 @@ export function planEventReassignment(input: {
   return {
     hostBusinessId: nextHost.id,
     removeMemberIds: removing.map((m) => m.memberId),
-    title: `Reassign This Event To ${nextHost.name}?`,
+    hostChanged,
+    actionable: hostChanged || removing.length > 0,
+    // Only call it a reassignment when the managing Page is actually
+    // changing — removing direct management from an unchanged host is a
+    // removal, not a reassignment, and must say so.
+    title: hostChanged ? `Reassign This Event To ${nextHost.name}?` : `Remove Direct Management For ${eventName}?`,
     message: parts.join(" "),
   };
 }

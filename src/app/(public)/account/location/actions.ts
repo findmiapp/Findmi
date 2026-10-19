@@ -270,15 +270,23 @@ export async function createMemberLocation(formData: FormData) {
 
   const locationId = (created as { id: string }).id;
   // "I Manage This Location" — a request for Admin review, never a grant.
+  // The Location itself is already created and stays created either way;
+  // a failure here must be reported truthfully (never silently dropped,
+  // never re-attempted as a duplicate request) — surfaced below in every
+  // redirect branch.
+  let claimRequestError: string | null = null;
   if (intent === "manage") {
     const { data: profile } = await admin.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
-    await admin.from("location_claim_requests").insert({
+    const { error: claimError } = await admin.from("location_claim_requests").insert({
       user_id: user.id,
       location_id: locationId,
       full_name: (profile as { display_name: string | null } | null)?.display_name ?? null,
       email: user.email ?? null,
       message: businessId ? "Requested while adding this Location for a Business." : parentLocationId ? "Requested while adding this Location inside a managed Location." : "Requested while adding this Location.",
     });
+    if (claimError) {
+      claimRequestError = "Location was submitted, but your management request could not be recorded. Contact Findmi so we can add it.";
+    }
   }
   // Best-effort only — the atomic RPC above already succeeded and never
   // accepts an Area itself (only p_market_id), so this just attaches the
@@ -324,15 +332,16 @@ export async function createMemberLocation(formData: FormData) {
     // Owner/Manager of the Business (checked up front).
     const linked = await linkBusinessLocation(admin, businessId, locationId);
     revalidatePath(`/account/business/${businessId}`);
-    const params = new URLSearchParams(
-      linked.ok
-        ? { location_updated: "created" }
-        : { error: `Your location was created, but couldn't be connected yet: ${linked.error}` }
-    );
-    redirect(`/account/business/${businessId}?tab=findmi-here&view=locations&${params.toString()}`);
+    const linkError = !linked.ok ? `Your location was created, but couldn't be connected yet: ${linked.error}` : null;
+    const combinedError = [linkError, claimRequestError].filter(Boolean).join(" ");
+    const query = combinedError ? `error=${encodeURIComponent(combinedError)}` : "location_updated=created";
+    redirect(`/account/business/${businessId}?tab=findmi-here&view=locations&${query}`);
   }
-  if (parentLocationId) redirect(`/account/location/${parentLocationId}?child_location=${intent}`);
-  redirect(`/account?location_submitted=${intent}`);
+  if (parentLocationId) {
+    const query = claimRequestError ? `error=${encodeURIComponent(claimRequestError)}` : `child_location=${intent}`;
+    redirect(`/account/location/${parentLocationId}?${query}`);
+  }
+  redirect(claimRequestError ? `/account?error=${encodeURIComponent(claimRequestError)}` : `/account?location_submitted=${intent}`);
 }
 
 // ── INLINE EVENT LOCATION CREATION ──────────────────────────────────────
