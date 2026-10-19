@@ -58,7 +58,8 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: "home", label: "Home", href: "/account", icon: <NavIcon name="home" className="h-[22px] w-[22px]" />, match: (p) => p === "/account", primary: true },
-  { key: "myworld", label: "My World", href: "/my-world", icon: <WorldGlyph className="h-[22px] w-[22px]" />, match: () => false, primary: true },
+  // My Moments — the personal Moments destination (route unchanged).
+  { key: "myworld", label: "My Moments", href: "/my-world/journal", icon: <NavIcon name="moments" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/my-world/journal"), primary: true },
   { key: "schedule", label: "Schedule", href: "/account/schedule", icon: <NavIcon name="calendar" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/schedule"), primary: true },
   { key: "inbox", label: "Inbox", href: "/account/messages", icon: <InboxGlyph className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/messages"), primary: true },
   { key: "saved", label: "Saved", href: "/account/saved", icon: <NavIcon name="bookmark" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/saved"), primary: false },
@@ -180,7 +181,7 @@ function PersonalContextBar({
   // when there's no display name to take an initial from).
   const identity = (
     <>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 font-display text-card-title font-bold text-accent">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-card-title font-bold text-accent">
         {initial || <NavIcon name="person" className="h-5 w-5" />}
       </span>
       <span className="min-w-0 flex-1 text-left">
@@ -287,16 +288,6 @@ function MorePanel({
         </div>
       </div>
     </div>
-  );
-}
-
-function WorldGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" />
-      <ellipse cx="12" cy="12" rx="3.4" ry="8.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3.5 12h17" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
   );
 }
 

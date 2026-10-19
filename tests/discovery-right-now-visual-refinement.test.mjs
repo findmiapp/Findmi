@@ -85,8 +85,10 @@ test("the five new local glyphs are never added to NavIcon.tsx's curated NAV_ICO
     assert.doesNotMatch(NAV_ICON, new RegExp(`case "${needle}"`, "i"));
   }
   const NAVIGATION = readFileSync("src/lib/navigation.ts", "utf8");
-  // NAV_ICON_KEYS is untouched — still exactly the 10 pre-existing curated keys.
-  assert.match(NAVIGATION, /export const NAV_ICON_KEYS = \[\s*\n\s*"compass",\s*\n\s*"pin",\s*\n\s*"target",\s*\n\s*"bookmark",\s*\n\s*"person",\s*\n\s*"tag",\s*\n\s*"calendar",\s*\n\s*"storefront",\s*\n\s*"home",\s*\n\s*"cart",\s*\n\s*\] as const;/);
+  // NAV_ICON_KEYS: the 10 pre-existing curated keys plus the one semantic
+  // "moments" key (Moments' own icon, distinct from target) — none of the
+  // discovery glyphs above.
+  assert.match(NAVIGATION, /export const NAV_ICON_KEYS = \[\s*\n\s*"compass",\s*\n\s*"pin",\s*\n\s*"target",\s*\n\s*"bookmark",\s*\n\s*"person",\s*\n\s*"tag",\s*\n\s*"calendar",\s*\n\s*"storefront",\s*\n\s*"home",\s*\n\s*"cart",\s*\n\s*"moments",\s*\n\s*\] as const;/);
 });
 
 // ── Design: white card, light-gray border, icon left of stacked text ───

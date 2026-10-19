@@ -1,5 +1,6 @@
 "use client";
 
+import SaveOrganizeSheet from "@/components/SaveOrganizeSheet";
 import { useAccountSaved, type SavedEntityType } from "@/lib/useAccountSaved";
 
 /** Consumer Experience V1 — a compact, icon-only variant of the existing
@@ -10,7 +11,9 @@ import { useAccountSaved, type SavedEntityType } from "@/lib/useAccountSaved";
  * grammar for "this is saved" should read identically everywhere it
  * appears), same guest-localStorage-then-account-once-signed-in behavior.
  * Always renders inside a parent `<Link>` on these tiles, so its click
- * stops propagation/prevents the parent navigation from also firing. */
+ * stops propagation/prevents the parent navigation from also firing.
+ * (Named "Want" historically; it is Save — labelled Save, and a signed-in
+ * Save opens the same organize sheet as every other Save control.) */
 export default function WantHeartButton({
   type,
   slug,
@@ -22,9 +25,11 @@ export default function WantHeartButton({
   id?: string;
   className?: string;
 }) {
-  const { saved, toggle } = useAccountSaved(type, slug, id);
+  const { saved, toggle, organize } = useAccountSaved(type, slug, id);
 
   return (
+    <>
+    <SaveOrganizeSheet organize={organize} />
     <button
       type="button"
       onClick={(e) => {
@@ -33,7 +38,7 @@ export default function WantHeartButton({
         toggle();
       }}
       aria-pressed={saved}
-      aria-label={saved ? "Remove from Want" : "Want"}
+      aria-label={saved ? "Saved" : "Save"}
       className={`flex items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition active:scale-90 ${className}`}
     >
       <svg viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} className="h-[45%] w-[45%]">
@@ -45,5 +50,6 @@ export default function WantHeartButton({
         />
       </svg>
     </button>
+  </>
   );
 }

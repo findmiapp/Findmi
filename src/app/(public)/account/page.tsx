@@ -20,7 +20,18 @@ import type { EventPublicationStatus } from "@/lib/types";
 import LiveDot from "@/components/LiveDot";
 import SupabaseImage from "@/components/SupabaseImage";
 import ChevronIcon from "@/components/ChevronIcon";
-import JournalArchiveCard from "@/components/journal/JournalArchiveCard";
+import { DiscoveryRail } from "@/components/discovery/DiscoveryTile";
+import { runDiscovery } from "@/lib/discovery/server";
+import { getMomentFeed } from "@/lib/moment-discovery";
+import {
+  fromBrandsTiles,
+  getFollowedBrandProducts,
+  getProductsYouMightLike,
+  momentsFromBrands,
+  pickYouMightLike,
+  type HomeTile,
+} from "@/lib/account-home";
+import { SAVED_COLLECTIONS, collectionCounts, type RelationRow } from "@/lib/save-organization";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import PersonalAppShell from "./PersonalAppShell";
@@ -45,7 +56,8 @@ export const dynamic = "force-dynamic";
  * holds the depth. */
 const COMING_UP_LIMIT = 6;
 const UPCOMING_FETCH_LIMIT = 24;
-const WORLD_LIMIT = 8;
+const SAVED_LIMIT = 8;
+const MOMENTS_LIMIT = 6;
 const MANAGING_PREVIEW = 3;
 
 /** Horizontal rail on phones (scrolling through to the screen edge,
@@ -56,20 +68,16 @@ const MANAGING_PREVIEW = 3;
 const RAIL_CLASS =
   "-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:grid lg:scroll-px-0 lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden";
 
-type WorldTile = {
-  key: string;
-  kind: "business" | "product" | "event" | "location";
-  name: string;
-  imageUrl: string | null;
-  href: string;
-  relatedAt: string;
-};
+/** Home's mixed-content tile (Saved, From Brands You Follow, Your
+ * Moments, Products You Might Like) — lib/account-home.ts's HomeTile. */
+type WorldTile = HomeTile;
 
 const WORLD_KIND_LABEL: Record<WorldTile["kind"], string> = {
-  business: "Business",
+  business: "Brand",
   product: "Product",
   event: "Event",
-  location: "Location",
+  location: "Place",
+  moment: "Moment",
 };
 
 /** Launch V2 Pass 1 — plan_tier isn't in the public anon/authenticated
@@ -109,11 +117,12 @@ async function getProBusinessIdSet(
  * world, not an operational dashboard. Identity lives once, in the
  * shell's Account Context trigger; Business context (public page, share,
  * workspace) lives behind that switcher. Content earns space: DOM order
- * is the priority order at every width — Coming Up -> Recent Moments ->
- * My World -> Needs Your Attention -> Inbox -> Managing -> Pending
- * Claims — and every section renders only when it has real content. A
- * person with nothing yet gets ONE "Start Your World" starter instead of
- * a stack of empty modules. */
+ * is the priority order at every width — Upcoming Events (From Pages You
+ * Follow) -> From Brands You Follow -> Events / Places / Products / Brands
+ * You Might Like -> Saved -> Your Moments -> Pages I Manage -> Needs Your
+ * Attention -> Inbox -> Pending Claims — and every section renders only
+ * when it has real content (lib/account-home.ts). A person with nothing
+ * yet gets ONE "Start Exploring" starter instead of empty modules. */
 export default async function AccountHomePage({
   searchParams,
 }: {
@@ -286,7 +295,28 @@ export default async function AccountHomePage({
   //   than the rail shows so the per-Event collapse below still fills it.
   // - Recent Moments: the owner's own 3 latest Journal entries (bounded —
   //   media/signing only for those 3).
-  const [proBusinessIds, allConversations, commandCenter, upcomingRaw, recentMoments] = await Promise.all([
+  // Personalized rails (Account Home launchpad) — read alongside the rest.
+  // "You Might Like" only for someone with real signals (a follow or save):
+  // it is the discovery engine's own personal ranking, never a guess.
+  const followedBusinessIds = personalGraph.followedBusinesses.map((b) => b.id);
+  const savedBusinessIds = personalGraph.savedBusinesses.map((b) => b.id);
+  const hasSignals =
+    followedBusinessIds.length + savedBusinessIds.length + personalGraph.savedEvents.length + personalGraph.followedEvents.length +
+      personalGraph.savedLocations.length + personalGraph.followedLocations.length + personalGraph.savedProducts.length >
+    0;
+  const savedProductIds = new Set(personalGraph.savedProducts.map((p) => p.id));
+  const [
+    proBusinessIds,
+    allConversations,
+    commandCenter,
+    upcomingRaw,
+    recentMoments,
+    discovery,
+    momentFeed,
+    brandProducts,
+    productsYouMightLike,
+    { data: relationRows },
+  ] = await Promise.all([
     getProBusinessIdSet(admin, businessIds),
     admin ? listConversationsForUser(admin, user.id, { businesses: myBusinesses, events: myEvents, locations: myLocations }) : Promise.resolve([]),
     admin
@@ -297,16 +327,23 @@ export default async function AccountHomePage({
           pendingClaimsCount: myPendingClaims.length,
         })
       : Promise.resolve({ attention: [] as AttentionItem[] }),
+    // Upcoming Events — From Pages You Follow: follows only (Saved Events
+    // live in Saved).
     getPersonalUpcoming(
       {
-        savedEvents: personalGraph.savedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
+        savedEvents: [],
         followedBusinesses: personalGraph.followedBusinesses.map((b) => ({ id: b.id, slug: b.slug, name: b.name, imageUrl: b.imageUrl })),
         followedEvents: personalGraph.followedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
         followedLocations: personalGraph.followedLocations.map((l) => ({ id: l.id, name: l.name })),
       },
       UPCOMING_FETCH_LIMIT
     ),
-    getJournalArchiveEntries(user.id, { limit: 3 }),
+    getJournalArchiveEntries(user.id, { limit: MOMENTS_LIMIT }),
+    hasSignals ? runDiscovery({ entities: ["event", "place", "business"] }, { personal: true }).catch(() => null) : Promise.resolve(null),
+    followedBusinessIds.length ? getMomentFeed({ limit: 24 }) : Promise.resolve(null),
+    getFollowedBrandProducts(supabase, followedBusinessIds),
+    hasSignals ? getProductsYouMightLike(supabase, [...new Set([...followedBusinessIds, ...savedBusinessIds])], savedProductIds) : Promise.resolve([]),
+    supabase.from("user_entity_relationships").select("entity_type, entity_id, relation").eq("user_id", user.id).in("entity_type", ["product", "event", "location"]),
   ]);
 
   const conversations = allConversations.filter((c) => c.subjectType !== "opportunity");
@@ -340,10 +377,8 @@ export default async function AccountHomePage({
   }
   const comingUpCards = comingUp.slice(0, COMING_UP_LIMIT);
 
-  // My World — this person's real Saves/Follows across every supported
-  // entity type, newest relationship first. An entity both Saved and
-  // Followed appears once (keyed by entity type + id, keeping its most
-  // recent relationship), each tile linking to its public page.
+  // Saved — this person's real Saves (newest first), each tile linking to
+  // its public page; Follows show up in Upcoming / From Brands instead.
   const worldByEntity = new Map<string, WorldTile>();
   const addWorld = (refs: PersonalEntityRef[], kind: WorldTile["kind"], hrefFor: (r: PersonalEntityRef) => string) => {
     for (const r of refs) {
@@ -354,12 +389,9 @@ export default async function AccountHomePage({
     }
   };
   addWorld(personalGraph.savedBusinesses, "business", (r) => `/business/${r.slug}`);
-  addWorld(personalGraph.followedBusinesses, "business", (r) => `/business/${r.slug}`);
   addWorld(personalGraph.savedProducts, "product", (r) => `/product/${r.slug}`);
   addWorld(personalGraph.savedEvents, "event", (r) => `/event/${r.slug}`);
-  addWorld(personalGraph.followedEvents, "event", (r) => `/event/${r.slug}`);
   addWorld(personalGraph.savedLocations, "location", (r) => `/location/${r.slug}`);
-  addWorld(personalGraph.followedLocations, "location", (r) => `/location/${r.slug}`);
   // VCL A2 — `created` (set by Brand onboarding's redirect) is only a
   // hint: it is honored solely when it names one of THIS user's own
   // Businesses (myBusinesses comes from their own business_members rows)
@@ -367,9 +399,54 @@ export default async function AccountHomePage({
   // else's, unknown, or already live — renders the ordinary Account Home.
   const createdBusiness = resolveCreatedBusiness(created, myBusinesses);
 
-  const worldTiles = [...worldByEntity.values()]
+  const savedTiles = [...worldByEntity.values()]
     .sort((a, b) => (a.relatedAt < b.relatedAt ? 1 : a.relatedAt > b.relatedAt ? -1 : 0))
-    .slice(0, WORLD_LIMIT);
+    .slice(0, SAVED_LIMIT);
+  // Real collection counts (classifications are their own rows — a Have /
+  // Been stays listed even after an Unsave).
+  const savedCounts = collectionCounts((relationRows ?? []) as RelationRow[], {
+    business: savedBusinessIds,
+    product: personalGraph.savedProducts.map((p) => p.id),
+    event: personalGraph.savedEvents.map((e) => e.id),
+    location: personalGraph.savedLocations.map((l) => l.id),
+  });
+  const savedChips = SAVED_COLLECTIONS.filter((c) => c.key !== "all" && savedCounts[c.key] > 0);
+
+  // From Brands You Follow — their real Products and Moments, mixed.
+  const brandTiles = fromBrandsTiles(brandProducts, momentFeed ? momentsFromBrands(momentFeed.cards, new Set(followedBusinessIds)) : []);
+
+  // You Might Like — never something already followed, saved or already
+  // in Upcoming Events.
+  const known = new Set<string>([
+    ...followedBusinessIds,
+    ...savedBusinessIds,
+    ...personalGraph.savedEvents.map((e) => e.id),
+    ...personalGraph.followedEvents.map((e) => e.id),
+    ...personalGraph.savedLocations.map((l) => l.id),
+    ...personalGraph.followedLocations.map((l) => l.id),
+  ]);
+  const ranked = discovery?.items ?? [];
+  const eventsYouMightLike = pickYouMightLike(ranked, "event", known);
+  const placesYouMightLike = pickYouMightLike(ranked, "place", known);
+  const brandsYouMightLike = pickYouMightLike(ranked, "business", known);
+  const productTiles: WorldTile[] = productsYouMightLike.map((p) => ({
+    key: `product:${p.id}`,
+    kind: "product",
+    name: p.name,
+    imageUrl: p.image_url,
+    href: `/product/${p.slug}`,
+    relatedAt: "",
+    meta: p.businessName,
+  }));
+  const momentTiles: WorldTile[] = recentMoments.map((m) => ({
+    key: `moment:${m.id}`,
+    kind: "moment",
+    name: m.title,
+    imageUrl: m.coverUrl,
+    href: `/journal/${m.id}`,
+    relatedAt: m.entry_date,
+    meta: m.location?.name ?? null,
+  }));
 
   // Managing — secondary on Personal Home. The Account Context Switcher is
   // already the primary way into each Business, but it doesn't represent
@@ -424,7 +501,12 @@ export default async function AccountHomePage({
   const isNewWorld =
     comingUpCards.length === 0 &&
     recentMoments.length === 0 &&
-    worldTiles.length === 0 &&
+    savedTiles.length === 0 &&
+    brandTiles.length === 0 &&
+    eventsYouMightLike.length === 0 &&
+    placesYouMightLike.length === 0 &&
+    brandsYouMightLike.length === 0 &&
+    productTiles.length === 0 &&
     !hasUpdates &&
     inboxPreview.length === 0 &&
     !hasAnyManaged &&
@@ -477,9 +559,9 @@ export default async function AccountHomePage({
 
       <div className="mt-5 flex flex-col gap-7">
         {isNewWorld && (
-          <section aria-labelledby="start-your-world" className="rounded-3xl bg-findmi-50 px-5 py-6 sm:px-7 sm:py-8">
-            <h2 id="start-your-world" className="font-display text-section-title-lg font-bold text-primary">
-              Start Your World
+          <section aria-labelledby="start-exploring" className="rounded-3xl bg-findmi-50 px-5 py-6 sm:px-7 sm:py-8">
+            <h2 id="start-exploring" className="font-display text-section-title-lg font-bold text-primary">
+              Start Exploring
             </h2>
             <p className="mt-1.5 max-w-md text-body text-secondary">
               Save the Brands, Products, Places and Events you want to keep up with. They&rsquo;ll show up here.
@@ -495,7 +577,7 @@ export default async function AccountHomePage({
         )}
 
         {comingUpCards.length > 0 && (
-          <HomeSection id="coming-up" title="Coming Up" href="/my-world" linkLabel="See All">
+          <HomeSection id="upcoming-events" title="Upcoming Events" subtitle="From Pages You Follow" href="/account/following" linkLabel="See All">
             <div className={RAIL_CLASS + " lg:grid-cols-3"}>
               {comingUpCards.map((item) => (
                 <ScheduleCard key={item.key} item={item} />
@@ -504,23 +586,101 @@ export default async function AccountHomePage({
           </HomeSection>
         )}
 
-        {recentMoments.length > 0 && (
-          <HomeSection id="recent-moments" title="Recent Moments" href="/my-world/journal" linkLabel="See All">
-            <div className="flex flex-col gap-2.5">
-              {recentMoments.map((entry) => (
-                <JournalArchiveCard key={entry.id} entry={entry} />
+        {brandTiles.length > 0 && (
+          <HomeSection id="from-brands" title="From Brands You Follow" href="/account/following" linkLabel="See All">
+            <div className={RAIL_CLASS + " lg:grid-cols-4"}>
+              {brandTiles.map((tile) => (
+                <WorldTileCard key={tile.key} tile={tile} />
               ))}
             </div>
           </HomeSection>
         )}
 
-        {worldTiles.length > 0 && (
-          <HomeSection id="my-world" title="My World" href="/my-world" linkLabel="See All">
+        {eventsYouMightLike.length > 0 && (
+          <HomeSection id="events-you-might-like" title="Events You Might Like" href="/events" linkLabel="See All">
+            <DiscoveryRail items={eventsYouMightLike} />
+          </HomeSection>
+        )}
+
+        {placesYouMightLike.length > 0 && (
+          <HomeSection id="places-you-might-like" title="Places You Might Like" href="/locations" linkLabel="See All">
+            <DiscoveryRail items={placesYouMightLike} />
+          </HomeSection>
+        )}
+
+        {productTiles.length > 0 && (
+          <HomeSection id="products-you-might-like" title="Products You Might Like" href="/marketplace" linkLabel="See All">
             <div className={RAIL_CLASS + " lg:grid-cols-4"}>
-              {worldTiles.map((tile) => (
+              {productTiles.map((tile) => (
                 <WorldTileCard key={tile.key} tile={tile} />
               ))}
             </div>
+          </HomeSection>
+        )}
+
+        {brandsYouMightLike.length > 0 && (
+          <HomeSection id="brands-you-might-like" title="Brands You Might Like" href="/businesses" linkLabel="See All">
+            <DiscoveryRail items={brandsYouMightLike} />
+          </HomeSection>
+        )}
+
+        {savedTiles.length > 0 && (
+          <HomeSection id="saved" title="Saved" href="/account/saved" linkLabel="See All">
+            {savedChips.length > 0 && (
+              <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 [&::-webkit-scrollbar]:hidden">
+                {savedChips.map((c) => (
+                  <Link
+                    key={c.key}
+                    href={`/account/saved?collection=${c.key}`}
+                    className="h-8 shrink-0 rounded-full border border-black/10 bg-white px-3.5 text-metadata font-semibold leading-8 text-ink/65 hover:text-ink"
+                  >
+                    {c.label} · {savedCounts[c.key]}
+                  </Link>
+                ))}
+              </div>
+            )}
+            <div className={RAIL_CLASS + " lg:grid-cols-4"}>
+              {savedTiles.map((tile) => (
+                <WorldTileCard key={tile.key} tile={tile} />
+              ))}
+            </div>
+          </HomeSection>
+        )}
+
+        {momentTiles.length > 0 && (
+          <HomeSection id="your-moments" title="Your Moments" href="/my-world/journal" linkLabel="See All">
+            <div className={RAIL_CLASS + " lg:grid-cols-6"}>
+              {momentTiles.map((tile) => (
+                <WorldTileCard key={tile.key} tile={tile} />
+              ))}
+            </div>
+          </HomeSection>
+        )}
+
+        {/* Pages I Manage — a secondary utility list (not cards): up to 3
+            rows, the rest behind a native View All disclosure. Only when
+            this person manages something. */}
+        {hasAnyManaged && (
+          <HomeSection id="pages-i-manage" title="Pages I Manage">
+            <div className="divide-y divide-black/[0.06]">
+              {managedEntities.slice(0, MANAGING_PREVIEW).map((entity) => (
+                <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
+              ))}
+            </div>
+            {managedEntities.length > MANAGING_PREVIEW && (
+              <details className="group">
+                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 py-2 text-metadata font-semibold text-accent hover:underline [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">View All ({managedEntities.length})</span>
+                  <span className="hidden group-open:inline">Show Less</span>
+                  <ChevronIcon direction="down" className="h-3 w-3 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
+                  {managedEntities.slice(MANAGING_PREVIEW).map((entity) => (
+                    <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
+                  ))}
+                </div>
+              </details>
+            )}
           </HomeSection>
         )}
 
@@ -572,33 +732,6 @@ export default async function AccountHomePage({
           </HomeSection>
         )}
 
-        {/* Managing — a secondary utility list (not cards): up to 3 rows,
-            the rest behind a native View All disclosure. Only when this
-            person manages something. */}
-        {hasAnyManaged && (
-          <HomeSection id="managing" title="Managing">
-            <div className="divide-y divide-black/[0.06]">
-              {managedEntities.slice(0, MANAGING_PREVIEW).map((entity) => (
-                <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
-              ))}
-            </div>
-            {managedEntities.length > MANAGING_PREVIEW && (
-              <details className="group">
-                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 py-2 text-metadata font-semibold text-accent hover:underline [&::-webkit-details-marker]:hidden">
-                  <span className="group-open:hidden">View All ({managedEntities.length})</span>
-                  <span className="hidden group-open:inline">Show Less</span>
-                  <ChevronIcon direction="down" className="h-3 w-3 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
-                  {managedEntities.slice(MANAGING_PREVIEW).map((entity) => (
-                    <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
-                  ))}
-                </div>
-              </details>
-            )}
-          </HomeSection>
-        )}
-
         {myPendingClaims.length > 0 && (
           <HomeSection id="pending-claims" title="Pending Claims">
             <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
@@ -623,7 +756,7 @@ export default async function AccountHomePage({
       </div>
 
       {/* Footer utilities — compact rows, unchanged destinations. The Explore
-          row is omitted only while Start Your World already offers it. */}
+          row is omitted only while Start Exploring already offers it. */}
       <div className="mt-8 divide-y divide-black/[0.06] border-t border-black/[0.06]">
         {!isNewWorld && (
           <Link href="/find" className="flex items-center justify-between gap-3 py-3 text-body font-semibold text-secondary transition hover:text-primary">
@@ -712,6 +845,7 @@ function UpdateRow({ item }: { item: AttentionItem }) {
 function HomeSection({
   id,
   title,
+  subtitle,
   href,
   linkLabel,
   trailing,
@@ -719,6 +853,7 @@ function HomeSection({
 }: {
   id: string;
   title: string;
+  subtitle?: string;
   href?: string;
   linkLabel?: string;
   trailing?: React.ReactNode;
@@ -727,9 +862,12 @@ function HomeSection({
   return (
     <section aria-labelledby={id}>
       <div className="flex items-center justify-between gap-3">
-        <h2 id={id} className="min-w-0 truncate font-display text-section-title font-bold text-primary">
-          {title}
-        </h2>
+        <div className="min-w-0">
+          <h2 id={id} className="truncate font-display text-section-title font-bold text-primary">
+            {title}
+          </h2>
+          {subtitle && <p className="truncate text-metadata text-muted">{subtitle}</p>}
+        </div>
         {href && linkLabel ? (
           <Link href={href} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
             {linkLabel}
@@ -808,8 +946,8 @@ function PlaceFallbackGlyph({ className }: { className?: string }) {
   );
 }
 
-/** My World tile — a real image, the entity's real name and what kind of
- * thing it is, linking straight to its own public page. */
+/** Home tile — a real image, the item's real name and what kind of thing
+ * it is (plus its Brand / place when known), linking to its own page. */
 function WorldTileCard({ tile }: { tile: WorldTile }) {
   return (
     <Link href={tile.href} className="group flex w-[116px] shrink-0 snap-start flex-col gap-2 lg:w-auto">
@@ -830,7 +968,10 @@ function WorldTileCard({ tile }: { tile: WorldTile }) {
       </div>
       <div className="min-w-0 px-0.5">
         <p className="truncate text-metadata font-bold text-primary">{tile.name}</p>
-        <p className="truncate text-microcopy text-subtle">{WORLD_KIND_LABEL[tile.kind]}</p>
+        <p className="truncate text-microcopy text-subtle">
+          {WORLD_KIND_LABEL[tile.kind]}
+          {tile.meta ? ` · ${tile.meta}` : ""}
+        </p>
       </div>
     </Link>
   );

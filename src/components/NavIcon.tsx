@@ -74,13 +74,21 @@ export default function NavIcon({ name, className }: { name: NavIconKey; classNa
     case "storefront":
       return (
         <svg viewBox="0 0 24 24" fill="none" className={className}>
-          <path
-            d="M4 9.5L5 4h14l1 5.5M4 9.5a2.2 2.2 0 004.3.7M4 9.5a2.2 2.2 0 004.3.7m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.3-.7M5 10v9.5a1 1 0 001 1h5v-6h2v6h5a1 1 0 001-1V10"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          {/* Brand / Business — awning band over a shopfront with a door. */}
+          <rect x="3.5" y="4" width="17" height="5.5" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M9.2 4v5.5M14.8 4v5.5" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M5 9.5V19a1.5 1.5 0 001.5 1.5h11A1.5 1.5 0 0019 19V9.5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M10 20.5V16a1 1 0 011-1h2a1 1 0 011 1v4.5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+      );
+    case "moments":
+      // Moments — a photo (Moments are captured experiences). Distinct
+      // from "target", which also means Performance / Analytics.
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={className}>
+          <rect x="3.5" y="5" width="17" height="14.5" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M3.5 16.5l4.6-4.2a1.2 1.2 0 011.6 0l3.3 3 2.2-2a1.2 1.2 0 011.6 0l3.7 3.4" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <circle cx="15.5" cy="9.6" r="1.6" stroke="currentColor" strokeWidth="1.6" />
         </svg>
       );
     case "home":

@@ -37,6 +37,7 @@ export const NAV_ICON_KEYS = [
   "storefront",
   "home",
   "cart",
+  "moments",
 ] as const;
 export type NavIconKey = (typeof NAV_ICON_KEYS)[number];
 
@@ -175,7 +176,7 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
   { id: "fallback-events", label: "Events", href: "/events", external: false, icon: "calendar", highlight: false, audience: "everyone", children: [] },
   { id: "fallback-places", label: "Places", href: "/locations", external: false, icon: "pin", highlight: false, audience: "everyone", children: [] },
   { id: "fallback-brands", label: "Brands", href: "/businesses", external: false, icon: "storefront", highlight: false, audience: "everyone", children: [] },
-  { id: "fallback-moments", label: "Moments", href: "/moments", external: false, icon: "target", highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-moments", label: "Moments", href: "/moments", external: false, icon: "moments", highlight: false, audience: "everyone", children: [] },
 ];
 
 // ── Public discovery navigation contract ─────────────────────────────────

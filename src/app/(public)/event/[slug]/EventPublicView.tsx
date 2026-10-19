@@ -35,7 +35,6 @@ import EventActionRow from "@/components/event/EventActionRow";
 import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
 import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
-import RelationshipButton from "@/components/discovery/RelationshipButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
@@ -738,7 +737,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         </Link>
       </div>
       <p className="mt-1.5 max-w-xl text-metadata text-muted">
-        Share moments from your experience that will appear in your Journal.{" "}
+        Share moments from your experience that will appear in My Moments.{" "}
         <span className="italic text-subtle">They may be featured on brand pages.</span>
       </p>
       {journal.entries.length > 0 && (
@@ -748,7 +747,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       )}
       <div className="mt-4">
         <Link href="/my-world/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
-          View Your Journal
+          View My Moments
           <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
       </div>
@@ -931,12 +930,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
       <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
         <div className="order-1">{keyFacts}</div>
         <div className="order-2 mt-4 lg:mt-5">
+          {/* Personal lists (Interested / Must Do) live in Save's organize sheet. */}
           {actions}
-          {/* Discovery Intelligence V1 — explicit Personal statements. */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <RelationshipButton entityType="event" entityId={event.id} relation="must_do" label="Must Do" />
-            <RelationshipButton entityType="event" entityId={event.id} relation="been" label="Been" activeLabel="Been Here" />
-          </div>
         </div>
       </div>
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">

@@ -1,14 +1,17 @@
 "use client";
 
+import SaveOrganizeSheet from "@/components/SaveOrganizeSheet";
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
 // Same shared save/bookmark hook as SaveButton (businesses) and
 // EventSaveButton — Product Detail V2 extends the same mechanism to
 // products rather than inventing a new one.
 export default function ProductSaveButton({ slug, id }: { slug: string; id?: string }) {
-  const { saved, toggle } = useAccountSaved("product", slug, id);
+  const { saved, toggle, organize } = useAccountSaved("product", slug, id);
 
   return (
+    <>
+    <SaveOrganizeSheet organize={organize} />
     <button
       type="button"
       onClick={toggle}
@@ -26,5 +29,6 @@ export default function ProductSaveButton({ slug, id }: { slug: string; id?: str
       </svg>
       {saved ? "Saved" : "Save"}
     </button>
+  </>
   );
 }

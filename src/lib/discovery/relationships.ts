@@ -9,10 +9,13 @@ export type RelationshipEntityType = (typeof RELATIONSHIP_ENTITY_TYPES)[number];
 export const RELATIONSHIPS = ["want", "must_do", "like", "dislike", "been", "have"] as const;
 export type Relationship = (typeof RELATIONSHIPS)[number];
 
-/** Which statements make sense for which entity. */
+/** Which statements make sense for which entity. "want" on an Event is
+ * "Interested", on a Location "Want To Go" (Save organization —
+ * lib/save-organization.ts); the DB CHECK already allows every relation
+ * for every entity type. */
 export const ALLOWED_RELATIONSHIPS: Record<RelationshipEntityType, readonly Relationship[]> = {
-  event: ["must_do", "been", "like", "dislike"],
-  location: ["must_do", "been", "like", "dislike"],
+  event: ["want", "must_do", "been", "like", "dislike"],
+  location: ["want", "must_do", "been", "like", "dislike"],
   business: ["like", "dislike"],
   product: ["want", "have"],
   topic: ["like", "dislike"],

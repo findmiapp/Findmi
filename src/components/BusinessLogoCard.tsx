@@ -1,5 +1,6 @@
 "use client";
 
+import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import FollowButton from "./FollowButton";
@@ -480,16 +481,7 @@ function ChevronGlyph({ className }: { className?: string }) {
   );
 }
 
+/** The shared Brand / Business icon (NavIcon "storefront"). */
 function StorefrontGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M4 9.5L5 4h14l1 5.5M4 9.5a2.2 2.2 0 004.3.7M4 9.5a2.2 2.2 0 004.3.7m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.3-.7M5 10v9.5a1 1 0 001 1h5v-6h2v6h5a1 1 0 001-1V10"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <NavIcon name="storefront" className={className} />;
 }

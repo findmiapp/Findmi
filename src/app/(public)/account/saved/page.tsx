@@ -12,6 +12,7 @@ import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS, type LocationWithCateg
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../PersonalAppShell";
+import { COLLECTION_ENTITY_TYPES, SAVED_COLLECTIONS, collectionCounts, collectionMembers, parseCollection, type RelationRow } from "@/lib/save-organization";
 
 export const metadata: Metadata = {
   title: "Saved",
@@ -33,51 +34,59 @@ type SavedProduct = Product & {
  * lib/useAccountSaved.ts) write to these same tables once a visitor is
  * signed in, so what shows here is exactly what those buttons show as
  * saved everywhere else. */
-export default async function AccountSavedPage() {
+export default async function AccountSavedPage({ searchParams }: { searchParams: Promise<{ collection?: string }> }) {
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/account/saved");
+  const collection = parseCollection((await searchParams).collection);
 
-  const [{ data: savedBusinesses }, { data: savedEvents }, { data: savedProducts }, { data: savedLocations }, displayName] =
+  // Save rows + the viewer's own classifications (Save organization), all
+  // RLS-scoped to this user, in one parallel batch.
+  const [{ data: savedBizRows }, { data: savedEventRows }, { data: savedProductRows }, { data: savedLocationRows }, { data: relationRows }, displayName] =
     await Promise.all([
-      supabase.from("account_saved_businesses").select(`business:businesses(${PUBLIC_BUSINESS_COLUMNS})`).eq("user_id", user.id),
-      supabase.from("account_saved_events").select("event:events(*)").eq("user_id", user.id),
-      supabase
-        .from("account_saved_products")
-        .select(`product:products(${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled))`)
-        .eq("user_id", user.id),
-      // Surface Followed Locations pass — a small adjacent, genuinely
-      // trivial reuse: account_saved_locations already exists and
-      // /api/account/save already supports type="location" (the public
-      // LocationSaveButton already writes here), this page just never
-      // read it back yet. Same LocationCard reuse as /account/following;
-      // no unfollow-equivalent button here either, matching every other
-      // section on this page (Saved is view-only, unlike Following).
-      supabase
-        .from("account_saved_locations")
-        .select("location:locations(*, category:categories(id, name, slug))")
-        .eq("user_id", user.id),
+      supabase.from("account_saved_businesses").select("business_id").eq("user_id", user.id),
+      supabase.from("account_saved_events").select("event_id").eq("user_id", user.id),
+      supabase.from("account_saved_products").select("product_id").eq("user_id", user.id),
+      // account_saved_locations: the public LocationSaveButton writes here.
+      supabase.from("account_saved_locations").select("location_id").eq("user_id", user.id),
+      supabase.from("user_entity_relationships").select("entity_type, entity_id, relation").eq("user_id", user.id).in("entity_type", [...COLLECTION_ENTITY_TYPES]),
       getPersonalDisplayName(supabase, user.id),
     ]);
+  const saved = {
+    business: ((savedBizRows ?? []) as { business_id: string }[]).map((r) => r.business_id),
+    event: ((savedEventRows ?? []) as { event_id: string }[]).map((r) => r.event_id),
+    product: ((savedProductRows ?? []) as { product_id: string }[]).map((r) => r.product_id),
+    location: ((savedLocationRows ?? []) as { location_id: string }[]).map((r) => r.location_id),
+  };
+  const relations = (relationRows ?? []) as RelationRow[];
+  // A collection is its classification rows — never dependent on a Save
+  // row still existing (Have / Been are history). "All" adds every Save.
+  const members = collectionMembers(collection, relations, saved);
+  const counts = collectionCounts(relations, saved);
+  const businessIds = collection === "all" ? saved.business : [];
 
-  const businesses = ((savedBusinesses ?? []) as unknown as { business: BusinessWithCategories | null }[])
-    .map((row) => row.business)
+  const none = Promise.resolve({ data: [] as never[] });
+  const [{ data: businessRows }, { data: eventRows }, { data: productRows }, { data: locationRows }] = await Promise.all([
+    businessIds.length ? supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).in("id", businessIds) : none,
+    members.event.length ? supabase.from("events").select("*").in("id", members.event) : none,
+    members.product.length
+      ? supabase.from("products").select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled)`).in("id", members.product)
+      : none,
+    members.location.length ? supabase.from("locations").select("*, category:categories(id, name, slug)").in("id", members.location) : none,
+  ]);
+
+  const businesses = ((businessRows ?? []) as unknown as (BusinessWithCategories | null)[])
     .filter((b): b is BusinessWithCategories => Boolean(b))
     .map((b) => ({ ...b, categories: [] }));
-
-  const events = ((savedEvents ?? []) as unknown as { event: FindmiEvent | null }[])
-    .map((row) => row.event)
-    .filter((e): e is FindmiEvent => Boolean(e));
-
-  const products = ((savedProducts ?? []) as unknown as { product: SavedProduct | null }[])
-    .map((row) => row.product)
-    .filter((p): p is SavedProduct => Boolean(p));
-
-  const locations = ((savedLocations ?? []) as unknown as { location: LocationWithCategory | null }[])
-    .map((row) => row.location)
-    .filter((l): l is LocationWithCategory => Boolean(l));
+  const events = (eventRows ?? []) as unknown as FindmiEvent[];
+  const products = ((productRows ?? []) as unknown as (SavedProduct & { business: SavedProduct["business"] | SavedProduct["business"][] })[]).map((p) => ({
+    ...p,
+    business: Array.isArray(p.business) ? (p.business[0] ?? null) : p.business,
+  }));
+  const locations = (locationRows ?? []) as unknown as LocationWithCategory[];
+  const current = SAVED_COLLECTIONS.find((c) => c.key === collection)!;
 
   const empty = businesses.length === 0 && events.length === 0 && products.length === 0 && locations.length === 0;
 
@@ -86,9 +95,26 @@ export default async function AccountSavedPage() {
       <h1 className="font-display text-page-title font-bold text-primary">Saved</h1>
       <p className="mt-1.5 text-body text-muted">Businesses, events, products, and locations you&rsquo;ve saved to your account.</p>
 
+      {/* Personal collections — only lists that hold something (plus All). */}
+      <nav aria-label="Saved lists" className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {SAVED_COLLECTIONS.filter((c) => c.key === "all" || counts[c.key] > 0 || c.key === collection).map((c) => {
+          const active = c.key === collection;
+          return (
+            <Link
+              key={c.key}
+              href={c.key === "all" ? "/account/saved" : `/account/saved?collection=${c.key}`}
+              aria-current={active ? "page" : undefined}
+              className={`h-8 shrink-0 rounded-full px-3.5 text-metadata font-semibold leading-8 ${active ? "bg-findmi-600 text-white" : "border border-black/10 bg-white text-ink/65 hover:text-ink"}`}
+            >
+              {c.label} · {counts[c.key]}
+            </Link>
+          );
+        })}
+      </nav>
+
       {empty ? (
         <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
-          <p className="text-body font-semibold text-primary">Nothing saved yet</p>
+          <p className="text-body font-semibold text-primary">{collection === "all" ? "Nothing saved yet" : `Nothing in ${current.label} yet`}</p>
           <p className="mt-1 text-body text-muted">
             <Link href="/discover" className="font-medium text-accent underline underline-offset-2">
               Start exploring

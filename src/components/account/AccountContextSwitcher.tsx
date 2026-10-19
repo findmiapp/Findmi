@@ -108,7 +108,11 @@ export default function AccountContextSwitcher({
         }
       >
         {trigger ?? defaultTrigger}
-        <ChevronIcon direction="down" className={`h-3.5 w-3.5 shrink-0 text-ink/40 transition-transform ${open ? "rotate-180" : ""}`} />
+        {/* A quiet "Switch" so the closed control reads as interactive. */}
+        <span className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-muted">
+          {trigger && <span>Switch</span>}
+          <ChevronIcon direction="down" className={`h-3.5 w-3.5 shrink-0 text-ink/40 transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
       </button>
 
       {open && (
@@ -185,7 +189,7 @@ function SwitcherMenu({
       <p className="px-2.5 pb-1 pt-1.5 text-label font-bold uppercase text-subtle">Switch To</p>
 
       <Link href="/account" onClick={onNavigate} className={rowClass(current.kind === "personal")}>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700">
           <NavIcon name="home" className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
@@ -205,10 +209,11 @@ function SwitcherMenu({
                 alt=""
                 width={32}
                 height={32}
-                className="h-8 w-8 shrink-0 rounded-full border border-black/[0.06] bg-white object-cover"
+                // Rounded-square identity, contained (logos/wordmarks are never cropped).
+                className="h-8 w-8 shrink-0 rounded-lg border border-black/[0.06] bg-white object-contain p-0.5"
               />
             ) : (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50 font-display text-metadata font-bold text-findmi-700">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-metadata font-bold text-findmi-700">
                 {b.name.charAt(0).toUpperCase()}
               </span>
             )}

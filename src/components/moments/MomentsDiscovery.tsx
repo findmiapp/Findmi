@@ -7,6 +7,8 @@ import {
   MOMENT_FILTER_LABELS,
   MORE_MOMENT_FILTERS,
   PRIMARY_MOMENT_FILTERS,
+  followingEmptyMessage,
+  mergeFollowKeys,
   momentMatchesFilter,
   type MomentFilterKey,
   type MomentFollowKeys,
@@ -14,6 +16,7 @@ import {
 import { getFollowedSlugs } from "@/lib/followed";
 import { getFollowedEventIds } from "@/lib/followedEvents";
 import { getFollowedLocationIds } from "@/lib/followedLocations";
+import { getAccountSession } from "@/lib/accountSession";
 import ChevronIcon from "@/components/ChevronIcon";
 import MomentDiscoveryCard from "./MomentDiscoveryCard";
 import { useNearViewport } from "./useNearViewport";
@@ -23,8 +26,10 @@ const NO_FOLLOWS: MomentFollowKeys = { businessSlugs: [], eventIds: [], location
 /** Findmi Moments discovery — filter chips over a set of public Moment
  * cards, as a snap carousel (homepage) or a responsive feed (/moments).
  * Filtering is over the server-loaded page: category filters use each
- * Moment's real connected categories; "Following" uses this device's own
- * follow lists (read after mount, so server and client render match). A
+ * Moment's real connected categories; "Following" uses the viewer's
+ * account follows when signed in (plus this device's legacy lists; guests:
+ * the device lists only) — read after mount, so server and client render
+ * match. A
  * category chip only appears when at least one loaded Moment matches it —
  * never an empty, decorative filter. */
 export default function MomentsDiscovery({
@@ -41,10 +46,30 @@ export default function MomentsDiscovery({
 }) {
   const [filter, setFilter] = useState<MomentFilterKey>(initialFilter);
   const [follows, setFollows] = useState<MomentFollowKeys>(NO_FOLLOWS);
+  // Until the account follows have loaded, Following's empty copy would
+  // guess — so it waits.
+  const [followsReady, setFollowsReady] = useState(false);
   const [moreOpen, setMoreOpen] = useState(MORE_MOMENT_FILTERS.includes(initialFilter));
 
   useEffect(() => {
-    setFollows({ businessSlugs: getFollowedSlugs(), eventIds: getFollowedEventIds(), locationIds: getFollowedLocationIds() });
+    let alive = true;
+    const device: MomentFollowKeys = { businessSlugs: getFollowedSlugs(), eventIds: getFollowedEventIds(), locationIds: getFollowedLocationIds() };
+    setFollows(device);
+    getAccountSession()
+      .then(async (signedIn) => {
+        if (!signedIn) return;
+        const res = await fetch("/api/account/follow-keys");
+        if (!res.ok) return;
+        const account = (await res.json()) as MomentFollowKeys;
+        if (alive) setFollows(mergeFollowKeys(device, account));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setFollowsReady(true);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const hasAny = (key: MomentFilterKey) => cards.some((c) => momentMatchesFilter(c, key, follows));
@@ -71,7 +96,9 @@ export default function MomentsDiscovery({
 
   const empty =
     filter === "following"
-      ? "Follow a Business, Event or Location to see its Moments here."
+      ? followsReady
+        ? followingEmptyMessage(follows)
+        : "Loading Moments from the Pages you follow…"
       : "No Moments here yet — check back soon.";
 
   const pageHref = (cursor: string | null) => {

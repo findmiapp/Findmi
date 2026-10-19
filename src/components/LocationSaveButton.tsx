@@ -1,5 +1,6 @@
 "use client";
 
+import SaveOrganizeSheet from "@/components/SaveOrganizeSheet";
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
 export default function LocationSaveButton({
@@ -18,10 +19,12 @@ export default function LocationSaveButton({
    * geometry and saved treatment as EventSaveButton's "icon" layout). */
   layout?: "icon" | "grid" | "square";
 }) {
-  const { saved, toggle } = useAccountSaved("location", slug, id);
+  const { saved, toggle, organize } = useAccountSaved("location", slug, id);
 
   if (layout === "square") {
     return (
+      <>
+      <SaveOrganizeSheet organize={organize} />
       <button
         type="button"
         onClick={toggle}
@@ -36,11 +39,14 @@ export default function LocationSaveButton({
           <path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
         </svg>
       </button>
+    </>
     );
   }
 
   if (layout === "grid") {
     return (
+      <>
+      <SaveOrganizeSheet organize={organize} />
       <button
         type="button"
         onClick={toggle}
@@ -57,10 +63,13 @@ export default function LocationSaveButton({
         </svg>
         <span className="text-[11px] font-semibold uppercase tracking-wide">{saved ? "Saved" : "Save"}</span>
       </button>
+    </>
     );
   }
 
   return (
+    <>
+    <SaveOrganizeSheet organize={organize} />
     <button
       type="button"
       onClick={toggle}
@@ -77,5 +86,6 @@ export default function LocationSaveButton({
         />
       </svg>
     </button>
+  </>
   );
 }

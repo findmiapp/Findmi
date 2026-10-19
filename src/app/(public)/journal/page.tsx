@@ -31,7 +31,7 @@ async function resolveSubject(params: SearchParams): Promise<Subject | null> {
     const author = await resolvePublicJournalAuthor(params.author);
     if (!author) return null;
     const name = author.name ?? "Findmi Member";
-    return { type: "author", id: author.userId, name, href: `/journal/${params.author}`, slug: params.author, heading: `${name}'s Journal` };
+    return { type: "author", id: author.userId, name, href: `/journal/${params.author}`, slug: params.author, heading: `${name}'s Moments` };
   }
   const subject = await resolveEntitySubject(params);
   return subject ? { ...subject, heading: momentsHeading(subject.type, subject.name) } : null;

@@ -179,7 +179,7 @@ export default function MyWorldPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Your world</h1>
+      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Saved &amp; Following</h1>
       <p className="mt-2 max-w-md text-sm text-ink/60">
         {authed
           ? "Everything you've wanted, wanted to do, followed, and saved."
@@ -196,7 +196,7 @@ export default function MyWorldPage() {
         href="/my-world/journal"
         className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
       >
-        Journal
+        My Moments
       </Link>
 
       {loading ? null : empty ? (
@@ -211,7 +211,7 @@ export default function MyWorldPage() {
         <div className="mt-10 flex flex-col gap-12">
           {data.wantProducts.length > 0 && (
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-wide text-findmi-700">Want</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wide text-findmi-700">Saved Products</h2>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                 {data.wantProducts.map((p) => (
                   <ProductCard key={p.id} product={p} />
@@ -222,7 +222,7 @@ export default function MyWorldPage() {
 
           {data.wantToDoEvents.length > 0 && (
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-wide text-findmi-700">Want to do</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wide text-findmi-700">Saved Events</h2>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                 {data.wantToDoEvents.map((e) => (
                   <CompactCard

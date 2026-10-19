@@ -14,7 +14,6 @@ import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
-import RelationshipButton from "@/components/discovery/RelationshipButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import InquireButton from "@/components/InquireButton";
@@ -296,10 +295,6 @@ export default async function ProductPage({
               title={product.name}
               track={{ subject_type: "product", subject_id: product.id, product_id: product.id, business_id: product.business_id }}
             />
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <RelationshipButton entityType="product" entityId={product.id} relation="want" label="Want" />
-            <RelationshipButton entityType="product" entityId={product.id} relation="have" label="Have" activeLabel="Have It" />
           </div>
 
           {/* Inquiry stays available as a secondary action even when Add

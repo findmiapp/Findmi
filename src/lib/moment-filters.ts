@@ -76,10 +76,34 @@ export interface MomentFollowKeys {
   businessSlugs: readonly string[];
   eventIds: readonly string[];
   locationIds: readonly string[];
+  /** Business ids — a Moment's connected Businesses plus its Business
+   * author (author_business_id); a viewer's account follows. Optional:
+   * legacy device follow lists only carry slugs. */
+  businessIds?: readonly string[];
 }
 
-/** Does a Moment match a filter? `follows` is this device's follow lists
- * (only consulted for "following"). */
+/** How many entities a viewer follows (any kind). */
+export function followCount(follows: MomentFollowKeys): number {
+  return follows.businessSlugs.length + follows.eventIds.length + follows.locationIds.length + (follows.businessIds?.length ?? 0);
+}
+
+/** Following's empty state — "you follow nothing" and "nothing new from what
+ * you follow" are different situations and never share copy. */
+export function followingEmptyMessage(follows: MomentFollowKeys): string {
+  return followCount(follows) === 0
+    ? "Follow a Business, Event or Location to see its Moments here."
+    : "Nothing new from the Pages you follow yet — check back soon.";
+}
+
+/** Merges two follow lists (account + this device's legacy lists). */
+export function mergeFollowKeys(a: MomentFollowKeys, b: MomentFollowKeys): MomentFollowKeys {
+  const u = (x: readonly string[] = [], y: readonly string[] = []) => [...new Set([...x, ...y])];
+  return { businessSlugs: u(a.businessSlugs, b.businessSlugs), eventIds: u(a.eventIds, b.eventIds), locationIds: u(a.locationIds, b.locationIds), businessIds: u(a.businessIds, b.businessIds) };
+}
+
+/** Does a Moment match a filter? `follows` is the viewer's follows — their
+ * account follows when signed in, plus this device's legacy lists (only
+ * consulted for "following"). */
 export function momentMatchesFilter(
   moment: { tags: readonly MomentFilterKey[]; follow: MomentFollowKeys },
   filter: MomentFilterKey,
@@ -89,6 +113,7 @@ export function momentMatchesFilter(
   if (filter === "following") {
     return (
       moment.follow.businessSlugs.some((s) => follows.businessSlugs.includes(s)) ||
+      (moment.follow.businessIds ?? []).some((id) => (follows.businessIds ?? []).includes(id)) ||
       moment.follow.eventIds.some((id) => follows.eventIds.includes(id)) ||
       moment.follow.locationIds.some((id) => follows.locationIds.includes(id))
     );

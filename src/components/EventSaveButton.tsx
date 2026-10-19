@@ -1,5 +1,6 @@
 "use client";
 
+import SaveOrganizeSheet from "@/components/SaveOrganizeSheet";
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
 export default function EventSaveButton({
@@ -15,10 +16,12 @@ export default function EventSaveButton({
    * page's Tier B utility row (see EventUtilityActions). */
   layout?: "pill" | "grid" | "icon";
 }) {
-  const { saved, toggle } = useAccountSaved("event", slug, id);
+  const { saved, toggle, organize } = useAccountSaved("event", slug, id);
 
   if (layout === "icon") {
     return (
+      <>
+      <SaveOrganizeSheet organize={organize} />
       <button
         type="button"
         onClick={toggle}
@@ -33,11 +36,14 @@ export default function EventSaveButton({
           <path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
         </svg>
       </button>
+    </>
     );
   }
 
   if (layout === "grid") {
     return (
+      <>
+      <SaveOrganizeSheet organize={organize} />
       <button
         type="button"
         onClick={toggle}
@@ -54,6 +60,7 @@ export default function EventSaveButton({
         </svg>
         <span className="text-[11px] font-semibold uppercase tracking-wide">{saved ? "Saved" : "Save"}</span>
       </button>
+    </>
     );
   }
 
@@ -63,6 +70,8 @@ export default function EventSaveButton({
   // fixed-size icon-only square that visually didn't match its siblings in
   // the same row.
   return (
+    <>
+    <SaveOrganizeSheet organize={organize} />
     <button
       type="button"
       onClick={toggle}
@@ -79,5 +88,6 @@ export default function EventSaveButton({
       </svg>
       {saved ? "Saved" : "Save"}
     </button>
+  </>
   );
 }

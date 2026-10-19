@@ -153,7 +153,13 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
       photoCount: mediaByEntry.get(r.id)?.length ?? 0,
       author: author ? { name: author.name, avatarUrl: author.imageUrl, kind: author.kind } : null,
       tags: momentCategoryTags(cats),
-      follow: { businessSlugs: rBiz.map((b) => b.slug), eventIds: rEventIds, locationIds: location ? [location.id] : [] },
+      follow: {
+        businessSlugs: rBiz.map((b) => b.slug),
+        eventIds: rEventIds,
+        locationIds: location ? [location.id] : [],
+        // Connected Businesses and the Business that published it.
+        businessIds: [...new Set([...rConns.map((c) => c.business_id), r.author_business_id ?? null].filter((v): v is string => Boolean(v)))],
+      },
     };
   });
 

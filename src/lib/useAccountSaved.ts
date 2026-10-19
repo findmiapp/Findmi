@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isOrganizable, type OrganizableType } from "@/lib/save-organization";
 import {
   isSaved,
   toggleSaved,
@@ -44,9 +45,23 @@ const LOCAL = {
  * toggling calls /api/account/save instead of touching localStorage —
  * the account, not the device, becomes authoritative for a signed-in
  * visitor, without ever requiring sign-in just to save something. */
+export interface SaveOrganizeState {
+  type: OrganizableType;
+  id: string;
+  open: boolean;
+  close: () => void;
+  /** Explicit "Remove From Saved" — removes the Save only; the item's
+   * classifications (Have / Been are history) are left as they are. */
+  unsave: () => void;
+}
+
 export function useAccountSaved(type: SavedEntityType, slug: string, id?: string) {
   const [saved, setSaved] = useState(false);
   const [authed, setAuthed] = useState(false);
+  // Save organization: a signed-in Save of a Product / Event / Location
+  // opens the organize sheet; Save itself never waits on it.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const organizable = isOrganizable(type) && Boolean(id);
 
   // Analytics attribution pass — fires save/unsave only after the real
   // toggle actually succeeded (see both call sites in toggle() below),
@@ -93,8 +108,18 @@ export function useAccountSaved(type: SavedEntityType, slug: string, id?: string
       emit(nowSaved);
       return;
     }
-    const next = !saved;
+    // Already saved + organizable → reopen the sheet (edit classifications,
+    // or Remove From Saved there) instead of a one-tap unsave.
+    if (organizable && saved) {
+      setSheetOpen(true);
+      return;
+    }
+    write(!saved);
+  }
+
+  function write(next: boolean) {
     setSaved(next); // optimistic
+    if (next && organizable) setSheetOpen(true);
     fetch("/api/account/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,10 +135,28 @@ export function useAccountSaved(type: SavedEntityType, slug: string, id?: string
           emit(Boolean(data.saved));
         } else {
           setSaved(!next); // request failed server-side — revert
+          if (next) setSheetOpen(false);
         }
       })
-      .catch(() => setSaved(!next));
+      .catch(() => {
+        setSaved(!next);
+        if (next) setSheetOpen(false);
+      });
   }
 
-  return { saved, toggle };
+  const organize: SaveOrganizeState | null =
+    authed && organizable && isOrganizable(type) && id
+      ? {
+          type,
+          id,
+          open: sheetOpen,
+          close: () => setSheetOpen(false),
+          unsave: () => {
+            setSheetOpen(false);
+            if (saved) write(false);
+          },
+        }
+      : null;
+
+  return { saved, toggle, organize };
 }

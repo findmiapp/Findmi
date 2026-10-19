@@ -573,7 +573,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         // happening; Retry re-attempts ensureEntryId through its own path.
         const newLocalIds = new Set(newItems.map((item) => item.localId));
         updateItems((prev) =>
-          prev.map((it) => (newLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: "Couldn't start this Journal entry. Tap Retry." } : it))
+          prev.map((it) => (newLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: "Couldn't start this Moment. Tap Retry." } : it))
         );
         return;
       }
