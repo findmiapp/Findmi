@@ -159,14 +159,16 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
   },
 };
 
-// Final Join Conversion Story pass — leads with the actual problem
-// (a moving business, hard to keep track of) rather than "discovery."
-// The mobile line-wrap AND the accent color on the second line are both
-// handled purely in presentation — see join/page.tsx's HeroHeadline,
-// whose split point moved with this copy — not by editing this string.
+// For Business Page Cleanup pass — the acquisition journey no longer
+// leads with a Free/Pro decision (that choice is gone from this public
+// page entirely — see join/business/page.tsx), so this heading no
+// longer needs to split for an accent color tied to a specific
+// substring; HeroHeadline's split-or-fallback behavior in join/page.tsx
+// is unchanged and simply renders this plainly now. "Your Business."
+// stays its own sentence so it still reads as two beats on mobile.
 export const JOIN_HERO_DEFAULTS = {
-  heading: "Your business moves. Make it easy to find.",
-  body: "One page for your business, what you offer and everywhere you'll be next.",
+  heading: "Your Business. Everywhere It Shows Up.",
+  body: "Build one connected Findmi presence for your products, events, locations, stockists, pop-ups and real-world moments — and make it easier for people to discover where to find you and what you're doing next.",
 };
 
 export const JOIN_GLOBAL_DEFAULTS = {

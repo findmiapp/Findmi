@@ -11,19 +11,12 @@ import { cityState, formatDateShort } from "@/lib/format";
 import type { BusinessWithCategories, Product } from "@/lib/types";
 import {
   getJoinPageSections,
-  resolveJoinCard,
   resolveJoinClaimBusiness,
-  resolveJoinFreeCard,
-  resolveJoinGlobal,
   resolveJoinHero,
   resolveJoinInviteSection,
-  resolveJoinProExtra,
   resolveJoinWhatYouGet,
-  type ResolvedJoinCard,
   type ResolvedJoinClaimBusiness,
-  type ResolvedJoinFreeCard,
   type ResolvedJoinInviteSection,
-  type ResolvedJoinProExtra,
 } from "@/lib/join-page";
 
 // Join / Universal Onboarding pass — this is the exact business-acquisition
@@ -44,48 +37,47 @@ import {
 // membershipActivation.ts, and /join/success are all preserved untouched
 // and fully working — this page just no longer imports or links to them.
 //
-// Founder Site Editor pass — every text/pricing/feature/CTA/visibility
-// value below comes from lib/join-page.ts's resolve*() helpers, which read
-// founder overrides (site_sections, page_key "join") and fall back to
-// hardcoded defaults.
+// Founder Site Editor pass — Hero/What You Get/Invite/Claim text below
+// still comes from lib/join-page.ts's resolve*() helpers (founder
+// overrides via site_sections, page_key "join", falling back to
+// hardcoded defaults). The Pro/Free/Regional card content model
+// (JOIN_CARD_DEFAULTS, JOIN_FREE_CARD_DEFAULTS, resolveJoinCard,
+// resolveJoinFreeCard, resolveJoinProExtra, resolveJoinGlobal) is left
+// fully intact in lib/join-page.ts and the admin Join editor for when
+// paid products return — this page just no longer calls or renders any
+// of it (see the For Business Page Cleanup pass below).
 //
-// Join Page Conversion Rebuild pass — this page's structure/hierarchy was
-// rebuilt around one objective: converting a stranger into a Findmi Pro
-// customer.
+// For Business Page Cleanup pass — Findmi Business Pages are free right
+// now, and this public landing page must say so without contradiction:
+// removed the Free/Pro decision entirely (ChoosePathTiles, FreeSection,
+// ProCard, and their $20/month Pro / $49/month Managed Pro / "Explore
+// Pro" copy) and replaced it with ValuePillars, a single connected-
+// presence narrative (Business Page -> Where To Find You -> What's
+// Happening Next -> Discovery) plus one plain "Free. No trial. No
+// credit card." confirmation. There is now exactly one creation path
+// (Get Started Free -> the canonical /account/business/new flow) and
+// one preserved secondary path for an existing Business (the unchanged
+// Claim Your Business link, still -> /businesses, same as before this
+// pass). The Pro Invite Code disclosure is kept: it's a redemption
+// utility for a complimentary grant already in motion, not a sales
+// section, the exact same reasoning the live Business creation form
+// itself uses for its own hasInvite banner.
 //
-// /Join Final Visual Conversion pass — this is a presentation-only polish
-// of that same structure, not another rewrite: quieter secondary CTAs
-// (Hero/Final) so they stop visually competing with the primary Pro
-// button; the Pro feature list is compressed 7->5 lines; "What You Get"
-// now shows real compact previews (CompactCard for the real business,
-// ProductCard for a real product when one exists) instead of four flat
-// gray text tiles; Regional/National's checklist collapses into one
-// inline line. No entitlement, payment, geography, or schema behavior
-// changed anywhere in this pass.
-//
-// Join Native Rose Showcase Upgrade pass — the "Real Findmi Proof"
-// section (now "See what your Findmi can become.") no longer renders a
-// single compact BusinessLogoCard; it reuses the exact same
-// BusinessShowcaseCarousel the homepage's own business_showcase row
-// renders (real Native Rose screenshots, no second implementation, no
-// invented mock screens), since this section's job here — after the
-// visitor has already seen the core pitch and Pro/Free choice — is pure
-// product visualization, not identity proof. getNextAppearanceHints()
-// is still fetched below; it's unrelated to this carousel (which is
-// static screenshots, same as on the homepage) and still feeds "What You
-// Get"'s Findmi Here tile.
+// Join Page Conversion Rebuild pass, /Join Final Visual Conversion pass,
+// Join Native Rose Showcase Upgrade pass — the Native Rose showcase
+// carousel (real screenshots, same component the homepage's own
+// business_showcase row renders) and the "What You Get" real compact
+// previews (CompactCard for the real business, ProductCard for a real
+// product) are both kept as concrete, truthful proof — neither mentions
+// price or plan tier, so neither needed to change for this pass.
+// getNextAppearanceHints() is still fetched below for the "Findmi Here"
+// preview tile.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Findmi for Business",
   description: "Show customers who you are, what you offer and where you'll be next, all in one Findmi page.",
 };
-
-// The one core Free/Pro business-acquisition path — never Tally. Pro
-// intent survives sign-in via the existing safe `next` redirect
-// mechanism (see account/business/new/page.tsx and lib/auth/
-// safe-redirect.ts) — no new auth/session infrastructure.
-const PRO_NATIVE_CTA_URL = "/account/business/new?plan=pro";
 
 // The one real profile used as this page's "show, don't tell" proof —
 // same destination the page has always used. Fetched once here and reused
@@ -102,9 +94,9 @@ const PROOF_BUSINESS_SLUG = "the-native-rose";
  * Referral Partner + Discount Foundation — findmi.app/join?ref=CODE is
  * the referral link's own entry point, deliberately handled completely
  * differently from ?invite= above: a referral code is never redeemed
- * here — it's carried straight through into the Free/Pro CTA links below
- * as ?ref=, so it survives into account/business/new's create form, which
- * is the only place attribution is ever actually recorded
+ * here — it's carried straight through into the Get Started Free CTA
+ * below as ?ref=, so it survives into account/business/new's create
+ * form, which is the only place attribution is ever actually recorded
  * (createMemberBusiness -> attribute_referral()).
  */
 export default async function JoinPage({
@@ -118,15 +110,13 @@ export default async function JoinPage({
   const overrides = await getJoinPageSections();
 
   const hero = resolveJoinHero(overrides);
-  const global = resolveJoinGlobal(overrides);
 
-  const refQuery = ref ? `&ref=${encodeURIComponent(ref)}` : "";
+  // For Business Page Cleanup pass — the one remaining creation path.
+  // ?ref=CODE still survives into account/business/new's create form the
+  // same way it always did (attribution is recorded there, independent
+  // of plan — see createMemberBusiness -> attribute_referral()).
   const freeCtaHref = ref ? `/account/business/new?ref=${encodeURIComponent(ref)}` : "/account/business/new";
-  const proCtaHref = `${PRO_NATIVE_CTA_URL}${refQuery}`;
 
-  const proCard = resolveJoinCard(overrides, "card_discovery_pro", global.ctaUrl);
-  const proExtra = resolveJoinProExtra(overrides);
-  const free = resolveJoinFreeCard(overrides);
   const whatYouGet = resolveJoinWhatYouGet(overrides);
   const inviteSection = resolveJoinInviteSection(overrides);
   const claim = resolveJoinClaimBusiness(overrides);
@@ -145,44 +135,44 @@ export default async function JoinPage({
 
   return (
     <div>
-      {/* HERO — recomposed (/Join Hero Composition pass) into
-          PROMISE -> CHOOSE YOUR PATH -> PROOF: headline + one short line,
-          then a compact two-tile decision module (Pro/Free, anchoring
-          down into their own full sections below rather than starting
-          signup immediately), then a single quiet claim link. The large
-          direct Pro button and its renewal-reassurance line are gone from
-          the hero — that information still lives in the full Pro section
-          below (ProCard, untouched). */}
+      {/* HERO — For Business Page Cleanup pass: PROMISE -> ONE FREE ACTION
+          -> PROOF. No Free/Pro decision — "Get Started Free" is the only
+          creation CTA on the page, with the current offer stated plainly
+          right under it (no mention of future paid plans). "Explore
+          Findmi" is a quiet secondary CTA into the existing public
+          discovery experience (/discover) — not a new destination. The
+          quiet claim link below it preserves the one legitimate path for
+          a Business that already exists, same destination as before. */}
       <div className="mx-auto max-w-4xl px-6 pt-14 sm:pt-16">
         <div className="max-w-xl">
-          <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">For Business</p>
+          <h1 className="mt-1 font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
             <HeroHeadline heading={hero.heading} />
           </h1>
           <p className="mt-3 text-base text-ink/60">{hero.body}</p>
 
-          {/* Final Join Conversion Story pass — a quick recognition
-              moment, not a marketing essay: names the actual habit
-              (posting schedules to Instagram/Stories/Facebook every week)
-              before the Pro/Free decision becomes the dominant content.
-              Fixed page copy, same as the "See Findmi in action" eyebrow
-              below — this isn't a distinct CMS concept, just one more
-              short line in the same hero block. */}
-          <p className="mt-5 text-sm font-semibold text-ink">Still posting where you&rsquo;ll be every week?</p>
-          <p className="mt-1 text-sm text-ink/60">
-            Give customers one link they can keep. Update your schedule without changing the link.
-          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Link
+              href={freeCtaHref}
+              className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-auto"
+            >
+              Get Started Free
+            </Link>
+            <Link
+              href="/discover"
+              className="flex h-12 w-full items-center justify-center rounded-2xl border border-black/10 px-6 text-sm font-bold uppercase tracking-wide text-ink transition hover:border-black/20 sm:w-auto"
+            >
+              Explore Findmi
+            </Link>
+          </div>
+          <p className="mt-2.5 text-xs text-ink/40">Free. No trial. No credit card.</p>
 
-          <ChoosePathTiles proCard={proCard} free={free} />
-
-          {/* Single quiet claim action — Free already has its own tile
-              above, so no duplicate "Start free" link here (see
-              SecondaryActions, still used unchanged by the Final CTA
-              below). Reuses the exact same claim.body/ctaLabel/ctaUrl the
-              rest of the page already resolves — nothing new added to the
-              CMS. */}
+          {/* Single quiet claim action — reuses the exact same
+              claim.body/ctaLabel/ctaUrl the rest of the page already
+              resolves (unchanged by this pass — still /businesses). */}
           <Link
             href={claim.ctaUrl}
-            className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
+            className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
           >
             {claim.body} {claim.ctaLabel} <ChevronIcon direction="right" className="h-3.5 w-3.5" />
           </Link>
@@ -228,31 +218,28 @@ export default async function JoinPage({
         </div>
       </div>
 
-      {/* FREE — P0 Safe-to-Share Acquisition pass: now the primary,
-          first-rendered product section (was previously "secondary
-          fallback" below Pro). Pro still exists in full immediately after
-          it and remains one scroll away, never removed. */}
-      {free.visible && (
-        // id="free" — the Hero's "Explore Free" tile anchors here.
-        <div id="free" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-10 sm:px-6 sm:pt-12">
-          <FreeSection card={free} ctaHref={freeCtaHref} />
-        </div>
-      )}
+      {/* HOW YOUR BUSINESS SHOWS UP — For Business Page Cleanup pass.
+          Replaces the former Free/Pro decision (FreeSection/ProCard) with
+          the connected-presence narrative: a Business isn't just creating
+          a profile, it's creating a living presence across the places,
+          events, products and experiences where it exists. Fixed page
+          copy (same convention as "Your page is only the beginning."
+          below) — only truthful, currently-Free capabilities are named;
+          nothing here is Pro-gated (see account/business/new's own
+          verified Free value section for the same underlying audit). */}
+      <div className="mx-auto max-w-4xl px-6 pt-10 sm:pt-12">
+        <ValuePillars />
+      </div>
 
-      {/* FINDMI PRO — still the full, complete offer, now presented after
-          Free rather than before it. Explicit Pro intent (the #pro anchor,
-          proCtaHref, ?plan=pro downstream on account/business/new) is
-          entirely unchanged — a visitor who wants Pro first can still jump
-          straight to it from the hero's "Explore Pro" tile. */}
-      {proCard.visible && (
-        // id="pro" — the Hero's "Explore Pro" tile anchors here (/Join
-        // Hero Composition pass). scroll-mt clears the fixed mobile
-        // header (h-14, plus the admin toolbar's own top-7 offset when
-        // present) so the jump doesn't land the card flush under it.
-        <div id="pro" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-6 sm:px-6">
-          <ProCard card={proCard} extra={proExtra} ctaHref={proCtaHref} />
-        </div>
-      )}
+      {/* FREE CONFIRMATION — a plain close, not a pricing card: the offer
+          was already stated once in the Hero; this just reconfirms it
+          right before "What You Get"'s concrete proof, so nothing about
+          a future paid plan is ever implied in between. */}
+      <div className="mx-auto max-w-xl px-4 pt-10 text-center sm:px-6">
+        <p className="font-display text-lg font-bold tracking-tight text-ink">Get Started Free</p>
+        <p className="mt-1 text-sm text-ink/60">Everything above is part of your free Findmi Business Page.</p>
+        <p className="mt-1 text-xs text-ink/40">Free. No trial. No credit card.</p>
+      </div>
 
       {/* WHAT CUSTOMERS GET — a compact product demonstration (real
           business/product previews where available) rather than four flat
@@ -305,19 +292,12 @@ export default async function JoinPage({
       )}
 
       {/* FINAL CONVERSION SECTION — the page always ends on a conversion
-          action, with the same quiet secondary-action hierarchy as the
-          Hero. */}
-      <FinalCta proCtaHref={proCtaHref} freeCtaHref={freeCtaHref} claim={claim} />
+          action. */}
+      <FinalCta freeCtaHref={freeCtaHref} claim={claim} />
     </div>
   );
 }
 
-/** Quiet contextual secondary actions — shared by the Hero and the Final
- * CTA so both stay in sync. Only the actionable phrase ("Start free" /
- * "Claim your business") gets strong link styling; the lead-in context is
- * plain muted text, so neither reads as a second/third primary button
- * next to the turquoise Pro CTA. Destinations are the exact same
- * freeCtaHref/claim.ctaUrl every other CTA on this page already uses. */
 /** Final Join Conversion Story pass — forces a deliberate two-line break
  * on mobile (rather than letting the browser wrap wherever it likes) AND
  * accents the second line in the existing Findmi teal, so "Make it easy
@@ -347,128 +327,46 @@ function HeroHeadline({ heading }: { heading: string }) {
   );
 }
 
-/** /Join Hero Composition pass — the "Choose Your Path" module: PROMISE
- * (headline/body above) -> CHOOSE YOUR PATH (these two tiles) -> PROOF
- * (the real Native Rose showcase carousel below). Compact navigation
- * tiles, not pricing cards — they anchor down into the page's own full
- * Pro/Free sections (#pro/#free) rather than starting signup immediately;
- * the actual conversion CTAs/destinations live only in those full
- * sections (ProCard/FreeSection, both untouched by this pass beyond their
- * own render order below). Price/context values reuse the same resolved
- * CMS fields those full sections already use (proCard.price/priceSuffix,
- * free.price) rather than hardcoding a second copy of them.
- *
- * P0 Safe-to-Share Acquisition pass — Free now renders FIRST (left tile)
- * with the dominant visual treatment (the aqua-tinted card previously
- * reserved for Pro), and Pro renders second, quieter. This is a straight
- * swap of the two tiles' content/styling, not a new layout: the grid,
- * anchors (#free/#pro still exist below unchanged), and both full
- * sections are untouched. Free's own copy is now the exact acquisition
- * message this pass requires ("Get Started Free" / "No credit card
- * required") instead of the previous quieter "Start free" / "No card
- * required" framing. */
-// Public Experience Consolidation pass — pricing card geometry fix. The
-// two tiles used ad hoc `min-h-7`/`min-h-8` spacers on individual lines to
-// approximate equal height, which drifted whenever copy line-wrapped
-// differently between the two. Rebuilt as a real flex column per tile
-// (each region — label, price, description, CTA — in the same relative
-// position in both) with the CTA pinned to the bottom via `mt-auto`, so
-// both cards share one height (`items-stretch` on the grid) regardless of
-// how many lines either card's copy takes, with no arbitrary whitespace.
-function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: ResolvedJoinFreeCard }) {
-  const proPrice = [proCard.price, proCard.priceSuffix].filter(Boolean).join("");
+/** For Business Page Cleanup pass — the connected-presence narrative that
+ * replaces the former Free/Pro decision. A Business isn't merely creating
+ * a profile; it's creating a living presence across the places, events,
+ * products and experiences where it exists. Four fixed pillars (same
+ * "hardcoded page copy" convention as the "Your page is only the
+ * beginning." section below — no new CMS concept, no migration), each a
+ * truthful, currently-Free capability (verified against the same Free
+ * entitlement audit as account/business/new's own value section:
+ * requireBusinessMemberWithDetails / location-actions.ts /
+ * qr-manager-actions.ts / moment-authorship.ts, none of which gate on
+ * isBusinessPro). Uses current Findmi terminology (Where I'll Be, not
+ * "Appearance") and makes no traffic/audience/growth/AI claim. */
+function ValuePillars() {
+  const pillars: { heading: string; body: string }[] = [
+    {
+      heading: "Show People Who You Are",
+      body: "Your Business Page brings together your story, products, photos, links and essential information.",
+    },
+    {
+      heading: "Show Them Where To Find You",
+      body: "Connect your own Locations, stockists, pop-ups, markets and other places your Business appears.",
+    },
+    {
+      heading: "Show What's Happening Next",
+      body: "Publish Events and Where I'll Be so your Findmi presence stays current as your Business moves through the real world.",
+    },
+    {
+      heading: "Turn Activity Into Discovery",
+      body: "Share Moments and connect your Business into Findmi's broader discovery experience.",
+    },
+  ];
   return (
-    <div className="mt-6 grid grid-cols-2 items-stretch gap-2.5">
-      <Link
-        href="#free"
-        className="flex flex-col rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50"
-      >
-        <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Get Started Free</p>
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <p className="font-display text-lg font-bold tracking-tight text-ink">{free.price}</p>
-          <span className="flex flex-col text-[11px] font-medium leading-[1.15] text-ink/50">
-            <span>No credit card</span>
-            <span>required</span>
-          </span>
+    <div className="flex flex-col gap-3">
+      {pillars.map((p) => (
+        <div key={p.heading} className="rounded-2xl border border-black/10 bg-white p-4 sm:p-5">
+          <p className="font-display text-base font-bold tracking-tight text-ink">{p.heading}</p>
+          <p className="mt-1 text-sm text-ink/60">{p.body}</p>
         </div>
-        {/* Business Acquisition + Stale Plan Copy Cleanup pass — was
-            "Your business page + next 3 appearances": true, but leading
-            with a numeric limit made Free read as the crippled option
-            next to Pro's "complete" framing. Free's real feature list
-            (including that same accurate 3-appearance detail) still lives
-            in the full FreeSection below — this top-level tile now leads
-            with creation/identity instead, matching the acquisition
-            funnel's actual first step (create, don't compare limits). */}
-        <p className="mt-1.5 text-xs text-ink/60">Create your business page and start showing up</p>
-        <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-bold text-findmi-700">
-          Explore Free <ChevronIcon direction="right" className="h-3 w-3" />
-        </p>
-      </Link>
-      <Link
-        href="#pro"
-        className="flex flex-col rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20"
-      >
-        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Findmi Pro</p>
-        <div className="mt-1.5 flex items-center">
-          <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
-        </div>
-        {/* Was "Your complete Findmi page + full schedule" — positioned
-            Pro as merely "the plan that unlocks your full schedule."
-            Canonical product rule: Free creates and distributes, Pro
-            explains/optimizes — Analytics is Pro's real, current
-            differentiator (see ProCard's own highlight box below). */}
-        <p className="mt-1.5 text-xs text-ink/60">Analytics and deeper tools to grow</p>
-        <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-bold text-ink/70">
-          Explore Pro <ChevronIcon direction="right" className="h-3 w-3" />
-        </p>
-      </Link>
+      ))}
     </div>
-  );
-}
-
-/** P0 Safe-to-Share Acquisition pass — this now runs secondary to a
- * primary Free CTA (see FinalCta below), so its own lines flipped: Pro is
- * now the quiet secondary option here (Free already has its own dominant
- * button), and the claim line is unchanged. */
-function SecondaryActions({
-  proCtaHref,
-  claim,
-  align = "left",
-}: {
-  proCtaHref: string;
-  claim: ResolvedJoinClaimBusiness;
-  align?: "left" | "center";
-}) {
-  const linkClass = "font-semibold text-ink/70 underline underline-offset-2 hover:text-ink";
-  return (
-    <div className={`flex flex-col gap-1.5 text-sm text-ink/45 ${align === "center" ? "items-center text-center" : ""}`}>
-      <p>
-        Want deeper tools?{" "}
-        <Link href={proCtaHref} className={linkClass}>
-          Explore Pro
-        </Link>
-      </p>
-      <p>
-        Already on Findmi?{" "}
-        <Link href={claim.ctaUrl} className={linkClass}>
-          {claim.ctaLabel}
-        </Link>
-      </p>
-    </div>
-  );
-}
-
-function CheckGlyph() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700">
-      <path
-        d="M4 10.5l3.5 3.5L16 6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -514,105 +412,6 @@ function TagGlyph({ className = "" }: { className?: string }) {
       />
       <circle cx="8.2" cy="8.2" r="1.3" fill="currentColor" />
     </svg>
-  );
-}
-
-/** Findmi Pro's own dominant presentation. Presentation only: the actual
- * Findmi Here feature/code and Pro entitlement/checkout are completely
- * untouched.
- *
- * Fix Pro join CTA routing pass — this button now always uses the native
- * `ctaHref` prop (the same PRO_NATIVE_CTA_URL-derived `proCtaHref` the
- * page's own FinalCta button already used), never `card.ctaUrl`. This is
- * a real product action (start native Pro business creation -> Stripe),
- * not a sales-contact action — it must never inherit the founder's
- * generic/global sales CTA override (see resolveJoinGlobal/
- * resolveJoinCard in lib/join-page.ts, which the Regional/National sales
- * card still correctly uses). The admin Join editor already hides the CTA
- * URL field for this card (hideCtaUrl) for exactly this reason; only this
- * component's own rendering had been left pointed at the resolved-but-
- * ignorable card.ctaUrl instead. */
-function ProCard({ card, extra, ctaHref }: { card: ResolvedJoinCard; extra: ResolvedJoinProExtra; ctaHref: string }) {
-  const { title, price, priceSuffix, features, ctaLabel } = card;
-  return (
-    <div className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-6 shadow-[0_4px_24px_rgba(20,176,188,0.14)] sm:p-8">
-      <h3 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h3>
-      <p className="mt-1 text-sm text-ink/60">{extra.billingLabel}</p>
-      <p className="mt-2 flex items-baseline gap-1">
-        <span className="font-display text-3xl font-bold tracking-tight text-ink">{price}</span>
-        {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
-      </p>
-      <p className="mt-2 text-sm text-ink/60">{extra.descriptionLine}</p>
-      <p className="mt-1 text-xs text-ink/40">{extra.noRenewalNote}</p>
-
-      {/* Findmi Here — the featured, differentiating benefit. */}
-      <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
-        <h4 className="font-display text-lg font-bold tracking-tight text-ink">{extra.highlightHeading}</h4>
-        <p className="mt-1 text-sm font-semibold text-ink/80">{extra.highlightSubheading}</p>
-        <p className="mt-1.5 text-sm text-ink/60">{extra.highlightBody}</p>
-      </div>
-
-      {/* /Join Final Visual Conversion pass — compressed to 5 lines (see
-          lib/join-page.ts's own comment); still the founder-editable
-          feature list, nothing hardcoded here. */}
-      <ul className="mt-5 flex flex-col gap-1.5">
-        {features.map((f, i) => (
-          <li key={`${i}-${f}`} className="flex items-start gap-2 text-xs text-ink/55">
-            <CheckGlyph />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
-
-      <a
-        href={ctaHref}
-        className="mt-6 flex h-12 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-      >
-        {ctaLabel}
-      </a>
-      <p className="mt-2 text-center text-xs text-ink/40">{extra.priceFootnote}</p>
-    </div>
-  );
-}
-
-/** Free's quiet, secondary, positive presentation. /Join Final Visual
- * Conversion pass — same copy/benefits/CTA as before, only vertical
- * spacing tightened slightly to match the page's improved rhythm. */
-function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: string }) {
-  const { title, shortTagline, description, includedFeatures, ctaLabel } = card;
-  return (
-    <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
-      <p className="font-display text-lg font-bold tracking-tight text-ink">{title}</p>
-      <p className="mt-1 text-sm font-semibold text-ink/70">{shortTagline}</p>
-      <p className="mt-1 text-sm text-ink/60">{description}</p>
-
-      <ul className="mt-2.5 flex flex-col gap-1.5">
-        {includedFeatures.map((f, i) => (
-          <li key={`${i}-${f}`} className="flex items-start gap-2 text-sm text-ink/70">
-            <CheckGlyph />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
-
-      <Link
-        href={ctaHref}
-        className="mt-3 flex h-11 items-center justify-center rounded-2xl border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
-      >
-        {ctaLabel}
-      </Link>
-      {/* Business Acquisition + Stale Plan Copy Cleanup pass — was "Need
-          your full schedule, custom Findmi URL and more?", leading with
-          the schedule limit as the upgrade reason. Reworded to lead with
-          Pro's real current differentiator (Analytics) instead — the
-          full schedule/custom URL are still real Pro features, just no
-          longer the headline pitch (Canonical Plan Config pass note on
-          Products above still applies: no longer named as a reason to
-          upgrade, since Products is Free). */}
-      <p className="mt-2 text-center text-xs text-ink/45">
-        Want deeper insights and more tools to grow? Upgrade to Pro anytime.
-      </p>
-    </div>
   );
 }
 
@@ -754,27 +553,14 @@ function InviteDisclosure({ section }: { section: ResolvedJoinInviteSection }) {
 }
 
 /** Final Conversion Section — the page always ends on a conversion
- * action. Reuses the exact same CTA destinations as the Hero.
- *
- * P0 Safe-to-Share Acquisition pass — the dominant button here used to
- * read "Get Findmi Pro — $99/year", making the legacy one-time price the
- * page's final, loudest ask. That's replaced with the Free CTA (truthful,
- * no charge, no card) as the primary action; Pro moves into
- * SecondaryActions below it, same as the rest of the page's now Free-
- * first hierarchy. No price is stated on this button at all — Free's own
- * full section above already states "$0" once, and Pro's own full section
- * above states its real price once; restating either here would either be
- * redundant (Free) or risk implying $99 is the button's own action
- * (Pro) when this button no longer points at Pro. */
-function FinalCta({
-  proCtaHref,
-  freeCtaHref,
-  claim,
-}: {
-  proCtaHref: string;
-  freeCtaHref: string;
-  claim: ResolvedJoinClaimBusiness;
-}) {
+ * action. Reuses the exact same CTA destinations as the Hero: the
+ * canonical creation flow as the one primary action, plus the one
+ * preserved secondary path for a Business that already exists
+ * (unchanged claim.ctaUrl -> /businesses). For Business Page Cleanup
+ * pass — no second "Explore Pro" action belongs here anymore: the page
+ * no longer sells Pro, so a secondary action pointing back at it would
+ * contradict the "Free right now" offer this button already states. */
+function FinalCta({ freeCtaHref, claim }: { freeCtaHref: string; claim: ResolvedJoinClaimBusiness }) {
   return (
     <div className="border-t border-black/5 bg-mist/30">
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
@@ -791,7 +577,12 @@ function FinalCta({
             Get Started Free
           </Link>
           <p className="text-xs text-ink/40">No credit card required.</p>
-          <SecondaryActions proCtaHref={proCtaHref} claim={claim} align="center" />
+          <Link
+            href={claim.ctaUrl}
+            className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink"
+          >
+            Already on Findmi? {claim.ctaLabel}
+          </Link>
         </div>
       </div>
     </div>
