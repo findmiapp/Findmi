@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import LocationGeographyFields from "@/components/LocationGeographyFields";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember, requireLocationMember } from "@/lib/permissions";
@@ -36,9 +35,6 @@ export default async function AddLocationPage({
     address?: string;
     city?: string;
     state?: string;
-    market_id?: string;
-    market_area_id?: string;
-    requested_market_text?: string;
     business_id?: string;
     parent_location_id?: string;
     intent?: string;
@@ -52,9 +48,6 @@ export default async function AddLocationPage({
     address: submittedAddress,
     city: submittedCity,
     state: submittedState,
-    market_id: submittedMarketId,
-    market_area_id: submittedAreaId,
-    requested_market_text: submittedRequestedMarketText,
     business_id: businessIdParam,
     parent_location_id: parentIdParam,
     intent: submittedIntent,
@@ -71,11 +64,7 @@ export default async function AddLocationPage({
   // location). Honored only for an owner/manager of that Business; anyone
   // else just gets the ordinary standalone form. createMemberLocation
   // re-checks this server-side regardless.
-  const [marketsWithAreas, business, parent] = await Promise.all([
-    getActiveMarketsWithAreaOptions(),
-    resolveBusinessContext(businessIdParam),
-    resolveParentContext(parentIdParam),
-  ]);
+  const [business, parent] = await Promise.all([resolveBusinessContext(businessIdParam), resolveParentContext(parentIdParam)]);
   const we = Boolean(business || parent);
 
   return (
@@ -142,18 +131,11 @@ export default async function AddLocationPage({
             <input autoCapitalize="words" type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
           </label>
 
-          {/* Geography Foundation Pass 2 — city/state now drive a live
-              Findmi Market/Area suggestion instead of leaving the owner
-              to separately solve Findmi's own taxonomy. See
+          {/* Personal/Account UX Correction pass — factual geography only
+              (City/State, optional exact place); Findmi's own Market/Area
+              taxonomy is Admin's to assign later. See
               LocationGeographyFields' own doc comment. */}
-          <LocationGeographyFields
-            markets={marketsWithAreas}
-            defaultCity={submittedCity ?? ""}
-            defaultState={submittedState ?? ""}
-            defaultMarketId={submittedMarketId ?? ""}
-            defaultAreaId={submittedAreaId ?? ""}
-            defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
-          />
+          <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} />
 
           {/* Submission intent — management is a request Findmi reviews,
               never granted by adding a Location. */}

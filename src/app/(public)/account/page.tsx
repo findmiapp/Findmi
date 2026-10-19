@@ -25,13 +25,18 @@ import { runDiscovery } from "@/lib/discovery/server";
 import { getMomentFeed } from "@/lib/moment-discovery";
 import {
   fromBrandsTiles,
+  getFollowedBrandLocations,
   getFollowedBrandProducts,
   getProductsYouMightLike,
   momentsFromBrands,
+  pickIntentSeed,
   pickYouMightLike,
-  type HomeTile,
+  INTENT_SECTION_TITLE,
+  MIGHT_LIKE_LIMIT,
+  MIGHT_LIKE_MIN,
+  type FollowedBrandEvent,
 } from "@/lib/account-home";
-import { SAVED_COLLECTIONS, collectionCounts, type RelationRow } from "@/lib/save-organization";
+import type { RelationRow } from "@/lib/save-organization";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import PersonalAppShell from "./PersonalAppShell";
@@ -43,6 +48,8 @@ import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
 import Greeting from "./business/[id]/v2/Greeting";
 import { Chip } from "./owner-ui";
+import WorldTileCard, { WORLD_KIND_LABEL, PlaceFallbackGlyph, type WorldTile } from "./WorldTileCard";
+import FromBrandsSection from "./FromBrandsSection";
 
 export const metadata: Metadata = {
   title: "My Findmi",
@@ -67,18 +74,6 @@ const MANAGING_PREVIEW = 3;
  * not flush against the viewport edge. */
 const RAIL_CLASS =
   "-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:grid lg:scroll-px-0 lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden";
-
-/** Home's mixed-content tile (Saved, From Brands You Follow, Your
- * Moments, Products You Might Like) — lib/account-home.ts's HomeTile. */
-type WorldTile = HomeTile;
-
-const WORLD_KIND_LABEL: Record<WorldTile["kind"], string> = {
-  business: "Brand",
-  product: "Product",
-  event: "Event",
-  location: "Place",
-  moment: "Moment",
-};
 
 /** Launch V2 Pass 1 — plan_tier isn't in the public anon/authenticated
  * column grant (see lib/entitlements.ts's own comment), so showing a
@@ -314,6 +309,7 @@ export default async function AccountHomePage({
     discovery,
     momentFeed,
     brandProducts,
+    brandLocations,
     productsYouMightLike,
     { data: relationRows },
   ] = await Promise.all([
@@ -342,6 +338,7 @@ export default async function AccountHomePage({
     hasSignals ? runDiscovery({ entities: ["event", "place", "business"] }, { personal: true }).catch(() => null) : Promise.resolve(null),
     followedBusinessIds.length ? getMomentFeed({ limit: 24 }) : Promise.resolve(null),
     getFollowedBrandProducts(supabase, followedBusinessIds),
+    getFollowedBrandLocations(supabase, followedBusinessIds),
     hasSignals ? getProductsYouMightLike(supabase, [...new Set([...followedBusinessIds, ...savedBusinessIds])], savedProductIds) : Promise.resolve([]),
     supabase.from("user_entity_relationships").select("entity_type, entity_id, relation").eq("user_id", user.id).in("entity_type", ["product", "event", "location"]),
   ]);
@@ -399,21 +396,31 @@ export default async function AccountHomePage({
   // else's, unknown, or already live — renders the ordinary Account Home.
   const createdBusiness = resolveCreatedBusiness(created, myBusinesses);
 
+  // Account Home UX Correction pass — the Saved preview RAIL is removed
+  // below (Section 10); `savedTiles` itself is kept only as a real-content
+  // signal for isNewWorld (a person with only Saves is still not "new"),
+  // exactly as before. Saved functionality, /account/saved, Save buttons,
+  // intent relationships and the Saved-organization helpers it reads from
+  // are completely untouched — only this page's own preview rail is gone.
   const savedTiles = [...worldByEntity.values()]
     .sort((a, b) => (a.relatedAt < b.relatedAt ? 1 : a.relatedAt > b.relatedAt ? -1 : 0))
     .slice(0, SAVED_LIMIT);
-  // Real collection counts (classifications are their own rows — a Have /
-  // Been stays listed even after an Unsave).
-  const savedCounts = collectionCounts((relationRows ?? []) as RelationRow[], {
-    business: savedBusinessIds,
-    product: personalGraph.savedProducts.map((p) => p.id),
-    event: personalGraph.savedEvents.map((e) => e.id),
-    location: personalGraph.savedLocations.map((l) => l.id),
-  });
-  const savedChips = SAVED_COLLECTIONS.filter((c) => c.key !== "all" && savedCounts[c.key] > 0);
 
-  // From Brands You Follow — their real Products and Moments, mixed.
-  const brandTiles = fromBrandsTiles(brandProducts, momentFeed ? momentsFromBrands(momentFeed.cards, new Set(followedBusinessIds)) : []);
+  // From Brands You Follow — their real Products, Moments, Events (the
+  // SAME Upcoming-Events read above, filtered to the entries that reached
+  // comingUp specifically via a followed Business's own appearances — no
+  // second Event query) and Places (business_locations). Only a kind this
+  // page actually has data for ever reaches the rail.
+  const followedBusinessLabels = new Set(personalGraph.followedBusinesses.map((b) => `Following ${b.name}`));
+  const brandEventTiles: FollowedBrandEvent[] = comingUp
+    .filter((item) => item.relatedTo.some((label) => followedBusinessLabels.has(label)))
+    .map((item) => ({ id: item.key, title: item.title, href: item.href, imageUrl: item.imageUrl, date: item.date }));
+  const brandTiles = fromBrandsTiles(
+    brandProducts,
+    momentFeed ? momentsFromBrands(momentFeed.cards, new Set(followedBusinessIds)) : [],
+    brandEventTiles,
+    brandLocations
+  );
 
   // You Might Like — never something already followed, saved or already
   // in Upcoming Events.
@@ -429,6 +436,23 @@ export default async function AccountHomePage({
   const eventsYouMightLike = pickYouMightLike(ranked, "event", known);
   const placesYouMightLike = pickYouMightLike(ranked, "place", known);
   const brandsYouMightLike = pickYouMightLike(ranked, "business", known);
+
+  // Intent-based rail — seeded from the viewer's OWN explicit Want / Must
+  // Do / Have & Been classifications (lib/account-home.ts's
+  // pickIntentSeed), never a guess: the SAME ranked candidates already
+  // fetched above, filtered to items genuinely `related` to something the
+  // viewer tagged with that one relation. Omitted entirely below
+  // MIGHT_LIKE_MIN — no fake content to fill the slot.
+  const intentSeed = pickIntentSeed((relationRows ?? []) as RelationRow[]);
+  const alreadyShown = new Set<string>([...known, ...eventsYouMightLike.map((i) => i.id), ...placesYouMightLike.map((i) => i.id), ...brandsYouMightLike.map((i) => i.id)]);
+  const intentCandidates = intentSeed
+    ? ranked
+        .filter(({ item }) => !alreadyShown.has(item.id) && item.related.some((id) => intentSeed.seedIds.has(id)))
+        .map(({ item }) => item)
+        .slice(0, MIGHT_LIKE_LIMIT)
+    : [];
+  const intentItems = intentCandidates.length >= MIGHT_LIKE_MIN ? intentCandidates : [];
+  const intentTitle = intentSeed ? INTENT_SECTION_TITLE[intentSeed.relation] : null;
   const productTiles: WorldTile[] = productsYouMightLike.map((p) => ({
     key: `product:${p.id}`,
     kind: "product",
@@ -515,6 +539,7 @@ export default async function AccountHomePage({
     eventsYouMightLike.length === 0 &&
     placesYouMightLike.length === 0 &&
     brandsYouMightLike.length === 0 &&
+    intentItems.length === 0 &&
     productTiles.length === 0 &&
     !hasUpdates &&
     inboxPreview.length === 0 &&
@@ -593,31 +618,35 @@ export default async function AccountHomePage({
           </section>
         )}
 
+        {/* Desired Account Home discovery hierarchy (locked order):
+            Events You Might Like -> From Brands You Follow -> Upcoming
+            Events -> Places/Products/Brands You Might Like -> intent rail
+            -> Your Moments -> Pages I Manage -> Events You Manage. No
+            Saved preview here any more (Section 10 correction) — Saved
+            itself stays fully intact at /account/saved (savedTiles above
+            still counts toward isNewWorld); this page just stops
+            rendering its own preview rail. */}
+        {eventsYouMightLike.length > 0 && (
+          <HomeSection id="events-you-might-like" title="Events You Might Like" href="/events" linkLabel="See All">
+            <DiscoveryRail items={eventsYouMightLike} />
+          </HomeSection>
+        )}
+
+        {brandTiles.length > 0 && (
+          // No See All: there's no single feed of followed Brands' content
+          // yet — the tabs below are the browse surface for this rail.
+          <HomeSection id="from-brands" title="From Brands You Follow">
+            <FromBrandsSection tiles={brandTiles} />
+          </HomeSection>
+        )}
+
         {comingUpCards.length > 0 && (
-          <HomeSection id="upcoming-events" title="Upcoming Events" subtitle="From Pages You Follow" href="/account/following" linkLabel="See All">
+          <HomeSection id="upcoming-events" title="Upcoming Events" subtitle="From Pages You Follow">
             <div className={RAIL_CLASS + " lg:grid-cols-3"}>
               {comingUpCards.map((item) => (
                 <ScheduleCard key={item.key} item={item} />
               ))}
             </div>
-          </HomeSection>
-        )}
-
-        {brandTiles.length > 0 && (
-          // No See All: there's no feed of followed Brands' content yet,
-          // and their Brand list (/account/following) isn't what this shows.
-          <HomeSection id="from-brands" title="From Brands You Follow">
-            <div className={RAIL_CLASS + " lg:grid-cols-4"}>
-              {brandTiles.map((tile) => (
-                <WorldTileCard key={tile.key} tile={tile} />
-              ))}
-            </div>
-          </HomeSection>
-        )}
-
-        {eventsYouMightLike.length > 0 && (
-          <HomeSection id="events-you-might-like" title="Events You Might Like" href="/events" linkLabel="See All">
-            <DiscoveryRail items={eventsYouMightLike} />
           </HomeSection>
         )}
 
@@ -643,26 +672,9 @@ export default async function AccountHomePage({
           </HomeSection>
         )}
 
-        {savedTiles.length > 0 && (
-          <HomeSection id="saved" title="Saved" href="/account/saved" linkLabel="See All">
-            {savedChips.length > 0 && (
-              <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 [&::-webkit-scrollbar]:hidden">
-                {savedChips.map((c) => (
-                  <Link
-                    key={c.key}
-                    href={`/account/saved?collection=${c.key}`}
-                    className="h-8 shrink-0 rounded-full border border-black/10 bg-white px-3.5 text-metadata font-semibold leading-8 text-ink/65 hover:text-ink"
-                  >
-                    {c.label} · {savedCounts[c.key]}
-                  </Link>
-                ))}
-              </div>
-            )}
-            <div className={RAIL_CLASS + " lg:grid-cols-4"}>
-              {savedTiles.map((tile) => (
-                <WorldTileCard key={tile.key} tile={tile} />
-              ))}
-            </div>
+        {intentItems.length > 0 && intentTitle && (
+          <HomeSection id="because-you" title={intentTitle}>
+            <DiscoveryRail items={intentItems} />
           </HomeSection>
         )}
 
@@ -969,52 +981,6 @@ function ScheduleCard({ item }: { item: PersonalUpcomingItem }) {
         {when && <p className="truncate text-label font-bold uppercase text-accent">{when}</p>}
         <p className="mt-0.5 line-clamp-2 text-body font-semibold leading-snug text-primary">{item.title}</p>
         {context && <p className="mt-0.5 truncate text-metadata text-muted">{context}</p>}
-      </div>
-    </Link>
-  );
-}
-
-function PlaceFallbackGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path
-        d="M12 21s-7-5.686-7-11a7 7 0 1 1 14 0c0 5.314-7 11-7 11Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-/** Home tile — a real image, the item's real name and what kind of thing
- * it is (plus its Brand / place when known), linking to its own page. */
-function WorldTileCard({ tile }: { tile: WorldTile }) {
-  return (
-    <Link href={tile.href} className="group flex w-[116px] shrink-0 snap-start flex-col gap-2 lg:w-auto">
-      <div className="relative aspect-square w-full overflow-hidden rounded-2xl border border-black/[0.05] bg-black/[0.04]">
-        {tile.imageUrl ? (
-          <SupabaseImage
-            src={tile.imageUrl}
-            alt=""
-            fill
-            sizes="(min-width: 1024px) 180px, 116px"
-            className="object-cover transition duration-300 group-hover:scale-[1.02]"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <PlaceFallbackGlyph className="h-6 w-6 text-black/15" />
-          </div>
-        )}
-      </div>
-      <div className="min-w-0 px-0.5">
-        <p className="truncate text-metadata font-bold text-primary">{tile.name}</p>
-        <p className="truncate text-microcopy text-subtle">
-          {WORLD_KIND_LABEL[tile.kind]}
-          {tile.meta ? ` · ${tile.meta}` : ""}
-        </p>
       </div>
     </Link>
   );

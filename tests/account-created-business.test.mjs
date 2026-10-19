@@ -71,11 +71,14 @@ test("Account Home: the card is first under the greeting (top of the page), then
   const card = HOME.indexOf("<CreatedBusinessCard");
   const firstSection = HOME.indexOf('<div className="mt-5 flex flex-col gap-7">');
   assert.ok(header > 0 && header < card && card < HOME.indexOf("<AccountErrorBanner") && card < firstSection);
-  // Personalized Account Home: Upcoming Events / Saved / Your Moments /
-  // Pages I Manage replace Coming Up / My World / Recent Moments / Managing.
-  for (const id of ['id="upcoming-events"', 'id="saved"', 'id="your-moments"', 'id="inbox"', 'id="pages-i-manage"', 'id="pending-claims"']) {
+  // Personalized Account Home: Upcoming Events / Your Moments / Pages I
+  // Manage replace Coming Up / My World / Managing. Account Home UX
+  // Correction pass — the Saved preview rail (id="saved") is intentionally
+  // removed from this page; Saved itself lives on at /account/saved.
+  for (const id of ['id="upcoming-events"', 'id="your-moments"', 'id="inbox"', 'id="pages-i-manage"', 'id="pending-claims"']) {
     assert.ok(HOME.includes(id), `${id} still rendered as before`);
   }
+  assert.doesNotMatch(HOME, /id="saved"/, "the Saved preview rail is removed from Account Home (Saved stays at /account/saved)");
 });
 
 // ── The card ─────────────────────────────────────────────────────────────

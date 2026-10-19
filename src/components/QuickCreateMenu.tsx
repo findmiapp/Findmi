@@ -12,6 +12,7 @@ import { PlusGlyph, type BusinessOption } from "@/app/(public)/account/BusinessS
  * flows (never duplicating them):
  *
  *   Add Moment      /my-world/journal/new   (Moments V2 cold composer)
+ *   Create Event    /account/event/new      (resolves publishing identity)
  *   Add A Business  /account/business/new
  *   Add A Location  /account/location/new
  *
@@ -23,11 +24,16 @@ import { PlusGlyph, type BusinessOption } from "@/app/(public)/account/BusinessS
  * flows all carry that same `next` (validated by getSafeRedirect) back to
  * the intended creation flow. One mechanism, no second redirect system.
  *
+ * Create Event is a universal entry point, never a Personal publishing
+ * path: /account/event/new itself resolves WHO is publishing (a managed
+ * Business/Location Page, never Personal — see lib/capabilities.ts) and
+ * guides anyone without one yet, exactly as Add A Business/Add A Location
+ * already guide a first-time visitor.
+ *
  * Deliberately NOT here: Findmi Here (a Business's real-world presence,
  * created from its own workspace — Host Something / Go Somewhere) and
  * Product (always created inside a specific Business; there's no general
- * Add Product flow), and Events (published through a Business or Location
- * you manage — created from that Page; see lib/capabilities.ts).
+ * Add Product flow).
  */
 export default function QuickCreateMenu({
   authenticated,
@@ -90,6 +96,13 @@ export default function QuickCreateMenu({
             label="Add Moment"
             description="Capture something you experienced."
             icon={<PencilGlyph className="h-4 w-4" />}
+            onNavigate={handleNavigate}
+          />
+          <MenuLink
+            href="/account/event/new"
+            label="Create Event"
+            description="Published by a Business or Location you manage."
+            icon={<NavIcon name="calendar" className="h-4 w-4" />}
             onNavigate={handleNavigate}
           />
           <MenuLink

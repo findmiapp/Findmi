@@ -100,15 +100,41 @@ test("Event creation context: Personal refused; Business host OK; Location Owner
   assert.deepEqual(C.eventCreationContext({ businessId: null, businessEligible: false, locationId: LOC, locationRole: "staff" }), { ok: false, reason: "location_role" });
 });
 
-test("server enforcement: createMemberEvent refuses Personal / non-managers; no Personal Add An Event entry", () => {
+test("server enforcement: createMemberEvent refuses Personal / non-managers, regardless of how the flow was entered", () => {
   const actions = read("src/app/(public)/account/event/actions.ts");
   assert.match(actions, /const creationContext = eventCreationContext\(\{/);
   assert.match(actions, /locationRole = \(await requireLocationMember\(locationHintId\)\)\.role;/);
   assert.match(actions, /if \(!creationContext\.ok\) \{\s*\n\s*fail\(/);
   const page = read("src/app/(public)/account/event/new/page.tsx");
   assert.match(page, /if \(!businessContext && !managedLocation\) return <ChooseEventPage userId=\{user\.id\} \/>;/);
-  assert.match(page, /Events are published by a Business or Location you manage\./);
-  assert.doesNotMatch(read("src/components/QuickCreateMenu.tsx"), /href="\/account\/event\/new"/);
+  assert.match(page, /Choose who is publishing this Event\./);
+});
+
+test("Account Home UX Correction pass: Create Event IS restored as a universal global entry point — never a Personal publishing path", () => {
+  const menu = read("src/components/QuickCreateMenu.tsx");
+  assert.match(menu, /href="\/account\/event\/new"/);
+  assert.match(menu, /label="Create Event"/);
+  // Still a plain Link, same mechanism as Add A Business/Add A Location —
+  // no second auth/redirect system invented for it.
+  assert.match(menu, /<MenuLink\s*\n\s*href="\/account\/event\/new"/);
+  // Signed-out: the route itself explains + offers Log In/Create Account,
+  // never a bare redirect, never anonymous or Personal publication.
+  const page = read("src/app/(public)/account/event/new/page.tsx");
+  assert.match(page, /if \(!user\) \{/);
+  assert.match(page, /Events on Findmi are published through a Business or Location Page\./);
+  assert.match(page, /href=\{`\/login\?next=\$\{encodeURIComponent\(next\)\}`\}/);
+  assert.match(page, /href=\{`\/signup\?next=\$\{encodeURIComponent\(next\)\}`\}/);
+  // The chooser shows real Page identity media (logo/cover), same
+  // rounded-square + fallback language as AccountContextSwitcher — never
+  // a second image system — and still never a Personal creation form.
+  assert.match(page, /business:businesses\(id, name, logo_url\)/);
+  assert.match(page, /location:locations\(id, name, logo_url, cover_image_url\)/);
+  assert.match(page, /rounded-xl border border-black\/\[0\.06\] bg-white/);
+  assert.match(page, /\{p\.name\.charAt\(0\)\.toUpperCase\(\)\}/);
+  // No eligible Page: guidance, never a dead end.
+  assert.match(page, /Events on Findmi are published by a Page you manage\./);
+  assert.match(page, /Add A Business/);
+  assert.match(page, /Add A Location/);
 });
 
 test("Products and Where I'll Be still require a Business; Personal can create Moments and submit Businesses/Locations", () => {

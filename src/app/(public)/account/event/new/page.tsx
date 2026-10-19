@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import SupabaseImage from "@/components/SupabaseImage";
 import { isPageManagerRole } from "@/lib/capabilities";
-import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getHostEventEligibility } from "@/lib/entitlements";
@@ -110,9 +110,33 @@ export default async function AddEventPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const next = businessIdParam ? `/account/event/new?business_id=${encodeURIComponent(businessIdParam)}` : "/account/event/new";
+  // Create Event is a universal entry point — visible signed out — but
+  // publication is never anonymous and never Personal. A signed-out tap
+  // gets a brief, honest explanation plus the existing Log In / Create
+  // Account flow (both carrying `next` back here), never a bare redirect
+  // and never a second auth system.
   if (!user) {
-    const next = businessIdParam ? `/account/event/new?business_id=${encodeURIComponent(businessIdParam)}` : "/account/event/new";
-    redirect(`/login?next=${encodeURIComponent(next)}`);
+    return (
+      <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
+        <h1 className="font-display text-page-title font-bold text-primary sm:text-display">Create An Event</h1>
+        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+          <p className="text-body font-semibold text-primary">Events on Findmi are published through a Business or Location Page.</p>
+          <p className="mt-1 text-body text-muted">Log in or create a Findmi account to continue — you&rsquo;ll pick up right here.</p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Link href={`/login?next=${encodeURIComponent(next)}`} className={primaryButtonClass}>
+              Log In
+            </Link>
+            <Link
+              href={`/signup?next=${encodeURIComponent(next)}`}
+              className="flex h-12 w-full items-center justify-center rounded-2xl border border-black/10 text-button font-bold uppercase text-primary"
+            >
+              Create Account
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const admin = getAdminSupabase();
@@ -253,30 +277,63 @@ export default async function AddEventPage({
 }
 
 /** No eligible publishing context: the Pages this person can create an
- * Event from (Owner/Manager), or how to add one. Never a Personal form. */
+ * Event from (Owner/Manager), or how to add one. Never a Personal form.
+ * Future Person/Public Figure identities stay architecturally possible
+ * here (another `kind` branch alongside Business/Location) — not built
+ * this pass. */
 async function ChooseEventPage({ userId }: { userId: string }) {
   const supabase = await getServerSupabase();
   const [{ data: biz }, { data: locs }] = await Promise.all([
-    supabase.from("business_members").select("role, business:businesses(id, name)").eq("user_id", userId).in("role", ["owner", "manager"]),
-    supabase.from("location_members").select("role, location:locations(id, name)").eq("user_id", userId).in("role", ["owner", "manager"]),
+    supabase
+      .from("business_members")
+      .select("role, business:businesses(id, name, logo_url)")
+      .eq("user_id", userId)
+      .in("role", ["owner", "manager"]),
+    supabase
+      .from("location_members")
+      .select("role, location:locations(id, name, logo_url, cover_image_url)")
+      .eq("user_id", userId)
+      .in("role", ["owner", "manager"]),
   ]);
-  type Row<K extends string> = { role: string } & Record<K, { id: string; name: string } | { id: string; name: string }[] | null>;
-  const pick = <K extends string>(rows: unknown, key: K) =>
-    ((rows ?? []) as Row<K>[]).map((r) => (Array.isArray(r[key]) ? (r[key] as { id: string; name: string }[])[0] : r[key]) as { id: string; name: string } | null).filter((x): x is { id: string; name: string } => Boolean(x));
-  const pages = [
-    ...pick(biz, "business").map((b) => ({ key: `b:${b.id}`, name: b.name, kind: "Business", href: `/account/event/new?business_id=${b.id}` })),
-    ...pick(locs, "location").map((l) => ({ key: `l:${l.id}`, name: l.name, kind: "Location", href: `/account/event/new?location_id=${l.id}` })),
+  type BizRow = { role: string; business: { id: string; name: string; logo_url: string | null } | { id: string; name: string; logo_url: string | null }[] | null };
+  type LocRow = {
+    role: string;
+    location: { id: string; name: string; logo_url: string | null; cover_image_url: string | null } | { id: string; name: string; logo_url: string | null; cover_image_url: string | null }[] | null;
+  };
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+  const pages: { key: string; name: string; kind: "Business" | "Location"; href: string; imageUrl: string | null }[] = [
+    ...((biz ?? []) as BizRow[])
+      .map((r) => one(r.business))
+      .filter((b): b is { id: string; name: string; logo_url: string | null } => Boolean(b))
+      .map((b) => ({ key: `b:${b.id}`, name: b.name, kind: "Business" as const, href: `/account/event/new?business_id=${b.id}`, imageUrl: b.logo_url })),
+    ...((locs ?? []) as LocRow[])
+      .map((r) => one(r.location))
+      .filter((l): l is { id: string; name: string; logo_url: string | null; cover_image_url: string | null } => Boolean(l))
+      .map((l) => ({ key: `l:${l.id}`, name: l.name, kind: "Location" as const, href: `/account/event/new?location_id=${l.id}`, imageUrl: l.logo_url ?? l.cover_image_url })),
   ];
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="font-display text-page-title font-bold text-primary sm:text-display">Create An Event</h1>
-      <p className="mt-2 text-body text-muted">Events are published by a Business or Location you manage. Choose where this Event comes from.</p>
+      <p className="mt-2 text-body text-muted">Choose who is publishing this Event.</p>
       {pages.length > 0 ? (
         <ul className="mt-6 flex flex-col gap-2">
           {pages.map((p) => (
             <li key={p.key}>
-              <Link href={p.href} className="flex items-center justify-between gap-3 rounded-2xl border border-black/[0.08] bg-white px-4 py-3 transition hover:border-black/15">
-                <span className="min-w-0">
+              <Link href={p.href} className="flex items-center gap-3 rounded-2xl border border-black/[0.08] bg-white px-4 py-3 transition hover:border-black/15">
+                {p.imageUrl ? (
+                  <SupabaseImage
+                    src={p.imageUrl}
+                    alt=""
+                    width={44}
+                    height={44}
+                    className={`h-11 w-11 shrink-0 rounded-xl border border-black/[0.06] bg-white ${p.kind === "Business" ? "object-contain p-1" : "object-cover"}`}
+                  />
+                ) : (
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-card-title font-bold text-findmi-700">
+                    {p.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-semibold text-primary">{p.name}</span>
                   <span className="block text-metadata text-subtle">{p.kind}</span>
                 </span>
@@ -287,8 +344,8 @@ async function ChooseEventPage({ userId }: { userId: string }) {
         </ul>
       ) : (
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-body font-semibold text-primary">You don&rsquo;t manage a Business or Location yet.</p>
-          <p className="mt-1 text-body text-muted">Add or claim one first — then create Events as it.</p>
+          <p className="text-body font-semibold text-primary">Events on Findmi are published by a Page you manage.</p>
+          <p className="mt-1 text-body text-muted">Add a Business or Location — or find one you represent and claim it.</p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <Link href="/account/business/new" className={primaryButtonClass}>
               Add A Business
@@ -297,6 +354,9 @@ async function ChooseEventPage({ userId }: { userId: string }) {
               Add A Location
             </Link>
           </div>
+          <Link href="/discover" className="mt-3 inline-block text-metadata font-semibold text-accent hover:underline">
+            Search Findmi To Claim One &rarr;
+          </Link>
         </div>
       )}
     </div>

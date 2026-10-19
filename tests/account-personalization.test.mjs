@@ -288,16 +288,59 @@ test("From Brands You Follow mixes real Products and Moments (connected or autho
   assert.deepEqual(tiles.map((t) => `${t.kind}:${t.name}:${t.meta}`), ["moment:Pop-up:SoHo", "product:Mug:Acme"]);
 });
 
-test("Home order + copy: no People rails, Saved/Your Moments/Pages I Manage, empty rails omitted", () => {
-  const order = ['id="upcoming-events"', 'id="from-brands"', 'id="events-you-might-like"', 'id="places-you-might-like"', 'id="products-you-might-like"', 'id="brands-you-might-like"', 'id="saved"', 'id="your-moments"', 'id="pages-i-manage"', 'id="needs-attention"', 'id="inbox"'];
+test("Home order + copy: no People rails, no Saved preview, Your Moments/Pages I Manage, empty rails omitted", () => {
+  // Account Home UX Correction pass — locked discovery hierarchy: Events
+  // You Might Like leads, From Brands You Follow is prominent (before
+  // Upcoming Events), then Places/Products/Brands You Might Like, then
+  // the intent rail, Your Moments, Pages I Manage, Needs Attention, Inbox.
+  // No Saved preview anywhere on this page any more.
+  const order = [
+    'id="events-you-might-like"',
+    'id="from-brands"',
+    'id="upcoming-events"',
+    'id="places-you-might-like"',
+    'id="products-you-might-like"',
+    'id="brands-you-might-like"',
+    'id="because-you"',
+    'id="your-moments"',
+    'id="pages-i-manage"',
+    'id="needs-attention"',
+    'id="inbox"',
+  ];
   const at = order.map((id) => HOME.indexOf(id));
   assert.ok(at.every((i) => i > 0), JSON.stringify(at));
   assert.deepEqual([...at].sort((a, b) => a - b), at, "rendered in the planned order");
   assert.doesNotMatch(HOME, /People You Might Like|Moments From People You Follow|title="My World"|title="Coming Up"|title="Managing"|title="Recent Moments"/);
-  for (const cond of ["comingUpCards.length > 0", "brandTiles.length > 0", "eventsYouMightLike.length > 0", "placesYouMightLike.length > 0", "productTiles.length > 0", "brandsYouMightLike.length > 0", "savedTiles.length > 0", "momentTiles.length > 0", "managedEntities.length > 0"]) {
+  assert.doesNotMatch(HOME, /id="saved"/, "no Saved preview rail on Account Home");
+  for (const cond of [
+    "comingUpCards.length > 0",
+    "brandTiles.length > 0",
+    "eventsYouMightLike.length > 0",
+    "placesYouMightLike.length > 0",
+    "productTiles.length > 0",
+    "brandsYouMightLike.length > 0",
+    "intentItems.length > 0 && intentTitle",
+    "momentTiles.length > 0",
+    "managedEntities.length > 0",
+  ]) {
     assert.ok(HOME.includes(`{${cond} && (`), cond);
   }
+  // Upcoming Events' old "See All" → /account/following is gone.
+  assert.doesNotMatch(HOME, /id="upcoming-events"[\s\S]{0,400}href="\/account\/following"/);
   assert.match(read("src/app/(public)/account/business/[id]/v2/Greeting.tsx"), /"Good Evening"/);
+});
+
+test("Upcoming Events 'See All' never links to the generic /account/following directory", () => {
+  const section = HOME.slice(HOME.indexOf('id="upcoming-events"'), HOME.indexOf('id="places-you-might-like"'));
+  assert.doesNotMatch(section, /\/account\/following/);
+  assert.doesNotMatch(section, /linkLabel="See All"/, "removed for now rather than linked incorrectly — see page.tsx's own comment");
+});
+
+test("From Brands You Follow renders the real, truthful entity types only, via the shared filter component", () => {
+  assert.match(HOME, /<FromBrandsSection tiles=\{brandTiles\} \/>/);
+  const fb = read("src/app/(public)/account/FromBrandsSection.tsx");
+  for (const kind of ["moment", "event", "product", "location"]) assert.match(fb, new RegExp(kind));
+  assert.doesNotMatch(fb, /entity_type === "business"|kind === "business"/, "Brands themselves aren't a tab here — this rail is BY a followed Brand, not of Brands");
 });
 
 test("Your Moments uses the user's real entries; Pages I Manage uses real memberships", () => {

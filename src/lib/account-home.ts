@@ -79,10 +79,36 @@ export function momentsFromBrands(cards: readonly MomentFeedCard[], followedBusi
   return cards.filter((c) => (c.follow.businessIds ?? []).some((id) => followedBusinessIds.has(id)));
 }
 
-/** "From Brands You Follow": their Products and Moments, newest first. */
+/** A truthfully-available Event "from a Brand you follow" — reuses
+ * whatever the caller already fetched (getPersonalUpcoming's own
+ * per-item relatedTo labels), never a second Event query. */
+export interface FollowedBrandEvent {
+  id: string;
+  title: string;
+  href: string;
+  imageUrl: string | null;
+  date: string;
+}
+
+/** A Location connected to a Brand you follow (business_locations). */
+export interface FollowedBrandLocation {
+  id: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
+}
+
+/** "From Brands You Follow": every real, truthful content type the
+ * current data model can produce — Products, Moments, and (when passed)
+ * Events and Places connected to a followed Brand. Only ever includes a
+ * kind the caller actually has data for; nothing is fabricated to fill a
+ * slot. Newest-first where a real date exists; undated kinds (Products,
+ * Places) sort after dated ones. */
 export function fromBrandsTiles(
   products: readonly HomeProduct[],
   moments: readonly MomentFeedCard[],
+  events: readonly FollowedBrandEvent[] = [],
+  locations: readonly FollowedBrandLocation[] = [],
   limit = FROM_BRANDS_LIMIT
 ): HomeTile[] {
   const tiles: HomeTile[] = [
@@ -105,9 +131,64 @@ export function fromBrandsTiles(
       relatedAt: m.entryDate,
       meta: m.contextLabel,
     })),
+    ...events.map((e) => ({
+      key: `event:${e.id}`,
+      kind: "event" as const,
+      name: e.title,
+      imageUrl: e.imageUrl,
+      href: e.href,
+      relatedAt: e.date,
+      meta: null,
+    })),
+    ...locations.map((l) => ({
+      key: `location:${l.id}`,
+      kind: "location" as const,
+      name: l.name,
+      imageUrl: l.imageUrl,
+      href: `/location/${l.slug}`,
+      // Places carry no timestamp either — same reasoning as Products.
+      relatedAt: "",
+      meta: null,
+    })),
   ];
   return tiles.sort((a, b) => (a.relatedAt < b.relatedAt ? 1 : a.relatedAt > b.relatedAt ? -1 : 0)).slice(0, limit);
 }
+
+// ------------------------------------------------------------ intent rail
+
+export type IntentRelation = "want" | "must_do" | "have_been";
+
+export interface IntentSeed {
+  relation: IntentRelation;
+  /** Entity ids tagged with this relation — event/location only, the two
+   * kinds the discovery engine's own ranked items can be `related` to;
+   * a Product-only intent signal has nothing for this mechanism to seed
+   * from, and correctly yields no seed. */
+  seedIds: ReadonlySet<string>;
+}
+
+/** Deterministically picks ONE intent relation to seed a recommendation
+ * rail from — Want, then Must Do, then Have/Been, in that priority — never
+ * a blend, never random. Returns null when there's no qualifying signal
+ * at all; the caller must omit the section rather than fabricate one. */
+export function pickIntentSeed(relationRows: readonly { entity_type: string; entity_id: string; relation: string }[]): IntentSeed | null {
+  const qualifying = relationRows.filter((r) => r.entity_type === "event" || r.entity_type === "location");
+  const idsFor = (relation: string) => new Set(qualifying.filter((r) => r.relation === relation).map((r) => r.entity_id));
+  const want = idsFor("want");
+  if (want.size > 0) return { relation: "want", seedIds: want };
+  const mustDo = idsFor("must_do");
+  if (mustDo.size > 0) return { relation: "must_do", seedIds: mustDo };
+  const haveBeen = new Set([...idsFor("have"), ...idsFor("been")]);
+  if (haveBeen.size > 0) return { relation: "have_been", seedIds: haveBeen };
+  return null;
+}
+
+/** Consumer-readable, truthful section titles — never database terms. */
+export const INTENT_SECTION_TITLE: Record<IntentRelation, string> = {
+  want: "More Like Things You Want",
+  must_do: "Based On Your Must Dos",
+  have_been: "More Like What You've Experienced",
+};
 
 // ------------------------------------------------------------ reads
 
@@ -144,6 +225,33 @@ export async function getFollowedBrandProducts(supabase: SupabaseClient, followe
     .order("name", { ascending: true })
     .limit(limit);
   return ((data ?? []) as unknown as ProductRow[]).map(toHomeProduct);
+}
+
+type FollowedLocationRow = { business_id: string; locations: { id: string; slug: string; name: string; logo_url: string | null; cover_image_url: string | null } | null };
+
+/** Real, public Locations connected to Brands the viewer follows
+ * (business_locations) — same relationship Account Home's "Pages I
+ * Manage" / the Business workspace's own Locations tab already read,
+ * never a new one. Only published, non-demo Locations (same visibility
+ * rule every other public Account Home rail already uses). */
+export async function getFollowedBrandLocations(supabase: SupabaseClient, followedBusinessIds: readonly string[], limit = FROM_BRANDS_LIMIT): Promise<FollowedBrandLocation[]> {
+  if (followedBusinessIds.length === 0) return [];
+  const { data } = await supabase
+    .from("business_locations")
+    .select("business_id, locations!inner(id, slug, name, logo_url, cover_image_url, is_demo)")
+    .in("business_id", [...followedBusinessIds])
+    .eq("locations.is_demo", false)
+    .limit(limit);
+  const rows = (data ?? []) as unknown as FollowedLocationRow[];
+  const seen = new Set<string>();
+  const out: FollowedBrandLocation[] = [];
+  for (const row of rows) {
+    const l = row.locations;
+    if (!l || seen.has(l.id)) continue;
+    seen.add(l.id);
+    out.push({ id: l.id, slug: l.slug, name: l.name, imageUrl: l.logo_url ?? l.cover_image_url });
+  }
+  return out.slice(0, limit);
 }
 
 /** Products You Might Like — deterministic category affinity: active

@@ -35,6 +35,16 @@ export default function DiscoveryTile({ item, priority = false }: { item: Discov
             <span className="font-display text-2xl font-bold text-white/25">{item.title.slice(0, 1)}</span>
           </div>
         )}
+        {/* Brand identity — a cover crops badly as a logo substitute, so a
+            Brand's real logo (when it has one) shows as its own small
+            rounded-square mark instead of being stretched/cropped into
+            pretending to be one. Cover stays the visual context behind
+            it; never replaced. */}
+        {item.kind === "business" && item.logo && (
+          <div className="absolute bottom-1.5 left-1.5 h-7 w-7 overflow-hidden rounded-lg border border-black/[0.06] bg-white p-0.5 shadow-sm">
+            <SupabaseImage src={item.logo} alt="" fill sizes="28px" className="object-contain" />
+          </div>
+        )}
         {(live || when) && (
           <div className="absolute left-1.5 top-1.5">
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/45 text-white backdrop-blur-sm"}`}>

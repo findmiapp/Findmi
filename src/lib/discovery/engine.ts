@@ -15,6 +15,11 @@ export interface DiscoveryItem {
   title: string;
   href: string;
   image: string | null;
+  /** Brand identity mark (businesses only — a real logo_url, distinct
+   * from `image`, which prefers the cover). Null for every other kind;
+   * never fabricated. DiscoveryTile uses it only as a small identity
+   * badge over the cover, never in place of it. */
+  logo?: string | null;
   subtitle: string | null;
   /** Dated items (events, appearances, moments) — the real stored times;
    * never invented. Undated items (business, place) leave these null. */

@@ -292,6 +292,7 @@ export const getCandidates = cache(async (market: string | undefined, area: stri
       title: b.name,
       href: `/business/${b.slug}`,
       image: b.cover_image_url ?? b.logo_url ?? null,
+      logo: b.logo_url ?? null,
       subtitle: b.short_description ?? (b.categories?.[0]?.name ?? null),
       start_at: null, end_at: null, start_date: null, end_date: null,
       created_at: str(r.created_at),
