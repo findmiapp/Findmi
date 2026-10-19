@@ -17,12 +17,12 @@ import { PlusGlyph, type BusinessOption } from "@/app/(public)/account/BusinessS
  *   Add A Location  /account/location/new
  *
  * Signed-out visitors can open it and see what can be added; choosing an
- * action is still a plain Link to the real route. Every one of those
- * routes sits behind the existing middleware gate (/account/:path*,
- * /my-world/journal/:path*), which sends a signed-out visitor to
- * /login?next=<that exact route>; the login, signup and email-confirmation
- * flows all carry that same `next` (validated by getSafeRedirect) back to
- * the intended creation flow. One mechanism, no second redirect system.
+ * action is still a plain Link to the real route. Guest-First Experience
+ * Completion pass — Add Moment, Add A Business and Add A Location are now
+ * all reachable immediately for a signed-out visitor (middleware carves
+ * out each of these exact routes); only Create Event still requires
+ * identity up front, since it has nothing to show without a managed Page
+ * to publish through.
  *
  * Create Event is a universal entry point, never a Personal publishing
  * path: /account/event/new itself resolves WHO is publishing (a managed
@@ -119,7 +119,7 @@ export default function QuickCreateMenu({
             icon={<NavIcon name="pin" className="h-4 w-4" />}
             onNavigate={handleNavigate}
           />
-          {!authenticated && <p className="px-3 pb-1.5 pt-2 text-xs text-ink/50">You&rsquo;ll sign in first, then pick up right here.</p>}
+          {!authenticated && <p className="px-3 pb-1.5 pt-2 text-xs text-ink/50">Create Event needs a Business or Location Page to publish through — the rest you can start right now.</p>}
         </div>
       )}
     </div>

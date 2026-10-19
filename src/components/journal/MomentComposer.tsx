@@ -21,8 +21,33 @@ import {
 import type { JournalOccurrenceRef } from "@/lib/journal";
 import type { JournalEntrySectionRow } from "@/lib/journal-sections";
 import { manualLocationHasText, type JournalManualLocationState, type MomentComposerInitial, type MomentEventPick, type MomentPick } from "@/lib/moment-composer";
+import {
+  clearGuestMomentDraft,
+  emptyGuestMomentDraft,
+  readGuestMomentDraft,
+  writeGuestMomentDraft,
+  type GuestMomentDraft,
+  type GuestMomentIntendedAction,
+} from "@/lib/guest-moment-draft";
+import { deleteAllGuestMomentMedia, getGuestMomentMedia } from "@/lib/guest-moment-media-db";
+import type { JournalPhotoItem } from "./useJournalPhotoUpload";
 
 type Stage = 1 | 2 | 3;
+
+/** Guest-First Experience Completion pass — a cold, context-free start:
+ * the ONLY shape a found local draft is ever applied onto (never over a
+ * deliberate contextual prefill from an Event/Business/Location/Product
+ * page). */
+function isColdStart(initial: MomentComposerInitial): boolean {
+  return (
+    !initial.location &&
+    !initial.title &&
+    initial.events.length === 0 &&
+    initial.businesses.length === 0 &&
+    initial.products.length === 0 &&
+    initial.photos.length === 0
+  );
+}
 
 const STAGES: { id: Stage; label: string }[] = [
   { id: 1, label: "Context" },
@@ -52,19 +77,50 @@ export default function MomentComposer({
   initial,
   cancelHref,
   autoResolveEventIds,
+  authed = true,
+  resume = false,
 }: {
   mode: "create" | "edit";
   initial: MomentComposerInitial;
   cancelHref: string;
   autoResolveEventIds?: string[];
+  /** Guest-First Experience Completion pass — false only for a signed-
+   * out visitor at the cold /my-world/journal/new entry point. Stable
+   * for this component's whole mount (a transition to signed-in is
+   * always a fresh navigation/remount, never a mid-session flip), so
+   * every hook below can branch on it directly without breaking the
+   * Rules of Hooks. Always true for `mode: "edit"` — that route stays
+   * fully behind the existing auth gate, untouched by this pass. */
+  authed?: boolean;
+  /** True when this load is the deterministic return from the auth
+   * sheet's own links (`?resume=1`) — the ONE case that silently,
+   * automatically converts a found local draft; every other "a local
+   * draft happens to exist" case instead offers Continue Draft, never
+   * acts without confirmation. */
+  resume?: boolean;
 }) {
   const router = useRouter();
+  const guestMode = !authed;
   const [stage, setStage] = useState<Stage>(1);
   const [entryId, setEntryId] = useState<string | null>(initial.entryId);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<null | "publish" | "draft" | "save" | "unpublish">(null);
   const [confirmUnpublish, setConfirmUnpublish] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
+
+  // Guest-First Experience Completion pass — local draft orchestration.
+  // `autosavePausedRef` starts true and is flipped by the mount-check
+  // effect below BEFORE the autosave effect's own first run reaches it
+  // (both run in declaration order, synchronously, in the same post-
+  // commit flush) — this is what stops a found draft from being
+  // overwritten by the cold initial state before the person ever gets a
+  // chance to decide to Continue or Start New.
+  const autosavePausedRef = useRef(true);
+  const [foundDraftPrompt, setFoundDraftPrompt] = useState<GuestMomentDraft | null>(null);
+  const [converting, setConverting] = useState(false);
+  const [guestAuthPrompt, setGuestAuthPrompt] = useState<GuestMomentIntendedAction | null>(null);
+  const conversionStartedRef = useRef(false);
+  const draftRef = useRef<GuestMomentDraft>(emptyGuestMomentDraft());
 
   const isPublished = initial.status === "published" && initial.visibility === "public";
 
@@ -96,7 +152,7 @@ export default function MomentComposer({
     return draftPromise.current;
   }, []);
 
-  const photos = useJournalPhotoUpload(initial.photos, ensureEntryId);
+  const photos = useJournalPhotoUpload(initial.photos, ensureEntryId, guestMode);
   const [sections, setSections] = useState<JournalEntrySectionRow[]>(initial.sections);
 
   // Context
@@ -212,6 +268,238 @@ export default function MomentComposer({
     return { ok: true };
   }
 
+  // ── Guest-First Experience Completion pass — local draft orchestration ──
+
+  /** The current composer state as a serializable draft, carrying
+   * forward whatever identity (draftId/createdAt/serverEntryId) the
+   * in-flight draft already has. Photo order/cover/caption come from the
+   * photos hook's own live items (already in the guest's chosen order),
+   * never a second, separately-tracked copy. */
+  function currentDraftSnapshot(intendedAction: GuestMomentIntendedAction | null): GuestMomentDraft {
+    const base = draftRef.current;
+    return {
+      ...base,
+      title,
+      notes,
+      entryDate,
+      entryTime,
+      location,
+      manual,
+      events,
+      businesses,
+      products,
+      media: photos.items
+        .filter((it) => it.guestStaged)
+        .map((it) => ({ localId: it.localId, isCover: it.isCover, caption: it.caption ?? null })),
+      intendedAction,
+    };
+  }
+
+  function persistGuestDraft(intendedAction: GuestMomentIntendedAction | null) {
+    const next = currentDraftSnapshot(intendedAction);
+    draftRef.current = next;
+    writeGuestMomentDraft(next);
+  }
+
+  /** Loads a found draft's content into this composer's live state —
+   * used both for a guest resuming their own still-local draft, and as
+   * the FIRST step of converting one after authentication. */
+  async function hydrateFromDraft(draft: GuestMomentDraft) {
+    draftRef.current = draft;
+    setTitle(draft.title);
+    setTitleTouched(Boolean(draft.title));
+    setNotes(draft.notes);
+    setEntryDate(draft.entryDate);
+    setDateTouched(Boolean(draft.entryDate));
+    setEntryTime(draft.entryTime);
+    setLocation(draft.location);
+    setLocationSource(draft.location ? "explicit" : null);
+    setManual(draft.manual);
+    setEvents(draft.events);
+    setBusinesses(draft.businesses);
+    setProducts(draft.products);
+    if (draft.media.length > 0) {
+      const restored: JournalPhotoItem[] = [];
+      for (const m of draft.media) {
+        const file = await getGuestMomentMedia(m.localId);
+        if (!file) continue;
+        restored.push({
+          localId: m.localId,
+          status: "complete",
+          previewUrl: URL.createObjectURL(file),
+          isObjectUrl: true,
+          file,
+          mediaId: m.localId,
+          guestStaged: true,
+          isCover: m.isCover,
+          caption: m.caption,
+        });
+      }
+      photos.hydrateGuestItems(restored);
+    }
+  }
+
+  /** The real, authenticated conversion: creates (or reuses) the actual
+   * journal_entries row, uploads every staged photo through the exact
+   * same pipeline a signed-in composer already uses, carries the
+   * guest's chosen cover/caption onto the resulting real photos by
+   * position (a brand-new Moment has no pre-existing photos, so the
+   * upload's resulting order exactly matches `draft.media`'s), persists
+   * Context/Your Moment, and finishes with whatever action the guest
+   * originally pressed. The server-assigned entryId is written back into
+   * the still-live local draft BEFORE anything else, so a failure or a
+   * repeated call after this point reuses the same row instead of ever
+   * creating a second Moment — only full success clears the draft. */
+  async function convertGuestDraft(draft: GuestMomentDraft) {
+    if (conversionStartedRef.current) return;
+    conversionStartedRef.current = true;
+    setConverting(true);
+    setError(null);
+    await hydrateFromDraft(draft);
+
+    if (draft.serverEntryId) {
+      entryIdRef.current = draft.serverEntryId;
+      setEntryId(draft.serverEntryId);
+    }
+    const id = await ensureEntryId();
+    if (!id) {
+      setConverting(false);
+      setError("Couldn't save your Moment. Please try again.");
+      return;
+    }
+    if (draft.serverEntryId !== id) writeGuestMomentDraft({ ...draft, serverEntryId: id });
+
+    if (draft.media.length > 0) {
+      const files: File[] = [];
+      for (const m of draft.media) {
+        const file = await getGuestMomentMedia(m.localId);
+        if (file) files.push(file);
+      }
+      if (files.length > 0) {
+        await photos.handleFiles(files as unknown as FileList);
+        const uploaded = photos.liveItems().filter((it) => it.status === "complete" && it.mediaId && !it.guestStaged);
+        const newOnes = uploaded.slice(Math.max(0, uploaded.length - files.length));
+        for (let i = 0; i < newOnes.length && i < draft.media.length; i++) {
+          const meta = draft.media[i];
+          const real = newOnes[i];
+          if (meta.caption) await photos.saveCaption(real.localId, meta.caption);
+          if (meta.isCover) await photos.makeCover(real.localId);
+        }
+      }
+    }
+
+    const saved = await persistAll(id);
+    if ("error" in saved) {
+      setConverting(false);
+      setError(saved.error);
+      return;
+    }
+    const action = draft.intendedAction ?? "draft";
+    if (action === "publish") {
+      const result = await publishJournalEntry(id, "public");
+      if (result && "error" in result) {
+        setConverting(false);
+        setError(result.error);
+        return;
+      }
+    } else {
+      const result = await saveJournalAsDraft(id);
+      if ("error" in result) {
+        setConverting(false);
+        setError(result.error);
+        return;
+      }
+    }
+
+    clearGuestMomentDraft();
+    void deleteAllGuestMomentMedia(draft.media.map((m) => m.localId));
+    router.push(`/journal/${id}`);
+    router.refresh();
+  }
+
+  // Runs once per mount. A lazy useState initializer would read
+  // localStorage during the client's own first (hydration) render,
+  // which can legitimately differ from the server's render and trip a
+  // hydration mismatch — so this deliberately waits for the post-commit
+  // effect phase instead, same as every other browser-only read in this
+  // pass. Declared BEFORE the autosave effect below so its synchronous
+  // `autosavePausedRef.current = false` (the common, no-draft case) is
+  // always visible to that effect's own first run in the same flush.
+  const mountCheckedRef = useRef(false);
+  useEffect(() => {
+    if (mountCheckedRef.current) return;
+    mountCheckedRef.current = true;
+    if (mode !== "create" || !isColdStart(initial)) {
+      autosavePausedRef.current = false;
+      return;
+    }
+    const draft = readGuestMomentDraft();
+    if (!draft) {
+      autosavePausedRef.current = false;
+      return;
+    }
+    if (authed && resume) {
+      void convertGuestDraft(draft);
+      return;
+    }
+    // Ambiguous — a draft exists, but this isn't the deterministic auth
+    // round-trip. Never silently resume OR silently discard; offer the
+    // choice instead. autosavePausedRef stays true until it's made.
+    setFoundDraftPrompt(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keeps the local draft current with every composer change, so a
+  // guest's work survives navigation, reload, and the auth round-trip.
+  // No-ops entirely once signed in (authed composers, including one
+  // mid-conversion, never write this).
+  useEffect(() => {
+    if (!guestMode || autosavePausedRef.current) return;
+    persistGuestDraft(draftRef.current.intendedAction);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestMode, title, notes, entryDate, entryTime, location, manual, events, businesses, products, photos.items]);
+
+  function continueFoundDraft() {
+    const draft = foundDraftPrompt;
+    setFoundDraftPrompt(null);
+    if (!draft) return;
+    if (authed) {
+      void convertGuestDraft(draft);
+      return;
+    }
+    autosavePausedRef.current = false;
+    void hydrateFromDraft(draft);
+  }
+
+  /** An ambiguous dismissal (Escape, backdrop tap) never destroys the
+   * old draft — it's simply offered again next time this cold entry
+   * point is opened. Only the explicit "Start A New Moment" button
+   * actually discards it. Either way autosave resumes, so a blank
+   * composer left open after dismissing is never silently un-persisted. */
+  function dismissFoundDraftPrompt() {
+    setFoundDraftPrompt(null);
+    autosavePausedRef.current = false;
+  }
+
+  function discardFoundDraft() {
+    const draft = foundDraftPrompt;
+    setFoundDraftPrompt(null);
+    autosavePausedRef.current = false;
+    if (!draft) return;
+    clearGuestMomentDraft();
+    void deleteAllGuestMomentMedia(draft.media.map((m) => m.localId));
+  }
+
+  /** The guest-mode half of `finish()` below — never touches the real
+   * journal_entries pipeline. Saves exactly what was about to be
+   * finished as the local draft's intended action, then shows the
+   * contextual auth prompt; Not Now simply closes it, leaving the draft
+   * exactly as saved for later. */
+  function finishAsGuest(action: GuestMomentIntendedAction) {
+    persistGuestDraft(action);
+    setGuestAuthPrompt(action);
+  }
+
   async function finish(action: "publish" | "draft" | "save" | "unpublish") {
     setError(null);
     setFieldError(null);
@@ -225,6 +513,15 @@ export default function MomentComposer({
       setFieldError("date");
       setError("Choose a date.");
       return goTo(3);
+    }
+    // Guest-First Experience Completion pass — a signed-out visitor never
+    // reaches the real journal_entries pipeline from here. `action` is
+    // always "publish" or "draft" in guest mode: isPublished (the only
+    // way "save"/"unpublish" are offered) requires an already-published
+    // Moment, which no guest draft has ever been.
+    if (guestMode) {
+      finishAsGuest(action === "publish" ? "publish" : "draft");
+      return;
     }
     setSaving(action);
     const id = await ensureEntryId();
@@ -257,7 +554,7 @@ export default function MomentComposer({
   }
 
   const uploading = photos.hasActiveUploads;
-  const busy = saving !== null;
+  const busy = saving !== null || converting;
 
   const primaryButton = "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold text-white transition hover:bg-findmi-600 disabled:opacity-60";
   const secondaryButton =
@@ -311,6 +608,7 @@ export default function MomentComposer({
         ))}
       </nav>
 
+      {converting && <p className="mt-3 rounded-xl bg-findmi-50 px-3.5 py-2.5 text-sm text-findmi-700">Saving your Moment to your Findmi world…</p>}
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}
 
       <div className="mt-5">
@@ -336,7 +634,7 @@ export default function MomentComposer({
         </div>
 
         <div className={stage === 2 ? "" : "hidden"}>
-          <MomentPhotosStage photos={photos} sections={sections} setSections={setSections} ensureEntryId={ensureEntryId} onError={setError} />
+          <MomentPhotosStage photos={photos} sections={sections} setSections={setSections} ensureEntryId={ensureEntryId} onError={setError} guestMode={guestMode} />
         </div>
 
         <div className={stage === 3 ? "" : "hidden"}>
@@ -415,7 +713,7 @@ export default function MomentComposer({
 
       <div className="mt-7 flex flex-col gap-2">
         {mode === "create" && stage < 3 ? (
-          <button type="button" onClick={() => goTo((stage + 1) as Stage)} className={primaryButton}>
+          <button type="button" onClick={() => goTo((stage + 1) as Stage)} disabled={busy} className={primaryButton}>
             Continue
           </button>
         ) : (
@@ -440,6 +738,48 @@ export default function MomentComposer({
               </button>
               <button type="button" onClick={() => setConfirmUnpublish(false)} className="flex h-11 items-center justify-center text-sm font-semibold text-ink/60 hover:text-ink">
                 Cancel
+              </button>
+            </>
+          }
+        />
+      )}
+
+      {guestAuthPrompt && (
+        <MomentSheet
+          title="Your Moment Is Ready"
+          description="Create a free Findmi account to save it to your Findmi world."
+          onClose={() => setGuestAuthPrompt(null)}
+          footer={
+            <>
+              <a href={`/signup?next=${encodeURIComponent("/my-world/journal/new?resume=1")}`} className={primaryButton}>
+                Create Free Account
+              </a>
+              <p className="text-center text-sm text-ink/60">
+                Already have an account?{" "}
+                <a href={`/login?next=${encodeURIComponent("/my-world/journal/new?resume=1")}`} className="font-semibold text-findmi-700 hover:underline">
+                  Log In
+                </a>
+              </p>
+              <button type="button" onClick={() => setGuestAuthPrompt(null)} className="text-center text-xs font-semibold text-ink/50 hover:text-ink">
+                Not Now
+              </button>
+            </>
+          }
+        />
+      )}
+
+      {foundDraftPrompt && (
+        <MomentSheet
+          title="Continue Your Draft?"
+          description="You have an unfinished Moment on this device."
+          onClose={dismissFoundDraftPrompt}
+          footer={
+            <>
+              <button type="button" onClick={continueFoundDraft} className={primaryButton}>
+                Continue Draft
+              </button>
+              <button type="button" onClick={discardFoundDraft} className="flex h-11 items-center justify-center text-sm font-semibold text-ink/60 hover:text-ink">
+                Start A New Moment
               </button>
             </>
           }

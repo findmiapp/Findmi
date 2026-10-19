@@ -69,6 +69,7 @@ export default async function AddLocationPage({
     parent_location_id?: string;
     context?: string;
     resume?: string;
+    submitted?: string;
   }>;
 }) {
   const {
@@ -84,7 +85,36 @@ export default async function AddLocationPage({
     parent_location_id: parentIdParam,
     context: contextParam,
     resume,
+    submitted,
   } = await searchParams;
+
+  // Guest-First Experience Completion pass — the landing spot for a
+  // successful anonymous factual submission (createMemberLocation's own
+  // `?submitted=1` redirect for the `!user` case). Shown on this same,
+  // already guest-accessible page rather than Account Home: no account
+  // exists to land on, and none is implied by submitting.
+  if (submitted === "1") {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
+        <div className="rounded-3xl border border-black/5 bg-white p-6 shadow-sm">
+          <p className="text-label font-bold uppercase text-accent">Location Submitted</p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Thanks For Adding It</h1>
+          <p className="mt-2 text-body text-muted">We&rsquo;ll review it before it appears on Findmi. No account is required for this.</p>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <Link href="/signup" className={primaryButtonClass}>
+              Create An Account
+            </Link>
+            <Link
+              href="/account/location/new"
+              className="flex h-11 items-center justify-center text-metadata font-semibold text-muted hover:text-primary"
+            >
+              Add Another Location
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const supabase = await getServerSupabase();
   const {
@@ -186,15 +216,29 @@ export default async function AddLocationPage({
 
           <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} defaultPostalCode={submittedPostalCode ?? ""} />
 
-          <GuestCreateSubmit
-            formId="create-location-form"
-            label="Add Location"
-            title="Your Location Is Ready"
-            body="Create your free Findmi account to publish it, manage it and keep everything you've created."
-            authed={Boolean(user)}
-            resume={resume === "1"}
-            className={`mt-2 ${primaryButtonClass}`}
-          />
+          {business || parent ? (
+            // Adding as a Business, or inside a managed Location, asserts
+            // a real relationship the submitter must actually hold —
+            // identity is still required at submit here.
+            <GuestCreateSubmit
+              formId="create-location-form"
+              label="Add Location"
+              title="Your Location Is Ready"
+              body="Create your free Findmi account to publish it, manage it and keep everything you've created."
+              authed={Boolean(user)}
+              resume={resume === "1"}
+              className={`mt-2 ${primaryButtonClass}`}
+            />
+          ) : (
+            // Guest-First Experience Completion pass — "I'm Just Adding
+            // It To Findmi" is factual directory data only (no ownership,
+            // no management, no claim): submits for anyone, signed in or
+            // not. createMemberLocation's own anonymous branch is what
+            // actually makes this safe, not this button.
+            <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
+              Add Location
+            </button>
+          )}
           <p className="text-center text-metadata text-subtle">Free — always.</p>
         </form>
       </div>

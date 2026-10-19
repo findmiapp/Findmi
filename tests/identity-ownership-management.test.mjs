@@ -165,7 +165,7 @@ test("location_claim_requests/'manage' intent infrastructure stays intact even t
   // tests/location-creation-context.test.mjs). The server-side claim
   // mechanism itself is untouched/not deleted, just unreachable from
   // this one UI now.
-  assert.match(createLoc, /if \(intent === "manage"\) \{[\s\S]*?\.from\("location_claim_requests"\)\.insert\(\{\s*\n\s*user_id: user\.id,\s*\n\s*location_id: locationId,/);
+  assert.match(createLoc, /if \(intent === "manage"\) \{[\s\S]*?\.from\("location_claim_requests"\)\.insert\(\{\s*\n\s*user_id: user!\.id,\s*\n\s*location_id: locationId,/);
   assert.match(createLoc, /if \(!intent\) fail\(/, "a choice is required");
   assert.equal(C.parseLocationIntent("manage"), "manage");
   assert.equal(C.parseLocationIntent("adding"), "adding");

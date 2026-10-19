@@ -93,7 +93,7 @@ async function resolvePrefillEvent(id: string | undefined): Promise<{ result: Jo
 export default async function NewJournalEntryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ location?: string; business?: string; product?: string; event?: string; postAs?: string }>;
+  searchParams: Promise<{ location?: string; business?: string; product?: string; event?: string; postAs?: string; resume?: string }>;
 }) {
   const params = await searchParams;
   // Identity V1 — Posted By. Opened from a Business manager (?postAs=<id>)
@@ -143,5 +143,14 @@ export default async function NewJournalEntryPage({
     initial.title = eventPrefill.result.label;
   }
 
-  return <MomentComposer mode="create" initial={initial} cancelHref={cancelHref} autoResolveEventIds={autoResolveEventIds} />;
+  return (
+    <MomentComposer
+      mode="create"
+      initial={initial}
+      cancelHref={cancelHref}
+      autoResolveEventIds={autoResolveEventIds}
+      authed={Boolean(user)}
+      resume={params.resume === "1"}
+    />
+  );
 }

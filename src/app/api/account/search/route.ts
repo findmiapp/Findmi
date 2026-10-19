@@ -16,15 +16,24 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 // convenience search over already-public data, not a privileged read.
 // Same bounded-to-20-rows, no-full-table-dump shape as the admin route.
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const entity = searchParams.get("entity");
+  const q = (searchParams.get("q") ?? "").trim();
+
+  // Guest-First Experience Completion pass — "where"/"who" (the Moment
+  // composer's combined search below) read ONLY already-public rows,
+  // same as every other entity branch's own is_demo/publication_status
+  // filter already enforces; a signed-out visitor composing a Moment
+  // before ever creating an account can use these two exactly like a
+  // signed-in one does. Every other entity mode here is unchanged and
+  // still requires a session.
+  const isMomentSearch = entity === "where" || entity === "who";
+
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { searchParams } = new URL(request.url);
-  const entity = searchParams.get("entity");
-  const q = (searchParams.get("q") ?? "").trim();
+  if (!user && !isMomentSearch) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const admin = getAdminSupabase();
   if (!admin) return NextResponse.json({ results: [] });

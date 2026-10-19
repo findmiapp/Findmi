@@ -36,6 +36,16 @@ export async function middleware(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    // Guest-First Experience Completion pass — the cold composer entry
+    // point alone lets a signed-out visitor begin a real Moment
+    // immediately; identity is only established at the actual Save &
+    // Publish / Save Without Publishing (MomentComposer's own guest
+    // draft + contextual auth prompt, never silently here). Every other
+    // /my-world/journal/* route — the archive, editing an existing
+    // entry — is unaffected and still redirects below exactly as before.
+    if (!user && pathname === "/my-world/journal/new") return response;
+
     if (!user) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("next", getSafeRedirect(pathname + request.nextUrl.search));

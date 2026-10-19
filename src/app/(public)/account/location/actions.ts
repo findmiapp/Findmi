@@ -17,6 +17,7 @@ import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
+import { anonymousLocationClientIp, recordAnonymousLocationSubmission } from "@/lib/anonymous-location-rate-limit";
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import { storePublicImage } from "@/lib/image-variants-server";
@@ -35,10 +36,15 @@ const UPLOAD_BUCKET = "findmi-media";
  * action here is ENTITY-SCOPED (edits the managed location's own content;
  * no column anywhere in this file records a personal/financial actor
  * identity), so none of them need to reject admin elevation. Native
- * LOCATION CREATION is the one exception: creating a brand-new location is
- * inherently tied to a real user's own identity (they become its
- * location_members owner), so createMemberLocation below requires a
- * genuine Supabase Auth session, same as createMemberBusiness/
+ * LOCATION CREATION is the one real exception, and in the OPPOSITE
+ * direction from what it might look like: creating a brand-new Location
+ * NEVER grants location_members ownership (see createMemberLocation's own
+ * doc comment) — submitting one is purely factual directory data. Guest-
+ * First Experience Completion pass — the plain, context-free "I'm Just
+ * Adding It To Findmi" path needs no identity at all for exactly that
+ * reason; asserting a real Business → Location relationship or a
+ * management claim still does, and createMemberLocation requires a
+ * genuine Supabase Auth session for those, same as createMemberBusiness/
  * createMemberEvent do for businesses/events.
  */
 
@@ -192,13 +198,23 @@ export async function createMemberLocation(formData: FormData) {
     redirect(errorRedirectUrlWithFields(CREATE_LOCATION_PATH, message, preservedFields));
   };
 
-  // Guest-First Creation pass — the page itself now lets a signed-out
-  // visitor fill this form (see account/location/new/page.tsx and
-  // middleware.ts's own carve-out); identity is only established here, at
-  // the real submit, same boundary Business creation now uses. Every
-  // typed field comes back intact via `next`, and GuestCreateSubmit
-  // auto-resubmits this exact action once signed in (`resume=1`).
-  if (!user) {
+  // Guest-First Experience Completion pass — the one case that needs NO
+  // identity at all: "I'm Just Adding It To Findmi" with no Business/
+  // parent context. This is purely factual directory data (name/address/
+  // city/state/zip) inserted exactly the same way an authenticated
+  // generic submission already is — via the admin (service-role) client,
+  // is_demo=true, pending Admin review — with zero ownership, membership,
+  // claim or Business relationship granted. Adding as a Business or
+  // inside a managed Location still asserts a real relationship the
+  // submitter must actually hold, so those two keep requiring identity
+  // below exactly as the prior Guest-First pass left them.
+  const isAnonymousFactualSubmission = intent === "adding" && !businessId && !parentLocationId;
+
+  // Guest-First Creation pass — every OTHER case still establishes
+  // identity here, at the real submit, with every typed field preserved
+  // through the login round-trip (GuestCreateSubmit auto-resubmits once
+  // signed in, `resume=1`).
+  if (!user && !isAnonymousFactualSubmission) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(preservedFields)) {
       if (value) params.set(key, value);
@@ -206,6 +222,13 @@ export async function createMemberLocation(formData: FormData) {
     params.set("resume", "1");
     const next = `${CREATE_LOCATION_PATH}?${params.toString()}`;
     redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
+
+  if (!user) {
+    const ip = await anonymousLocationClientIp();
+    if (recordAnonymousLocationSubmission(ip)) {
+      fail("Too many submissions from this device right now. Please try again later.");
+    }
   }
 
   if (businessId) {
@@ -305,12 +328,15 @@ export async function createMemberLocation(formData: FormData) {
   // redirect branch.
   let claimRequestError: string | null = null;
   if (intent === "manage") {
-    const { data: profile } = await admin.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
+    // `user!` is safe here: intent "manage" is never the anonymous-
+    // eligible case above, so a null user would already have redirected
+    // to login before this line is ever reached.
+    const { data: profile } = await admin.from("profiles").select("display_name").eq("id", user!.id).maybeSingle();
     const { error: claimError } = await admin.from("location_claim_requests").insert({
-      user_id: user.id,
+      user_id: user!.id,
       location_id: locationId,
       full_name: (profile as { display_name: string | null } | null)?.display_name ?? null,
-      email: user.email ?? null,
+      email: user!.email ?? null,
       message: businessId ? "Requested while adding this Location for a Business." : parentLocationId ? "Requested while adding this Location inside a managed Location." : "Requested while adding this Location.",
     });
     if (claimError) {
@@ -370,6 +396,11 @@ export async function createMemberLocation(formData: FormData) {
     const query = claimRequestError ? `error=${encodeURIComponent(claimRequestError)}` : `child_location=${intent}`;
     redirect(`/account/location/${parentLocationId}?${query}`);
   }
+  // Anonymous factual submission — success shown right here (the same
+  // page the submission came from, already guest-accessible), never a
+  // Login wall, never Account Home, never anything implying ownership or
+  // management.
+  if (!user) redirect(`${CREATE_LOCATION_PATH}?submitted=1`);
   redirect(claimRequestError ? `/account?error=${encodeURIComponent(claimRequestError)}` : `/account?location_submitted=${intent}`);
 }
 

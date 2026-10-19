@@ -18,6 +18,7 @@ import { preprocessImageForUpload, isHeicLike, isPng } from "@/lib/imagePreproce
 import { createConcurrencyLimiter } from "@/lib/concurrency";
 import { assignSectionInPlace, moveAdjacent } from "@/lib/moment-media-order";
 import { getBrowserSupabase } from "@/lib/supabase/client";
+import { putGuestMomentMedia, deleteGuestMomentMedia } from "@/lib/guest-moment-media-db";
 
 // Journal Photo Upload V3 — mirrors the literal bucket id
 // JOURNAL_MEDIA_BUCKET exports from lib/journal.ts. That module pulls in
@@ -76,6 +77,15 @@ export interface JournalPhotoItem {
   sectionId?: string | null;
   /** Moments V2 — the photo's own optional note (journal_entry_media.caption). */
   caption?: string | null;
+  /** Guest-First Experience Completion pass — true for a photo staged
+   * locally (IndexedDB) by a signed-out visitor, never uploaded anywhere.
+   * `mediaId` on such an item is this same localId, not a real database
+   * id — every guest-mode action below checks this flag FIRST and never
+   * reaches a server call for it. Undefined/false for every other item,
+   * including once this exact photo is later uploaded for real during
+   * conversion (a fresh JournalPhotoItem, not this one — see
+   * MomentComposer's resume/convert effect). */
+  guestStaged?: boolean;
 }
 
 export interface JournalInitialPhoto {
@@ -194,8 +204,22 @@ function chunkArray<T>(items: T[], size: number): T[][] {
  * Server Action (uploadJournalPhoto) unchanged — reliable client-side HEIC
  * decoding isn't available, so that binary still has to transit the
  * server; it shares the same upload concurrency budget as everything else
- * but never the chunked authorize/finalize pipeline. */
-export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensureEntryId: () => Promise<string | null>) {
+ * but never the chunked authorize/finalize pipeline.
+ *
+ * Guest-First Experience Completion pass — `guestMode` (stable for the
+ * whole mount, never toggled mid-session — see MomentComposer's own
+ * `authed` prop) swaps every action's SERVER half for a purely local one,
+ * branched inside each function body rather than by calling a different
+ * hook, so every useState/useRef/useCallback below still runs
+ * unconditionally (Rules of Hooks) regardless of mode. A guest's selected
+ * photos are staged byte-for-byte in IndexedDB (lib/guest-moment-media-
+ * db.ts) and marked "complete" with `mediaId` set to their own localId —
+ * close enough to "saved" that the exact same JournalPhotoStrip/
+ * MomentPhotosStage UI (Make Cover, Add A Note, Move Earlier/Later,
+ * Remove) works unmodified. A signed-in composer — including one
+ * converting a just-resumed guest draft — always has guestMode false and
+ * never takes any of these branches. */
+export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensureEntryId: () => Promise<string | null>, guestMode = false) {
   const [items, setItems] = useState<JournalPhotoItem[]>(() => buildInitialItems(initialPhotos));
   const [error, setError] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<JournalBatchProgress | null>(null);
@@ -563,6 +587,39 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       updateItems((prev) => [...prev, ...newItems]);
       const previewsReadyAt = performance.now();
 
+      // Guest-First Experience Completion pass — a signed-out visitor's
+      // photos never reach startJournalDraft/ensureEntryId at all (no
+      // anonymous database row, no anonymous Storage upload): each file is
+      // staged byte-for-byte in IndexedDB instead, keyed by its own
+      // localId, and the item settles straight to "complete" — the exact
+      // same real pipeline runs later, during conversion, once a real
+      // entryId exists for an authenticated owner.
+      if (guestMode) {
+        setBatchProgress({ completed: 0, total: newItems.length });
+        await Promise.all(
+          newItems.map(async (item) => {
+            updateItems((prev) => prev.map((it) => (it.localId === item.localId ? { ...it, status: "preparing" } : it)));
+            const ok = await putGuestMomentMedia(item.localId, item.file as File);
+            updateItems((prev) =>
+              prev.map((it) =>
+                it.localId === item.localId
+                  ? ok
+                    ? { ...it, status: "complete", mediaId: item.localId, guestStaged: true }
+                    : { ...it, status: "error", errorMessage: "Couldn't save that photo on this device." }
+                  : it
+              )
+            );
+            setBatchProgress((prev) => (prev ? { ...prev, completed: prev.completed + 1 } : prev));
+          })
+        );
+        setBatchProgress(null);
+        const stillErroredLocally = itemsRef.current.filter((it) => it.status === "error").length;
+        if (stillErroredLocally > 0) {
+          setError(`${stillErroredLocally} photo${stillErroredLocally === 1 ? "" : "s"} couldn't be saved. Tap Retry on ${stillErroredLocally === 1 ? "it" : "any of them"}.`);
+        }
+        return;
+      }
+
       timingRef.current.clear();
       newItems.forEach((item) => timingRef.current.set(item.localId, {}));
 
@@ -634,7 +691,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
       }
     },
-    [hasActiveUploads, ensureEntryId, updateItems, processChunk, runHeicItem, persistOrder, ensureCover]
+    [hasActiveUploads, ensureEntryId, updateItems, processChunk, runHeicItem, persistOrder, ensureCover, guestMode]
   );
 
   // Mobile QA Repair pass — these are invoked once per photo tile
@@ -645,6 +702,22 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     async (localId: string) => {
       const item = itemsRef.current.find((it) => it.localId === localId);
       if (!item || item.status !== "error" || !item.file) return;
+
+      if (guestMode) {
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
+        const ok = await putGuestMomentMedia(localId, item.file);
+        updateItems((prev) =>
+          prev.map((it) =>
+            it.localId === localId
+              ? ok
+                ? { ...it, status: "complete", mediaId: localId, guestStaged: true }
+                : { ...it, status: "error", errorMessage: "Couldn't save that photo on this device." }
+              : it
+          )
+        );
+        return;
+      }
+
       const entryId = await ensureEntryId();
       if (!entryId) return;
       setError(null);
@@ -674,7 +747,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       await persistOrder(entryId);
       await ensureCover(entryId);
     },
-    [ensureEntryId, currentPosition, applyFinalizeResult, runHeicItem, processChunk, persistOrder, ensureCover, updateItems]
+    [ensureEntryId, currentPosition, applyFinalizeResult, runHeicItem, processChunk, persistOrder, ensureCover, updateItems, guestMode]
   );
 
   const handleRemove = useCallback(
@@ -703,6 +776,13 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         return;
       }
 
+      if (item.guestStaged) {
+        if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
+        updateItems((prev) => prev.filter((it) => it.localId !== localId));
+        void deleteGuestMomentMedia(localId);
+        return;
+      }
+
       // status === "complete" — reuse the existing, already-correct
       // deletion behavior (Storage removal + cover failover) unchanged; the
       // server reports the resulting cover so the editor stays in sync.
@@ -723,11 +803,12 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
   const reorder = useCallback(
     (updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) => {
       updateItems(updater);
+      if (guestMode) return;
       ensureEntryId().then((entryId) => {
         if (entryId) void persistOrder(entryId);
       });
     },
-    [ensureEntryId, updateItems, persistOrder]
+    [ensureEntryId, updateItems, persistOrder, guestMode]
   );
 
   // Reorder While Some Photos Are Local — every one of these operates on
@@ -780,13 +861,14 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       const previous = target.caption ?? null;
       const next = caption.trim() || null;
       updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, caption: next } : it)));
+      if (guestMode) return { ok: true };
       const entryId = await ensureEntryId();
       if (!entryId) return { error: "Couldn't save that note." };
       const result = await saveJournalMediaCaption(entryId, target.mediaId, next);
       if ("error" in result) updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, caption: previous } : it)));
       return result;
     },
-    [ensureEntryId, updateItems]
+    [ensureEntryId, updateItems, guestMode]
   );
 
   /** Moments V2 — Make Cover marks the photo as the cover WITHOUT moving
@@ -798,6 +880,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       if (!target || target.status !== "complete" || !target.mediaId || target.isCover) return;
       const previousCoverId = itemsRef.current.find((it) => it.isCover)?.mediaId ?? null;
       syncCover(target.mediaId);
+      if (guestMode) return;
       const entryId = await ensureEntryId();
       if (!entryId) {
         syncCover(previousCoverId);
@@ -809,8 +892,19 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         setError(result.error);
       }
     },
-    [ensureEntryId, syncCover]
+    [ensureEntryId, syncCover, guestMode]
   );
+
+  // Guest-First Experience Completion pass — conversion (MomentComposer's
+  // own resume/convert effect) needs the just-uploaded items' REAL
+  // mediaIds to carry a guest's chosen cover/caption across, but reads
+  // them from inside an async function whose closure can otherwise go
+  // stale across the several re-renders handleFiles itself triggers;
+  // this always reads the live, current array. Guest-to-guest resume
+  // (still signed out, reopening an unfinished draft) needs to inject
+  // its restored local items wholesale, which no existing setter does.
+  const liveItems = useCallback(() => itemsRef.current, []);
+  const hydrateGuestItems = useCallback((restored: JournalPhotoItem[]) => updateItems(() => restored), [updateItems]);
 
   return {
     items,
@@ -830,5 +924,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     assignSection,
     releaseSection,
     saveCaption,
+    liveItems,
+    hydrateGuestItems,
   };
 }

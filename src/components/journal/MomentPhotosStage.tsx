@@ -45,19 +45,35 @@ function typeLabel(type: string): string {
  * ORDER — the Moment has ONE creator-controlled photo order, shown and
  * reordered in All. A section is metadata on a photo: the section chips
  * are filters over that same order (relative order kept), and reordering
- * is locked while one is active so a filtered view can never rewrite it. */
+ * is locked while one is active so a filtered view can never rewrite it.
+ *
+ * Guest-First Experience Completion pass — `guestMode` hides Organize
+ * Your Photos/sections entirely (sections live in THIS component, called
+ * directly against the real createJournalSection/updateJournalSection/
+ * reorderJournalSections/deleteJournalSection Server Actions below, never
+ * through the photos hook's own guest/authenticated branching) rather
+ * than letting a guest tap into a control that would otherwise silently
+ * fail. `sections` is always `[]` for a guest in practice (nothing here
+ * ever adds to it while guestMode is true), so this is a defense-in-depth
+ * presentation choice, not the only thing preventing it. Everything else
+ * on this stage (Add Photos, reorder, Make Cover, Add A Note, Remove)
+ * already works for a guest through the photos hook itself — deferred
+ * exactly as the task's own Section 10 allows for one optional function,
+ * never the whole stage. */
 export default function MomentPhotosStage({
   photos,
   sections,
   setSections,
   ensureEntryId,
   onError,
+  guestMode = false,
 }: {
   photos: PhotoState;
   sections: JournalEntrySectionRow[];
   setSections: Dispatch<SetStateAction<JournalEntrySectionRow[]>>;
   ensureEntryId: () => Promise<string | null>;
   onError: (message: string | null) => void;
+  guestMode?: boolean;
 }) {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [busy, setBusy] = useState(false);
@@ -245,7 +261,7 @@ export default function MomentPhotosStage({
           + Add Section
         </button>
       )}
-      {!grouped && savedCount > 0 && (
+      {!grouped && !guestMode && savedCount > 0 && (
         <section aria-label="Organize Your Photos" className="flex flex-col gap-3 rounded-2xl border border-findmi/25 bg-findmi-50/50 p-4">
           <div>
             <h3 className="font-display text-base font-bold tracking-tight text-ink">Organize Your Photos</h3>
