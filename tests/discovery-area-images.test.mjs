@@ -45,7 +45,7 @@ test("DiscoveryLanes' \"areas\" branch passes the real a.image_url into TopicTil
 
 test("TopicTile's existing fallback/overlay logic (unchanged by this pass) is what makes an Area tile with no image text-only, and one with an image readable", () => {
   const fn = LANES.slice(LANES.indexOf("export function TopicTile"), LANES.indexOf("export function TileRail"));
-  assert.match(fn, /const showImage = !dateStatus && Boolean\(topic\.image_url\);/, "an Area tile (dateStatus always false/omitted) shows its image whenever one is set");
+  assert.match(fn, /const showImage = Boolean\(topic\.image_url\);/, "an Area tile (dateStatusKind always null/omitted, so it never reaches the early dateStatusKind return) shows its image whenever one is set");
   assert.match(fn, /bg-gradient-to-t from-black\/60 via-black\/10 to-transparent/, "readable name/count overlay over a photo");
   assert.match(fn, /\$\{showImage \? "text-white" : "text-findmi-700"\}/, "pale-aqua text-only fallback when none is set");
 });

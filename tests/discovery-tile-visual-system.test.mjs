@@ -52,31 +52,30 @@ test("Discovery topic queries and routing are untouched by this pass — no chan
 });
 
 // ── C. Date/Status Tile Presentation ─────────────────────────────────────
+// Superseded in its visual details by the Right Now Carousel Visual
+// Refinement pass (tests/discovery-right-now-visual-refinement.test.mjs
+// covers the 6-icon mapping, white/bordered/compact design and teal
+// focus treatment in full) — these three remain as the still-true
+// structural/guardrail claims from this pass.
 
-test("date/status detection is structural (topic.query.when) at the call site, never title matching", () => {
-  assert.match(LANES, /dateStatus=\{Boolean\(t\.query\.when\)\}/);
+test("date/status detection is structural (the topic's own query), never title matching", () => {
+  assert.match(LANES, /dateStatusKind=\{dateStatusKindOf\(t\.query\)\}/);
   // Nowhere in this file does a tile's presentation branch on topic.name/title text.
   assert.doesNotMatch(LANES, /topic\.name === |t\.name === |\.name\.includes\(/);
 });
 
-test("a dateStatus tile never shows decorative photography, even if image_url happens to be set — the suppression lives in TopicTile itself, not just in today's data", () => {
+test("a date/status tile never shows decorative photography, even if image_url happens to be set — it returns its own branch before the photo/fallback code ever runs", () => {
   const fn = LANES.slice(LANES.indexOf("export function TopicTile"), LANES.indexOf("export function TileRail"));
-  assert.match(fn, /const showImage = !dateStatus && Boolean\(topic\.image_url\);/);
-  assert.match(fn, /\{showImage && \(/);
+  assert.match(fn, /if \(dateStatusKind\) \{/);
+  assert.doesNotMatch(fn.slice(0, fn.indexOf("const showImage")), /topic\.image_url/, "no image reference before the dateStatusKind branch's own return");
 });
 
-test("every dateStatus tile uses the SAME one icon (NavIcon \"calendar\") — consistent, not a different icon per when value", () => {
-  assert.match(LANES, /import NavIcon from "@\/components\/NavIcon";/);
-  const fn = LANES.slice(LANES.indexOf("export function TopicTile"), LANES.indexOf("export function TileRail"));
-  assert.equal((fn.match(/<NavIcon name="calendar"/g) ?? []).length, 1, "one icon reference, reused for every dateStatus tile via props — not hardcoded per topic");
-});
-
-test("live counts and destination hrefs for date/status tiles are computed exactly the same way as any other topic tile — only presentation branches on dateStatus", () => {
+test("live counts and destination hrefs for date/status tiles are computed exactly the same way as any other topic tile — only presentation branches on dateStatusKind", () => {
   const topicsBranch = LANES.slice(LANES.indexOf('if (lane.kind === "topics")'), LANES.indexOf('if (lane.kind === "topic_results")'));
   assert.match(topicsBranch, /const counted = await Promise\.all\(topics\.map\(async \(t\) => \(\{ t, n: \(await runDiscovery\(\{ topics: \[t\.slug\], limit: 1 \}, \{ context \}\)\)\.total \}\)\)\);/);
   assert.match(topicsBranch, /href=\{searchHref\(\{ \.\.\.context, topics: \[t\.slug\] \}\)\}/);
-  // dateStatus is the ONLY extra prop added for this pass — count/href untouched.
-  assert.match(topicsBranch, /<TopicTile topic=\{t\} count=\{n\} href=\{searchHref\(\{ \.\.\.context, topics: \[t\.slug\] \}\)\} dateStatus=\{Boolean\(t\.query\.when\)\} \/>/);
+  // dateStatusKind is the ONLY extra prop added for date/status presentation — count/href untouched.
+  assert.match(topicsBranch, /<TopicTile topic=\{t\} count=\{n\} href=\{searchHref\(\{ \.\.\.context, topics: \[t\.slug\] \}\)\} dateStatusKind=\{dateStatusKindOf\(t\.query\)\} \/>/);
 });
 
 // ── Guardrails ────────────────────────────────────────────────────────────
