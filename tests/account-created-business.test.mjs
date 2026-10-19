@@ -23,18 +23,17 @@ const own = [MINE_LIVE, MINE_PENDING];
 
 // ── Redirect ─────────────────────────────────────────────────────────────
 test("Brand onboarding completes on Account Home, not inside the Profile editor", () => {
-  assert.match(CREATE, /if \(brandOnboarding\) redirect\(`\/account\?created=\$\{businessId\}`\);/);
+  assert.match(CREATE, /redirect\(`\/account\?created=\$\{businessId\}`\);/);
   assert.doesNotMatch(CREATE, /tab=profile&created=1/);
 });
 
-test("other creation paths keep their landings: invite → redeem, Pro → upgrade/checkout, default → workspace Overview", () => {
+test("other creation paths keep their landings: invite → redeem, Pro → upgrade/checkout; default and Brand both land on Account Home (Guest-First Creation pass)", () => {
   const tail = CREATE.slice(CREATE.indexOf("if (inviteRaw) {"), CREATE.indexOf("export async function", CREATE.indexOf("if (inviteRaw) {")));
   const order = [
     "redirect(`/redeem/${encodeURIComponent(inviteRaw)}?business=${businessId}`);",
     "redirect(`/upgrade/pro?business=${businessId}`);",
     "redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);",
-    "if (brandOnboarding) redirect(`/account?created=${businessId}`);",
-    "redirect(`/account/business/${businessId}?created=1`);",
+    "redirect(`/account?created=${businessId}`);",
   ];
   let at = -1;
   for (const step of order) {

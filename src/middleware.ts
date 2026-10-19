@@ -55,6 +55,16 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    // Guest-First Creation pass — these three native creation entry
+    // points let a signed-out visitor begin filling the real form
+    // immediately; identity is required only at actual submission (each
+    // page's own server action re-checks and bounces through login with
+    // the full draft preserved, never silently here). Every other
+    // /account/* route — including these same entities' own management
+    // pages — is unaffected and still redirects below exactly as before.
+    const GUEST_ACCESSIBLE_PATHS = new Set(["/account/business/new", "/account/location/new", "/account/event/new"]);
+    if (!user && GUEST_ACCESSIBLE_PATHS.has(pathname)) return response;
+
     if (!user) {
       const loginUrl = new URL("/login", request.url);
       // Preserve the full original destination — not just its pathname —

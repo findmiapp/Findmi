@@ -300,7 +300,7 @@ test("29/30. Review stays editable and creation still re-validates logo/cover/In
   assert.match(review, /name="instagram_url"\s+defaultValue=\{values\.instagramUrl\}/);
   const create = read("src/app/(public)/account/business/actions.ts");
   assert.match(create, /const verified = await fetchVerifiedBrandImage\(url, role\);/);
-  assert.match(create, /if \(brandOnboarding\) redirect\(`\/account\?created=\$\{businessId\}`\);/);
+  assert.match(create, /redirect\(`\/account\?created=\$\{businessId\}`\);/);
 });
 
 test("no schema change in A3", () => {

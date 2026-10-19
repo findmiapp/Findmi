@@ -249,9 +249,9 @@ test("content-type: CDN labels (image/jpg, octet-stream, mislabelled) no longer 
 // ── Review + creation wiring ─────────────────────────────────────────────
 test("Review shows the staged verified copy (no re-fetch, no limiter); creation re-hosts it, re-fetch only as fallback", () => {
   const page = read("src/app/(public)/account/business/new/page.tsx");
-  assert.match(page, /const stagedUrl = \(path: string \| undefined\) => \(admin && path && isStagedPathFor\(path, user\.id\) \? stagedBrandImageUrl\(admin, path\) : null\);/);
+  assert.match(page, /const stagedUrl = \(path: string \| undefined\) => \(admin && path && isStagedPathFor\(path, user!\.id\) \? stagedBrandImageUrl\(admin, path\) : null\);/);
   assert.match(page, /const needsPreview = Boolean\(draft && \(\(draft\.logo && !logoStagedUrl\) \|\| \(draft\.cover && !coverStagedUrl\)\)\);/);
-  assert.match(page, /const previewsAllowed = needsPreview && !recordBrandImagePreview\(user\.id\);/);
+  assert.match(page, /const previewsAllowed = needsPreview && !recordBrandImagePreview\(user!\.id\);/);
   const create = read("src/app/(public)/account/business/actions.ts");
   assert.match(create, /const image = await loadStagedBrandImage\(admin, user\.id, stagedPath, role\);\s*if \(image\) return storeBrandImage\(admin, image\);/);
   assert.match(create, /await clearStagedBrandImages\(admin, user\.id\);/);

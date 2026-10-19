@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import LocationGeographyFields from "@/components/LocationGeographyFields";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -10,6 +9,7 @@ import { isManagingRole } from "@/lib/business-locations";
 import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import { createMemberLocation } from "../actions";
+import GuestCreateSubmit from "@/components/account/GuestCreateSubmit";
 
 export const metadata: Metadata = {
   title: "Add A Location",
@@ -68,6 +68,7 @@ export default async function AddLocationPage({
     business_id?: string;
     parent_location_id?: string;
     context?: string;
+    resume?: string;
   }>;
 }) {
   const {
@@ -82,32 +83,29 @@ export default async function AddLocationPage({
     business_id: businessIdParam,
     parent_location_id: parentIdParam,
     context: contextParam,
+    resume,
   } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  // Defense-in-depth only — middleware (matcher: /account/:path*) already
-  // redirects a signed-out visitor to /login?next=<this exact path and
-  // query, preserved in full> before this component ever runs, so this
-  // branch is never actually seen rendered. No explanatory UI belongs
-  // here for the same reason Event Creation's own attempt at one turned
-  // out to be dead code behind that same gate.
-  const selfPath = `/account/location/new?${new URLSearchParams(
-    Object.fromEntries(
-      Object.entries({ business_id: businessIdParam, parent_location_id: parentIdParam, context: contextParam }).filter(([, v]) => v)
-    ) as Record<string, string>
-  ).toString()}`;
-  if (!user) redirect(`/login?next=${encodeURIComponent(selfPath)}`);
 
   // /account V2 Pass 2 — Business context (Presence -> Locations -> Add
   // location). Honored only for an owner/manager of that Business; anyone
   // else falls through to the context chooser below. createMemberLocation
-  // re-checks this server-side regardless.
+  // re-checks this server-side regardless. Both resolvers are already a
+  // safe no-op (caught, returns null) without a signed-in session, so a
+  // guest with ?business_id=/?parent_location_id= simply sees none below.
   const [business, parent] = await Promise.all([resolveBusinessContext(businessIdParam), resolveParentContext(parentIdParam)]);
-  const hasKnownContext = Boolean(business) || Boolean(parent) || contextParam === "generic";
-  if (!hasKnownContext) return <ChooseLocationContext userId={user.id} />;
+  // Guest-First Creation pass — a signed-out visitor can't be shown
+  // ChooseLocationContext (it lists the Businesses THEY manage, which
+  // requires a user id), so one always skips straight to the plain
+  // generic form below instead — identity is only required at actual
+  // submit (createMemberLocation handles that, preserving every typed
+  // field through the login round-trip, same as Business creation).
+  const hasKnownContext = Boolean(business) || Boolean(parent) || contextParam === "generic" || !user;
+  if (!hasKnownContext) return <ChooseLocationContext userId={user!.id} />;
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -160,7 +158,7 @@ export default async function AddLocationPage({
       )}
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-        <form action={createMemberLocation} className="flex flex-col gap-4">
+        <form id="create-location-form" action={createMemberLocation} className="flex flex-col gap-4">
           {business && <input type="hidden" name="business_id" value={business.id} />}
           {parent && <input type="hidden" name="parent_location_id" value={parent.id} />}
           {/* Context was already resolved in Step 1 (or arrived already
@@ -188,9 +186,15 @@ export default async function AddLocationPage({
 
           <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} defaultPostalCode={submittedPostalCode ?? ""} />
 
-          <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            Add Location
-          </button>
+          <GuestCreateSubmit
+            formId="create-location-form"
+            label="Add Location"
+            title="Your Location Is Ready"
+            body="Create your free Findmi account to publish it, manage it and keep everything you've created."
+            authed={Boolean(user)}
+            resume={resume === "1"}
+            className={`mt-2 ${primaryButtonClass}`}
+          />
           <p className="text-center text-metadata text-subtle">Free — always.</p>
         </form>
       </div>

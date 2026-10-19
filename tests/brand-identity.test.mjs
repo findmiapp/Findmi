@@ -480,7 +480,8 @@ test("action: signs the draft for the session user, replaces any previous draft,
 });
 
 test("review: draft verified against the CURRENT user; previews only after full verification; selected by default; no URL inputs", () => {
-  assert.match(NEW_PAGE, /brandOnboarding && draftParam === "1" \? await readBrandDraft\(user\.id\) : null/);
+  assert.match(NEW_PAGE, /needsAuthForDraft \? await readBrandDraft\(user!\.id\) : null/);
+  assert.match(NEW_PAGE, /const needsAuthForDraft = brandOnboarding && draftParam === "1";/, "still verified against the current signed-in user, now computed before the auth check it gates");
   assert.match(NEW_PAGE, /foundPreview=\{logoPreview\} useName="use_logo" useDefault=\{useLogoDefault\}/);
   assert.match(NEW_PAGE, /foundPreview=\{coverPreview\} useName="use_cover" useDefault=\{useCoverDefault\}/);
   assert.match(NEW_PAGE, /const useLogoDefault = roundTrip \? submittedUseLogo === "1" : true;/);
@@ -499,7 +500,7 @@ test("creation: images imported only after the RPC, only if selected, from the s
   const store = CREATE.indexOf("storeBrandImage(admin, image)");
   const save = CREATE.indexOf("...(logoUrl ? { logo_url: logoUrl } : {})");
   const clear = CREATE.indexOf("await clearBrandDraftCookie();");
-  const brandRedirect = CREATE.indexOf("if (brandOnboarding) redirect(`/account?created=${businessId}`);");
+  const brandRedirect = CREATE.indexOf("redirect(`/account?created=${businessId}`);");
   assert.ok(rpc > 0 && rpc < text && text < read_ && read_ < verify && verify < store && store < save && save < clear && clear < brandRedirect);
   assert.match(CREATE, /\["logo", useLogo && !logoFile, draft\?\.logoStaged, draft\?\.logo\]/, "an owner-chosen file replaces the found image");
   assert.match(CREATE, /if \(!use\) return null;/, "deselected → nothing fetched or stored");

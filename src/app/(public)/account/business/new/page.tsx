@@ -18,6 +18,7 @@ import { readBrandDraft } from "@/lib/brand-draft";
 import { isStagedPathFor, previewBrandCandidateResult, stagedBrandImageUrl } from "@/lib/brand-images";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { recordBrandImagePreview } from "@/lib/brand-website-rate-limit";
+import GuestCreateSubmit from "@/components/account/GuestCreateSubmit";
 
 export const metadata: Metadata = {
   title: "Add a Business",
@@ -67,6 +68,7 @@ export default async function AddBusinessPage({
     use_logo?: string;
     use_cover?: string;
     authorized?: string;
+    resume?: string;
   }>;
 }) {
   const {
@@ -89,6 +91,7 @@ export default async function AddBusinessPage({
     use_logo: submittedUseLogo,
     use_cover: submittedUseCover,
     authorized: submittedAuthorized,
+    resume,
   } = await searchParams;
   // Business Creation UX Cleanup pass — Business creation no longer asks
   // the visitor to choose a plan (see the Free value section below), so
@@ -107,23 +110,35 @@ export default async function AddBusinessPage({
   // elsewhere on this page.
   const hasInvite = Boolean(invite);
 
+  // Brand Onboarding presentation (source=brand from /join/brand): "Review
+  // Your Brand" and Business Profile landing after creation, instead of
+  // the ordinary form's copy/redirect — the business is still created
+  // Free either way. Presentation only — an explicit ?invite= still shows
+  // its own existing invite block regardless of this flag. Computed before
+  // the auth check below since it decides whether one is needed at all.
+  const brandOnboarding = parseBrandSource(source);
+  // Guest-First Creation pass — a plain Add Business / Add Brand visit
+  // (no stored draft to recover) may begin and fill in the real form
+  // before ever signing in; identity is required only at actual submit
+  // (createMemberBusiness handles that, preserving every typed field
+  // through the login round-trip). The one exception is returning to an
+  // already-analyzed brand draft (source=brand&draft=1): that draft is a
+  // signed cookie keyed to a specific signed-in user (readBrandDraft
+  // below), so it can only be read once that identity is known — the
+  // visitor already signed in earlier in that flow, so this isn't a new
+  // guest-facing gate, just this read's own precondition.
+  const needsAuthForDraft = brandOnboarding && draftParam === "1";
+
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
-    // Preserve ?invite=CODE through sign-in using the existing safe
-    // `next` redirect mechanism (lib/auth/safe-redirect.ts already
-    // round-trips a path's query string) — no new auth infrastructure,
-    // just not dropping the query string this redirect used to hardcode
-    // away.
+  if (!user && needsAuthForDraft) {
     const params = new URLSearchParams();
     if (hasInvite) params.set("invite", invite!);
-    // Referral Partner + Discount Foundation — preserved through sign-in
-    // the same way, independent of invite: a referral code and a Pro
-    // Invite are separate systems and can both survive the same login
-    // round-trip.
     if (ref) params.set("ref", ref);
+    params.set("source", BRAND_SOURCE);
+    params.set("draft", "1");
     const query = params.toString();
     const next = `/account/business/new${query ? `?${query}` : ""}`;
     redirect(`/login?next=${encodeURIComponent(next)}`);
@@ -136,18 +151,14 @@ export default async function AddBusinessPage({
   // ordinary, editable form values and createMemberBusiness re-validates
   // everything on submit.
   const prefillStatus = parseBrandPrefillStatus(prefill);
-  // Brand Onboarding presentation (source=brand from /join/brand): "Review
-  // Your Brand" and Business Profile landing after creation, instead of
-  // the ordinary form's copy/redirect — the business is still created
-  // Free either way. Presentation only — an explicit ?invite= still shows
-  // its own existing invite block regardless of this flag.
-  const brandOnboarding = parseBrandSource(source);
   // V1.1C — the enriched Brand Identity draft (signed, short-lived cookie,
   // verified against the CURRENT Supabase user). On a validation round-
   // trip (`error` present) the owner's own submitted values win and the
   // draft only supplies the image candidates; otherwise the draft fills
   // the editable fields. It never sets plan, authorization or ownership.
-  const draft = brandOnboarding && draftParam === "1" ? await readBrandDraft(user.id) : null;
+  // `user!` is safe here: needsAuthForDraft already redirected above when
+  // this same condition held and no user was signed in.
+  const draft = needsAuthForDraft ? await readBrandDraft(user!.id) : null;
   const roundTrip = Boolean(error);
   const fromDraft = draft && !roundTrip ? draft : null;
   const values = {
@@ -171,11 +182,14 @@ export default async function AddBusinessPage({
   // third-party fetch, no preview limit), so it can't silently vanish. Only
   // an unstaged (legacy/fallback) candidate is re-verified here as before.
   const admin = draft && (draft.logoStaged || draft.coverStaged) ? getAdminSupabase() : null;
-  const stagedUrl = (path: string | undefined) => (admin && path && isStagedPathFor(path, user.id) ? stagedBrandImageUrl(admin, path) : null);
+  // `user!` is safe here too — both are only reached when `draft` is set,
+  // which itself only happens when needsAuthForDraft already guaranteed a
+  // signed-in user above.
+  const stagedUrl = (path: string | undefined) => (admin && path && isStagedPathFor(path, user!.id) ? stagedBrandImageUrl(admin, path) : null);
   const logoStagedUrl = stagedUrl(draft?.logoStaged);
   const coverStagedUrl = stagedUrl(draft?.coverStaged);
   const needsPreview = Boolean(draft && ((draft.logo && !logoStagedUrl) || (draft.cover && !coverStagedUrl)));
-  const previewsAllowed = needsPreview && !recordBrandImagePreview(user.id);
+  const previewsAllowed = needsPreview && !recordBrandImagePreview(user!.id);
   const [logoResult, coverResult] = previewsAllowed
     ? await Promise.all([
         draft!.logo && !logoStagedUrl ? previewBrandCandidateResult(draft!.logo, "logo") : Promise.resolve(null),
@@ -277,7 +291,7 @@ export default async function AddBusinessPage({
       )}
 
       <div id="add-business-form" className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-        <form action={createMemberBusiness} className="flex flex-col gap-4">
+        <form id="create-business-form" action={createMemberBusiness} className="flex flex-col gap-4">
           {brandOnboarding && <input type="hidden" name="source" value={BRAND_SOURCE} />}
           {draft && <input type="hidden" name="draft" value="1" />}
 
@@ -485,9 +499,15 @@ export default async function AddBusinessPage({
             </span>
           </label>
 
-          <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            {brandOnboarding ? "Add My Brand" : "Create My Business"}
-          </button>
+          <GuestCreateSubmit
+            formId="create-business-form"
+            label={brandOnboarding ? "Add My Brand" : "Create My Business"}
+            title={brandOnboarding ? "Your Brand Is Ready" : "Your Business Page Is Ready"}
+            body="Create your free Findmi account to publish it, manage it and keep everything you've created."
+            authed={Boolean(user)}
+            resume={resume === "1"}
+            className={`mt-2 ${primaryButtonClass}`}
+          />
         </form>
       </div>
     </div>

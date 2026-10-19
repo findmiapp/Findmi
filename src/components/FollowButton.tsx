@@ -1,18 +1,20 @@
 "use client";
 
-import { isFollowed } from "@/lib/followed";
+import { isFollowed, markFollowed } from "@/lib/followed";
 import { useFollowControl } from "@/components/useFollowControl";
 
 // The single Follow action for a business profile — Follow / Following.
-// Follow is an account relationship: signed in, Follow is one tap and
-// "Following" opens the Unfollow confirmation; not signed in, Follow opens
-// the account prompt (sign up / log in, then the Follow completes on
-// return). A device that followed as a guest before (lib/followed.ts)
-// still shows Following, and tapping it opens the account prompt. All of
-// that behavior is shared (components/useFollowControl.tsx); this file is
-// only the Business control's sizes and visuals. The legacy guest email
-// API (/api/follow) and its data are untouched, just no longer reachable
-// from here.
+// Follow is an account relationship, but a signed-out visitor's FIRST
+// Follow tap succeeds silently (Guest-First Creation pass): it's recorded
+// on this device (lib/followed.ts, the same marker a legacy guest device
+// already had) and shows Following right away, no account prompt. Tapping
+// it again (to unfollow, or to see it's only local) opens the account
+// prompt to sign up/log in and keep it; signed in, Follow is one tap and
+// "Following" opens the Unfollow confirmation. All of that behavior is
+// shared (components/useFollowControl.tsx); this file is only the
+// Business control's sizes and visuals. The legacy guest email API
+// (/api/follow) and its data are untouched, just no longer reachable from
+// here.
 export default function FollowButton({
   businessId,
   businessSlug,
@@ -32,6 +34,7 @@ export default function FollowButton({
     name: businessName,
     entityId: businessId,
     guestFollowed: () => isFollowed(businessSlug),
+    markGuestFollowed: () => markFollowed(businessSlug),
   });
 
   const compact = size === "compact";

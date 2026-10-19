@@ -30,7 +30,7 @@ const PAGE = readFileSync("src/app/(public)/account/business/new/page.tsx", "utf
 const INPUT = readFileSync("src/app/(public)/account/business/new/BrandImageInput.tsx", "utf8");
 const ACTIONS = readFileSync("src/app/(public)/account/business/actions.ts", "utf8");
 const CREATE = ACTIONS.slice(ACTIONS.indexOf("export async function createMemberBusiness"));
-const form = PAGE.slice(PAGE.indexOf("<form action={createMemberBusiness}"), PAGE.indexOf("</form>"));
+const form = PAGE.slice(PAGE.indexOf('<form id="create-business-form" action={createMemberBusiness}'), PAGE.indexOf("</form>"));
 
 test("Review field order: Business Name, Primary Category, Website, Instagram, Logo, Cover Image, About", () => {
   const at = (needle) => {

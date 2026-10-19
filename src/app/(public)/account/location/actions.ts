@@ -132,7 +132,6 @@ export async function createMemberLocation(formData: FormData) {
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(CREATE_LOCATION_PATH)}`);
 
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl(CREATE_LOCATION_PATH, "Server isn't configured."));
@@ -192,6 +191,22 @@ export async function createMemberLocation(formData: FormData) {
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_LOCATION_PATH, message, preservedFields));
   };
+
+  // Guest-First Creation pass — the page itself now lets a signed-out
+  // visitor fill this form (see account/location/new/page.tsx and
+  // middleware.ts's own carve-out); identity is only established here, at
+  // the real submit, same boundary Business creation now uses. Every
+  // typed field comes back intact via `next`, and GuestCreateSubmit
+  // auto-resubmits this exact action once signed in (`resume=1`).
+  if (!user) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(preservedFields)) {
+      if (value) params.set(key, value);
+    }
+    params.set("resume", "1");
+    const next = `${CREATE_LOCATION_PATH}?${params.toString()}`;
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
 
   if (businessId) {
     let canManageBusiness = false;

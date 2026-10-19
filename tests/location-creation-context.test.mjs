@@ -36,9 +36,13 @@ test("the global Create menu's Add A Location still enters the generic (unknown-
   assert.doesNotMatch(MENU, /account\/location\/new\?(business_id|parent_location_id)/);
 });
 
-test("unknown context (no business_id, no parent_location_id, no ?context=generic) renders the chooser, never the factual form directly", () => {
-  assert.match(LOC_NEW, /const hasKnownContext = Boolean\(business\) \|\| Boolean\(parent\) \|\| contextParam === "generic";/);
-  assert.match(LOC_NEW, /if \(!hasKnownContext\) return <ChooseLocationContext userId=\{user\.id\} \/>;/);
+test("unknown context (no business_id, no parent_location_id, no ?context=generic) renders the chooser for a signed-in visitor, never the factual form directly", () => {
+  assert.match(LOC_NEW, /const hasKnownContext = Boolean\(business\) \|\| Boolean\(parent\) \|\| contextParam === "generic" \|\| !user;/);
+  assert.match(LOC_NEW, /if \(!hasKnownContext\) return <ChooseLocationContext userId=\{user!\.id\} \/>;/);
+});
+
+test("Guest-First Creation pass — a signed-out visitor always skips the chooser (it lists Businesses only a signed-in person could manage) straight to the plain generic form", () => {
+  assert.match(LOC_NEW, /\|\| !user;/);
 });
 
 test("'I'm Just Adding It To Findmi' is the first/default choice, truthfully copied, and grants no management", () => {
@@ -141,17 +145,20 @@ test("an errored generic submission round-trips back to the factual form, not ba
 
 // ── Signed-out: visible, no dead explanatory branch behind middleware ──
 
-test("signed-out: Add A Location stays visible from the global Create menu; no anonymous submission; no dead explanatory UI behind middleware", () => {
+test("signed-out: Add A Location stays visible from the global Create menu; the real form is now reachable directly (Guest-First Creation pass), with identity only required at actual submit", () => {
   assert.doesNotMatch(MENU, /if \(!authenticated\)[\s\S]{0,50}return null/);
-  // The lesson from Create Event's own signed-out branch (unreachable
-  // behind the SAME /account/:path* middleware gate, which already
-  // redirects to /login with the full original path+query preserved
-  // before the page component ever runs) is explicitly not repeated
-  // here: this page keeps its plain existing redirect, no new UI.
-  assert.match(LOC_NEW, /if \(!user\) redirect\(`\/login\?next=\$\{encodeURIComponent\(selfPath\)\}`\);/);
+  // Guest-First Creation pass — the page itself no longer redirects a
+  // signed-out visitor away; middleware's own carve-out for this exact
+  // path (below) is what makes that reachable at all. Submission still
+  // goes through the real server action, which establishes identity (see
+  // createMemberLocation's own guest/resume redirect) — never an
+  // anonymous write.
+  assert.doesNotMatch(LOC_NEW, /if \(!user\) redirect\(`\/login\?next=\$\{encodeURIComponent\(selfPath\)\}`\);/);
+  assert.match(LOC_NEW, /GuestCreateSubmit/);
   assert.doesNotMatch(LOC_NEW, /Events on Findmi are published/, "no Event-style explanatory card copied in here");
   const middleware = read("src/middleware.ts");
-  assert.match(middleware, /loginUrl\.searchParams\.set\("next", getSafeRedirect\(pathname \+ request\.nextUrl\.search\)\);/);
+  assert.match(middleware, /GUEST_ACCESSIBLE_PATHS = new Set\(\["\/account\/business\/new", "\/account\/location\/new", "\/account\/event\/new"\]\);/);
+  assert.match(middleware, /if \(!user && GUEST_ACCESSIBLE_PATHS\.has\(pathname\)\) return response;/);
   assert.match(middleware, /matcher: \["\/admin\/:path\*", "\/account\/:path\*", "\/my-world\/journal\/:path\*"\]/);
 });
 

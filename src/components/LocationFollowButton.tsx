@@ -1,17 +1,17 @@
 "use client";
 
-import { isLocationFollowed } from "@/lib/followedLocations";
+import { isLocationFollowed, markLocationFollowed } from "@/lib/followedLocations";
 import { useFollowControl } from "@/components/useFollowControl";
 
 // Location-side Follow / Following — same shared behavior as the Business
-// and Event controls (components/useFollowControl.tsx): signed in,
-// Follow is one tap and Following opens the Unfollow confirmation; not
-// signed in, Follow opens the account prompt; a legacy guest follow on
-// this device (lib/followedLocations.ts) still shows Following and opens
-// the account prompt. Following a Location never touches the Business or
-// Event follow tables. Only this control's sizes/tones live here. The
-// legacy guest email API (/api/follow-location) and its data are
-// untouched, just no longer reachable from here.
+// and Event controls (components/useFollowControl.tsx): a signed-out
+// visitor's first Follow tap succeeds silently (Guest-First Creation
+// pass, recorded via lib/followedLocations.ts); tapping again, or signed
+// in, behaves exactly as Business's own control documents. Following a
+// Location never touches the Business or Event follow tables. Only this
+// control's sizes/tones live here. The legacy guest email API
+// (/api/follow-location) and its data are untouched, just no longer
+// reachable from here.
 export default function LocationFollowButton({
   locationId,
   locationSlug,
@@ -38,6 +38,7 @@ export default function LocationFollowButton({
     name: locationName,
     entityId: locationId,
     guestFollowed: () => isLocationFollowed(locationId),
+    markGuestFollowed: () => markLocationFollowed(locationId),
   });
 
   const compact = size === "compact";

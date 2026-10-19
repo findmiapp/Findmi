@@ -197,21 +197,21 @@ test("Review Your Brand presentation: same form, no Free/Pro picker, Add My Bran
   assert.match(NEW_PAGE, /\{brandOnboarding && <input type="hidden" name="source" value=\{BRAND_SOURCE\} \/>\}/);
   assert.match(NEW_PAGE, /\{hasInvite \? \([\s\S]*?\) : brandOnboarding \? null : \(\s*<div className="relative/, "invite block kept; Free value section skipped for brand");
   assert.match(NEW_PAGE, /\{brandOnboarding \? "Add My Brand" : "Create My Business"\}/);
-  assert.equal((NEW_PAGE.match(/<form action=\{createMemberBusiness\}/g) ?? []).length, 1, "one form, not a duplicate");
+  assert.equal((NEW_PAGE.match(/<form id="create-business-form" action=\{createMemberBusiness\}/g) ?? []).length, 1, "one form, not a duplicate");
   assert.ok(!C.BRAND_CANDIDATE_FIELDS.includes("authorized") && !C.BRAND_CANDIDATE_FIELDS.includes("plan_choice"));
   assert.equal(C.parseBrandSource("brand"), true);
   assert.equal(C.parseBrandSource("Brand"), false);
   assert.equal(C.parseBrandSource("admin"), false);
 });
 
-test("createMemberBusiness: source=brand ignores plan_choice, round-trips the flag, and lands on Account Home (VCL A2)", () => {
+test("createMemberBusiness: source=brand ignores plan_choice; every creation (Brand or default) now lands on Account Home (Guest-First Creation pass)", () => {
   assert.match(CREATE, /const brandOnboarding = parseBrandSource\(str\(formData, "source"\)\);[\s\S]*?const planChoiceRaw = brandOnboarding \? null : str\(formData, "plan_choice"\);/);
   assert.match(CREATE, /source: brandOnboarding \? BRAND_SOURCE : null,/, "kept through every preservedFields error redirect");
   const invite = CREATE.indexOf("if (inviteRaw) {");
   const pro = CREATE.indexOf('if (planChoiceRaw === "pro") {');
-  const brand = CREATE.indexOf("if (brandOnboarding) redirect(`/account?created=${businessId}`);");
-  const normal = CREATE.lastIndexOf("redirect(`/account/business/${businessId}?created=1`);");
-  assert.ok(invite > 0 && invite < pro && pro < brand && brand < normal, "invite → Pro (non-brand only) → brand → Account Home → unchanged default");
+  const landing = CREATE.lastIndexOf("redirect(`/account?created=${businessId}`);");
+  assert.ok(invite > 0 && invite < pro && pro < landing, "invite → Pro (non-brand only) → Account Home for every other creation");
+  assert.doesNotMatch(CREATE, /redirect\(`\/account\/business\/\$\{businessId\}\?created=1`\);/, "no creation path still dumps into the Business workspace/profile editor");
   // Matcher still runs before the unchanged create RPC.
   assert.ok(CREATE.indexOf("await findBusinessMatches(admin") < CREATE.indexOf('admin.rpc("create_owned_business"'));
   assert.doesNotMatch(CREATE.slice(CREATE.indexOf('admin.rpc("create_owned_business"'), CREATE.indexOf("});", CREATE.indexOf('admin.rpc("create_owned_business"'))), /source|plan/);

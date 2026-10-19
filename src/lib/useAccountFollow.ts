@@ -22,8 +22,20 @@ import {
  * unfollow(): only after the component's confirmation; waits for the
  * server. Returning from sign-up/log-in with follow=1 completes a pending
  * Follow ONCE when this device holds a matching, unexpired marker
- * (lib/account-follow-client.ts) — never from the URL alone. */
-export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFollowed: () => boolean) {
+ * (lib/account-follow-client.ts) — never from the URL alone.
+ *
+ * Guest-First Creation pass — `markGuestFollowed`, when passed, is this
+ * entity's own per-device "has this device followed X" writer
+ * (lib/followed.ts / followedEvents.ts / followedLocations.ts): a
+ * signed-out visitor's first Follow tap then succeeds silently (no
+ * account prompt) instead of being blocked, same guest-first posture
+ * Save already has. Omitted, a guest tap behaves exactly as before. */
+export function useAccountFollow(
+  kind: AccountFollowKind,
+  slug: string,
+  guestFollowed: () => boolean,
+  markGuestFollowed?: () => void
+) {
   const [following, setFollowingState] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [pending, setPending] = useState(false);
@@ -37,6 +49,9 @@ export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFol
   const slugRef = useRef(slug);
   slugRef.current = slug;
 
+  const markGuestFollowedRef = useRef(markGuestFollowed);
+  markGuestFollowedRef.current = markGuestFollowed;
+
   // Created once per control (lazily — never a throwaway per render), so
   // its single-flight guard spans every tap on this control.
   const controllerRef = useRef<ReturnType<typeof createFollowToggle> | null>(null);
@@ -47,6 +62,7 @@ export function useAccountFollow(kind: AccountFollowKind, slug: string, guestFol
       get: () => followingRef.current,
       set: (value) => setFollowing(value),
       setPending: (value) => setPending(value),
+      markGuestFollowed: markGuestFollowedRef.current ? () => markGuestFollowedRef.current!() : undefined,
     });
   }
   const controller = () => controllerRef.current as ReturnType<typeof createFollowToggle>;

@@ -1218,7 +1218,6 @@ export async function createMemberBusiness(formData: FormData) {
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(CREATE_BUSINESS_PATH)}`);
 
   // Brand Onboarding (source=brand from /join/brand) — presentation and
   // landing only, no authority: its form shows no Free/Pro picker, so any
@@ -1300,6 +1299,26 @@ export async function createMemberBusiness(formData: FormData) {
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_BUSINESS_PATH, message, preservedFields));
   };
+
+  // Guest-First Creation pass — the page itself now lets a signed-out
+  // visitor fill this form (see account/business/new/page.tsx and
+  // middleware.ts's own carve-out); identity is only established here, at
+  // the real submit, same boundary the account foundation pass already
+  // uses for every other round-trip through /login. Every field already
+  // typed — including a recovered brand draft's own values, since those
+  // were rendered as this same form's ordinary defaultValues — comes back
+  // intact via `next`, and GuestCreateSubmit auto-resubmits this exact
+  // action once signed in (`resume=1`), so the visitor never re-types or
+  // re-taps Create.
+  if (!user) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(preservedFields)) {
+      if (value) params.set(key, value);
+    }
+    params.set("resume", "1");
+    const next = `${CREATE_BUSINESS_PATH}?${params.toString()}`;
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
 
   if (!name) fail("Business name is required.");
   if (!categoryId) fail("Choose a category.");
@@ -1654,13 +1673,15 @@ export async function createMemberBusiness(formData: FormData) {
     redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);
   }
 
-  // VCL A2 — Brand Onboarding completes on Account Home (top), which
-  // confirms the submission and its Pending Review status for THIS
-  // Business (validated there against the user's own memberships), with
-  // Preview and Manage. Every other creation path keeps its existing
-  // landing (the Business workspace Overview).
-  if (brandOnboarding) redirect(`/account?created=${businessId}`);
-  redirect(`/account/business/${businessId}?created=1`);
+  // VCL A2, extended by the Guest-First Creation pass — every normal
+  // creation now lands on Account Home (top), which confirms the
+  // submission and its Pending Review status for THIS Business (validated
+  // there against the user's own memberships), with Preview and Manage.
+  // This used to send a plain (non-brand) creation straight into the
+  // Business workspace/profile editor instead — a jarring, mid-page drop
+  // straight after submitting, now fixed to match Brand Onboarding's own,
+  // already-correct landing.
+  redirect(`/account?created=${businessId}`);
 }
 
 /** Starts the native Pro checkout for an EXISTING, already-owned

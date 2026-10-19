@@ -50,9 +50,19 @@ export interface FollowToggleDeps {
   get: () => boolean;
   set: (following: boolean) => void;
   setPending: (pending: boolean) => void;
+  /** Guest-First Creation pass — a device-local "has this device followed
+   * X" marker (lib/followed.ts and its Event/Location siblings), the same
+   * per-device write every legacy guest Follow already left behind. Only
+   * called for a NEW Follow tap (never Unfollow — a guest who hasn't
+   * signed in has no account relationship to remove); when present, a
+   * first-time guest Follow succeeds silently instead of opening the
+   * account prompt. Omitted entirely, this control's guest behavior is
+   * unchanged (`{ kind: "guest" }`, prompt shown) — existing callers that
+   * haven't been updated keep working exactly as before. */
+  markGuestFollowed?: () => void;
 }
 
-export type FollowResult = { kind: "guest" } | { kind: "busy" } | { kind: "done"; ok: boolean; following: boolean };
+export type FollowResult = { kind: "guest" } | { kind: "guest-ok" } | { kind: "busy" } | { kind: "done"; ok: boolean; following: boolean };
 
 /** One control's writes: one request in flight at a time (extra taps are
  * ignored, never queued).
@@ -67,7 +77,14 @@ export function createFollowToggle(deps: FollowToggleDeps) {
     if (inFlight) return { kind: "busy" };
     inFlight = true;
     try {
-      if (!(await deps.isSignedIn())) return { kind: "guest" };
+      if (!(await deps.isSignedIn())) {
+        if (desired && deps.markGuestFollowed) {
+          deps.markGuestFollowed();
+          deps.set(true);
+          return { kind: "guest-ok" };
+        }
+        return { kind: "guest" };
+      }
       const before = deps.get();
       writes += 1;
       deps.setPending(true);

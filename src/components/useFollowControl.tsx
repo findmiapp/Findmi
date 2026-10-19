@@ -27,14 +27,21 @@ export function useFollowControl({
   name,
   entityId,
   guestFollowed,
+  markGuestFollowed,
 }: {
   kind: AccountFollowKind;
   slug: string;
   name: string;
   entityId: string;
   guestFollowed: () => boolean;
+  /** Guest-First Creation pass — this entity's own per-device Follow
+   * marker writer, passed by each concrete button so a signed-out
+   * visitor's first Follow tap can succeed silently instead of opening
+   * the account prompt. Optional — omitted, this control's guest
+   * behavior is unchanged. */
+  markGuestFollowed?: () => void;
 }) {
-  const { following, authed, pending, follow, unfollow, isSignedIn } = useAccountFollow(kind, slug, guestFollowed);
+  const { following, authed, pending, follow, unfollow, isSignedIn } = useAccountFollow(kind, slug, guestFollowed, markGuestFollowed);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState<null | "follow" | "legacy">(null);
   const [confirming, setConfirming] = useState(false);
@@ -64,6 +71,7 @@ export function useFollowControl({
     }
     const result = await follow();
     if (result.kind === "guest") setPrompt("follow");
+    else if (result.kind === "guest-ok") track("follow");
     else if (result.kind === "done" && result.ok) track("follow");
   }
 

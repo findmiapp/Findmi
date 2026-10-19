@@ -139,9 +139,9 @@ test("14. createMemberBusiness still establishes the same ownership/membership v
   assert.match(CREATE, /if \(planChoiceRaw === "pro"\) \{/, "Pro-checkout branch untouched, simply unreachable from the new UI");
 });
 
-test("15. The existing post-creation redirect is unchanged", () => {
-  assert.match(CREATE, /redirect\(`\/account\/business\/\$\{businessId\}\?created=1`\);/);
-  assert.match(CREATE, /if \(brandOnboarding\) redirect\(`\/account\?created=\$\{businessId\}`\);/);
+test("15. Guest-First Creation pass — every normal creation now lands on Account Home (never the Business workspace/profile editor mid-page)", () => {
+  assert.match(CREATE, /redirect\(`\/account\?created=\$\{businessId\}`\);/);
+  assert.doesNotMatch(CREATE, /redirect\(`\/account\/business\/\$\{businessId\}\?created=1`\);/);
 });
 
 test("16/17. Subscription/billing infrastructure and existing entitlements are untouched", () => {

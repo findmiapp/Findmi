@@ -93,10 +93,13 @@ test("no National/Online Market, ZIP, address, country or HQ inference added", (
 });
 
 test("creation authorization, duplicate protection and the A2 redirect remain", () => {
-  assert.match(CREATE, /if \(!user\) redirect\(`\/login\?next=\$\{encodeURIComponent\(CREATE_BUSINESS_PATH\)\}`\);/);
+  // Guest-First Creation pass — identity is now established at submit via
+  // a draft-preserving resume redirect (see createMemberBusiness's own
+  // doc comment), not an unconditional top-of-function redirect.
+  assert.match(CREATE, /if \(!user\) \{\s*const params = new URLSearchParams\(\);/);
   assert.match(CREATE, /if \(!authorized\) \{\s*fail\("Please confirm you're authorized to create and manage this business\."\);/);
   assert.match(CREATE, /const \[duplicate\] = await findBusinessMatches\(admin, \{/);
-  assert.match(CREATE, /if \(brandOnboarding\) redirect\(`\/account\?created=\$\{businessId\}`\);/);
+  assert.match(CREATE, /redirect\(`\/account\?created=\$\{businessId\}`\);/);
 });
 
 // ── The one migration ────────────────────────────────────────────────────
