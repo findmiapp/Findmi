@@ -677,8 +677,15 @@ export async function EventPublicView({ slug }: { slug: string }) {
       </section>
     ) : null;
 
+  // Event Detail Compression pass — a single upcoming date is already
+  // fully communicated by the WHEN block above; a one-card "Upcoming
+  // Dates" section underneath it would only repeat that same date. Two or
+  // more dates still need the real rail (cards/list, each one's own
+  // Quick View, Location switching, etc.) — unchanged below. Rendering
+  // `null` here (no spacer) lets the next section's own flex gap close
+  // up naturally.
   const datesSection =
-    datedOccurrences.length > 0 ? (
+    datedOccurrences.length > 1 ? (
       <section id="dates" className="scroll-mt-24">
         <UpcomingDatesRail
           occurrences={datedOccurrences}

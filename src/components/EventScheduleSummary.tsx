@@ -131,7 +131,13 @@ export default function EventScheduleSummary({
   // live right now is included), never the Event's lifetime count; the
   // same list feeds the Upcoming Dates section below.
   const dateCount = occurrences.length;
-  const countLabel = dateCount > 0 ? `${dateCount} upcoming date${dateCount === 1 ? "" : "s"}` : null;
+  // Event Detail Compression pass — with a single upcoming occurrence,
+  // this WHEN block's own date/time already says everything a count
+  // would add; repeating that count (and the full-size Upcoming Dates
+  // section beneath it) would be redundant. Two or more dates still need
+  // the count, since the WHEN block only shows a range, not every
+  // individual date.
+  const countLabel = dateCount > 1 ? `${dateCount} upcoming dates` : null;
 
   let status: React.ReactNode = null;
   if (selectedState === "cancelled") {
