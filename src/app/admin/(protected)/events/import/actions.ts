@@ -37,7 +37,7 @@ import { asOperatorAnalysis } from "@/lib/event-import/operator";
 import { normalizeReview, persistDiscoveryEvent, type SourceEventDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { previewEventImage, recoverEventImage, type EventImagePreview } from "@/lib/event-import/media";
-import { fetchVerifiedBrandImage, previewBrandCandidateResult, storeBrandImage, type BrandPreviewResult } from "@/lib/brand-images";
+import { brandImageFailureReason, fetchVerifiedBrandImage, previewBrandCandidateResult, storeBrandImage, type BrandPreviewResult } from "@/lib/brand-images";
 import { createImportedLocation, defaultLocationImportDeps, readLocationWebsite } from "@/lib/location-import/server";
 import { applyEntityMedia, entityMediaState, findEntityMedia, readMatchesBusiness, type EntityMediaKind, type EntityMediaRow, type EntityMediaState, type FindMediaResult } from "@/lib/entity-media";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
@@ -231,6 +231,20 @@ export async function adminCommitEventImportBatch(
   return { ok: true, results };
 }
 
+/** Explicit Involved-Business Resolution — the operator's own non-"ignored"
+ * choices from review.otherBusinessChoices, validated as real Business ids
+ * (never trusting the client's id without a lookup, same discipline as the
+ * primary `businessId` just below). Dedup'd; the primary business is never
+ * also added as an "other" participant. */
+async function resolveOtherBusinessIds(admin: SupabaseClient, review: EventImportReview, primaryBusinessId: string | null): Promise<string[]> {
+  const chosen = Object.values(review.otherBusinessChoices ?? {}).filter((c): c is { id: string; name: string } => c !== "ignored" && Boolean(c?.id));
+  const ids = [...new Set(chosen.map((c) => c.id))].filter((id) => UUID.test(id) && id !== primaryBusinessId).slice(0, 10);
+  if (ids.length === 0) return [];
+  const { data } = await admin.from("businesses").select("id").in("id", ids);
+  const valid = new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
+  return ids.filter((id) => valid.has(id));
+}
+
 async function commitOne(admin: SupabaseClient, deps: SourceEventDeps, review: EventImportReview | undefined, businessId: string | null): Promise<EventImportOutcome> {
   if (!review || typeof review !== "object") return { ok: false, error: "Add the event's name." };
   // An Event resolved as already on Findmi is updated ONLY through Review
@@ -249,8 +263,9 @@ async function commitOne(admin: SupabaseClient, deps: SourceEventDeps, review: E
     if (!data) return { ok: false, error: "That Business isn't on Findmi." };
     business = businessId;
   }
+  const otherBusinessIds = await resolveOtherBusinessIds(admin, review, business);
   try {
-    return await persistDiscoveryEvent(normalized.value, business, deps);
+    return await persistDiscoveryEvent(normalized.value, business, deps, otherBusinessIds);
   } catch {
     return { ok: false, error: "Couldn't save it. Please try again." };
   }
@@ -571,9 +586,21 @@ export async function adminFindEntityMedia(input: { kind: EntityMediaKind; id: s
   }
 }
 
+// Media Truthfulness pass — a fetch/verify failure on the exact candidate
+// URL Find Media just showed as valid is more likely a transient remote
+// hiccup (the site rate-limiting a second rapid request, a flaky CDN) than
+// a real rejection, since the SAME check already passed moments earlier.
+// One bounded retry after a short delay before reporting a real failure —
+// never a second chance at a DIFFERENT (weaker) check; the retry calls the
+// exact same fetchVerifiedBrandImage.
+const MEDIA_APPLY_RETRY_DELAY_MS = 400;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** Apply approved media — FILL-ONLY (an existing logo / cover is never
- * replaced; the write itself only lands while the field is still empty). */
-export async function adminApplyEntityMedia(input: { kind: EntityMediaKind; id: string; logoSourceUrl?: string | null; coverSourceUrl?: string | null }): Promise<{ ok: true; applied: ("logo" | "cover")[]; skipped: ("logo" | "cover")[] } | { ok: false; error: string }> {
+ * replaced; the write itself only lands while the field is still empty).
+ * Every role that doesn't apply reports the SPECIFIC reason (never the old
+ * one-size-fits-all "couldn't be verified, or it was already set"). */
+export async function adminApplyEntityMedia(input: { kind: EntityMediaKind; id: string; logoSourceUrl?: string | null; coverSourceUrl?: string | null }): Promise<{ ok: true; applied: ("logo" | "cover")[]; skipped: { role: "logo" | "cover"; reason: string }[] } | { ok: false; error: string }> {
   const admin = await adminClient();
   if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
   const kind: EntityMediaKind = input?.kind === "location" ? "location" : "business";
@@ -581,17 +608,32 @@ export async function adminApplyEntityMedia(input: { kind: EntityMediaKind; id: 
     const result = await applyEntityMedia(kind, input?.id, { logoSourceUrl: input?.logoSourceUrl ?? null, coverSourceUrl: input?.coverSourceUrl ?? null }, {
       load: (k, id) => loadMediaRow(admin, k, id),
       store: async (url, role) => {
-        const verified = await fetchVerifiedBrandImage(url, role);
-        return verified.ok ? storeBrandImage(admin, verified.image) : null;
+        let verified = await fetchVerifiedBrandImage(url, role);
+        if (!verified.ok && verified.reason === "fetch_failed") {
+          await sleep(MEDIA_APPLY_RETRY_DELAY_MS);
+          verified = await fetchVerifiedBrandImage(url, role);
+        }
+        if (!verified.ok) return { ok: false, reason: "verification_failed", detail: brandImageFailureReason(verified) };
+        const stored = await storeBrandImage(admin, verified.image);
+        return stored ? { ok: true, url: stored } : { ok: false, reason: "storage_failed" };
       },
       fillIfEmpty: async (k, id, column, url) => {
         const { data, error } = await admin.from(MEDIA_TABLE[k]).update({ [column]: url }).eq("id", id).is(column, null).select("id");
         return !error && ((data ?? []) as unknown[]).length > 0;
       },
     });
-    if (result.ok && result.applied.length > 0) revalidatePath("/admin/events");
-    return result;
+    if (!result.ok) return result;
+    if (result.applied.length > 0) revalidatePath("/admin/events");
+    return { ok: true, applied: result.applied, skipped: result.skipped.map((s) => ({ role: s.role, reason: mediaSkipMessage(s) })) };
   } catch {
     return { ok: false, error: "Couldn't save the media. Nothing was changed." };
   }
+}
+
+/** A truthful, operator-facing reason for one skipped role — never the old
+ * generic "couldn't be verified, or it was already set". */
+function mediaSkipMessage(skip: { reason: string; detail?: string }): string {
+  if (skip.reason === "already_set") return "Already set — a value was added to this field while Find Media was open.";
+  if (skip.reason === "storage_failed") return "The image was verified but couldn't be saved to Findmi storage. Try again.";
+  return `The image could no longer be verified (${skip.detail ?? "it changed or is no longer reachable"}). Try Find Media again.`;
 }

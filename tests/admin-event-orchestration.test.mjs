@@ -318,7 +318,7 @@ test("a website that already belongs to a Business is matched and selected — n
   assert.match(CLIENT, /if \(!initial && existing && !applied\.current\) \{/);
 });
 
-test("Business reads and creation are Admin-only and never auto-create; Featured / Participating Businesses are never linked", async () => {
+test("Business reads and creation are Admin-only and never auto-create; Featured / Participating Businesses reach operator Match/Create/Ignore, never auto-linked", async () => {
   globalThis.__ADMIN = undefined;
   assert.deepEqual(await A.adminStartBusinessReads(["knix.com"]), { ok: false, error: "Your Admin session has ended. Sign in again." });
   assert.deepEqual(await A.adminProcessBusinessRead("11111111-1111-4111-8111-111111111111"), { outcome: "error" });
@@ -327,7 +327,12 @@ test("Business reads and creation are Admin-only and never auto-create; Featured
   // Only an explicit click creates (BrandReviewCard → adminCreateBusinessFromRead).
   assert.equal((CLIENT.match(/adminCreateBusinessFromRead\(/g) ?? []).length, 1);
   assert.match(CLIENT, /onClick=\{create\} disabled=\{busy \|\| !name\.trim\(\) \|\| !categoryId\}/);
-  assert.match(CLIENT, /Not linked — add them to the Event afterwards if they take part\./);
+  // Explicit Involved-Business Resolution pass — the dead-end "Not linked"
+  // line is now an actionable Match/Create/Ignore resolver, never an
+  // automatic link.
+  assert.match(CLIENT, /Named in the source, not Findmi&rsquo;s own structured data — match, create, or ignore\. Never linked automatically\./);
+  assert.match(CLIENT, /onClick=\{\(\) => onChoose\("ignored"\)\}/);
+  assert.match(CLIENT, /onClick=\{\(\) => onChoose\(\{ id: c\.id, name: c\.name \}\)\}/);
 });
 
 // ── REVIEW EXISTING EVENT ─────────────────────────────────────────────────

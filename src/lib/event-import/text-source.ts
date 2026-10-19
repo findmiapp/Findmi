@@ -348,5 +348,8 @@ export function mergeTextAi(candidate: EventCandidate, ai: SanitizedAi | null): 
     next.organizer = ai.organizer;
     next.sources.organizer = "ai";
   }
+  if ((!next.otherBusinesses || next.otherBusinesses.length === 0) && ai.otherBusinesses.length > 0) {
+    next.otherBusinesses = ai.otherBusinesses;
+  }
   return next;
 }

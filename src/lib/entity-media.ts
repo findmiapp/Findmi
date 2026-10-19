@@ -108,37 +108,63 @@ export async function findEntityMedia(
   return { website, websiteSource, logo, cover, note: logo || cover ? null : "The website has no verifiable logo or cover." };
 }
 
+/** Why a requested role wasn't applied — always a real, distinguishable
+ * reason, never the one generic "couldn't be verified, or it was already
+ * set" that hid whichever of these actually happened:
+ *   already_set    — the field was no longer empty (fill-only; never a
+ *                     failure of the candidate itself);
+ *   verification_failed — the re-fetch/re-verify of the exact candidate
+ *                     URL failed or rejected it (security/suitability);
+ *   storage_failed  — verification passed but re-hosting it in Findmi
+ *                     storage failed (a legitimate candidate, an
+ *                     infrastructure problem, not a validation one). */
+export type EntityMediaSkipReason = "already_set" | "verification_failed" | "storage_failed";
+export interface EntityMediaSkip {
+  role: EntityMediaRole;
+  reason: EntityMediaSkipReason;
+  /** verification_failed only — the specific brandImageFailureReason()
+   * diagnostic string, when the caller supplies one. */
+  detail?: string;
+}
+
+export type StoreMediaResult = { ok: true; url: string } | { ok: false; reason: "verification_failed" | "storage_failed"; detail?: string };
+
 export interface ApplyMediaDeps {
   load: (kind: EntityMediaKind, id: string) => Promise<EntityMediaRow | null>;
-  /** Re-verify + re-host one source image; the stored URL or null. */
-  store: (sourceUrl: string, role: EntityMediaRole) => Promise<string | null>;
+  /** Re-verify + re-host one source image — the specific reason it didn't
+   * make it, when it didn't, never a bare null. */
+  store: (sourceUrl: string, role: EntityMediaRole) => Promise<StoreMediaResult>;
   /** Write `column` ONLY while it is still empty; true when written. */
   fillIfEmpty: (kind: EntityMediaKind, id: string, column: "logo_url" | "cover_image_url", url: string) => Promise<boolean>;
 }
 
 /** FILL-ONLY: each requested role is stored only if the entity's field is
- * still empty (re-read first, guarded again by the write itself). */
+ * still empty (re-read first, guarded again by the write itself). Every
+ * role that doesn't end up applied carries the SPECIFIC reason why —
+ * Media Truthfulness pass: a legitimate, verified, selected candidate for
+ * an actually-empty field must either persist or say exactly why it
+ * didn't, never the old one-size-fits-all message. */
 export async function applyEntityMedia(
   kind: EntityMediaKind,
   id: string,
   choice: { logoSourceUrl?: string | null; coverSourceUrl?: string | null },
   deps: ApplyMediaDeps
-): Promise<{ ok: true; applied: EntityMediaRole[]; skipped: EntityMediaRole[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; applied: EntityMediaRole[]; skipped: EntityMediaSkip[] } | { ok: false; error: string }> {
   const row = await deps.load(kind, id);
   if (!row) return { ok: false, error: "That record is no longer available." };
   const state = entityMediaState(kind, row);
   const applied: EntityMediaRole[] = [];
-  const skipped: EntityMediaRole[] = [];
+  const skipped: EntityMediaSkip[] = [];
   for (const [role, source] of [["logo", choice.logoSourceUrl], ["cover", choice.coverSourceUrl]] as const) {
     const url = httpsOrNull(source);
     if (!url) continue;
     if (state[role]) {
-      skipped.push(role); // never overwrite existing media
+      skipped.push({ role, reason: "already_set" }); // never overwrite existing media
       continue;
     }
-    const stored = await deps.store(url, role).catch(() => null);
-    if (stored && (await deps.fillIfEmpty(kind, id, MEDIA_COLUMN[role], stored).catch(() => false))) applied.push(role);
-    else skipped.push(role);
+    const stored = await deps.store(url, role).catch((): StoreMediaResult => ({ ok: false, reason: "storage_failed" }));
+    if (stored.ok && (await deps.fillIfEmpty(kind, id, MEDIA_COLUMN[role], stored.url).catch(() => false))) applied.push(role);
+    else skipped.push(stored.ok ? { role, reason: "storage_failed" } : { role, reason: stored.reason, ...(stored.detail ? { detail: stored.detail } : {}) });
   }
   return { ok: true, applied, skipped };
 }

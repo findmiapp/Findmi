@@ -39,7 +39,7 @@ import { LocationPrepContext, type LocationPrepState } from "@/components/admin/
 import type { BusinessPrepareResult } from "@/lib/entity-prepare";
 import type { EntityMediaState, FindMediaResult } from "@/lib/entity-media";
 import { businessEvidenceKey } from "@/lib/event-import/operator";
-import { canOfferLocationCreate } from "@/lib/event-import/review";
+import { canResearchLocation } from "@/lib/event-import/review";
 import { venueKey, type ReviewPlace } from "@/lib/event-import/types";
 
 /** Admin Event Import — the operator orchestration over Findmi's existing
@@ -857,7 +857,12 @@ function MediaEntityRow({
     setBusy(false);
     if (!r?.ok) return setNote(r && !r.ok ? r.error : "Couldn’t save the media.");
     setFound(null);
-    setNote(r.applied.length ? `Added: ${r.applied.map((x) => (x === "logo" ? "Logo" : "Cover")).join(", ")}.` : "Nothing was added — the media couldn’t be verified, or it was already set.");
+    const added = r.applied.length ? `Added: ${r.applied.map((x) => (x === "logo" ? "Logo" : "Cover")).join(", ")}.` : null;
+    // Media Truthfulness pass — each skipped role's SPECIFIC reason, never
+    // the old generic "couldn't be verified, or it was already set" that
+    // hid which one actually happened.
+    const skippedText = r.skipped.map((s) => `${s.role === "logo" ? "Logo" : "Cover"}: ${s.reason}`).join(" ");
+    setNote([added, skippedText || null].filter(Boolean).join(" ") || null);
     if (r.applied.length) {
       record(state.kind, state.id);
       onApplied();
@@ -908,6 +913,131 @@ function MediaEntityRow({
   );
 }
 
+// ── Explicit Involved-Business Resolution ───────────────────────────────
+// "otherBusinesses" evidence (structured paste's own field, or the AI
+// step's grounded reading of phrases like "EHVM & Tangent teams") used to
+// render as a dead-end informational line. Each name now gets the SAME
+// match-before-create resolution the Event's own primary Business already
+// gets (adminPrepareBusiness, QuickCreateBusiness) — Match / Create /
+// Ignore, operator-authoritative; nothing is ever linked automatically.
+
+function OtherBusinessSection({
+  names,
+  review,
+  set,
+  preps,
+  ensure,
+}: {
+  names: string[];
+  review: EventImportReview;
+  set: (patch: Partial<EventImportReview>) => void;
+  preps: Record<string, BusinessPrepState>;
+  ensure: (name: string) => void;
+}) {
+  const distinct = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  if (distinct.length === 0) return null;
+  const choices = review.otherBusinessChoices ?? {};
+  const choose = (name: string, choice: { id: string; name: string } | "ignored") => set({ otherBusinessChoices: { ...choices, [name]: choice } });
+  return (
+    <section className="flex flex-col gap-2 rounded-xl border border-black/[0.08] p-3">
+      <p className="text-label font-bold uppercase text-subtle">Also Named (Featured / Participating)</p>
+      <p className="-mt-1 text-microcopy text-muted">Named in the source, not Findmi&rsquo;s own structured data — match, create, or ignore. Never linked automatically.</p>
+      {distinct.map((name) => (
+        <OtherBusinessCandidate key={name} name={name} choice={choices[name]} onChoose={(c) => choose(name, c)} prep={preps[businessEvidenceKey(name) ?? name.trim().toLowerCase()]} ensure={ensure} />
+      ))}
+    </section>
+  );
+}
+
+function OtherBusinessCandidate({
+  name,
+  choice,
+  onChoose,
+  prep,
+  ensure,
+}: {
+  name: string;
+  choice: { id: string; name: string } | "ignored" | undefined;
+  onChoose: (choice: { id: string; name: string } | "ignored") => void;
+  prep: BusinessPrepState | undefined;
+  ensure: (name: string) => void;
+}) {
+  useEffect(() => {
+    if (!choice) ensure(name);
+    // ensure() is keyed/deduped by name on the parent's side; this only
+    // needs to fire once per distinct name, same as EventLocationCreate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+
+  if (choice === "ignored") {
+    return (
+      <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] pt-2 first:border-t-0 first:pt-0">
+        <span className="text-metadata text-muted">{name} — Ignored</span>
+        <button type="button" onClick={() => onChoose("ignored")} className="text-metadata font-semibold text-accent hover:underline">
+          Undo
+        </button>
+      </div>
+    );
+  }
+  if (choice) {
+    return (
+      <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] pt-2 first:border-t-0 first:pt-0">
+        <span className="min-w-0 truncate text-metadata text-primary">
+          {name} → <span className="font-semibold text-findmi-700">{choice.name}</span>
+        </span>
+        <button type="button" onClick={() => onChoose("ignored")} className="shrink-0 text-metadata font-semibold text-muted hover:underline">
+          Ignore Instead
+        </button>
+      </div>
+    );
+  }
+
+  const prepared = prep?.status === "done" ? prep.prepared : null;
+  const idPrefix = `other-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-black/[0.06] pt-2 first:border-t-0 first:pt-0">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-metadata font-semibold text-primary">{name}</span>
+        <button type="button" onClick={() => onChoose("ignored")} className="shrink-0 text-metadata font-semibold text-muted hover:underline">
+          Ignore
+        </button>
+      </div>
+      {(!prep || prep.status === "pending") && <p className="text-microcopy text-muted">Preparing {name} for Review…</p>}
+      {prep?.status === "error" && <p className="text-microcopy text-amber-900">{prep.error}</p>}
+      {prepared?.status === "existing" && (
+        <div className="flex flex-col gap-1.5 rounded-xl border border-black/[0.08] bg-white p-2.5">
+          <p className="text-label font-bold uppercase text-subtle">On Findmi</p>
+          {prepared.candidates.map((c) => (
+            <div key={c.id} className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-metadata text-primary">
+                {c.name}
+                {!c.isPublic && <span className="text-muted"> · Not public</span>}
+              </span>
+              <button type="button" onClick={() => onChoose({ id: c.id, name: c.name })} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
+                Use This Business
+              </button>
+            </div>
+          ))}
+          <QuickCreateBusiness idPrefix={idPrefix} evidence={name} onCreated={(b) => onChoose(b)} />
+        </div>
+      )}
+      {prepared && prepared.status !== "existing" && (
+        <QuickCreateBusiness
+          idPrefix={idPrefix}
+          evidence={name}
+          onCreated={(b) => onChoose(b)}
+          prepared={{
+            website: prepared.status === "website" ? prepared.website : null,
+            source: prepared.status === "website" ? prepared.source : null,
+            sources: prepared.research?.sources ?? [],
+            note: researchNote(prepared),
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function EventDetails({
   id,
   candidate,
@@ -916,7 +1046,13 @@ function EventDetails({
   existingEventId,
   business,
   onRetrySource,
-}: Parameters<OperatorImportMode["renderEventDetails"]>[0] & { onRetrySource?: () => Promise<string | null> }) {
+  otherBusinessPreps,
+  ensureOtherBusinessPrep,
+}: Parameters<OperatorImportMode["renderEventDetails"]>[0] & {
+  onRetrySource?: () => Promise<string | null>;
+  otherBusinessPreps: Record<string, BusinessPrepState>;
+  ensureOtherBusinessPrep: (name: string) => void;
+}) {
   const s = candidate.structured;
   const source = s?.source;
   const [retrying, setRetrying] = useState(false);
@@ -986,9 +1122,13 @@ function EventDetails({
       </div>
       <AttendanceEditor review={review} set={set} evidence={candidate.attendance} idPrefix={`${id}-`} />
       <MediaCompleteness review={review} business={business} businessWebsite={s?.businessWebsite ?? null} eventName={candidate.title} />
-      {(s?.otherBusinesses?.length ?? 0) > 0 && (
-        <p className="text-microcopy text-muted">Also named (Featured / Participating): {s!.otherBusinesses!.join(", ")}. Not linked — add them to the Event afterwards if they take part.</p>
-      )}
+      <OtherBusinessSection
+        names={[...(s?.otherBusinesses ?? []), ...(candidate.otherBusinesses ?? [])]}
+        review={review}
+        set={set}
+        preps={otherBusinessPreps}
+        ensure={ensureOtherBusinessPrep}
+      />
       {(s?.programming?.length ?? 0) > 0 && (
         <section className="rounded-xl border border-dashed border-black/15 p-3">
           <p className="text-label font-bold uppercase text-subtle">Programming · Not Currently Saved To Findmi</p>
@@ -1045,6 +1185,24 @@ export default function AdminEventImporter({ categories, formats, businessCatego
   const [businessPreps, setBusinessPreps] = useState<Record<string, BusinessPrepState>>({});
   const [placePreps, setPlacePreps] = useState<Record<string, LocationPrepState>>({});
   const placeAsked = useRef<Set<string>>(new Set());
+  // Explicit Involved-Business Resolution pass — "otherBusinesses" evidence
+  // (EHVM/Tangent-style "X & Y teams" signals) reaches operator review
+  // instead of disappearing. Reuses the SAME adminPrepareBusiness/
+  // Brand-Import match-before-create machinery as the primary Business
+  // flow above. Only the (shared, dedup'd) RESEARCH is global state here —
+  // the operator's actual Match/Create/Ignore CHOICE lives on that one
+  // Event's own review (review.otherBusinessChoices), exactly like every
+  // other Review field, so it travels with that Event through commit.
+  const [otherBizPreps, setOtherBizPreps] = useState<Record<string, BusinessPrepState>>({});
+  const otherBizAsked = useRef<Set<string>>(new Set());
+  async function ensureOtherBusinessPrep(name: string) {
+    const key = businessEvidenceKey(name) ?? name.trim().toLowerCase();
+    if (otherBizAsked.current.has(key)) return;
+    otherBizAsked.current.add(key);
+    setOtherBizPreps((prev) => ({ ...prev, [key]: { status: "pending" } }));
+    const r = await adminPrepareBusiness({ name, website: null, websiteReadFailed: false, eventName: null }).catch(() => null);
+    setOtherBizPreps((prev) => ({ ...prev, [key]: r?.ok ? { status: "done", prepared: r.prepared } : { status: "error", error: r && !r.ok ? r.error : "Couldn’t prepare this Business." } }));
+  }
 
   // Durability (phone sleep / accidental refresh): the pasted text is kept
   // in this tab's sessionStorage, so a reload never loses the paste itself
@@ -1179,7 +1337,7 @@ export default function AdminEventImporter({ categories, formats, businessCatego
         if (!key || jobs.has(key)) continue;
         if (e.matches.locations.some((l) => l.key === key && l.confidence === "strong")) continue;
         const place: ReviewPlace = { venueName: v.name, address: v.address, city: v.city, state: v.state, postalCode: v.postalCode, useLocationId: null, matchKey: key, ...(v.website ? { website: v.website } : {}) };
-        if (!canOfferLocationCreate(place, { locationVisibility: e.candidate.locationVisibility ?? null, online: Boolean(e.candidate.online) })) continue;
+        if (!canResearchLocation(place, { locationVisibility: e.candidate.locationVisibility ?? null, online: Boolean(e.candidate.online) })) continue;
         jobs.set(key, { ...place, eventName: e.candidate.title });
       }
     }
@@ -1376,7 +1534,14 @@ export default function AdminEventImporter({ categories, formats, businessCatego
       />
       );
     },
-    renderEventDetails: (props) => <EventDetails {...props} onRetrySource={() => retrySource(props.eventKey, props.review, props.set, Boolean(props.candidate.imageUrl))} />,
+    renderEventDetails: (props) => (
+      <EventDetails
+        {...props}
+        onRetrySource={() => retrySource(props.eventKey, props.review, props.set, Boolean(props.candidate.imageUrl))}
+        otherBusinessPreps={otherBizPreps}
+        ensureOtherBusinessPrep={ensureOtherBusinessPrep}
+      />
+    ),
     renderThumbnail: (url) => <VerifiedEventImagePreview url={url} compact className="h-12 w-12 shrink-0 rounded-lg bg-black/[0.04] object-cover" />,
     doneHref: "/admin/events?new=1",
   };

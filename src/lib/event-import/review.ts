@@ -191,10 +191,38 @@ export function pendingPlaceMatches(review: EventImportReview, matches: EventImp
   return [...keys];
 }
 
-export type BatchStatusKind = "ready" | "needs_details" | "possible_match" | "joins_existing";
+/** Places in this review that are a real, specific, nameable place (so
+ * Review's own Location research/Quick Create step is offered for them —
+ * see canResearchLocation) but aren't linked to a canonical Location yet:
+ * neither matched nor created. Entity Resolution Truthfulness pass — this
+ * is what previously let a place like "Fellini Coffee Chelsea, New York,
+ * NY" (a real place with no numbered street address yet) sit unresolved
+ * while Review still reported "Ready": canOfferLocationCreate's own
+ * (correctly stricter) numbered-street requirement meant no Quick Create
+ * was ever offered, so there was nothing "pending" for pendingPlaceMatches
+ * to find either. This reuses canResearchLocation's own eligibility rule
+ * — exactly what gates showing that step in Review — rather than a new,
+ * second notion of "unresolved". */
+export function unresolvedLocations(review: EventImportReview): string[] {
+  const places = review.sharedPlace ? [review.place] : review.occurrences.map((o) => o.place);
+  const keys = new Set<string>();
+  for (const p of places) {
+    if (canResearchLocation(p, { locationVisibility: review.locationVisibility, online: false }) && p.matchKey) keys.add(p.matchKey);
+  }
+  return [...keys];
+}
+
+export type BatchStatusKind = "ready" | "needs_details" | "possible_match" | "needs_review" | "joins_existing";
 
 /** What a reviewed Event still needs before it can be added. Mirrors the
- * server's normalizeReview requirements (the server re-checks anyway). */
+ * server's normalizeReview requirements (the server re-checks anyway).
+ * Entity Resolution Truthfulness pass — "ready" now means the Event's
+ * entity relationships are actually resolved, not merely that its own
+ * title/date fields are filled: a real, specific place that was never
+ * matched or created (Fellini Coffee Chelsea's own regression) is
+ * "needs_review", same as an unanswered possible Location match — never
+ * silently "ready". This never BLOCKS creation (Admin may still choose
+ * Create with these open) — only the label stops overclaiming. */
 export function batchItemStatus(review: EventImportReview, matches: EventImportMatches): { kind: BatchStatusKind; missing: string[] } {
   const missing: string[] = [];
   if (!review.title.trim()) missing.push("Name");
@@ -207,6 +235,7 @@ export function batchItemStatus(review: EventImportReview, matches: EventImportM
   if (missing.length > 0) return { kind: "needs_details", missing };
   if (review.useEventId) return { kind: "joins_existing", missing };
   if (matches.event || pendingPlaceMatches(review, matches).length > 0) return { kind: "possible_match", missing };
+  if (unresolvedLocations(review).length > 0) return { kind: "needs_review", missing };
   return { kind: "ready", missing };
 }
 
@@ -224,6 +253,7 @@ export const BATCH_STATUS_LABEL: Record<BatchStatusKind, string> = {
   ready: "Ready",
   needs_details: "Needs Details",
   possible_match: "Possible Match",
+  needs_review: "Needs Review",
   joins_existing: "Already on Findmi",
 };
 
@@ -323,6 +353,30 @@ export function canOfferLocationCreate(
   if (!name || PLACEHOLDER_PLACE.test(name)) return false;
   if (!address || PLACEHOLDER_PLACE.test(address)) return false;
   if (!NUMBERED_STREET.test(address) || INTERSECTION.test(address)) return false;
+  if (!place.city?.trim() || !place.state?.trim()) return false;
+  return true;
+}
+
+/** Whether Review may attempt the EXISTING Location research/prepare step
+ * (adminPrepareLocation and its Business-side equivalent) for this place —
+ * deliberately looser than canOfferLocationCreate, which additionally
+ * requires an already-known numbered street address before offering to
+ * create a Location directly. Research's whole job is to go find that
+ * address when it isn't known yet (the same way Business Import researches
+ * an official website from a name alone), so attempting it must not be
+ * gated on already having what it exists to find — a named, specific
+ * place with a city and state (most sources give exactly this, no street)
+ * is reason enough to try. */
+export function canResearchLocation(
+  place: Pick<ReviewPlace, "venueName" | "city" | "state" | "useLocationId">,
+  context: { locationVisibility?: string | null; online?: boolean | null }
+): boolean {
+  const visibility = context.locationVisibility ?? null;
+  if (visibility === "hidden" || visibility === "broad" || visibility === "none") return false;
+  if (context.online) return false;
+  if (place.useLocationId) return false;
+  const name = place.venueName?.trim() ?? "";
+  if (!name || PLACEHOLDER_PLACE.test(name)) return false;
   if (!place.city?.trim() || !place.state?.trim()) return false;
   return true;
 }

@@ -27,6 +27,7 @@ const STATUS_STYLE: Record<BatchStatusKind, string> = {
   ready: "bg-findmi-50 text-findmi-700",
   joins_existing: "bg-findmi-50 text-findmi-700",
   possible_match: "bg-amber-50 text-amber-800",
+  needs_review: "bg-amber-50 text-amber-800",
   needs_details: "bg-red-50 text-red-700",
 };
 

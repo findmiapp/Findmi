@@ -37,7 +37,7 @@ import {
   type JsonObject,
 } from "./extract";
 import { dedupeOccurrences, parseScheduleLines, yearHintFrom } from "./schedule";
-import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
+import { EMPTY_VENUE, realStreetAddress, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
 import { UNKNOWN_ATTENDANCE, applyLocationVisibility, decideLocationVisibility, pageRecordAttendance } from "./attendance";
 
 /** Events read from one source at a time. */
@@ -186,7 +186,7 @@ function placeFromRecord(o: JsonObject): ImportedVenue {
     if (address && /^\d/.test(address)) address = address.split(",")[0].trim();
     return {
       name,
-      address,
+      address: realStreetAddress(name, address),
       city,
       state: usStateCode(str(g.region)) ?? cleanText(str(g.region), 40),
       postalCode: null,
@@ -198,9 +198,10 @@ function placeFromRecord(o: JsonObject): ImportedVenue {
     const viaLd = venueFrom(v).venue;
     if (venueKey(viaLd) || viaLd.city) return viaLd;
     const r = v as JsonObject;
+    const rName = cleanText(str(r.name ?? r.title), 160);
     return {
-      name: cleanText(str(r.name ?? r.title), 160),
-      address: cleanText(str(r.address ?? r.street ?? r.address1), 200),
+      name: rName,
+      address: realStreetAddress(rName, cleanText(str(r.address ?? r.street ?? r.address1), 200)),
       city: cleanText(str(r.city ?? r.locality), 80),
       state: usStateCode(str(r.state ?? r.region)) ?? cleanText(str(r.state ?? r.region), 40),
       postalCode: null,

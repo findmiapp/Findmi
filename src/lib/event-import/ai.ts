@@ -13,7 +13,7 @@ import { cleanText, usStateCode } from "../brand-website-extract";
 import { localDateTimeToIso } from "../admin/form-helpers";
 import { EVENT_TITLE_MAX } from "./extract";
 import { addDays, dedupeOccurrences, parseScheduleLines, SCHEDULE_MAX_OCCURRENCES, type ScheduleContext } from "./schedule";
-import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
+import { EMPTY_VENUE, realStreetAddress, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
 
 export const EVENT_AI_TIMEOUT_MS = 15_000;
 const DEFAULT_MODEL = "claude-opus-5-5";
@@ -28,7 +28,9 @@ Report only what the page text states. If a fact is not stated, return null for 
 
 Schedule: return one entry per schedule line on the page, keeping each date together with the time and place written with it — never pair a date with a time or place from a different line. For each entry, copy the exact line(s) it comes from into "evidence". For a single date, give "date" as YYYY-MM-DD and times as 24-hour HH:MM. For a recurring schedule (a date range limited to certain weekdays, e.g. "9/25–10/31, 6pm–12am — MSG" followed by "Wednesdays, Fridays and Saturdays only"), return ONE entry whose evidence contains those lines exactly as written and leave "date" null; do not list the individual dates.
 
-Organizer: only a person or organization the page explicitly calls the organizer, host or presenter ("organized by", "hosted by", "presented by", "produced by"). A brand that is featured, sampled or sponsoring is not the organizer unless the page says so. Copy the phrase that says so into "organizer_evidence".`;
+Organizer: only a person or organization the page explicitly calls the organizer, host or presenter ("organized by", "hosted by", "presented by", "produced by"). A brand that is featured, sampled or sponsoring is not the organizer unless the page says so. Copy the phrase that says so into "organizer_evidence".
+
+Other involved brands/businesses: list any OTHER named brand, business or organization the page explicitly describes as featured, co-hosting, collaborating, sponsoring or participating — never the organizer already reported above. Only when the page names them this way (e.g. "X & Y team", "X x Y", "featuring X", "in collaboration with X", "presented by X, featuring Y") — never a brand merely mentioned in passing, part of the venue's own name, or inferred from context. For each, copy the exact phrase that names them into its own "evidence".`;
 
 const ScheduleEntrySchema = z.object({
   evidence: z.string(),
@@ -38,6 +40,7 @@ const ScheduleEntrySchema = z.object({
   venue_name: z.string().nullable(),
   street_address: z.string().nullable(),
 });
+const OtherBusinessSchema = z.object({ name: z.string(), evidence: z.string() });
 export const EventAiSchema = z.object({
   title: z.string().nullable(),
   schedule: z.array(ScheduleEntrySchema),
@@ -48,6 +51,7 @@ export const EventAiSchema = z.object({
   postal_code: z.string().nullable(),
   organizer: z.string().nullable(),
   organizer_evidence: z.string().nullable(),
+  other_businesses: z.array(OtherBusinessSchema),
 });
 export type EventAiOutput = z.infer<typeof EventAiSchema>;
 
@@ -65,6 +69,8 @@ Report only what the material states. If a fact is not stated, return null for i
 Schedule: return one entry per schedule line, keeping each date together with the time and place written with it — never pair a date with a time or place from a different line. For each entry, copy the exact line(s) it comes from into "evidence". For a single date, give "date" as YYYY-MM-DD and times as 24-hour HH:MM. For a recurring schedule, return ONE entry whose evidence contains those lines exactly as written and leave "date" null.
 
 Organizer: only a person or organization the material explicitly calls the organizer, host or presenter ("organized by", "hosted by", "presented by", "produced by"). A brand that is featured, named in the title, sampled or sponsoring is not the organizer unless the material says so. Copy the phrase that says so into "organizer_evidence".
+
+Other involved brands/businesses: list any OTHER named brand, business or organization the material explicitly describes as featured, co-hosting, collaborating, sponsoring or participating — never the organizer already reported above. Only when the material names them this way (e.g. "X & Y team", "X x Y", "featuring X", "in collaboration with X") — never a brand merely mentioned in passing or inferred from context. For each, copy the exact phrase that names them into its own "evidence".
 
 Multiple events: set "multiple_events" to true only when the material describes two or more SEPARATE events (different event names). One event with several dates or stops is one event.`;
 
@@ -137,6 +143,42 @@ export interface SanitizedAi {
   occurrences: ImportedOccurrence[];
   venue: ImportedVenue;
   organizer: string | null;
+  /** Other named brands/businesses the page evidences (never the
+   * organizer) — shown to the operator for review, never auto-linked. */
+  otherBusinesses: string[];
+}
+
+const MAX_OTHER_BUSINESSES = 5;
+const OTHER_BUSINESS_NAME_MAX = 160;
+
+/** Grounded "other businesses": each name must be evidenced by its OWN
+ * quoted phrase (word-overlap, same test as venue/organizer), and that
+ * phrase must itself appear verbatim in the page text — the same two-step
+ * discipline schedule entries already use, so the model can't invent a
+ * brand that was never actually named this way. Deduped case-insensitively;
+ * never includes the already-resolved organizer or the reviewing Business
+ * (a Business can't be its own featured participant). */
+function sanitizeOtherBusinesses(
+  raw: { name: string; evidence: string }[] | undefined,
+  pageText: string,
+  exclude: (string | null)[]
+): string[] {
+  const page = ` ${norm(pageText)} `;
+  const excluded = new Set(exclude.filter((v): v is string => Boolean(v)).map(norm));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of raw ?? []) {
+    if (out.length >= MAX_OTHER_BUSINESSES) break;
+    const evidence = cleanText(entry?.evidence, 300);
+    if (!evidence || !page.includes(` ${norm(evidence)} `)) continue;
+    const name = cleanText(entry?.name, OTHER_BUSINESS_NAME_MAX);
+    if (!name || !evidenced(name, evidence)) continue;
+    const key = norm(name);
+    if (!key || excluded.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
 }
 
 /** Validates AI output against the page text; returns only safe values.
@@ -144,8 +186,13 @@ export interface SanitizedAi {
  * the deterministic schedule parser (so a recurrence is expanded by Findmi,
  * not by the model), and a single-date entry is kept only when its quoted
  * line states that date — and its time only when the line states it. */
-export function sanitizeEventAiOutput(raw: EventAiOutput | null | undefined, pageText: string, ctx: ScheduleContext = { now: Date.now(), yearHint: null }): SanitizedAi {
-  const empty: SanitizedAi = { title: null, occurrences: [], venue: { ...EMPTY_VENUE }, organizer: null };
+export function sanitizeEventAiOutput(
+  raw: EventAiOutput | null | undefined,
+  pageText: string,
+  ctx: ScheduleContext = { now: Date.now(), yearHint: null },
+  excludeOtherBusinesses: (string | null)[] = []
+): SanitizedAi {
+  const empty: SanitizedAi = { title: null, occurrences: [], venue: { ...EMPTY_VENUE }, organizer: null, otherBusinesses: [] };
   if (!raw) return empty;
   const keep = (v: string | null, max: number, against = pageText) => {
     const c = cleanText(v, max);
@@ -157,7 +204,8 @@ export function sanitizeEventAiOutput(raw: EventAiOutput | null | undefined, pag
     const lines = (entry.evidence ?? "").split(/\n+/).map((l) => l.trim()).filter(Boolean).slice(0, 4);
     if (lines.length === 0 || !lines.every((l) => norm(l) && page.includes(` ${norm(l)} `))) continue;
     const evidence = lines.join("\n");
-    const aiVenue = { ...EMPTY_VENUE, name: keep(entry.venue_name, 160, evidence), address: keep(entry.street_address, 200, evidence) };
+    const aiVenueName = keep(entry.venue_name, 160, evidence);
+    const aiVenue = { ...EMPTY_VENUE, name: aiVenueName, address: realStreetAddress(aiVenueName, keep(entry.street_address, 200, evidence)) };
     const parsed = parseScheduleLines(lines, ctx).occurrences;
     if (parsed.length > 0) {
       for (const o of parsed) occurrences.push(venueKey(o.venue) ? o : { ...o, venue: aiVenue });
@@ -180,17 +228,20 @@ export function sanitizeEventAiOutput(raw: EventAiOutput | null | undefined, pag
   }
   const postal = cleanText(raw.postal_code, 12);
   const organizer = keep(raw.organizer, 160);
+  const resolvedOrganizer = organizer && organizerEvidenced(organizer, pageText) ? organizer : null;
+  const venueName = keep(raw.venue_name, 160);
   return {
     title: keep(raw.title, EVENT_TITLE_MAX),
     occurrences: dedupeOccurrences(occurrences).slice(0, SCHEDULE_MAX_OCCURRENCES),
     venue: {
-      name: keep(raw.venue_name, 160),
-      address: keep(raw.street_address, 200),
+      name: venueName,
+      address: realStreetAddress(venueName, keep(raw.street_address, 200)),
       city: keep(raw.city, 80),
       state: usStateCode(raw.state) ?? keep(raw.state, 40),
       postalCode: postal && /^[A-Za-z0-9 -]{3,12}$/.test(postal) && pageText.includes(postal) ? postal : null,
     },
-    organizer: organizer && organizerEvidenced(organizer, pageText) ? organizer : null,
+    organizer: resolvedOrganizer,
+    otherBusinesses: sanitizeOtherBusinesses(raw.other_businesses, pageText, [...excludeOtherBusinesses, resolvedOrganizer]),
   };
 }
 
@@ -216,7 +267,7 @@ export async function assistWithAi(
       { timeout: EVENT_AI_TIMEOUT_MS, maxRetries: 0 }
     );
     if (response.stop_reason === "refusal" || !response.parsed_output) return { candidate, called: true };
-    const ai = sanitizeEventAiOutput(response.parsed_output, excerpt, ctx);
+    const ai = sanitizeEventAiOutput(response.parsed_output, excerpt, ctx, [candidate.organizer]);
     const next: EventCandidate = { ...candidate, occurrences: [...candidate.occurrences], sources: { ...candidate.sources } };
     if (!next.title && ai.title) {
       next.title = ai.title;
@@ -237,6 +288,12 @@ export async function assistWithAi(
     if (!next.organizer && ai.organizer) {
       next.organizer = ai.organizer;
       next.sources.organizer = "ai";
+    }
+    // Evidence only — never auto-linked (see otherBusinesses' own doc
+    // comment in types.ts). A structured-paste "Featured:"/"Participating:"
+    // field, if present, already said this; AI only fills it when empty.
+    if ((!next.otherBusinesses || next.otherBusinesses.length === 0) && ai.otherBusinesses.length > 0) {
+      next.otherBusinesses = ai.otherBusinesses;
     }
     return { candidate: next, called: true };
   } catch {

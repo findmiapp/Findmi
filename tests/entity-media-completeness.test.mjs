@@ -176,7 +176,7 @@ function applyDeps(current) {
     writes,
     deps: {
       load: async () => current,
-      store: async (url, role) => `https://x.supabase.co/${role}.webp`,
+      store: async (url, role) => ({ ok: true, url: `https://x.supabase.co/${role}.webp` }),
       fillIfEmpty: async (kind, id, column, url) => {
         if (current[column]) return false;
         writes.push([column, url]);
@@ -189,20 +189,27 @@ function applyDeps(current) {
 test("Apply is FILL-ONLY: existing media is never overwritten", async () => {
   const a = applyDeps(row({ logo_url: "https://x/existing-logo.png" }));
   const r = await M.applyEntityMedia("location", "id", { logoSourceUrl: "https://site/logo.png", coverSourceUrl: "https://site/cover.jpg" }, a.deps);
-  assert.deepEqual(r, { ok: true, applied: ["cover"], skipped: ["logo"] });
+  // Media Truthfulness pass — skipped now carries the SPECIFIC reason
+  // (never a bare role string that hides why).
+  assert.deepEqual(r, { ok: true, applied: ["cover"], skipped: [{ role: "logo", reason: "already_set" }] });
   assert.deepEqual(a.writes, [["cover_image_url", "https://x.supabase.co/cover.webp"]]);
-  // A field filled meanwhile (the guarded write fails) is reported skipped, never forced.
+  // A field filled meanwhile (the guarded write fails after a successful
+  // verify+store) is reported skipped as storage_failed, never forced.
   const race = applyDeps(row());
   race.deps.fillIfEmpty = async () => false;
-  assert.deepEqual(await M.applyEntityMedia("business", "id", { logoSourceUrl: "https://site/logo.png" }, race.deps), { ok: true, applied: [], skipped: ["logo"] });
-  // Unverifiable image → nothing written.
+  assert.deepEqual(await M.applyEntityMedia("business", "id", { logoSourceUrl: "https://site/logo.png" }, race.deps), { ok: true, applied: [], skipped: [{ role: "logo", reason: "storage_failed" }] });
+  // Unverifiable image → nothing written, specific reason reported.
   const bad = applyDeps(row());
-  bad.deps.store = async () => null;
-  assert.deepEqual((await M.applyEntityMedia("business", "id", { coverSourceUrl: "https://site/c.jpg" }, bad.deps)).applied, []);
+  bad.deps.store = async () => ({ ok: false, reason: "verification_failed", detail: "unsuitable:too_small" });
+  const badResult = await M.applyEntityMedia("business", "id", { coverSourceUrl: "https://site/c.jpg" }, bad.deps);
+  assert.deepEqual(badResult.applied, []);
+  assert.deepEqual(badResult.skipped, [{ role: "cover", reason: "verification_failed", detail: "unsuitable:too_small" }]);
   // The real write is guarded by "still empty" in the database itself.
   assert.match(ACTIONS, /\.update\(\{ \[column\]: url \}\)\.eq\("id", id\)\.is\(column, null\)/);
-  // Re-verified + re-hosted through the existing brand-image storage.
-  assert.match(ACTIONS, /const verified = await fetchVerifiedBrandImage\(url, role\);\s*return verified\.ok \? storeBrandImage\(admin, verified\.image\) : null;/);
+  // Re-verified + re-hosted through the existing brand-image storage, with
+  // one bounded transient retry and a specific skip reason either way.
+  assert.match(ACTIONS, /let verified = await fetchVerifiedBrandImage\(url, role\);/);
+  assert.match(ACTIONS, /const stored = await storeBrandImage\(admin, verified\.image\);/);
 });
 
 test("a READY Brand Import read is preferred over a bare Quick Create (the FUJIFILM case)", async () => {

@@ -531,7 +531,14 @@ export type SourceEventDeps = Pick<PersistDeps, "admin" | "storeImage" | "geogra
 async function createSourceEvent(
   input: NormalizedImport,
   deps: SourceEventDeps,
-  participantBusinessId: string | null
+  participantBusinessId: string | null,
+  /** Explicit Involved-Business Resolution (Admin only) — additional
+   * Businesses the operator matched/created from "otherBusinesses"
+   * evidence (EHVM/Tangent-style signals), approved the SAME way and
+   * through the SAME event_businesses write as participantBusinessId
+   * just below — never a second participation path, never written to
+   * event_occurrence_businesses or synced to Findmi Here independently. */
+  additionalParticipantBusinessIds: string[] = []
 ): Promise<{ ok: true; eventId: string; occurrenceIds: string[] } | { ok: false; error: string; field?: string }> {
   const { admin } = deps;
   const slug = await deps.uniqueEventSlug(input.title);
@@ -596,6 +603,15 @@ async function createSourceEvent(
       .upsert({ event_id: eventId, business_id: participantBusinessId, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" });
     if (rosterError) return { ok: false, error: "Couldn't add this Event. Please try again." };
   }
+  for (const otherId of additionalParticipantBusinessIds) {
+    if (otherId === participantBusinessId) continue; // never add the primary Business twice
+    await admin
+      .from("event_businesses")
+      .upsert({ event_id: eventId, business_id: otherId, status: "approved", participation_scope: "all_dates" }, { onConflict: "event_id,business_id" });
+    // Best-effort: a failure here never blocks the Event itself from being
+    // created — the operator can still add the Business from the Event
+    // page afterwards through the exact same ParticipationRoster UI.
+  }
 
   // 3. One Event Occurrence per date, each at its own place.
   const { data: occs } = await admin
@@ -634,13 +650,21 @@ async function createSourceEvent(
  *     It never becomes the host. Null → the Event is saved unassociated.
  *
  * The caller validates `businessId` names a real Business. */
-export async function persistDiscoveryEvent(input: NormalizedImport, businessId: string | null, deps: SourceEventDeps): Promise<EventImportOutcome> {
+export async function persistDiscoveryEvent(
+  input: NormalizedImport,
+  businessId: string | null,
+  deps: SourceEventDeps,
+  /** Explicit Involved-Business Resolution (Admin only) — see
+   * createSourceEvent's own doc comment. Every other caller omits this
+   * and behaves exactly as before. */
+  otherBusinessIds: string[] = []
+): Promise<EventImportOutcome> {
   const adminHref = (id: string) => `/admin/events/${id}`;
   if (input.useEventId) return { ok: true, kind: "already", title: input.title, viewHref: adminHref(input.useEventId) };
   const existing = input.sourceUrl && deps.findEventBySourceUrl ? await deps.findEventBySourceUrl(input.sourceUrl) : null;
   if (existing) return { ok: true, kind: "already", title: input.title, viewHref: adminHref(existing.id) };
 
-  const created = await createSourceEvent(input, deps, businessId);
+  const created = await createSourceEvent(input, deps, businessId, otherBusinessIds);
   if (!created.ok) return created;
   if (businessId) await deps.propagateDates(created.eventId, created.occurrenceIds);
   return { ok: true, kind: "scheduled", title: input.title, viewHref: adminHref(created.eventId), newEvent: true };

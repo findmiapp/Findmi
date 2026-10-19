@@ -84,6 +84,14 @@ export interface EventCandidate {
   occurrences: ImportedOccurrence[];
   online: boolean;
   organizer: string | null;
+  /** Other named brands/businesses the source explicitly evidences as
+   * featured, co-hosting or participating — never the organizer, never
+   * auto-linked. Populated either from an Admin structured paste's own
+   * "Featured:"/"Participating:" field (candidate.structured.
+   * otherBusinesses) or, for a normal Event Link/paste, from the AI step's
+   * grounded reading (./ai.ts sanitizeEventAiOutput) — shown to the
+   * operator for review either way. */
+  otherBusinesses?: string[];
   sources: Partial<Record<"title" | "description" | "image" | "dates" | "venue" | "organizer", FieldSource>>;
   /** Rich Event Persistence — set by Analyze: "event" when the source
    * grounds a genuine Event (structured Event data, or a dedicated Event
@@ -144,6 +152,18 @@ export function venueKey(v: { name: string | null; address: string | null }): st
   const name = keyPart(v.name);
   const address = keyPart(v.address);
   return name || address ? `${name}|${address}` : "";
+}
+
+/** A source with no structured PostalAddress sometimes puts the venue's own
+ * NAME into a free-text "address" field (schema.org allows `address` as a
+ * bare string; some AI/JSON extraction mirrors it there too) — that is not
+ * a street address, it is the name repeated. Truthfulness over field
+ * completeness: a "street address" that is really just the name is
+ * dropped, never persisted as if it told us anything the name didn't. */
+export function realStreetAddress(name: string | null, address: string | null): string | null {
+  if (!address) return null;
+  if (name && keyPart(address) === keyPart(name)) return null;
+  return address;
 }
 
 /** The one place every occurrence shares, or null when they differ. */
@@ -316,6 +336,15 @@ export interface EventImportReview {
    * many kind='event_format' ids). Saved only on a NEW Event; never
    * applied to an existing Event this import joins. Never inferred. */
   formatIds?: string[] | null;
+  /** Explicit Involved-Business Resolution (Admin only) — the operator's
+   * own Match / Create / Ignore decision for each name the source
+   * evidenced as another featured/participating brand (EventCandidate.
+   * otherBusinesses / structured.otherBusinesses), keyed by that exact
+   * name. Never auto-filled. A non-"ignored" entry becomes an additional
+   * approved participant at commit, through the SAME event_businesses
+   * write the Event's own primary Business already uses — never a second
+   * participation path, never an Appearance written independently. */
+  otherBusinessChoices?: Record<string, { id: string; name: string } | "ignored">;
 }
 
 export type EventImportOutcome =

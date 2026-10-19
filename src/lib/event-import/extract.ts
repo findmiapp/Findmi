@@ -19,7 +19,7 @@
 import { parse } from "parse5";
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { localDateTimeToIso } from "../admin/form-helpers";
-import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
+import { EMPTY_VENUE, realStreetAddress, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
 import { dedupeOccurrences, parseScheduleLines, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
 import { EVENT_DESCRIPTION_MAX, cleanEventDescription, htmlToDescriptionText } from "./description";
 
@@ -330,6 +330,7 @@ export function venueFrom(value: unknown): { venue: ImportedVenue; online: boole
       postalCode = postal && /^[A-Za-z0-9 -]{3,12}$/.test(postal) ? postal : null;
     }
     const name = cleanText(str(node.name), 160);
+    address = realStreetAddress(name, address);
     if (name || address || city) return { venue: { name, address, city, state, postalCode }, online };
   }
   return { venue: { ...EMPTY_VENUE }, online };

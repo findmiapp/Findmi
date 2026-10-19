@@ -12,7 +12,7 @@ import { findEventMatches, findDuplicateMatches, type EventMatchCandidate, type 
 import type { AppearanceDraft } from "../admin/appearance-import";
 import { findLikelyDuplicateLocations, findPossibleLocations } from "../locationCreation";
 import { findBusinessMatches } from "../business-matching";
-import { extractEventCandidate, needsAiAssist, isPastDate, siteIdentityImages, type ExtractionResult } from "./extract";
+import { extractEventCandidate, needsAiAssist, isPastDate, platformForHost, siteIdentityImages, type ExtractionResult } from "./extract";
 import { genericImageEvidence, GENERIC_IMAGE_WARNING } from "./image-guard";
 import { classifySource, pageEventRecord } from "./sources";
 import {
@@ -164,6 +164,57 @@ const FETCH_FAILURE: Record<string, EventImportFailure> = {
   unsupported_content: "not_html",
 };
 
+// Cross-site tracking/referral query parameters — well-established
+// conventions (ad/email click IDs, newsletter attribution) that are never
+// needed to identify or access the page itself. Stripped for every host.
+const GENERIC_TRACKING_PARAMS: ReadonlySet<string> = new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_id",
+  "utm_name",
+  "fbclid",
+  "gclid",
+  "gclsrc",
+  "dclid",
+  "msclkid",
+  "igshid",
+  "mc_cid",
+  "mc_eid",
+  "_hsenc",
+  "_hsmi",
+]);
+
+// A platform's OWN referral/tracking token, by name only — never the
+// literal value it carries. Scoped per platform (never applied to a host
+// that doesn't use this exact convention) so a param that happens to share
+// a name elsewhere, and might be load-bearing there, is never touched.
+// Luma's own docs describe `tk` on a share link as attribution only — the
+// page itself (and access to it) is unaffected by removing it.
+const PLATFORM_TRACKING_PARAMS: Readonly<Record<string, ReadonlySet<string>>> = {
+  Luma: new Set(["tk"]),
+};
+
+/** Strips only well-known tracking params (never an unrecognized one, which
+ * might be load-bearing) so the fetched/stored URL is the plain page the
+ * operator actually meant to import — not an operator-hostile variant some
+ * sites serve for a decorated/referral link. Rebuilds the query string from
+ * the kept pairs (rather than mutating searchParams) so param ORDER and
+ * repeated keys survive exactly as given, for whichever ones remain. */
+export function stripTrackingParams(url: URL): URL {
+  const platformParams = PLATFORM_TRACKING_PARAMS[platformForHost(url.hostname) ?? ""] ?? null;
+  const isTracking = (key: string) => GENERIC_TRACKING_PARAMS.has(key.toLowerCase()) || Boolean(platformParams?.has(key.toLowerCase()));
+  const pairs = [...url.searchParams.entries()];
+  if (!pairs.some(([key]) => isTracking(key))) return url;
+  const out = new URL(url.toString());
+  const kept = new URLSearchParams();
+  for (const [key, value] of pairs) if (!isTracking(key)) kept.append(key, value);
+  out.search = kept.toString();
+  return out;
+}
+
 /** "example.com/e/123" → "https://example.com/e/123"; anything that is not
  * a plain public web address is rejected before any network use. */
 export function normalizeImportUrl(input: string): { ok: true; url: URL } | { ok: false; code: EventImportFailure } {
@@ -183,7 +234,7 @@ export function normalizeImportUrl(input: string): { ok: true; url: URL } | { ok
   if (parsed.protocol === "http:") parsed.protocol = "https:";
   const v = validateFetchUrl(parsed, { allowSharedPlatforms: true });
   if (!v.ok) return { ok: false, code: v.code === "invalid_url" ? "invalid_url" : "blocked_url" };
-  return { ok: true, url: v.url };
+  return { ok: true, url: stripTrackingParams(v.url) };
 }
 
 /** Rich Event Persistence — does the source ground a genuine Event (not

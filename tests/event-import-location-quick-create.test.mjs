@@ -71,14 +71,40 @@ test("5–7. neighborhood/city-only, intersections and incomplete addresses are 
 test("8. hidden / broad / none / online Events can never Quick Create", () => {
   for (const locationVisibility of ["hidden", "broad", "none"]) assert.equal(can({}, { locationVisibility, online: false }), false, locationVisibility);
   assert.equal(can({}, { locationVisibility: "exact", online: true }), false, "online");
-  // Wiring: every place's offer goes through the same check with the
-  // review's own visibility and the candidate's online flag.
-  assert.match(PARTS, /eligible: canOfferLocationCreate\(place, \{ locationVisibility: review\.locationVisibility, online: quickCreate\.online \}\)/);
+  // Wiring: the plain inline Quick Create (no render — Business self-serve)
+  // keeps the strict, already-a-real-address rule; a `render`-based picker
+  // (Admin's EventLocationCreate, which researches first) uses the looser
+  // canResearchLocation instead — Entity Resolution Truthfulness pass.
+  assert.match(PARTS, /eligible: quickCreate\.render\s*\n\s*\? canResearchLocation\(place, \{ locationVisibility: review\.locationVisibility, online: quickCreate\.online \}\)\s*\n\s*: canOfferLocationCreate\(place, \{ locationVisibility: review\.locationVisibility, online: quickCreate\.online \}\)/);
   assert.match(PARTS, /\{!place\.useLocationId && quickCreate\?\.eligible && !quickCreate\.render && <QuickCreateLocation /);
-  // Admin's Location Import V1 step is offered under the SAME eligibility rule.
   assert.match(PARTS, /\{!place\.useLocationId && quickCreate\?\.eligible && quickCreate\.render \? quickCreate\.render\(/);
   assert.match(IMPORTER, /online: Boolean\(candidate\.online\)/);
   assert.match(MULTI, /quickCreate=\{\{ online: Boolean\(e\.candidate\.online\), onCreated: onLocationCreated, createAction: operator\?\.createLocation, render: operator\?\.renderLocationCreate \}\}/);
+});
+
+// ── canResearchLocation — the looser research-step gate (Entity Resolution
+// Truthfulness pass: a real place with no numbered street address yet,
+// e.g. "Fellini Coffee Chelsea, New York, NY", must still reach Admin's
+// Location research/Quick Create step, not disappear the way
+// canOfferLocationCreate's own stricter rule correctly keeps it from being
+// CREATED directly without research). ───────────────────────────────────
+
+const canResearch = (over, ctx = exact) => R.canResearchLocation(place(over), ctx);
+
+test("9. canResearchLocation allows a named place with city+state and NO street address yet", () => {
+  assert.equal(canResearch({ address: null }), true, "Fellini Coffee Chelsea's own regression: no address, still researchable");
+  assert.equal(canResearch({ address: "Fellini Coffee Chelsea" }), true, "a name-duplicate address (the OTHER half of the same regression) doesn't block research either");
+  assert.equal(canResearch({}), true, "a place that already has a real address remains researchable too");
+});
+
+test("10. canResearchLocation still requires a real, specific, linkable place", () => {
+  assert.equal(canResearch({ useLocationId: "x" }), false, "already linked");
+  assert.equal(canResearch({ venueName: "TBA" }), false, "placeholder name");
+  assert.equal(canResearch({ venueName: null }), false, "no name at all");
+  assert.equal(canResearch({ city: null }), false, "no city");
+  assert.equal(canResearch({ state: "" }), false, "no state");
+  for (const locationVisibility of ["hidden", "broad", "none"]) assert.equal(canResearch({}, { locationVisibility, online: false }), false, locationVisibility);
+  assert.equal(canResearch({}, { locationVisibility: "exact", online: true }), false, "online");
 });
 
 // ── CREATE / SELECT ───────────────────────────────────────────────────────

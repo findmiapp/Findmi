@@ -14,6 +14,7 @@ import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import { OCCURRENCE_DETAILS_MAX } from "@/lib/event-import/occurrence-details";
 import {
   canOfferLocationCreate,
+  canResearchLocation,
   decidePlaceFrom,
   emptyReviewOccurrence,
   occurrenceSummary,
@@ -84,7 +85,15 @@ export function WhenWhereEditor({
   const quickCreateFor = (target: string, place: ReviewPlace): PlaceQuickCreate | undefined =>
     quickCreate
       ? {
-          eligible: canOfferLocationCreate(place, { locationVisibility: review.locationVisibility, online: quickCreate.online }),
+          // A `render`-based picker (Admin's EventLocationCreate) does its
+          // OWN research before ever creating anything, so it only needs
+          // canResearchLocation's looser bar; the plain inline Quick Create
+          // below (no render) skips research and writes the given fields
+          // directly, so it keeps canOfferLocationCreate's stricter,
+          // already-a-real-address requirement.
+          eligible: quickCreate.render
+            ? canResearchLocation(place, { locationVisibility: review.locationVisibility, online: quickCreate.online })
+            : canOfferLocationCreate(place, { locationVisibility: review.locationVisibility, online: quickCreate.online }),
           onSelected: (location) => {
             set(selectCreatedLocation(review, target, location));
             quickCreate.onCreated(location);
