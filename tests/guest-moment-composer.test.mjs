@@ -77,18 +77,22 @@ test("conversion reuses the EXACT authenticated upload pipeline (photos.handleFi
   assert.match(fn, /await persistAll\(id\);/, "Context/Your Moment persist through the same function every authenticated save already uses");
 });
 
-test("the mount-check effect only auto-converts on the deterministic resume=1 round-trip; any other found draft is offered, never silently acted on", () => {
+test("the mount check ALWAYS considers the stored draft (cold AND contextual entry) and lets decideGuestStartup choose — only resume=1 auto-converts; a guest's own draft is restored", () => {
   const effect = COMPOSER.slice(COMPOSER.indexOf("const mountCheckedRef = useRef(false);"), COMPOSER.indexOf("// Keeps the local draft current"));
-  assert.match(effect, /if \(authed && resume\) \{\s*void convertGuestDraft\(draft\);\s*return;\s*\}/);
-  assert.match(effect, /setFoundDraftPrompt\(draft\);/);
-  // Never applied over a deliberate contextual prefill.
-  assert.match(effect, /if \(mode !== "create" \|\| !isColdStart\(initial\)\) \{/);
+  assert.match(effect, /readGuestMomentDraftStatus\(\)/);
+  assert.match(effect, /decideGuestStartup\(\{ authed, resume, initial, draft \}\)/);
+  assert.match(effect, /decision\.kind === "restore"\) void restoreGuestDraft\(decision\.draft\)/);
+  assert.match(effect, /decision\.kind === "convert"\) void convertGuestDraft\(decision\.draft\)/);
+  assert.match(effect, /setFoundDraftPrompt\(decision\.draft\)/);
+  // The bug: the old check returned early for any contextual (?event=) entry, never reading the draft.
+  assert.doesNotMatch(effect, /!isColdStart\(initial\)|return;\s*\n\s*\}\s*\n\s*const draft = readGuestMomentDraft/);
 });
 
-test("autosave is paused until the mount-check effect decides, so a found draft can never be overwritten by the cold initial state before the person chooses", () => {
-  assert.match(COMPOSER, /const autosavePausedRef = useRef\(true\);/);
+test("autosave waits for the mount check (autosaveReady), and only writes a draft worth keeping — never the bare cold/prefill start", () => {
+  assert.match(COMPOSER, /const \[autosaveReady, setAutosaveReady\] = useState\(false\);/);
   const autosaveEffect = COMPOSER.slice(COMPOSER.indexOf("// Keeps the local draft current"), COMPOSER.indexOf("function continueFoundDraft"));
-  assert.match(autosaveEffect, /if \(!guestMode \|\| autosavePausedRef\.current\) return;/);
+  assert.match(autosaveEffect, /if \(!guestMode \|\| !autosaveReady\) return;/);
+  assert.match(autosaveEffect, /shouldPersistSnapshot\(snapshot, baselineSignatureRef\.current, persistedOnceRef\.current\)/);
 });
 
 test("autosave never runs for a signed-in composer, including one mid-conversion", () => {

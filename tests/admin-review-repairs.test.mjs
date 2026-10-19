@@ -43,7 +43,7 @@ const CDN = "https://cdn.shopify.com/s/files/1/goodamerican/nyc-popup.png";
 // ── 1. IMAGE PREVIEW ──────────────────────────────────────────────────────
 
 test("root cause: the CSP allows only Findmi / data: / Supabase / Unsplash / Tally images — and stays that way", () => {
-  assert.match(NEXT_CONFIG, /"img-src 'self' data: https:\/\/\*\.supabase\.co https:\/\/images\.unsplash\.com https:\/\/\*\.tally\.so"/);
+  assert.match(NEXT_CONFIG, /"img-src 'self' data: blob: https:\/\/\*\.supabase\.co https:\/\/images\.unsplash\.com https:\/\/\*\.tally\.so"/);
   // So the Review never points an <img> at the remote candidate URL any more.
   assert.doesNotMatch(CLIENT, /<img src=\{review\.imageUrl\}|<img src=\{p\.logo\}|<img src=\{p\.cover\}/);
   assert.match(CLIENT, /<VerifiedEventImagePreview url=\{review\.imageUrl\}/);

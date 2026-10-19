@@ -24,30 +24,16 @@ import { manualLocationHasText, type JournalManualLocationState, type MomentComp
 import {
   clearGuestMomentDraft,
   emptyGuestMomentDraft,
-  readGuestMomentDraft,
+  readGuestMomentDraftStatus,
   writeGuestMomentDraft,
   type GuestMomentDraft,
   type GuestMomentIntendedAction,
 } from "@/lib/guest-moment-draft";
+import { decideGuestStartup, shouldPersistSnapshot, snapshotFromInitial, snapshotSignature } from "@/lib/guest-moment-session";
 import { deleteAllGuestMomentMedia, getGuestMomentMedia } from "@/lib/guest-moment-media-db";
 import type { JournalPhotoItem } from "./useJournalPhotoUpload";
 
 type Stage = 1 | 2 | 3;
-
-/** Guest-First Experience Completion pass — a cold, context-free start:
- * the ONLY shape a found local draft is ever applied onto (never over a
- * deliberate contextual prefill from an Event/Business/Location/Product
- * page). */
-function isColdStart(initial: MomentComposerInitial): boolean {
-  return (
-    !initial.location &&
-    !initial.title &&
-    initial.events.length === 0 &&
-    initial.businesses.length === 0 &&
-    initial.products.length === 0 &&
-    initial.photos.length === 0
-  );
-}
 
 const STAGES: { id: Stage; label: string }[] = [
   { id: 1, label: "Context" },
@@ -109,17 +95,20 @@ export default function MomentComposer({
   const topRef = useRef<HTMLDivElement>(null);
 
   // Guest-First Experience Completion pass — local draft orchestration.
-  // `autosavePausedRef` starts true and is flipped by the mount-check
-  // effect below BEFORE the autosave effect's own first run reaches it
-  // (both run in declaration order, synchronously, in the same post-
-  // commit flush) — this is what stops a found draft from being
-  // overwritten by the cold initial state before the person ever gets a
-  // chance to decide to Continue or Start New.
-  const autosavePausedRef = useRef(true);
+  // The rules (what to restore, how URL context merges in, when a draft is
+  // worth writing) live in lib/guest-moment-session.ts; this component
+  // only runs the effects. `autosaveReady` stays false until the mount
+  // check below has finished deciding/restoring, so the cold or prefill
+  // state can never overwrite a stored draft before it has been read.
+  const [autosaveReady, setAutosaveReady] = useState(false);
   const [foundDraftPrompt, setFoundDraftPrompt] = useState<GuestMomentDraft | null>(null);
+  const [restoredNotice, setRestoredNotice] = useState<{ missingPhotos: number } | null>(null);
+  const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [converting, setConverting] = useState(false);
   const [guestAuthPrompt, setGuestAuthPrompt] = useState<GuestMomentIntendedAction | null>(null);
   const conversionStartedRef = useRef(false);
+  const baselineSignatureRef = useRef(snapshotSignature(snapshotFromInitial(initial)));
+  const persistedOnceRef = useRef(false);
   const draftRef = useRef<GuestMomentDraft>(emptyGuestMomentDraft());
 
   const isPublished = initial.status === "published" && initial.visibility === "public";
@@ -298,13 +287,17 @@ export default function MomentComposer({
   function persistGuestDraft(intendedAction: GuestMomentIntendedAction | null) {
     const next = currentDraftSnapshot(intendedAction);
     draftRef.current = next;
+    persistedOnceRef.current = true;
     writeGuestMomentDraft(next);
   }
 
-  /** Loads a found draft's content into this composer's live state —
-   * used both for a guest resuming their own still-local draft, and as
-   * the FIRST step of converting one after authentication. */
-  async function hydrateFromDraft(draft: GuestMomentDraft) {
+  /** Loads a draft's content into this composer's live state — the guest
+   * restoring their own work after a reload, and the FIRST step of
+   * converting a draft after authentication. Text/context state is set
+   * synchronously; photos come back from IndexedDB (previews rebuilt as
+   * fresh object URLs — they are per-page-load by nature). Resolves the
+   * number of photos whose bytes were no longer on this device. */
+  async function hydrateFromDraft(draft: GuestMomentDraft): Promise<number> {
     draftRef.current = draft;
     setTitle(draft.title);
     setTitleTouched(Boolean(draft.title));
@@ -318,11 +311,15 @@ export default function MomentComposer({
     setEvents(draft.events);
     setBusinesses(draft.businesses);
     setProducts(draft.products);
+    let missing = 0;
     if (draft.media.length > 0) {
       const restored: JournalPhotoItem[] = [];
       for (const m of draft.media) {
         const file = await getGuestMomentMedia(m.localId);
-        if (!file) continue;
+        if (!file) {
+          missing += 1;
+          continue;
+        }
         restored.push({
           localId: m.localId,
           status: "complete",
@@ -337,6 +334,50 @@ export default function MomentComposer({
       }
       photos.hydrateGuestItems(restored);
     }
+    return missing;
+  }
+
+  /** A signed-out visitor's draft comes back automatically. Only after it
+   * is fully restored (text AND photos) does autosave switch on, so
+   * nothing half-restored is ever written back over the real draft. */
+  async function restoreGuestDraft(draft: GuestMomentDraft) {
+    const missingPhotos = await hydrateFromDraft(draft);
+    persistedOnceRef.current = true;
+    setRestoredNotice({ missingPhotos });
+    setAutosaveReady(true);
+  }
+
+  /** The explicit way out (never an ordinary load): drops the draft, its
+   * IndexedDB photos and the restored content, and puts the composer back
+   * exactly as the page opened it. */
+  function startOver() {
+    setConfirmStartOver(false);
+    const live = photos.liveItems();
+    const ids = new Set([...draftRef.current.media.map((m) => m.localId), ...live.filter((it) => it.guestStaged).map((it) => it.localId)]);
+    live.forEach((it) => {
+      if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
+    });
+    clearGuestMomentDraft();
+    void deleteAllGuestMomentMedia([...ids]);
+    draftRef.current = emptyGuestMomentDraft();
+    persistedOnceRef.current = false;
+    setRestoredNotice(null);
+    setTitle(initial.title);
+    setTitleTouched(false);
+    setNotes(initial.notes);
+    setEntryDate(initial.entryDate);
+    setDateTouched(false);
+    setEntryTime(initial.entryTime);
+    setLocation(initial.location);
+    setLocationSource(initial.location ? "explicit" : null);
+    setManual(initial.manual);
+    setEvents(initial.events);
+    setBusinesses(initial.businesses);
+    setProducts(initial.products);
+    photos.hydrateGuestItems([]);
+    setError(null);
+    setGuestAuthPrompt(null);
+    setStage(1);
   }
 
   /** The real, authenticated conversion: creates (or reuses) the actual
@@ -417,74 +458,66 @@ export default function MomentComposer({
     router.refresh();
   }
 
-  // Runs once per mount. A lazy useState initializer would read
-  // localStorage during the client's own first (hydration) render,
-  // which can legitimately differ from the server's render and trip a
-  // hydration mismatch — so this deliberately waits for the post-commit
-  // effect phase instead, same as every other browser-only read in this
-  // pass. Declared BEFORE the autosave effect below so its synchronous
-  // `autosavePausedRef.current = false` (the common, no-draft case) is
-  // always visible to that effect's own first run in the same flush.
+  // Runs once per mount, in the post-commit effect phase (a lazy useState
+  // initializer would read localStorage during the client's hydration
+  // render, which can differ from the server's render). It ALWAYS
+  // considers the stored draft — for a plain /new entry AND for an
+  // Event/Business/Location/Product-connected one — and lets
+  // decideGuestStartup say what to do with it.
   const mountCheckedRef = useRef(false);
   useEffect(() => {
     if (mountCheckedRef.current) return;
     mountCheckedRef.current = true;
-    if (mode !== "create" || !isColdStart(initial)) {
-      autosavePausedRef.current = false;
+    if (mode !== "create") {
+      setAutosaveReady(true);
       return;
     }
-    const draft = readGuestMomentDraft();
-    if (!draft) {
-      autosavePausedRef.current = false;
-      return;
+    const { draft, expired } = readGuestMomentDraftStatus();
+    if (expired) {
+      clearGuestMomentDraft();
+      void deleteAllGuestMomentMedia(expired.media.map((m) => m.localId));
     }
-    if (authed && resume) {
-      void convertGuestDraft(draft);
-      return;
-    }
-    // Ambiguous — a draft exists, but this isn't the deterministic auth
-    // round-trip. Never silently resume OR silently discard; offer the
-    // choice instead. autosavePausedRef stays true until it's made.
-    setFoundDraftPrompt(draft);
+    const decision = decideGuestStartup({ authed, resume, initial, draft });
+    if (decision.kind === "none") setAutosaveReady(true);
+    else if (decision.kind === "restore") void restoreGuestDraft(decision.draft);
+    else if (decision.kind === "convert") void convertGuestDraft(decision.draft);
+    else setFoundDraftPrompt(decision.draft);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keeps the local draft current with every composer change, so a
-  // guest's work survives navigation, reload, and the auth round-trip.
-  // No-ops entirely once signed in (authed composers, including one
-  // mid-conversion, never write this).
+  // Keeps the local draft current with every composer change, WITHOUT any
+  // Save/Publish press, so a guest's work survives reloads, navigation and
+  // the auth round-trip. Writes only when there is something worth
+  // keeping (shouldPersistSnapshot) — never the bare cold/prefill start.
+  // No-ops entirely for a signed-in composer, including one mid-conversion.
   useEffect(() => {
-    if (!guestMode || autosavePausedRef.current) return;
-    persistGuestDraft(draftRef.current.intendedAction);
+    if (!guestMode || !autosaveReady) return;
+    const snapshot = currentDraftSnapshot(draftRef.current.intendedAction);
+    if (!shouldPersistSnapshot(snapshot, baselineSignatureRef.current, persistedOnceRef.current)) return;
+    persistedOnceRef.current = true;
+    draftRef.current = snapshot;
+    writeGuestMomentDraft(snapshot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guestMode, title, notes, entryDate, entryTime, location, manual, events, businesses, products, photos.items]);
+  }, [guestMode, autosaveReady, title, notes, entryDate, entryTime, location, manual, events, businesses, products, photos.items]);
 
+  /** Signed in, cold URL, a leftover guest draft, no resume signal: the
+   * person chooses. Continue converts it into a real Moment. */
   function continueFoundDraft() {
     const draft = foundDraftPrompt;
     setFoundDraftPrompt(null);
-    if (!draft) return;
-    if (authed) {
-      void convertGuestDraft(draft);
-      return;
-    }
-    autosavePausedRef.current = false;
-    void hydrateFromDraft(draft);
+    if (draft) void convertGuestDraft(draft);
   }
 
   /** An ambiguous dismissal (Escape, backdrop tap) never destroys the
-   * old draft — it's simply offered again next time this cold entry
-   * point is opened. Only the explicit "Start A New Moment" button
-   * actually discards it. Either way autosave resumes, so a blank
-   * composer left open after dismissing is never silently un-persisted. */
+   * old draft — it is simply offered again next time. */
   function dismissFoundDraftPrompt() {
     setFoundDraftPrompt(null);
-    autosavePausedRef.current = false;
   }
 
+  /** Only the explicit "Start A New Moment" button discards it. */
   function discardFoundDraft() {
     const draft = foundDraftPrompt;
     setFoundDraftPrompt(null);
-    autosavePausedRef.current = false;
     if (!draft) return;
     clearGuestMomentDraft();
     void deleteAllGuestMomentMedia(draft.media.map((m) => m.localId));
@@ -609,6 +642,14 @@ export default function MomentComposer({
       </nav>
 
       {converting && <p className="mt-3 rounded-xl bg-findmi-50 px-3.5 py-2.5 text-sm text-findmi-700">Saving your Moment to your Findmi world…</p>}
+      {guestMode && restoredNotice && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-findmi-50 px-3.5 py-2.5 text-sm text-findmi-700">
+          <span>{restoredNotice.missingPhotos > 0 ? "Picked up your draft. Some photos couldn’t be restored on this device." : "Picked up where you left off."}</span>
+          <button type="button" onClick={() => setConfirmStartOver(true)} className="shrink-0 text-xs font-bold underline underline-offset-2">
+            Start Over
+          </button>
+        </div>
+      )}
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}
 
       <div className="mt-5">
@@ -762,6 +803,24 @@ export default function MomentComposer({
               </p>
               <button type="button" onClick={() => setGuestAuthPrompt(null)} className="text-center text-xs font-semibold text-ink/50 hover:text-ink">
                 Not Now
+              </button>
+            </>
+          }
+        />
+      )}
+
+      {confirmStartOver && (
+        <MomentSheet
+          title="Start A New Moment?"
+          description="This clears the draft saved on this device, including its photos."
+          onClose={() => setConfirmStartOver(false)}
+          footer={
+            <>
+              <button type="button" onClick={startOver} className={primaryButton}>
+                Clear Draft And Start Over
+              </button>
+              <button type="button" onClick={() => setConfirmStartOver(false)} className="flex h-11 items-center justify-center text-sm font-semibold text-ink/60 hover:text-ink">
+                Keep My Draft
               </button>
             </>
           }

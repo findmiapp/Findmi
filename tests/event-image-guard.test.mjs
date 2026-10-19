@@ -172,7 +172,7 @@ test("9 + Admin: enrichment carries the guard into Review; the 616ef30e safe pre
   assert.ok(!m.filled.includes("image"));
   assert.match(CLIENT, /<span className="font-semibold text-primary">No Event Image Found<\/span> · Generic Brand\/Site Image Ignored\./);
   assert.match(CLIENT, /<VerifiedEventImagePreview url=\{review\.imageUrl\}/);
-  assert.match(read("next.config.mjs"), /"img-src 'self' data: https:\/\/\*\.supabase\.co https:\/\/images\.unsplash\.com https:\/\/\*\.tally\.so"/);
+  assert.match(read("next.config.mjs"), /"img-src 'self' data: blob: https:\/\/\*\.supabase\.co https:\/\/images\.unsplash\.com https:\/\/\*\.tally\.so"/);
 });
 
 test("10–11. Business Event Import still analyzes normally; a kept image is still saved only through recoverEventImage", async () => {

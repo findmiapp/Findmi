@@ -73,18 +73,31 @@ function defaultStorage(): GuestMomentStorage | null {
  * reappearing. */
 const STALE_MS = 14 * 24 * 60 * 60 * 1000;
 
-export function readGuestMomentDraft(storage: GuestMomentStorage | null = defaultStorage(), now: number = Date.now()): GuestMomentDraft | null {
-  if (!storage) return null;
+export interface GuestMomentDraftStatus {
+  /** A valid, unexpired draft — what the composer may restore or convert. */
+  draft: GuestMomentDraft | null;
+  /** A well-formed draft that has outlived STALE_MS. Never restored; the
+   * composer purges it (record + its IndexedDB media) so an abandoned
+   * draft doesn't linger forever. */
+  expired: GuestMomentDraft | null;
+}
+
+export function readGuestMomentDraftStatus(storage: GuestMomentStorage | null = defaultStorage(), now: number = Date.now()): GuestMomentDraftStatus {
+  if (!storage) return { draft: null, expired: null };
   try {
     const raw = storage.getItem(KEY);
-    if (!raw) return null;
+    if (!raw) return { draft: null, expired: null };
     const parsed = JSON.parse(raw) as Partial<GuestMomentDraft>;
-    if (parsed.version !== GUEST_MOMENT_DRAFT_VERSION || typeof parsed.draftId !== "string" || typeof parsed.updatedAt !== "number") return null;
-    if (now - parsed.updatedAt > STALE_MS) return null;
-    return parsed as GuestMomentDraft;
+    if (parsed.version !== GUEST_MOMENT_DRAFT_VERSION || typeof parsed.draftId !== "string" || typeof parsed.updatedAt !== "number") return { draft: null, expired: null };
+    if (now - parsed.updatedAt > STALE_MS) return { draft: null, expired: parsed as GuestMomentDraft };
+    return { draft: parsed as GuestMomentDraft, expired: null };
   } catch {
-    return null;
+    return { draft: null, expired: null };
   }
+}
+
+export function readGuestMomentDraft(storage: GuestMomentStorage | null = defaultStorage(), now: number = Date.now()): GuestMomentDraft | null {
+  return readGuestMomentDraftStatus(storage, now).draft;
 }
 
 export function writeGuestMomentDraft(draft: GuestMomentDraft, storage: GuestMomentStorage | null = defaultStorage(), now: number = Date.now()): void {

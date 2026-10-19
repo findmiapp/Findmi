@@ -56,7 +56,14 @@ const nextConfig = {
       // tags (ImageField.tsx, GalleryField.tsx, RelationPicker.tsx) that
       // render a stored URL directly, bypassing next/image — the same
       // three hosts already allow-listed in images.remotePatterns above.
-      "img-src 'self' data: https://*.supabase.co https://images.unsplash.com https://*.tally.so",
+      // `blob:` is for the Moment composer's LOCAL photo previews
+      // (URL.createObjectURL of a just-selected or IndexedDB-restored
+      // file). Without it the browser refuses them: an authenticated
+      // upload only masked that because the tile swaps to a signed
+      // Supabase URL once uploaded, but a guest's staged photo never gets
+      // one, so it rendered blank even though it was stored and restored
+      // correctly. Only same-origin script can mint a blob: URL.
+      "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com https://*.tally.so",
       // next/font self-hosts Inter's woff2 files from this origin — no
       // external font host is ever requested at runtime.
       "font-src 'self'",

@@ -113,7 +113,7 @@ test("6. Review and Review Existing Event render only through the verified previ
 });
 
 test("7 + 8. CSP unchanged; Business logo/cover previews stay Brand Import's verified data URIs", () => {
-  assert.match(read("next.config.mjs"), /"img-src 'self' data: https:\/\/\*\.supabase\.co https:\/\/images\.unsplash\.com https:\/\/\*\.tally\.so"/);
+  assert.match(read("next.config.mjs"), /"img-src 'self' data: blob: https:\/\/\*\.supabase\.co https:\/\/images\.unsplash\.com https:\/\/\*\.tally\.so"/);
   assert.match(CLIENT, /const logo = safePreviewSrc\(r\?\.logo\.preview\);/);
   assert.match(CLIENT, /const cover = safePreviewSrc\(r\?\.cover\.preview\);/);
   assert.match(ACTIONS, /view\.proposal\.logo \? previewBrandCandidateResult\(view\.proposal\.logo, "logo"\)/);
