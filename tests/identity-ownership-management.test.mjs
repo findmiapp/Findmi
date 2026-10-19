@@ -157,16 +157,23 @@ test("submitting a Location never grants management (no create_owned_location, n
   assert.match(createLoc, /\.from\("locations"\)\s*\.insert\(\{[\s\S]*?is_demo: true,/);
 });
 
-test("'I Manage This Location' files a PENDING request; 'Just Adding' files nothing", () => {
+test("location_claim_requests/'manage' intent infrastructure stays intact even though this UI never sends it any more", () => {
+  // Location Creation + Icon Consistency pass — the chooser removed the
+  // "I Manage This Location" choice from this form entirely (context is
+  // resolved before the form now, and selecting a Business/adding
+  // generically never requests management — see
+  // tests/location-creation-context.test.mjs). The server-side claim
+  // mechanism itself is untouched/not deleted, just unreachable from
+  // this one UI now.
   assert.match(createLoc, /if \(intent === "manage"\) \{[\s\S]*?\.from\("location_claim_requests"\)\.insert\(\{\s*\n\s*user_id: user\.id,\s*\n\s*location_id: locationId,/);
   assert.match(createLoc, /if \(!intent\) fail\(/, "a choice is required");
   assert.equal(C.parseLocationIntent("manage"), "manage");
   assert.equal(C.parseLocationIntent("adding"), "adding");
   assert.equal(C.parseLocationIntent("owner"), null);
   const page = read("src/app/(public)/account/location/new/page.tsx");
-  assert.match(page, /I Manage This Location/);
+  assert.doesNotMatch(page, /I Manage This Location|Your Connection To This Location/);
   assert.match(page, /I&rsquo;m Just Adding It To Findmi|I'm Just Adding It To Findmi/);
-  assert.doesNotMatch(page, /You&rsquo;ll own and manage it right away|manage it right away/);
+  assert.match(page, /<input type="hidden" name="intent" value="adding" \/>/);
 });
 
 test("child Location: parent must be managed (Owner/Manager); hierarchy is set, management is not", () => {

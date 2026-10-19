@@ -146,6 +146,11 @@ export async function createMemberLocation(formData: FormData) {
   const address = str(formData, "address");
   const city = str(formData, "city");
   const state = str(formData, "state");
+  // Location Creation + Icon Consistency pass — the real schema/Admin
+  // field (locations.postal_code, same column the Admin Location form's
+  // own "ZIP Code" field already writes), added to the normal factual
+  // user-facing form. No duplicate field, no migration.
+  const postalCode = str(formData, "postal_code");
   const marketId = str(formData, "market_id");
   // Location Market -> Area Parity pass — optional, explicit Area within
   // the chosen Market. Never inferred from address/city/state — only from
@@ -167,11 +172,19 @@ export async function createMemberLocation(formData: FormData) {
   const preservedFields = {
     business_id: businessId,
     parent_location_id: parentLocationId,
+    // The context chooser's "generic" choice has no business_id/
+    // parent_location_id of its own to signal "context already resolved"
+    // on an error round-trip — without this, a rejected generic
+    // submission would bounce back to the chooser instead of back to the
+    // (now-populated) factual form. Omitted (falsy) whenever a real
+    // Business/Location context is present — those already signal it.
+    context: businessId || parentLocationId ? null : "generic",
     intent: intent ?? "",
     name,
     address,
     city,
     state,
+    postal_code: postalCode,
     market_id: marketId,
     market_area_id: areaId,
     requested_market_text: requestedMarketTextRaw,
@@ -207,7 +220,7 @@ export async function createMemberLocation(formData: FormData) {
     fail("Choose an existing Market OR request one, not both.");
   }
 
-  const duplicate = (await findLikelyDuplicateLocations(admin, { name: name!, address, city, state }))[0] ?? null;
+  const duplicate = (await findLikelyDuplicateLocations(admin, { name: name!, address, city, state, postal_code: postalCode }))[0] ?? null;
   if (duplicate) {
     redirect(
       errorRedirectUrlWithFields(
@@ -259,6 +272,7 @@ export async function createMemberLocation(formData: FormData) {
       address: clean(address),
       city: clean(city),
       state: clean(state),
+      postal_code: clean(postalCode),
       market_id: effectiveMarketId || null,
       is_demo: true,
       ...(parentLocationId ? { parent_location_id: parentLocationId } : {}),

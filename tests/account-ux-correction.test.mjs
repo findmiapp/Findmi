@@ -87,11 +87,12 @@ test("Add A Location's user-facing form has no Findmi Market/Area picker — fac
   assert.doesNotMatch(LOC_GEO, /useGeographySuggestion/);
   assert.match(LOC_GEO, /name="city"/);
   assert.match(LOC_GEO, /name="state"/);
-  // Exact place/map data stays (CanonicalGeographyPicker, not Findmi's
-  // own editorial Market/Area taxonomy).
-  assert.match(LOC_GEO, /CanonicalGeographyPicker/);
-  assert.match(LOC_GEO, /Set an exact place \(optional\)/);
   assert.doesNotMatch(LOC_NEW, /getActiveMarketsWithAreaOptions|markets=\{/);
+  // Location Creation + Icon Consistency pass — the "Exact place"
+  // picker is ALSO gone now (redundant immediately after City/State/ZIP
+  // on a basic form); see tests/location-creation-context.test.mjs for
+  // the full coverage of that pass. The underlying geocoding stays.
+  assert.doesNotMatch(LOC_GEO, /CanonicalGeographyPicker|Set an exact place/);
 });
 
 test("createMemberLocation never required a Market — no schema/validation change needed, no migration", () => {
@@ -109,13 +110,13 @@ test("createMemberLocation never required a Market — no schema/validation chan
 
 // ── 3. Location connection intent — required, no default, both layers ──
 
-test("Location connection intent (I Manage / I'm Just Adding) has no default selection client-side", () => {
-  assert.match(LOC_NEW, /type="radio" name="intent" value="manage" required defaultChecked=\{submittedIntent === "manage"\}/);
-  assert.match(LOC_NEW, /type="radio" name="intent" value="adding" required defaultChecked=\{submittedIntent === "adding"\}/);
-  // defaultChecked is driven ONLY by a resubmitted value (preserving what
-  // the visitor already chose after a validation error) — never a
-  // hardcoded true on first render.
-  assert.doesNotMatch(LOC_NEW, /defaultChecked=\{true\}|defaultChecked\n/);
+test("Location Creation + Icon Consistency pass: the connection question moved BEFORE the factual form and is no longer re-asked there", () => {
+  // The old visible "Your Connection To This Location" radios are gone —
+  // context (generic vs a specific Business) is resolved in Step 1 now;
+  // see tests/location-creation-context.test.mjs for the full coverage.
+  assert.doesNotMatch(LOC_NEW, /Your Connection To This Location/);
+  assert.doesNotMatch(LOC_NEW, /type="radio" name="intent"/);
+  assert.match(LOC_NEW, /<input type="hidden" name="intent" value="adding" \/>/);
 });
 
 test("a missing/invalid Location connection intent is independently rejected server-side, not just by HTML `required`", async () => {

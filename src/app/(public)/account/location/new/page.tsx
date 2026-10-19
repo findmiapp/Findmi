@@ -7,6 +7,8 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember, requireLocationMember } from "@/lib/permissions";
 import { isPageManagerRole } from "@/lib/capabilities";
 import { isManagingRole } from "@/lib/business-locations";
+import NavIcon from "@/components/NavIcon";
+import SupabaseImage from "@/components/SupabaseImage";
 import { createMemberLocation } from "../actions";
 
 export const metadata: Metadata = {
@@ -20,10 +22,37 @@ const inputClass =
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
-/** Add A Location — open to anyone signed in (Personal, a Business via
- * ?business_id, or a managed Location adding a child via
- * ?parent_location_id). Free. The submitter says whether they manage it;
- * either way submitting never grants management (createMemberLocation). */
+/** Add A Location — Location Creation + Icon Consistency pass. Context is
+ * resolved FIRST, same interaction principle as Create Event
+ * (lib/capabilities.ts's eventCreationContext / the Event Page chooser):
+ *
+ *   unknown context  → ChooseLocationContext (this page, below): "I'm
+ *                       Just Adding It To Findmi" or a managed Business.
+ *   known context    → straight to the factual form, never re-asked:
+ *                       ?business_id=  (a Business workspace's own Add
+ *                       Location button, or the chooser's own Business
+ *                       row) or ?parent_location_id= (a managed
+ *                       Location's own "+ Add A Location Inside").
+ *
+ * Selecting a Business means "this Business is adding this Location" —
+ * the existing business_locations relationship (linkBusinessLocation,
+ * below) — never Location management/ownership. The old "Your Connection
+ * To This Location" (I Manage / I'm Just Adding) question is gone from
+ * this form entirely: this flow never requests management, so every
+ * submission here carries intent="adding" (createMemberLocation's own
+ * server-side intent validation is unchanged — it just never receives
+ * "manage" from this UI any more). A genuine request to MANAGE an
+ * existing Location stays exactly where it already lives: ClaimButton
+ * (type="location") on that Location's own public/account page, once it
+ * exists — this form was never the right place to fold that into, and
+ * nothing about that existing claim infrastructure is touched here.
+ *
+ * Child-Location creation (?parent_location_id=) is NOT offered from the
+ * unknown-context chooser — investigated this pass: it has always been a
+ * KNOWN-context-only action (reachable solely from a managed Location's
+ * own page), never from the generic global Create entry point, and
+ * adding it to the chooser "for symmetry" would invent a product surface
+ * nobody asked for. */
 export default async function AddLocationPage({
   searchParams,
 }: {
@@ -35,9 +64,10 @@ export default async function AddLocationPage({
     address?: string;
     city?: string;
     state?: string;
+    postal_code?: string;
     business_id?: string;
     parent_location_id?: string;
-    intent?: string;
+    context?: string;
   }>;
 }) {
   const {
@@ -48,24 +78,36 @@ export default async function AddLocationPage({
     address: submittedAddress,
     city: submittedCity,
     state: submittedState,
+    postal_code: submittedPostalCode,
     business_id: businessIdParam,
     parent_location_id: parentIdParam,
-    intent: submittedIntent,
+    context: contextParam,
   } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const selfPath = businessIdParam ? `/account/location/new?business_id=${encodeURIComponent(businessIdParam)}` : "/account/location/new";
+  // Defense-in-depth only — middleware (matcher: /account/:path*) already
+  // redirects a signed-out visitor to /login?next=<this exact path and
+  // query, preserved in full> before this component ever runs, so this
+  // branch is never actually seen rendered. No explanatory UI belongs
+  // here for the same reason Event Creation's own attempt at one turned
+  // out to be dead code behind that same gate.
+  const selfPath = `/account/location/new?${new URLSearchParams(
+    Object.fromEntries(
+      Object.entries({ business_id: businessIdParam, parent_location_id: parentIdParam, context: contextParam }).filter(([, v]) => v)
+    ) as Record<string, string>
+  ).toString()}`;
   if (!user) redirect(`/login?next=${encodeURIComponent(selfPath)}`);
 
   // /account V2 Pass 2 — Business context (Presence -> Locations -> Add
   // location). Honored only for an owner/manager of that Business; anyone
-  // else just gets the ordinary standalone form. createMemberLocation
+  // else falls through to the context chooser below. createMemberLocation
   // re-checks this server-side regardless.
   const [business, parent] = await Promise.all([resolveBusinessContext(businessIdParam), resolveParentContext(parentIdParam)]);
-  const we = Boolean(business || parent);
+  const hasKnownContext = Boolean(business) || Boolean(parent) || contextParam === "generic";
+  if (!hasKnownContext) return <ChooseLocationContext userId={user.id} />;
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -77,7 +119,14 @@ export default async function AddLocationPage({
           >
             &larr; {business.name}
           </Link>
-          <h1 className="mt-2 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
+          <p className="mt-2 flex items-center gap-1.5 text-label font-bold uppercase text-accent">
+            Adding As
+            {business.logo_url ? (
+              <SupabaseImage src={business.logo_url} alt="" width={18} height={18} className="h-[18px] w-[18px] rounded border border-black/[0.06] bg-white object-contain" />
+            ) : null}
+            {business.name}
+          </p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
           <p className="mt-2 text-body text-muted">
             Add a place connected to {business.name} — your storefront, a retailer, a venue or somewhere you&rsquo;ll appear. It appears
             publicly once Findmi reviews it.
@@ -93,7 +142,7 @@ export default async function AddLocationPage({
         </>
       ) : (
         <>
-          <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
+          <p className="text-label font-bold uppercase text-accent">Adding To Findmi</p>
           <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
           <p className="mt-2 text-body text-muted">Add a place people can find on Findmi. It appears publicly once Findmi reviews it. Free.</p>
         </>
@@ -114,6 +163,12 @@ export default async function AddLocationPage({
         <form action={createMemberLocation} className="flex flex-col gap-4">
           {business && <input type="hidden" name="business_id" value={business.id} />}
           {parent && <input type="hidden" name="parent_location_id" value={parent.id} />}
+          {/* Context was already resolved in Step 1 (or arrived already
+              known) — this form never asks it again. Selecting a
+              Business/adding generically never requests management;
+              intent is always "adding" from here (createMemberLocation's
+              own server-side validation of this field is unchanged). */}
+          <input type="hidden" name="intent" value="adding" />
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Location name</span>
             <input autoCapitalize="words"
@@ -131,34 +186,7 @@ export default async function AddLocationPage({
             <input autoCapitalize="words" type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
           </label>
 
-          {/* Personal/Account UX Correction pass — factual geography only
-              (City/State, optional exact place); Findmi's own Market/Area
-              taxonomy is Admin's to assign later. See
-              LocationGeographyFields' own doc comment. */}
-          <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} />
-
-          {/* Submission intent — management is a request Findmi reviews,
-              never granted by adding a Location. */}
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1.5 block text-body font-medium text-primary">Your Connection To This Location</legend>
-            <label className="flex items-start gap-2.5 rounded-xl border border-black/10 px-3.5 py-3">
-              <input type="radio" name="intent" value="manage" required defaultChecked={submittedIntent === "manage"} className="mt-1 accent-findmi" />
-              <span>
-                <span className="block text-body font-semibold text-primary">{we ? "We Manage This Location" : "I Manage This Location"}</span>
-                <span className="block text-metadata text-muted">
-                  {we ? "We own, operate or are authorized to represent it." : "I own, operate, work for or am authorized to represent it."} Findmi reviews the request
-                  before you can manage it.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2.5 rounded-xl border border-black/10 px-3.5 py-3">
-              <input type="radio" name="intent" value="adding" required defaultChecked={submittedIntent === "adding"} className="mt-1 accent-findmi" />
-              <span>
-                <span className="block text-body font-semibold text-primary">{we ? "We're Just Adding It To Findmi" : "I'm Just Adding It To Findmi"}</span>
-                <span className="block text-metadata text-muted">It&rsquo;s missing from Findmi. No management is requested.</span>
-              </span>
-            </label>
-          </fieldset>
+          <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} defaultPostalCode={submittedPostalCode ?? ""} />
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Add Location
@@ -170,7 +198,89 @@ export default async function AddLocationPage({
   );
 }
 
-async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string } | null> {
+/** Unknown context — "How are you adding this Location?" The default,
+ * always-available choice is generic (no Business relationship asserted
+ * at all); then any Business the signed-in person actually manages
+ * (Owner/Manager), each with its real logo and the same rounded-square +
+ * initial-letter fallback identity treatment as the Event Page chooser —
+ * never lifeless text-only rows. Neither choice grants Location
+ * management; selecting a Business only establishes the Business ↔
+ * Location relationship once the Location is created (see
+ * linkBusinessLocation in ../actions.ts). */
+async function ChooseLocationContext({ userId }: { userId: string }) {
+  const supabase = await getServerSupabase();
+  const { data: biz } = await supabase
+    .from("business_members")
+    .select("role, business:businesses(id, name, logo_url)")
+    .eq("user_id", userId)
+    .in("role", ["owner", "manager"]);
+  type BizRow = { role: string; business: { id: string; name: string; logo_url: string | null } | { id: string; name: string; logo_url: string | null }[] | null };
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+  const businesses = ((biz ?? []) as BizRow[])
+    .map((r) => one(r.business))
+    .filter((b): b is { id: string; name: string; logo_url: string | null } => Boolean(b));
+
+  return (
+    <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
+      <h1 className="font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
+      <p className="mt-2 text-body text-muted">How are you adding this Location?</p>
+
+      <ul className="mt-6 flex flex-col gap-2">
+        <li>
+          <Link
+            href="/account/location/new?context=generic"
+            className="flex items-center gap-3 rounded-2xl border border-black/[0.08] bg-white px-4 py-3 transition hover:border-black/15"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+              <NavIcon name="pin" className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-body font-semibold text-primary">I&rsquo;m Just Adding It To Findmi</span>
+              <span className="block text-metadata text-muted">This place is missing from Findmi.</span>
+            </span>
+          </Link>
+        </li>
+      </ul>
+
+      {businesses.length > 0 && (
+        <>
+          <p className="mt-6 text-label font-bold uppercase text-subtle">Add As A Business</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {businesses.map((b) => (
+              <li key={b.id}>
+                <Link
+                  href={`/account/location/new?business_id=${b.id}`}
+                  className="flex items-center gap-3 rounded-2xl border border-black/[0.08] bg-white px-4 py-3 transition hover:border-black/15"
+                >
+                  {b.logo_url ? (
+                    <SupabaseImage
+                      src={b.logo_url}
+                      alt=""
+                      width={44}
+                      height={44}
+                      className="h-11 w-11 shrink-0 rounded-xl border border-black/[0.06] bg-white object-contain p-1"
+                    />
+                  ) : (
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-card-title font-bold text-findmi-700">
+                      {b.name.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-body font-semibold text-primary">{b.name}</span>
+                    <span className="block text-metadata text-subtle">Business</span>
+                  </span>
+                  <span className="shrink-0 text-metadata font-semibold text-accent">Add As Business</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string; logo_url: string | null } | null> {
   if (!businessId) return null;
   try {
     if (!isManagingRole((await requireBusinessMember(businessId)).role)) return null;
@@ -179,8 +289,8 @@ async function resolveBusinessContext(businessId: string | undefined): Promise<{
   }
   const admin = getAdminSupabase();
   if (!admin) return null;
-  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
-  return (data as { id: string; name: string } | null) ?? null;
+  const { data } = await admin.from("businesses").select("id, name, logo_url").eq("id", businessId).maybeSingle();
+  return (data as { id: string; name: string; logo_url: string | null } | null) ?? null;
 }
 
 /** A Location the caller manages (Owner/Manager) — the parent of a child
