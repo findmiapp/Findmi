@@ -48,6 +48,7 @@ import type {
   PersonWithRole,
   Product,
 } from "./types";
+import { getSite } from "./site";
 
 // All helpers fail soft (return empty arrays / null) when Supabase isn't
 // configured yet, so the app renders cleanly before env vars are set.
@@ -4503,8 +4504,10 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
 // no parallel query, no fabricated data. Over-fetches a generous batch
 // (rather than adding a DB-level activityCount filter) since eligibility
 // here is small-scale merchandising, not a paginated listing.
-export async function getFeaturedLocations(limit = 8): Promise<LocationWithCategory[]> {
-  const locations = await getLocations({ limit: 60 });
+export async function getFeaturedLocations(limit = 8, scope: { marketSlug?: string; areaSlug?: string } = {}): Promise<LocationWithCategory[]> {
+  // `scope` confines the pool to a Market/Area (a geo-locked site, see
+  // lib/site.ts); omitted, it's the same national pool as before.
+  const locations = await getLocations({ limit: 60, ...scope });
   return locations.filter((l) => (l.activityCount ?? 0) > 0).slice(0, limit);
 }
 
@@ -5138,6 +5141,18 @@ export interface ConsumerMarketWithAreas extends Market {
 export async function getConsumerVisibleMarketsWithAreas(): Promise<ConsumerMarketWithAreas[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+  // A geo-locked site (lib/site.ts) offers only its own Area and that
+  // Area's active neighborhoods — the site's own editorial choice, so a
+  // neighborhood Findmi keeps consumer-hidden nationally still appears.
+  const siteScope = getSite().scope;
+  if (siteScope) {
+    const { data: market } = await supabase.from("markets").select("*").eq("slug", siteScope.market).eq("active", true).maybeSingle();
+    if (!market) return [];
+    const { data: root } = await supabase.from("market_areas").select("*").eq("market_id", market.id).eq("slug", siteScope.area).eq("active", true).maybeSingle();
+    if (!root) return [{ ...(market as Market), areas: [] }];
+    const { data: kids } = await supabase.from("market_areas").select("*").eq("parent_area_id", root.id).eq("active", true).order("sort_order");
+    return [{ ...(market as Market), areas: [root as MarketArea, ...((kids ?? []) as MarketArea[])] }];
+  }
   const markets = await getConsumerVisibleMarkets();
   if (markets.length === 0) return [];
 

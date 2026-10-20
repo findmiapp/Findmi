@@ -11,8 +11,11 @@ import QuickCreateMenu from "./QuickCreateMenu";
 import SignOutConfirm from "./SignOutConfirm";
 import { signOut } from "@/app/(public)/account/profile/actions";
 import { YOUR_FINDMI_NAV, isPrimaryNavActive, manageNavEntry } from "@/lib/primary-nav";
+import { getSite } from "@/lib/site";
 import { navChildActive, navChildrenWithLanding, navHrefActive, navItemActive, splitDesktopNav, type ResolvedNavItem } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
+
+const site = getSite();
 
 /** Discovery links/dropdowns come from nav_items (Admin → Site →
  * Navigation); at most DESKTOP_NAV_MAX_ITEMS sit in the bar and the rest
@@ -94,9 +97,11 @@ export default function NavDesktop({
         </nav>
         <div className="flex shrink-0 items-center gap-3">
           <HeaderSearch variant="text" />
-          <CartBadge variant="text" />
-          <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
-          {authenticated ? (
+          {/* Cart, Create and account controls exist only on a site with
+              accounts (lib/site.ts); JerseyCity.guide is discovery only. */}
+          {site.features.accounts && <CartBadge variant="text" />}
+          {site.features.accounts && <QuickCreateMenu authenticated={authenticated} businesses={businesses} />}
+          {!site.features.accounts ? null : authenticated ? (
             <AccountMenu isAdmin={isAdmin} businesses={businesses} />
           ) : (
             <>

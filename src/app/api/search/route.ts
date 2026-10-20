@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { paramsToQuery, searchHref } from "@/lib/discovery/query";
 import { interpretSearch, runDiscovery } from "@/lib/discovery/server";
+import { getSite } from "@/lib/site";
+import { scopeDiscoveryQuery } from "@/lib/site-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +14,11 @@ export async function GET(req: NextRequest) {
   const raw = (params.get("q") ?? "").trim().slice(0, 200);
   const { text: _text, ...structured } = paramsToQuery(params);
   const interpretation = raw ? await interpretSearch(raw, structured) : null;
-  const query = interpretation ? interpretation.query : paramsToQuery(params);
-  const result = await runDiscovery({ ...query, limit: 8 }, { geo: interpretation?.geoScope ?? null });
+  // Geo-locked site (lib/site.ts): confined to its own scope, and a place
+  // named in the phrase can't widen it. Findmi: unchanged.
+  const site = getSite();
+  const query = await scopeDiscoveryQuery(interpretation ? interpretation.query : paramsToQuery(params));
+  const result = await runDiscovery({ ...query, limit: 8 }, { geo: site.scope ? null : (interpretation?.geoScope ?? null) });
   return NextResponse.json({
     query,
     href: searchHref(query),

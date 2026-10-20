@@ -68,6 +68,7 @@ import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
+import { assertEntityInSiteScope } from "@/lib/site-scope";
 
 /** Vanity URL rendering pass — this is the actual render tree for an
  * Event's public page, shared verbatim by both the canonical
@@ -174,6 +175,8 @@ export async function generateEventMetadata(slug: string): Promise<Metadata> {
 export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
+  // Geo-locked site (lib/site.ts): an Event outside its scope is shown on Findmi.
+  await assertEntityInSiteScope("event", event, `/event/${event.slug}`);
   // The organizer shares the exact address only after registration: no
   // venue, address, Location link or directions are shown (none is stored
   // for such an Event either) — only "Location shared after registration"

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { getSite } from "@/lib/site";
+import { getResolvedSiteScope } from "@/lib/site-scope";
 import { DiscoveryRail } from "@/components/discovery/DiscoveryTile";
 import DiscoverySignal from "@/components/discovery/DiscoverySignal";
 import RelationshipButton from "@/components/discovery/RelationshipButton";
@@ -33,6 +35,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * neighborhoods), and sections with nothing to show are omitted. */
 export default async function AreaPage({ params }: Props) {
   const { market: marketSlug, area: areaSlug } = await params;
+  // Geo-locked site (lib/site.ts): only its own Area and neighborhoods;
+  // any other Area page is shown on Findmi.
+  const site = getSite();
+  if (site.scope) {
+    const scope = await getResolvedSiteScope();
+    if (marketSlug !== site.scope.market || !scope?.areaSlugs.has(areaSlug)) redirect(`https://findmi.app/explore/${marketSlug}/${areaSlug}`);
+  }
   const found = await findArea(marketSlug, areaSlug);
   if (!found) notFound();
   const { area, market, vocab } = found;

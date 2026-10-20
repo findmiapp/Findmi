@@ -1,8 +1,26 @@
-/** JerseyCity.guide host match (apex + www) — see redirects/rewrites. */
-const jcHost = { type: "host", value: "(?:www\\.)?jerseycity\\.guide" };
+/** Which consumer site this build serves (src/lib/site.ts). Unset =
+ * Findmi. SITE=jc = JerseyCity.guide, deployed as its own Vercel project. */
+const site = process.env.SITE === "jc" ? "jc" : "findmi";
+
+/** Routes JerseyCity.guide doesn't host — accounts, commerce, admin and
+ * Findmi-only areas live on findmi.app. Redirected BEFORE middleware, so
+ * on a JC deployment the admin/account gates and their pages never run. */
+const JC_FINDMI_ONLY_ROUTES = [
+  "admin", "account", "my-world", "saved", "login", "signup", "join", "upgrade", "redeem",
+  "cart", "checkout", "marketplace", "product", "people", "connect", "forgot-password",
+  "reset-password", "you", "user", "journal", "moments", "find", "q", "about", "auth",
+];
+
+/** APIs JerseyCity.guide must not serve (accounts, saves/follows,
+ * membership, analytics, webhooks). Its public discovery UI only calls
+ * /api/search, /api/homepage-search, /api/homepage-events and
+ * /api/homepage-business-row. */
+const JC_BLOCKED_APIS = ["account", "follow", "follow-event", "follow-location", "saved", "relationships", "membership-status", "analytics", "webhooks"];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // One build-time switch, readable by server AND client components.
+  env: { NEXT_PUBLIC_SITE: site },
   experimental: {
     // Appearance Import (admin) posts pasted text plus up to a handful of
     // flyer/screenshot images (each capped at 5MB, see
@@ -29,6 +47,8 @@ const nextConfig = {
   // a generic template — see each directive's comment for the concrete
   // caller that requires it.
   async headers() {
+    // JerseyCity.guide stays out of search engines until launch.
+    const siteNoindex = site === "jc" ? [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }] : [];
     const csp = [
       "default-src 'self'",
       // 'unsafe-inline' is required here (not optional): Next.js 14 App
@@ -139,6 +159,7 @@ const nextConfig = {
     const embedCsp = csp.replace("frame-ancestors 'none'", "frame-ancestors *");
 
     return [
+      ...siteNoindex,
       {
         // Matches every path EXCEPT /embed and /embed/* (a bare "/embed"
         // with no trailing segment is excluded too, via the embed$
@@ -183,23 +204,26 @@ const nextConfig = {
       },
     ];
   },
-  // JerseyCity.guide — the same deployment serves the JC product layer
-  // (src/app/jc/**) at the root of its own domain. On that host, every
-  // page path maps onto /jc (Findmi routes are unreachable there); the
-  // app's own /jc/* links redirect to their un-prefixed form so the
-  // public URL never shows the prefix. _next assets and dotted files
-  // (icon.png, robots.txt) pass through untouched.
+  // JerseyCity.guide (SITE=jc) renders Findmi's own public pages, locked to
+  // Jersey City (src/lib/site-scope.ts). Everything it doesn't host goes to
+  // findmi.app; privileged APIs and embeds 404. Findmi (SITE unset): no
+  // redirects or rewrites — unchanged.
   async redirects() {
-    return [
-      { source: "/jc", has: [jcHost], destination: "/", permanent: false },
-      { source: "/jc/:path*", has: [jcHost], destination: "/:path*", permanent: false },
-    ];
+    if (site !== "jc") return [];
+    return JC_FINDMI_ONLY_ROUTES.flatMap((r) => [
+      { source: `/${r}`, destination: `https://findmi.app/${r}`, permanent: false },
+      { source: `/${r}/:path*`, destination: `https://findmi.app/${r}/:path*`, permanent: false },
+    ]);
   },
   async rewrites() {
+    if (site !== "jc") return { beforeFiles: [] };
+    const blocked = (source) => ({ source, destination: "/_site/blocked" }); // matches no route → 404
     return {
       beforeFiles: [
-        { source: "/", has: [jcHost], destination: "/jc" },
-        { source: "/:path((?!_next/|jc(?:/|$))(?!.*\\.).+)", has: [jcHost], destination: "/jc/:path" },
+        ...JC_BLOCKED_APIS.flatMap((a) => [blocked(`/api/${a}`), blocked(`/api/${a}/:path*`)]),
+        blocked("/embed"),
+        blocked("/embed/:path*"),
+        blocked("/embed.js"),
       ],
     };
   },

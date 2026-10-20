@@ -62,6 +62,7 @@ import { collapseEventDates } from "@/lib/findmi-here";
 import { resolveBusinessHero } from "@/lib/business-hero";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 import { eventHref } from "@/lib/event-links";
+import { assertEntityInSiteScope } from "@/lib/site-scope";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -219,6 +220,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     if (business) ownerPreview = true;
   }
   if (!business) notFound();
+  // Geo-locked site (lib/site.ts): a Business outside its scope is shown on Findmi.
+  await assertEntityInSiteScope("business", business, `/business/${business.slug}`);
 
   // Free Tier Entitlement Reset V1 — `pro` still resolved (still used
   // below for the couple of things that remain genuinely Pro-only on

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { getSite } from "@/lib/site";
 
 // One typeface for the whole app — headings included. Both prior display
 // treatments (Space Grotesk, then Plus Jakarta Sans) read as geometric/
@@ -26,23 +27,25 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 // `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
 // a hosting dashboard — still falls back instead of producing an invalid URL.
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || getSite().url;
+
+const site = getSite();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Findmi: Find what you're looking for. And where it'll be next.",
-    template: "%s · Findmi",
+    default: site.metadata.defaultTitle,
+    template: site.metadata.titleTemplate,
   },
-  description:
-    "Findmi helps you discover brands, vendors, mobile businesses, and events, and always know where they'll be next.",
+  description: site.metadata.description,
   openGraph: {
-    title: "Findmi",
-    description:
-      "Find what you're looking for. And where it'll be next.",
-    siteName: "Findmi",
+    title: site.metadata.ogTitle,
+    description: site.metadata.ogDescription,
+    siteName: site.metadata.siteName,
     type: "website",
   },
+  // A site that isn't indexable yet (lib/site.ts) — Findmi is unaffected.
+  ...(site.features.indexable ? {} : { robots: { index: false, follow: false } }),
 };
 
 // Deliberately minimal — html/body/fonts/metadata only. The consumer

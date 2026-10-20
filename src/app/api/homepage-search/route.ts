@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { formatCardWhen } from "@/lib/event-time";
-import { getEventsDiscovery, getMarketplaceProducts, searchBusinesses, searchLocations } from "@/lib/data";
+import { getEventsDiscovery, getLocations, getMarketplaceProducts, searchBusinesses, searchLocations } from "@/lib/data";
+import { getSite } from "@/lib/site";
 import { cityState, formatPrice } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +38,15 @@ export async function GET(request: NextRequest) {
   const marketSlug = request.nextUrl.searchParams.get("market")?.trim() || undefined;
   if (q.length < 2) return NextResponse.json({ businesses: [], locations: [], events: [], products: [] });
 
+  // A geo-locked site (lib/site.ts) searches only its own Market/Area, and
+  // a site without commerce returns no products. Findmi: unchanged.
+  const site = getSite();
+  const scoped = site.scope ? { marketSlug: site.scope.market, areaSlug: site.scope.area } : null;
   const [businesses, locations, events, products] = await Promise.all([
-    searchBusinesses({ q, marketSlug }),
-    searchLocations(q, 4),
-    getEventsDiscovery({ q, limit: 4, marketSlug }),
-    getMarketplaceProducts({ q, limit: 4 }),
+    searchBusinesses({ q, marketSlug: scoped?.marketSlug ?? marketSlug, areaSlug: scoped?.areaSlug }),
+    scoped ? getLocations({ q, ...scoped, limit: 4 }) : searchLocations(q, 4),
+    getEventsDiscovery({ q, limit: 4, marketSlug: scoped?.marketSlug ?? marketSlug, areaSlug: scoped?.areaSlug }),
+    site.features.commerce ? getMarketplaceProducts({ q, limit: 4 }) : Promise.resolve([]),
   ]);
 
   return NextResponse.json({

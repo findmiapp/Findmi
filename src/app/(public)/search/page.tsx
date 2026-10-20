@@ -5,6 +5,8 @@ import DiscoverySignal from "@/components/discovery/DiscoverySignal";
 import RelationshipButton from "@/components/discovery/RelationshipButton";
 import { paramsToQuery, searchHref, WHEN_LABELS, type DiscoveryQuery } from "@/lib/discovery/query";
 import { getVocabulary, interpretSearch, runDiscovery } from "@/lib/discovery/server";
+import { getSite } from "@/lib/site";
+import { scopeDiscoveryQuery } from "@/lib/site-scope";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -28,8 +30,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   // ?q= is interpreted once; the interpretation replaces it in every link.
   const { text: _text, ...structured } = base;
   const interpretation = raw ? await interpretSearch(raw, structured) : null;
-  const query: DiscoveryQuery = interpretation ? interpretation.query : base;
-  const [result, vocab] = await Promise.all([runDiscovery({ ...query, limit: 48 }, { personal: true, geo: interpretation?.geoScope ?? null }), getVocabulary()]);
+  // Geo-locked site (lib/site.ts): confined to its own scope, and a place
+  // named in the phrase can't widen it. Findmi: unchanged.
+  const site = getSite();
+  const query: DiscoveryQuery = await scopeDiscoveryQuery(interpretation ? interpretation.query : base);
+  const [result, vocab] = await Promise.all([runDiscovery({ ...query, limit: 48 }, { personal: true, geo: site.scope ? null : (interpretation?.geoScope ?? null) }), getVocabulary()]);
 
   const chips: { label: string; without: DiscoveryQuery }[] = [];
   const drop = (k: keyof DiscoveryQuery) => {

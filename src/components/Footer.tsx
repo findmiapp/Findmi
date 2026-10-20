@@ -1,7 +1,9 @@
 import Link from "next/link";
 import Logo from "./Logo";
+import { getSite } from "@/lib/site";
 
 export default function Footer() {
+  const { footer } = getSite();
   return (
     <footer className="mt-16 border-t border-black/5 bg-white pb-[calc(2rem+env(safe-area-inset-bottom))] pt-8 md:pb-10 md:pt-10">
       <div className="mx-auto max-w-6xl px-6">
@@ -14,53 +16,34 @@ export default function Footer() {
           <div>
             <Logo heightClassName="h-7" />
             <p className="mt-3 max-w-xs text-sm text-ink/55">
-              Find what you&rsquo;re looking for. And where it&rsquo;ll be next.
+              {footer.tagline}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-8">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Discover
-              </p>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/discover" className="hover:text-ink">Discover</Link></li>
-                <li><Link href="/businesses" className="hover:text-ink">Businesses</Link></li>
-                <li><Link href="/events" className="hover:text-ink">Events</Link></li>
-                <li><Link href="/marketplace" className="hover:text-ink">Marketplace</Link></li>
-                <li><Link href="/people" className="hover:text-ink">People</Link></li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Business
-              </p>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/join/business" className="hover:text-ink">Join Findmi</Link></li>
-                <li><Link href="/about" className="hover:text-ink">About</Link></li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Legal
-              </p>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
-                <li><Link href="/terms" className="hover:text-ink">Terms</Link></li>
-              </ul>
-            </div>
+            {footer.columns.map((col) => (
+              <div key={col.title}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">
+                  {col.title}
+                </p>
+                <ul className="mt-3 space-y-2 text-sm text-ink/65">
+                  {col.links.map((l) => (
+                    <li key={l.href}><Link href={l.href} className="hover:text-ink">{l.label}</Link></li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Mobile: compact secondary links only — bottom nav handles primary. */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink/55 md:hidden">
-          <Link href="/about" className="hover:text-ink">About</Link>
-          <Link href="/join/business" className="hover:text-ink">For Business</Link>
-          <Link href="/privacy" className="hover:text-ink">Privacy</Link>
-          <Link href="/terms" className="hover:text-ink">Terms</Link>
+          {footer.mobileLinks.map((l) => (
+            <Link key={l.href} href={l.href} className="hover:text-ink">{l.label}</Link>
+          ))}
         </div>
 
         <p className="mt-6 text-xs text-ink/40 md:mt-10">
-          © {new Date().getFullYear()} Findmi. All rights reserved.
+          © {new Date().getFullYear()} {footer.legalName}. All rights reserved.
         </p>
       </div>
     </footer>

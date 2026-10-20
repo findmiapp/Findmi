@@ -8,6 +8,9 @@ import Logo from "./Logo";
 import QuickCreateMenu from "./QuickCreateMenu";
 import type { ResolvedNavItem } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
+import { getSite } from "@/lib/site";
+
+const site = getSite();
 
 export default function MobileHeader({
   navItems,
@@ -58,8 +61,8 @@ export default function MobileHeader({
 
       <div className="flex items-center gap-0.5">
         <HeaderSearch variant="icon" />
-        <CartBadge />
-        <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
+        {site.features.accounts && <CartBadge />}
+        {site.features.accounts && <QuickCreateMenu authenticated={authenticated} businesses={businesses} />}
         <HamburgerMenu items={navItems} authenticated={authenticated} isAdmin={isAdmin} businesses={businesses} />
       </div>
     </header>

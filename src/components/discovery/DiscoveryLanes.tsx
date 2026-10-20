@@ -6,6 +6,7 @@ import { DiscoveryRail, DiscoveryRailSkeleton } from "@/components/discovery/Dis
 import { getSupabase } from "@/lib/supabase";
 import { searchHref, type TopicQuery } from "@/lib/discovery/query";
 import { getVocabulary, runDiscovery, type DiscoveryLane, type DiscoveryTopic } from "@/lib/discovery/server";
+import { getResolvedSiteScope, getSiteDiscoveryPageId } from "@/lib/site-scope";
 
 // Right Now Carousel Visual Refinement pass — which of the six
 // recognized date/status states a Topic represents, used ONLY to pick
@@ -110,10 +111,15 @@ function DateStatusIcon({ kind, className }: { kind: DateStatusKind; className?:
 const getHomeLanes = cache(async (): Promise<DiscoveryLane[]> => {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data: page } = await supabase.from("discovery_pages").select("id").eq("is_system", true).limit(1).maybeSingle();
-  if (!page) return [];
-  const { data, error } = await supabase.from("discovery_lanes").select("*").eq("page_id", page.id).eq("is_visible", true).order("sort_order");
-  return error ? [] : ((data ?? []) as DiscoveryLane[]);
+  // The site's editorial page (lib/site-scope.ts) — Findmi: the system page.
+  const pageId = await getSiteDiscoveryPageId();
+  if (!pageId) return [];
+  const { data, error } = await supabase.from("discovery_lanes").select("*").eq("page_id", pageId).eq("is_visible", true).order("sort_order");
+  if (error) return [];
+  const lanes = (data ?? []) as DiscoveryLane[];
+  // A geo-locked site never shows another Market's lanes.
+  const scope = await getResolvedSiteScope();
+  return scope ? lanes.filter((l) => !l.market_id || l.market_id === scope.marketId) : lanes;
 });
 
 function LaneHeader({ title, subtitle, href }: { title: string; subtitle?: string | null; href?: string }) {

@@ -285,7 +285,8 @@ test("businessId: hosted + approved all-dates Events, and only the approved date
 
 test("existing getEventsDiscovery callers keep their parameters; /events reads/writes the shared contract", () => {
   assert.match(read("src/app/(public)/discover/page.tsx"), /getEventsDiscovery\(\{ when: toDiscoveryWindow\(whenKey\), marketSlug, areaSlug, canonicalGeo, limit: 8, featuredFirst: true \}\)/);
-  assert.match(read("src/app/api/homepage-search/route.ts"), /getEventsDiscovery\(\{ q, limit: 4, marketSlug \}\)/);
+  // Same parameters; a geo-locked site (lib/site.ts) substitutes its own scope.
+  assert.match(read("src/app/api/homepage-search/route.ts"), /getEventsDiscovery\(\{ q, limit: 4, marketSlug: scoped\?\.marketSlug \?\? marketSlug, areaSlug: scoped\?\.areaSlug \}\)/);
   const data = read("src/lib/data.ts");
   for (const k of ["q?: string;", "when?: DiscoveryWindow;", "date?: string;", "categorySlug?: string;", "city?: string;", "location?: string;", "featuredFirst?: boolean;", "marketSlug?: string;", "areaSlug?: string;", "access?: EventAccess[];", "locationId?: string;", "businessId?: string;"]) {
     assert.ok(data.slice(data.indexOf("export interface EventDiscoveryParams")).includes(k), k);

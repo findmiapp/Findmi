@@ -23,6 +23,8 @@ import {
 } from "@/lib/data";
 import type { DiscoveryWindow } from "@/lib/format";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { scopeGeoParams } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Discover",
@@ -75,7 +77,8 @@ interface Params {
 }
 
 export default async function DiscoverPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const params = await searchParams;
+  // Geo-locked site (lib/site.ts): market/area forced, geo dropped.
+  const params = await scopeGeoParams(await searchParams);
   const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
   // Discovery V2 — defaults to "upcoming" (the widest window), matching
   // /events' own default ("upNext" = anytime): the safest choice against
@@ -104,7 +107,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
       sort: "recommended",
       limit: 8,
     }),
-    getFeaturedProducts(8),
+    getSite().features.commerce ? getFeaturedProducts(8) : Promise.resolve([]), // no marketplace on a site without commerce (lib/site.ts)
   ]);
 
   // Discovery Density System V1 — This Weekend now reuses HomeEventCard's

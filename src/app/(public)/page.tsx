@@ -23,6 +23,7 @@ import {
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
   getFeaturedBusinesses,
+  searchBusinesses,
   getFeaturedLocations,
   getMarketAreaLabel,
   getUpcomingAppearanceSummaries,
@@ -40,6 +41,8 @@ import {
 import { DISCOVERY_TIME_TABS, WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
+import { getSite } from "@/lib/site";
+import { getSiteDiscoveryPageId, scopeGeoParams } from "@/lib/site-scope";
 
 export const revalidate = 60;
 
@@ -85,7 +88,10 @@ export default async function HomePage({
 }: {
   searchParams: Promise<{ market?: string; area?: string; when?: string }>;
 }) {
-  const { market: marketSlug, area: areaSlugRaw, when: whenRaw } = await searchParams;
+  // A geo-locked site (lib/site.ts — JerseyCity.guide) forces its own
+  // Market/Area here; Findmi's params pass through unchanged.
+  const site = getSite();
+  const { market: marketSlug, area: areaSlugRaw, when: whenRaw } = await scopeGeoParams(await searchParams);
   // Market -> Area/Submarket Hierarchy V2 — ?area= is only ever meaningful
   // alongside ?market= (same contract as /businesses and /events).
   const areaSlug = marketSlug ? areaSlugRaw : undefined;
@@ -107,13 +113,13 @@ export default async function HomePage({
   // simply doesn't need their extra detail anymore.
   const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletins, momentFeed] = await Promise.all([
     getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
-    getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
-    getVisibleHomepageRows(),
-    getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
+    site.scope ? searchBusinesses({ marketSlug, areaSlug, limit: 3 }) : getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
+    getSiteDiscoveryPageId().then((pageId) => (pageId ? getVisibleHomepageRows(pageId) : [])), // the site's editorial page (Findmi: the system page)
+    getSiteSections(site.homeSectionsKey), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
-    getFeaturedLocations(8), // Public Experience Consolidation pass — Featured Locations carousel
-    getPublishedHomepageBulletins(), // Homepage Bulletin Carousel — every published editorial announcement, ordered for display
-    getMomentFeed({ limit: 12 }), // Findmi Moments — newest public Moments (lib/moment-discovery.ts)
+    getFeaturedLocations(8, site.scope ? { marketSlug, areaSlug } : {}), // Public Experience Consolidation pass — Featured Locations carousel
+    site.features.bulletins ? getPublishedHomepageBulletins() : Promise.resolve([]), // Homepage Bulletin Carousel — every published editorial announcement, ordered for display
+    site.features.moments ? getMomentFeed({ limit: 12 }) : Promise.resolve({ cards: [], nextCursor: null }), // Findmi Moments — newest public Moments (lib/moment-discovery.ts)
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
@@ -162,7 +168,9 @@ export default async function HomePage({
   // fixed-position (hero, event discovery heading/copy, closing CTA) —
   // every field falls back to the current hardcoded default
   // (HOMEPAGE_SECTIONS) when no row/field exists.
-  const resolve = (key: string) => resolveSection(siteSections, key, HOMEPAGE_SECTIONS[key]);
+  // Site copy defaults (lib/site.ts) layered over Findmi's; a founder
+  // override in site_sections still wins. Findmi has none, so unchanged.
+  const resolve = (key: string) => resolveSection(siteSections, key, { ...HOMEPAGE_SECTIONS[key], ...site.homeSectionDefaults[key] });
   const upcomingSec = resolve("featured_events");
   const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
@@ -342,6 +350,7 @@ export default async function HomePage({
           HomepageBulletinCarousel.tsx/HomepageBulletin.tsx. Every
           condition/destination/behavior/copy in this block below is
           otherwise byte-identical. */}
+      {site.features.accounts && (
       <div className="mx-auto max-w-6xl px-4 pb-1 pt-2 sm:px-6 sm:pb-2 sm:pt-3">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
         <p className="mt-0.5 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:mt-1 sm:text-xl">
@@ -390,6 +399,7 @@ export default async function HomePage({
           <span className="italic text-ink/50">No credit card or app download required.</span>
         </p>
       </div>
+      )}
 
       {/* Discovery Intelligence V1 — Admin-ordered Lanes (Topics, one
           Topic's live results, a Market's Areas). Streams in after the
@@ -588,6 +598,7 @@ export default async function HomePage({
           the Section-based rows above. Carousel and "View live profile"
           CTA below are unchanged (still centered) — only the intro
           block's typography changed. */}
+      {site.features.business && (
       <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6 sm:pt-8">
         <h2 className={HOMEPAGE_SECTION_TITLE_CLASS}>See Your Business on Findmi</h2>
         <p className={`${HOMEPAGE_SECTION_SUBTITLE_CLASS} max-w-md`}>
@@ -623,6 +634,7 @@ export default async function HomePage({
           </a>
         </div>
       </div>
+      )}
 
       {/* Public Experience Consolidation pass — "Explore What You're Into"
           (the founder-editable explore_by_category section + its category
@@ -662,7 +674,7 @@ export default async function HomePage({
           the shared (public)/layout.tsx, already carrying its own mt-16
           top margin) — py-10's own bottom padding plus that margin is
           the only spacing between them, no new wrapper added. */}
-      {closingSec.visible && (
+      {site.features.business && closingSec.visible && (
         <section className="mx-auto max-w-6xl px-6 py-10">
           <div className="flex flex-col items-start gap-4 rounded-3xl bg-ink px-6 py-8 text-white sm:px-10 sm:py-9">
             <p className="text-xs font-bold uppercase tracking-wide text-findmi">{closingSec.eyebrow}</p>

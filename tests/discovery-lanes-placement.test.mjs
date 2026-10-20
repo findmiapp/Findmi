@@ -32,8 +32,12 @@ test("getHomeLanes is wrapped in React's cache() — two DiscoveryLanes renders 
 
 test("the underlying query is otherwise unchanged: still scoped to the system page, still is_visible, still ordered by sort_order", () => {
   const fn = LANES.slice(LANES.indexOf("const getHomeLanes"), LANES.indexOf("function LaneHeader"));
-  assert.match(fn, /\.eq\("is_system", true\)/);
-  assert.match(fn, /\.eq\("page_id", page\.id\)\.eq\("is_visible", true\)\.order\("sort_order"\)/);
+  // The page comes from the site's editorial page lookup (lib/site-scope.ts),
+  // which for Findmi is always the system page.
+  assert.match(fn, /const pageId = await getSiteDiscoveryPageId\(\);/);
+  assert.match(fn, /\.eq\("page_id", pageId\)\.eq\("is_visible", true\)\.order\("sort_order"\)/);
+  const scope = readFileSync(new URL("../src/lib/site-scope.ts", import.meta.url), "utf8");
+  assert.match(scope, /from\("discovery_pages"\)\.select\("id"\)\.eq\("is_system", true\)/);
 });
 
 test("DiscoveryLanes requires a placement prop and filters the one fetched list by it — the split is a pure in-memory filter, not a second query", () => {

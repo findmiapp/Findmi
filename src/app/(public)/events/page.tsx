@@ -26,6 +26,8 @@ import {
   type EventTimeKey,
 } from "@/lib/event-filter";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { scopeGeoParams } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Events",
@@ -72,7 +74,8 @@ interface Params {
 }
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const rawParams = await searchParams;
+  // Geo-locked site (lib/site.ts): market/area forced, geo dropped.
+  const rawParams = await scopeGeoParams(await searchParams);
   // Defensive parse: unknown values, malformed dates and slugs are dropped.
   const filter: EventFilter = parseEventFilter(rawParams as Record<string, string | string[] | undefined>);
   const params = { ...filter, limit: typeof rawParams.limit === "string" ? rawParams.limit : undefined };
@@ -117,7 +120,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   // Events Discovery V4 — no chip for `q`: the term is already visible in
   // the search field itself, so a duplicate chip for it is redundant
   // (same fix Businesses Discovery V4 already applied to /businesses).
-  if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
+  if (params.market && !getSite().scope) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
   for (const a of filter.access ?? []) {

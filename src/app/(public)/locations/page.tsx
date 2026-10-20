@@ -7,6 +7,8 @@ import CategorySelect from "@/components/discover/CategorySelect";
 import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import { getConsumerVisibleMarketsWithAreas, getLocationCategories, getLocations, getMarketAreaLabel } from "@/lib/data";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { scopeGeoParams } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Locations",
@@ -29,7 +31,8 @@ interface Params {
 }
 
 export default async function LocationsPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const params = await searchParams;
+  // Geo-locked site (lib/site.ts): market/area forced, geo dropped.
+  const params = await scopeGeoParams(await searchParams);
   const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
 
   const [categories, markets, locations] = await Promise.all([
@@ -71,7 +74,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   // in the search field itself, same fix already applied to /businesses
   // and /events.
   const chips: ActiveFilterChip[] = [];
-  if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
+  if (params.market && !getSite().scope) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
 
   const filtering = chips.length > 0 || Boolean(params.q);

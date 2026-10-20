@@ -42,6 +42,7 @@ import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
 import { getOperatorsForLocation } from "@/lib/business-locations";
 import { getAvailableBrandsForLocation } from "@/lib/business-location-availability";
+import { assertEntityInSiteScope } from "@/lib/site-scope";
 
 /** Brands Available Here shown on a Location page (bounded). */
 const BRANDS_AVAILABLE_HERE_LIMIT = 12;
@@ -119,6 +120,8 @@ export async function generateLocationMetadata(slug: string): Promise<Metadata> 
 export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
+  // Geo-locked site (lib/site.ts): a Location outside its scope is shown on Findmi.
+  await assertEntityInSiteScope("location", location, `/location/${location.slug}`);
 
   const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings, journal, operators, availableBrands] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),

@@ -1,9 +1,12 @@
 import type { MetadataRoute } from "next";
 import { getSupabase } from "@/lib/supabase";
+import { getSite } from "@/lib/site";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Nothing to list for a site that isn't indexable yet (lib/site.ts).
+  if (!getSite().features.indexable) return [];
   const staticRoutes: MetadataRoute.Sitemap = [
     "",
     "/discover",

@@ -29,7 +29,7 @@ const MARKERS = [
   ["Explore More Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />'],
   ["Business Showcase", "<BusinessShowcaseCarousel />"],
   ["Remaining founder rows", "{otherRowIndices.map((i) => ("],
-  ["Closing CTA", "{closingSec.visible && ("],
+  ["Closing CTA", "{site.features.business && closingSec.visible && ("],
 ];
 
 test("each approved section marker appears exactly once in page.tsx", () => {
@@ -73,7 +73,8 @@ test("every section's own conditional guard is preserved exactly as before the r
   assert.match(PAGE, /\{brandsRowIndex !== -1 && \(/);
   assert.match(PAGE, /\{momentFeed\.cards\.length > 0 && \(/);
   assert.match(PAGE, /\{featuredLocations\.length > 0 && \(/);
-  assert.match(PAGE, /\{closingSec\.visible && \(/);
+  // Plus the site's business-acquisition switch (lib/site.ts; always on for Findmi).
+  assert.match(PAGE, /\{site\.features\.business && closingSec\.visible && \(/);
 });
 
 // ── Final CTA Repositioning pass ─────────────────────────────────────────

@@ -11,6 +11,9 @@ import DrawerSearch from "./DrawerSearch";
 import { navChildActive, navChildrenWithLanding, navHrefActive, navItemActive, type ResolvedNavItem } from "@/lib/navigation";
 import { FOR_BUSINESS_NAV, YOUR_FINDMI_NAV, isPrimaryNavActive, manageNavEntry, type PrimaryNavItem } from "@/lib/primary-nav";
 import { signOut } from "@/app/(public)/account/profile/actions";
+import { getSite } from "@/lib/site";
+
+const site = getSite();
 
 // Header hamburger trigger + mobile nav drawer. Pass A — Navigation
 // Shell: the drawer is the product's mobile information architecture:
@@ -186,11 +189,11 @@ export default function HamburgerMenu({
                       </DrawerSection>
                     )}
                   </>
-                ) : (
+                ) : site.features.business ? (
                   <DrawerSection title="For Business">
                     <DrawerLink item={FOR_BUSINESS_NAV} active={isPrimaryNavActive(pathname, FOR_BUSINESS_NAV)} onNavigate={close} />
                   </DrawerSection>
-                )}
+                ) : null}
 
                 {isAdmin && (
                   <DrawerSection title="Admin">
@@ -198,7 +201,8 @@ export default function HamburgerMenu({
                   </DrawerSection>
                 )}
 
-                <div className="mt-4 flex items-center gap-2 border-t border-black/5 pt-4">
+                {/* Auth row only on a site with accounts (lib/site.ts). */}
+                {site.features.accounts && <div className="mt-4 flex items-center gap-2 border-t border-black/5 pt-4">
                   {authenticated ? (
                     <SignOutConfirm action={signOut} ariaLabel="Sign out" className={`${pillClass} border border-black/10 text-ink/70 hover:bg-black/[0.03]`}>
                       Sign Out
@@ -213,7 +217,7 @@ export default function HamburgerMenu({
                       </Link>
                     </>
                   )}
-                </div>
+                </div>}
               </nav>
             </div>
           </>,

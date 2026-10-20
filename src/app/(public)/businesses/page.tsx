@@ -25,6 +25,8 @@ import {
 } from "@/lib/data";
 import type { BusinessWithCategories, Category } from "@/lib/types";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { scopeGeoParams } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 import { isCanonicalGeoScopeEmpty } from "@/lib/geo/entity-geo-core";
 
 export const metadata: Metadata = {
@@ -83,7 +85,8 @@ interface Params {
  * consumer must be able to browse within their selected Area without
  * being dropped into the flat grid; see isBrowseMode below. */
 export default async function BusinessesPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const params = await searchParams;
+  // Geo-locked site (lib/site.ts): market/area forced, geo dropped.
+  const params = await scopeGeoParams(await searchParams);
   const sort: BusinessSort = SORT_OPTIONS.some((o) => o.value === params.sort) ? (params.sort as BusinessSort) : "recommended";
   const limit = Math.min(Math.max(Number(params.limit) || PAGE_SIZE, PAGE_SIZE), 240);
   const featured = params.featured === "1";
@@ -223,7 +226,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     if (key === "market") p.delete("area");
     return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
   };
-  if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
+  if (params.market && !getSite().scope) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
   if (featured) chips.push({ label: "Featured", href: withoutParam("featured") });

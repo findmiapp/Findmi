@@ -9,6 +9,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { filterNavItemsForAudience, getVisibleNavItems, publicDiscoveryNav } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 import { getAccountContexts } from "@/lib/accountContext";
+import { getSite } from "@/lib/site";
 
 // Nav rarely changes — cache it site-wide for a minute rather than
 // querying nav_items on every single page request (same revalidate
@@ -16,6 +17,25 @@ import { getAccountContexts } from "@/lib/accountContext";
 export const revalidate = 60;
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
+  // A site without accounts (lib/site.ts — JerseyCity.guide) uses its own
+  // configured nav and never resolves a session, admin cookie or managed
+  // businesses; its headers then show discovery only.
+  const site = getSite();
+  if (!site.features.accounts) {
+    const siteNav = publicDiscoveryNav(site.nav ?? (await getVisibleNavItems()));
+    return (
+      <SiteChrome
+        adminToolbar={null}
+        adminToolbarStatic={null}
+        mobileHeader={<MobileHeader navItems={siteNav} authenticated={false} isAdmin={false} businesses={[]} />}
+        navDesktop={<NavDesktop navItems={siteNav} authenticated={false} isAdmin={false} businesses={[]} />}
+        footer={<Footer />}
+      >
+        <BusinessesProvider businesses={[]}>{children}</BusinessesProvider>
+      </SiteChrome>
+    );
+  }
+
   // Public DISCOVERY navigation — founder-managed nav_items (Admin → Site
   // → Navigation), one fetch shared by the desktop bar and the drawer,
   // falling back to the approved default IA when the table is empty.
