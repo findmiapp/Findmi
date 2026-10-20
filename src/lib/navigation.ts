@@ -83,8 +83,15 @@ function resolveHref(item: Pick<NavItem, "destination_type" | "route_key" | "cus
 }
 
 function toResolvedLeaf(item: NavItem): Omit<ResolvedNavItem, "children"> | null {
-  const icon = NAV_ICON_KEYS.includes(item.icon_key as NavIconKey) ? (item.icon_key as NavIconKey) : null;
   const href = resolveHref(item);
+  // /moments always shows the canonical photo glyph: "target" means
+  // Performance/Analytics elsewhere and was stored on this row by mistake.
+  const icon: NavIconKey | null =
+    href === "/moments" && (item.icon_key === "target" || !item.icon_key)
+      ? "moments"
+      : NAV_ICON_KEYS.includes(item.icon_key as NavIconKey)
+        ? (item.icon_key as NavIconKey)
+        : null;
   return {
     id: item.id,
     label: item.label,

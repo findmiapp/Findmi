@@ -55,10 +55,12 @@ test("4/5/6. $20/month, $49/month and annual paid pricing are absent from the pa
   assert.doesNotMatch(NEW_PAGE, /Choose your plan/);
 });
 
-test("7/8. Free/$0 and 'No credit card required' remain visible", () => {
+test("7/8. Free/$0 and 'Forever free' remain visible in a two-column header", () => {
   assert.match(FREE_SECTION, /Get Started Free/);
   assert.match(FREE_SECTION, /\$0/);
-  assert.match(FREE_SECTION, /No credit card required/);
+  assert.match(FREE_SECTION, /Forever free/);
+  assert.match(FREE_SECTION, /Everything you need to show up on Findmi\./);
+  assert.match(FREE_SECTION, /items-end text-right/);
   assert.match(FREE_SECTION, /Free\. No trial\. No credit card\./);
 });
 

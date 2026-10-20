@@ -236,9 +236,9 @@ function DrawerSection({ title, children }: { title: string; children: React.Rea
 }
 
 /** One nav_items row as a drawer link (founder label, icon, highlight). */
-function NavItemLink({ item, active, onNavigate, nested = false }: { item: ResolvedNavItem; active: boolean; onNavigate: () => void; nested?: boolean }) {
+function NavItemLink({ item, active, onNavigate, nested = false, grow = false }: { item: ResolvedNavItem; active: boolean; onNavigate: () => void; nested?: boolean; grow?: boolean }) {
   if (!item.href) return null;
-  const className = `flex min-h-11 items-center gap-3 rounded-xl px-3 font-semibold transition active:scale-[0.99] ${nested ? "text-sm" : "text-[15px]"} ${
+  const className = `flex min-h-11 items-center gap-3 rounded-xl px-3 font-semibold transition ${grow ? "min-w-0 flex-1" : ""} active:scale-[0.99] ${nested ? "text-sm" : "text-[15px]"} ${
     item.highlight ? "bg-findmi text-white hover:bg-findmi-600" : active ? "bg-findmi-50 text-findmi-700" : "text-ink hover:bg-black/[0.03]"
   }`;
   const content = (
@@ -278,23 +278,49 @@ function DrawerGroup({
 }) {
   const active = navItemActive(pathname, item);
   const panelId = `drawer-group-${item.id}`;
+  const icon = item.icon ? (
+    <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-findmi-700" : "text-ink/55"}`} />
+  ) : (
+    <span aria-hidden="true" className="h-5 w-5 shrink-0" />
+  );
+  const chevron = (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={`h-4 w-4 shrink-0 text-ink/40 transition-transform ${expanded ? "rotate-180" : ""}`}>
+      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
   return (
     <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] font-semibold transition ${
-          active ? "text-findmi-700" : "text-ink hover:bg-black/[0.03]"
-        }`}
-      >
-        {item.icon ? <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-findmi-700" : "text-ink/55"}`} /> : <span aria-hidden="true" className="h-5 w-5 shrink-0" />}
-        <span className="flex-1 truncate">{item.label}</span>
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={`h-4 w-4 shrink-0 text-ink/40 transition-transform ${expanded ? "rotate-180" : ""}`}>
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      {item.href ? (
+        // The label navigates to the item's own page; the chevron is a
+        // separate control that only expands/collapses the submenu.
+        <div className="flex items-center">
+          <NavItemLink item={{ ...item, highlight: false }} active={active} onNavigate={onNavigate} grow />
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${item.label}`}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition hover:bg-black/[0.03]"
+          >
+            {chevron}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] font-semibold transition ${
+            active ? "text-findmi-700" : "text-ink hover:bg-black/[0.03]"
+          }`}
+        >
+          {icon}
+          <span className="flex-1 truncate">{item.label}</span>
+          {chevron}
+        </button>
+      )}
       {expanded && (
         <div id={panelId} className="ml-5 flex flex-col gap-0.5 border-l-2 border-black/5 pl-3">
           {item.children.map((child) => (

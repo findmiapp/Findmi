@@ -343,3 +343,32 @@ test("the public layout feeds nav_items through audience + reserved filtering", 
   assert.match(layout, /<MobileHeader navItems=\{navItems\}/);
   assert.match(layout, /<NavDesktop navItems=\{navItems\}/);
 });
+
+test("drawer: a parent with its own page navigates by label; a separate chevron expands inline", async () => {
+  const rows = [
+    row({ id: "ev", label: "Events", route: "events", sort: 10 }),
+    row({ label: "Locations", route: "locations", parent: "ev", sort: 1 }),
+    row({ id: "pl", label: "Places", route: "locations", sort: 20 }),
+  ];
+  const { drawer } = await openDrawer({ items: pipeline(rows, false), authenticated: false });
+  const label = [...drawer.querySelectorAll("a")].find((a) => a.textContent.trim() === "Events");
+  assert.equal(label.getAttribute("href"), "/events", "label is a real link to the landing page");
+  const chevron = drawer.querySelector('button[aria-label="Expand Events"]');
+  assert.equal(chevron.getAttribute("aria-expanded"), "false");
+  const panelId = chevron.getAttribute("aria-controls");
+  await click(chevron);
+  assert.equal(document.querySelector('button[aria-label="Collapse Events"]').getAttribute("aria-expanded"), "true");
+  assert.deepEqual([...document.getElementById(panelId).querySelectorAll("a")].map((a) => a.getAttribute("href")), ["/locations"]);
+  assert.ok(document.querySelector('[role="dialog"][aria-label="Menu"]'), "drawer stays open (no navigation)");
+  await click(document.querySelector('button[aria-label="Collapse Events"]'));
+  assert.equal(document.getElementById(panelId), null, "collapses again");
+  assert.equal(drawer.querySelectorAll("button[aria-expanded]").length, 1, "no chevron on rows without children");
+});
+
+test("Moments shows the canonical photo glyph, not the Performance target, even when stored as 'target'", async () => {
+  const rows = [row({ id: "m", label: "Moments", route: "moments", icon: "target", sort: 10 }), row({ id: "d", label: "Discover", route: "discover", icon: "target", sort: 20 })];
+  const items = pipeline(rows, false);
+  assert.equal(items[0].icon, "moments");
+  assert.equal(items[1].icon, "target", "other rows keep their chosen icon");
+  assert.equal(NAVLIB.FALLBACK_NAV_ITEMS.find((i) => i.label === "Moments").icon, "moments");
+});

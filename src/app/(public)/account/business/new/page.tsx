@@ -439,14 +439,16 @@ export default async function AddBusinessPage({
             </>
           ) : brandOnboarding ? null : (
             <div className="relative flex flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] sm:p-5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-label font-bold uppercase text-accent">Get Started Free</p>
-                <p className="flex items-baseline gap-1.5">
-                  <span className="font-display text-display font-bold text-primary">$0</span>
-                  <span className="text-metadata font-medium text-subtle">No credit card required</span>
-                </p>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="text-label font-bold uppercase text-accent">Get Started Free</p>
+                  <p className="text-body text-muted">Everything you need to show up on Findmi.</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end text-right">
+                  <span className="font-display text-display font-bold leading-none text-primary">$0</span>
+                  <span className="mt-1 text-metadata font-medium text-subtle">Forever free</span>
+                </div>
               </div>
-              <p className="text-body text-muted">Everything you need to show up on Findmi.</p>
               <ul className="flex flex-col gap-1.5 text-metadata text-muted">
                 <PlanBullet>Your complete Business Page</PlanBullet>
                 <PlanBullet>Products, photos, links &amp; contact info</PlanBullet>
