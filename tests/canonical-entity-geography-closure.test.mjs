@@ -29,7 +29,8 @@ test("A/B. getBusinessIdsInArea additively rolls canonical inventory into an Are
   assert.match(fn, /const areaScopeIds = await getAreaScopeIds\(supabase, area\.id\);/, "the same parent+children expansion the pre-existing explicit path already used");
   assert.match(fn, /\.in\("market_area_id", areaScopeIds\)/, "explicit business_market_areas match still uses the full scope (parent rollup unchanged)");
   assert.match(fn, /getAreaRollupGeoFilter\(areaScopeIds\)/, "canonical rollup uses the IDENTICAL scope — a child Area's own canonical mapping surfaces under its parent for free, same mechanism as the pre-existing explicit rollup");
-  assert.match(fn, /new Set\(\[\.\.\.explicitIds, \.\.\.rollupIds\]\)/, "additive union");
+  // (+ publicIds: a geo-locked site's public-relationship brands — always [] on Findmi)
+  assert.match(fn, /new Set\(\[\.\.\.explicitIds, \.\.\.rollupIds(, \.\.\.publicIds)?\]\)/, "additive union");
   assert.doesNotMatch(fn, /\.update\(|\.insert\(/, "never writes to the business row or any membership table — read-time only");
 });
 

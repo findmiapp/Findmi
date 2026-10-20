@@ -69,6 +69,7 @@ import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
 import { assertEntityInSiteScope } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 /** Vanity URL rendering pass — this is the actual render tree for an
  * Event's public page, shared verbatim by both the canonical
@@ -161,7 +162,7 @@ export async function generateEventMetadata(slug: string): Promise<Metadata> {
 
   return {
     title: event.name,
-    description: event.description ?? `${event.name} on Findmi.`,
+    description: event.description ?? `${event.name} on ${getSite().name}.`,
     alternates: { canonical: canonicalUrl },
     openGraph: {
       title: event.name,

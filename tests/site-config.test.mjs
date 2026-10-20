@@ -46,6 +46,7 @@ test("Findmi is the default site and keeps its exact previous brand values", asy
   assert.equal(s.metadata.titleTemplate, "%s · Findmi");
   assert.ok(Object.values(s.features).every(Boolean), "every Findmi feature stays on");
   assert.equal(s.footer.legalName, "Findmi");
+  assert.deepEqual(s.headingPrefix, { default: "Findmi" }, "BrandHeading still reads \"Findmi …\" on Findmi");
   assert.deepEqual(s.footer.columns.map((c) => c.title), ["Discover", "Business", "Legal"]);
 });
 
@@ -53,11 +54,16 @@ test("JerseyCity.guide is locked to the Jersey City Area with its own brand, nav
   const s = await siteFor("jc");
   assert.equal(s.id, "jc");
   assert.deepEqual(s.scope, { market: "north-jersey", area: "jersey-city", geoPlaceKey: "place:3436000" });
-  assert.deepEqual(s.nav.map((n) => n.href), ["/discover", "/events", "/locations", "/businesses"]);
+  assert.deepEqual(s.nav.map((n) => n.href), ["/discover", "/events", "/locations", "/businesses", "/moments"]);
   assert.equal(s.discoveryPageSlug, "jerseycity-guide");
   assert.equal(s.homeSectionsKey, "jc_homepage");
   assert.equal(s.logo.kind, "wordmark");
-  for (const f of ["accounts", "business", "commerce", "moments", "bulletins", "indexable"]) assert.equal(s.features[f], false, f);
+  for (const f of ["accounts", "business", "commerce", "bulletins", "indexable"]) assert.equal(s.features[f], false, f);
+  assert.equal(s.features.moments, true, "Moments are shared with JC (scoped by site-scope.ts)");
+  assert.ok(s.nav.some((n) => n.href === "/moments"));
+  assert.equal(s.headingPrefix.default, "Jersey City");
+  assert.equal(s.footer.legalName, "JerseyCity.guide");
+  assert.ok(!JSON.stringify(s.footer).includes("Findmi\""), "no Findmi-branded footer labels on JC");
 });
 
 test("next.config: Findmi gets no site redirects or rewrites; NEXT_PUBLIC_SITE is inlined", async () => {
@@ -77,6 +83,10 @@ test("next.config: JerseyCity.guide sends admin/account/commerce to findmi.app b
     assert.ok(redirects.some((x) => x.source === `/${r}` && x.destination === `https://findmi.app/${r}`), r);
     assert.ok(redirects.some((x) => x.source === `/${r}/:path*` && x.destination === `https://findmi.app/${r}/:path*`), `${r}/*`);
   }
+  // Moments live on JC: /moments and public Moment pages stay; only the
+  // personal /journal index (exact) and the account composer leave.
+  assert.ok(!redirects.some((x) => x.source.startsWith("/moments")));
+  assert.ok(redirects.some((x) => x.source === "/journal") && !redirects.some((x) => x.source === "/journal/:path*"));
   const blocked = (await c.rewrites()).beforeFiles.filter((r) => r.destination === "/_site/blocked").map((r) => r.source);
   for (const a of ["account", "follow", "saved", "relationships", "membership-status", "analytics", "webhooks"]) {
     assert.ok(blocked.includes(`/api/${a}`) && blocked.includes(`/api/${a}/:path*`), a);

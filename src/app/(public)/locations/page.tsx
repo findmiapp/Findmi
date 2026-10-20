@@ -12,7 +12,7 @@ import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Locations",
-  description: "Discover places on Findmi and see what's happening there.",
+  description: `Discover places on ${getSite().name} and see what's happening there.`,
 };
 export const revalidate = 60;
 

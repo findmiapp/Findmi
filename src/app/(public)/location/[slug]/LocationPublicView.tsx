@@ -43,6 +43,7 @@ import { getSupabase } from "@/lib/supabase";
 import { getOperatorsForLocation } from "@/lib/business-locations";
 import { getAvailableBrandsForLocation } from "@/lib/business-location-availability";
 import { assertEntityInSiteScope } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 /** Brands Available Here shown on a Location page (bounded). */
 const BRANDS_AVAILABLE_HERE_LIMIT = 12;
@@ -111,7 +112,7 @@ export async function generateLocationMetadata(slug: string): Promise<Metadata> 
 
   return {
     title: location.name,
-    description: `See what's happening at ${location.name} on Findmi.`,
+    description: `See what's happening at ${location.name} on ${getSite().name}.`,
     alternates: { canonical: canonicalUrl },
     openGraph: location.cover_image_url ? { images: [location.cover_image_url] } : undefined,
   };

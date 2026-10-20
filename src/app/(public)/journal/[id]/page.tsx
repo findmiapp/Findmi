@@ -16,6 +16,8 @@ import ReadMoreText from "@/components/ReadMoreText";
 import { getRelatedPublicMoments } from "@/lib/journal-distribution";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import ChevronIcon from "@/components/ChevronIcon";
+import { getSite } from "@/lib/site";
+import { assertMomentInSiteScope } from "@/lib/site-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +50,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!result || result.entry.visibility !== "public") return { title: "Moment" };
   return {
     title: result.entry.title,
-    description: result.entry.notes?.slice(0, 160) ?? `A Moment on Findmi${result.location ? ` at ${result.location.name}` : ""}.`,
+    description: result.entry.notes?.slice(0, 160) ?? `A Moment on ${getSite().name}${result.location ? ` at ${result.location.name}` : ""}.`,
   };
 }
 
@@ -56,6 +58,8 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const [result, isAuthorizedAdmin] = await Promise.all([getJournalEntryWithRelations(id), isAdminSession()]);
   if (!result) notFound();
+  // Geo-locked site (lib/site.ts): a Moment outside its scope opens on Findmi.
+  await assertMomentInSiteScope(id);
   const { entry, media, location, businesses, products, events, occurrences, sections, isOwner } = result;
   // Identity V1 — the byline is the PUBLIC author from the one shared
   // resolver: a Person (display name, avatar, their public Moments) or a

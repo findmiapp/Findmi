@@ -12,7 +12,7 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { getAreaScopeIds } from "./data";
+import { getAreaScopeIds, getBusinessIdsInArea } from "./data";
 import { getSite } from "./site";
 import { getSupabase } from "./supabase";
 
@@ -96,10 +96,9 @@ async function entityInScope(kind: "event" | "location" | "business", id: string
     });
   }
   if (kind === "business") {
-    const ids = [...s.areaIds];
-    if (ids.length === 0) return false;
-    const { data } = await supabase.from("business_market_areas").select("business_id").eq("business_id", id).in("market_area_id", ids).limit(1);
-    return (data ?? []).length > 0;
+    // The same brand-to-Area rule the site's Brands listing uses.
+    const scope = getSite().scope!;
+    return (await getBusinessIdsInArea(scope.market, scope.area)).includes(id);
   }
   return false;
 }
@@ -128,3 +127,76 @@ export const getSiteDiscoveryPageId = cache(async (): Promise<string | null> => 
   const { data: system } = await supabase.from("discovery_pages").select("id").eq("is_system", true).limit(1).maybeSingle();
   return (system?.id as string | undefined) ?? null;
 });
+
+// ── Places / Events / Moments in the site scope ──────────────────────────
+// Derived only from structured relationships (an Area id or the canonical
+// Census place on the row, a Location, an Event, an Event date) — never
+// from free-text city/venue text. Null on Findmi (no scope).
+
+const uniq = (xs: (string | null | undefined)[]) => [...new Set(xs.filter((x): x is string => Boolean(x)))];
+
+/** Locations in the site's Area/neighborhoods or its canonical place. */
+export const getSiteScopeLocationIds = cache(async (): Promise<string[] | null> => {
+  const s = await getResolvedSiteScope();
+  if (!s) return null;
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const areaIds = [...s.areaIds];
+  const filter = [areaIds.length ? `market_area_id.in.(${areaIds.join(",")})` : null, `geo_place_key.eq.${s.geoPlaceKey}`].filter(Boolean).join(",");
+  const { data } = await supabase.from("locations").select("id").or(filter);
+  return uniq(((data ?? []) as { id: string }[]).map((r) => r.id));
+});
+
+/** Events in the site scope: the Event's own Area/place, or any of its
+ * dates at an in-scope Location (or with the canonical place itself). */
+export const getSiteScopeEventIds = cache(async (): Promise<string[] | null> => {
+  const s = await getResolvedSiteScope();
+  if (!s) return null;
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const areaIds = [...s.areaIds];
+  const locIds = (await getSiteScopeLocationIds()) ?? [];
+  const evFilter = [areaIds.length ? `market_area_id.in.(${areaIds.join(",")})` : null, `geo_place_key.eq.${s.geoPlaceKey}`].filter(Boolean).join(",");
+  const occFilter = [locIds.length ? `location_id.in.(${locIds.join(",")})` : null, `geo_place_key.eq.${s.geoPlaceKey}`].filter(Boolean).join(",");
+  const [{ data: own }, { data: occ }] = await Promise.all([
+    supabase.from("events").select("id").or(evFilter),
+    supabase.from("event_occurrences").select("event_id").or(occFilter),
+  ]);
+  return uniq([...((own ?? []) as { id: string }[]).map((r) => r.id), ...((occ ?? []) as { event_id: string }[]).map((r) => r.event_id)]);
+});
+
+/** Public Moments that belong to the site: taken at an in-scope Location,
+ * or connected to an in-scope Event / Event date. A Moment's Business
+ * connection alone says WHO, not WHERE, so it never qualifies a Moment.
+ * The same shared Moment rows Findmi shows — nothing is copied; RLS
+ * still returns only public, published Moments. */
+export const getSiteMomentIds = cache(async (): Promise<string[] | null> => {
+  const s = await getResolvedSiteScope();
+  if (!s) return null;
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const [locIds, eventIds] = await Promise.all([getSiteScopeLocationIds(), getSiteScopeEventIds()]);
+  const ev = eventIds ?? [];
+  const { data: occ } = ev.length ? await supabase.from("event_occurrences").select("id").in("event_id", ev) : { data: [] };
+  const occIds = ((occ ?? []) as { id: string }[]).map((o) => o.id);
+  const connFilter = [ev.length ? `event_id.in.(${ev.join(",")})` : null, occIds.length ? `event_occurrence_id.in.(${occIds.join(",")})` : null].filter(Boolean).join(",");
+  const [{ data: atPlace }, { data: conns }] = await Promise.all([
+    locIds?.length
+      ? supabase.from("journal_entries").select("id").eq("visibility", "public").eq("status", "published").in("location_id", locIds)
+      : Promise.resolve({ data: [] }),
+    connFilter ? supabase.from("journal_entry_connections").select("journal_entry_id").or(connFilter) : Promise.resolve({ data: [] }),
+  ]);
+  return uniq([
+    ...((atPlace ?? []) as { id: string }[]).map((r) => r.id),
+    ...((conns ?? []) as { journal_entry_id: string }[]).map((r) => r.journal_entry_id),
+  ]);
+});
+
+/** Moment pages: on a scoped site, a Moment outside it opens on Findmi. */
+export async function assertMomentInSiteScope(id: string): Promise<void> {
+  const site = getSite();
+  if (!site.scope) return;
+  const ids = await getSiteMomentIds();
+  if (ids?.includes(id)) return;
+  redirect(`${site.accountsOrigin ?? "https://findmi.app"}/journal/${id}`);
+}

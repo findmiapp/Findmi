@@ -63,6 +63,7 @@ import { resolveBusinessHero } from "@/lib/business-hero";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 import { eventHref } from "@/lib/event-links";
 import { assertEntityInSiteScope } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -190,12 +191,12 @@ export async function generateBusinessMetadata(slug: string): Promise<Metadata> 
     business.description?.trim().slice(0, 160) ||
     business.short_description?.trim().slice(0, 160) ||
     [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
-    `Discover ${business.name} on Findmi.`;
+    `Discover ${business.name} on ${getSite().name}.`;
   const ogImage = business.cover_image_url ?? business.logo_url ?? undefined;
   const url = await resolveCanonicalUrl(business.id, business.slug);
 
   return {
-    title: `${business.name} | Findmi`,
+    title: `${business.name} | ${getSite().name}`,
     description,
     alternates: { canonical: url },
     // Owner-preview pages (not yet approved — see resolveOwnerPreviewBusiness)
@@ -204,7 +205,7 @@ export async function generateBusinessMetadata(slug: string): Promise<Metadata> 
     // page is unaffected and stays indexable exactly as before.
     ...(ownerPreview ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
-      title: `${business.name} | Findmi`,
+      title: `${business.name} | ${getSite().name}`,
       description,
       images: ogImage ? [ogImage] : undefined,
       url,

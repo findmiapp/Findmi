@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
+import { getSite } from "@/lib/site";
 
 /** Findmi product-signature heading — "Findmi" in primary type with an Aqua
  * accent word, the same treatment as the "Findmi Admin" shell identity.
  * Use sparingly for genuine Findmi concepts (Findmi Moments, Findmi Here,
  * Findmi Pro …) — never for entity names, ordinary section headings or
  * buttons. Brand casing is always "Findmi". */
+/** "Findmi" on Findmi; the site's own words elsewhere (lib/site.ts). */
+function headingPrefix(accent: string): string {
+  const p = getSite().headingPrefix;
+  return p.byAccent?.[accent] ?? p.default;
+}
+
 export default function BrandHeading({
   accent,
   as: Tag = "h2",
@@ -26,7 +33,7 @@ export default function BrandHeading({
   const sizeClass = size === "home" ? "text-2xl tracking-tight sm:text-3xl" : "text-section-title-lg sm:text-page-title";
   const heading = (
     <Tag id={id} className={`font-display font-bold text-primary ${sizeClass} ${trailing ? "" : className}`}>
-      Findmi <span className="text-findmi-600">{accent}</span>
+      {headingPrefix(accent)} <span className="text-findmi-600">{accent}</span>
     </Tag>
   );
   if (!trailing) return heading;

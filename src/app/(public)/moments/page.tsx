@@ -3,6 +3,8 @@ import BrandHeading from "@/components/BrandHeading";
 import MomentsDiscovery from "@/components/moments/MomentsDiscovery";
 import { getMomentFeed } from "@/lib/moment-discovery";
 import { isMomentFilterKey } from "@/lib/moment-filters";
+import { getSiteMomentIds } from "@/lib/site-scope";
+import { getSite } from "@/lib/site";
 
 /** Findmi Moments — the cross-entity discovery feed (homepage "See All").
  * Every public, published Moment, newest experience first, keyset-paginated
@@ -12,15 +14,16 @@ import { isMomentFilterKey } from "@/lib/moment-filters";
 const PAGE_SIZE = 24;
 
 export const metadata: Metadata = {
-  title: "Findmi Moments",
-  description: "Real experiences at Findmi Businesses, Events and Locations, shared by people who were there.",
+  title: `${getSite().headingPrefix.default} Moments`,
+  description: `Real experiences at ${getSite().name} Businesses, Events and Locations, shared by people who were there.`,
 };
 
 export default async function MomentsPage({ searchParams }: { searchParams: Promise<{ cursor?: string; filter?: string }> }) {
   const params = await searchParams;
   const cursor = params.cursor ?? null;
   const filter = isMomentFilterKey(params.filter) ? params.filter : "for-you";
-  const page = await getMomentFeed({ limit: PAGE_SIZE, cursor });
+  // A geo-locked site (lib/site.ts) shows only its own Moments; Findmi: all.
+  const page = await getMomentFeed({ limit: PAGE_SIZE, cursor, entryIds: await getSiteMomentIds() });
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6">

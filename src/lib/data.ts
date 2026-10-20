@@ -990,10 +990,16 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
     .maybeSingle();
   if (!area) return [];
 
-  const admin = getAdminSupabase();
-  if (!admin) return [];
-
   const areaScopeIds = await getAreaScopeIds(supabase, area.id);
+
+  // A geo-locked site (lib/site.ts — JerseyCity.guide) also counts brands
+  // tied to the Area through PUBLIC structured relationships (their own
+  // Area, Appearances, Event rosters), so its Brands work without the
+  // service-role key. Findmi: exactly the explicit + rollup rule below.
+  const publicIds = getSite().scope ? await getBusinessIdsLinkedToAreasPublic(supabase, areaScopeIds) : [];
+
+  const admin = getAdminSupabase();
+  if (!admin) return publicIds;
 
   const { data: areaRows } = await admin
     .from("business_market_areas")
@@ -1028,7 +1034,40 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
     const { data: rollupRows } = await admin.from("businesses").select("id").or(rollupFilter);
     rollupIds = ((rollupRows ?? []) as { id: string }[]).map((r) => r.id);
   }
-  return [...new Set([...explicitIds, ...rollupIds])];
+  return [...new Set([...explicitIds, ...rollupIds, ...publicIds])];
+}
+
+/** Businesses connected to any of `areaIds` through relationships the
+ * public (anon) role can already read: the business's own market_area_id,
+ * an Appearance (non-canceled, per RLS) at a Location in those Areas / in
+ * those Areas / at an Event there, or an approved Event roster entry for
+ * an Event there (its own Area, or a date at a Location there). Never
+ * free-text city matching. */
+async function getBusinessIdsLinkedToAreasPublic(supabase: NonNullable<ReturnType<typeof getSupabase>>, areaIds: string[]): Promise<string[]> {
+  if (areaIds.length === 0) return [];
+  const inAreas = `(${areaIds.join(",")})`;
+  const [{ data: own }, { data: locs }, { data: evs }] = await Promise.all([
+    supabase.from("businesses").select("id").in("market_area_id", areaIds),
+    supabase.from("locations").select("id").in("market_area_id", areaIds),
+    supabase.from("events").select("id").in("market_area_id", areaIds),
+  ]);
+  const locIds = ((locs ?? []) as { id: string }[]).map((l) => l.id);
+  const { data: occ } = locIds.length ? await supabase.from("event_occurrences").select("event_id").in("location_id", locIds) : { data: [] };
+  const eventIds = [...new Set([...((evs ?? []) as { id: string }[]).map((e) => e.id), ...((occ ?? []) as { event_id: string }[]).map((o) => o.event_id)])];
+  const appearanceFilter = [`market_area_id.in.${inAreas}`, locIds.length ? `location_id.in.(${locIds.join(",")})` : null, eventIds.length ? `event_id.in.(${eventIds.join(",")})` : null]
+    .filter(Boolean)
+    .join(",");
+  const [{ data: apps }, { data: roster }] = await Promise.all([
+    supabase.from("appearances").select("business_id").or(appearanceFilter),
+    eventIds.length ? supabase.from("event_businesses").select("business_id").in("event_id", eventIds).eq("status", "approved") : Promise.resolve({ data: [] }),
+  ]);
+  return [
+    ...new Set([
+      ...((own ?? []) as { id: string }[]).map((b) => b.id),
+      ...((apps ?? []) as { business_id: string }[]).map((a) => a.business_id),
+      ...((roster ?? []) as { business_id: string }[]).map((r) => r.business_id),
+    ]),
+  ];
 }
 
 /** The one centralized resolver for "does this Business have at least one

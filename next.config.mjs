@@ -8,8 +8,13 @@ const site = process.env.SITE === "jc" ? "jc" : "findmi";
 const JC_FINDMI_ONLY_ROUTES = [
   "admin", "account", "my-world", "saved", "login", "signup", "join", "upgrade", "redeem",
   "cart", "checkout", "marketplace", "product", "people", "connect", "forgot-password",
-  "reset-password", "you", "user", "journal", "moments", "find", "q", "about", "auth",
+  "reset-password", "you", "user", "find", "q", "about", "auth",
 ];
+
+/** Findmi-only at the exact path only: /journal (the personal journal
+ * index) leaves JC, while public Moment pages (/journal/<id>) stay — JC
+ * shows Jersey City Moments (src/lib/site-scope.ts). */
+const JC_FINDMI_ONLY_EXACT = ["journal"];
 
 /** APIs JerseyCity.guide must not serve (accounts, saves/follows,
  * membership, analytics, webhooks). Its public discovery UI only calls
@@ -210,10 +215,13 @@ const nextConfig = {
   // redirects or rewrites — unchanged.
   async redirects() {
     if (site !== "jc") return [];
-    return JC_FINDMI_ONLY_ROUTES.flatMap((r) => [
-      { source: `/${r}`, destination: `https://findmi.app/${r}`, permanent: false },
-      { source: `/${r}/:path*`, destination: `https://findmi.app/${r}/:path*`, permanent: false },
-    ]);
+    return [
+      ...JC_FINDMI_ONLY_ROUTES.flatMap((r) => [
+        { source: `/${r}`, destination: `https://findmi.app/${r}`, permanent: false },
+        { source: `/${r}/:path*`, destination: `https://findmi.app/${r}/:path*`, permanent: false },
+      ]),
+      ...JC_FINDMI_ONLY_EXACT.map((r) => ({ source: `/${r}`, destination: `https://findmi.app/${r}`, permanent: false })),
+    ];
   },
   async rewrites() {
     if (site !== "jc") return { beforeFiles: [] };

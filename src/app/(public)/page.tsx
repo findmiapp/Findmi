@@ -42,7 +42,7 @@ import { DISCOVERY_TIME_TABS, WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
 import { getSite } from "@/lib/site";
-import { getSiteDiscoveryPageId, scopeGeoParams } from "@/lib/site-scope";
+import { getSiteDiscoveryPageId, getSiteMomentIds, scopeGeoParams } from "@/lib/site-scope";
 
 export const revalidate = 60;
 
@@ -119,7 +119,7 @@ export default async function HomePage({
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
     getFeaturedLocations(8, site.scope ? { marketSlug, areaSlug } : {}), // Public Experience Consolidation pass — Featured Locations carousel
     site.features.bulletins ? getPublishedHomepageBulletins() : Promise.resolve([]), // Homepage Bulletin Carousel — every published editorial announcement, ordered for display
-    site.features.moments ? getMomentFeed({ limit: 12 }) : Promise.resolve({ cards: [], nextCursor: null }), // Findmi Moments — newest public Moments (lib/moment-discovery.ts)
+    site.features.moments ? getSiteMomentIds().then((entryIds) => getMomentFeed({ limit: 12, entryIds })) : Promise.resolve({ cards: [], nextCursor: null }), // Findmi Moments — newest public Moments (lib/moment-discovery.ts)
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);

@@ -31,7 +31,7 @@ import { isCanonicalGeoScopeEmpty } from "@/lib/geo/entity-geo-core";
 
 export const metadata: Metadata = {
   title: "Businesses",
-  description: "Search and browse businesses and vendors on Findmi.",
+  description: `Search and browse businesses and vendors on ${getSite().name}.`,
 };
 export const revalidate = 60;
 
@@ -262,7 +262,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
             explicitly sanctioned by this pass's own spec when it "adds
             little value" on small mobile; desktop keeps it unchanged. */}
         <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
-          Search Findmi&rsquo;s directory of local vendors and brands.
+          Search {getSite().name}&rsquo;s directory of local vendors and brands.
         </p>
 
         <form method="get" className="mt-3 flex flex-col gap-2.5 sm:mt-5 sm:gap-3">
@@ -345,7 +345,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                 // pass's own spec. Rather than imply they're the same
                 // list, or change /businesses?featured=1's own meaning,
                 // this rail simply has no View All link.
-                <Section title="Featured on Findmi" subtitle="Businesses Findmi is spotlighting right now" className="py-4">
+                <Section title={`Featured on ${getSite().name}`} subtitle={`Businesses ${getSite().name} is spotlighting right now`} className="py-4">
                   <HorizontalScroller>
                     {featuredBusinesses.map((b) => (
                       // Businesses Discovery Density pass — same BusinessLogoCard,

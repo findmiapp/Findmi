@@ -174,3 +174,39 @@ values (pg_temp.pid('ev:control-brooklyn'), 'control-brooklyn-market', 'Control:
 insert into public.event_occurrences (event_id, start_at, end_at, location_id, status, timezone, market_id, occurrence_date)
 values (pg_temp.pid('ev:control-brooklyn'), pg_temp.at(1, 12), pg_temp.at(1, 17), pg_temp.pid('loc:control-brooklyn'), 'scheduled', 'America/New_York', pg_temp.mkt2('nyc'), pg_temp.day(1)),
        (pg_temp.pid('ev:control-hoboken'), pg_temp.at(2, 19), pg_temp.at(2, 22), pg_temp.pid('loc:control-hoboken'), 'scheduled', 'America/New_York', pg_temp.mkt(), pg_temp.day(2));
+
+-- ── Moments (shared Findmi Moments; JC shows the Jersey City ones) ─────
+insert into auth.users (id, email) values (pg_temp.pid('user:preview'), 'preview@example.invalid');
+insert into public.profiles (id, display_name, username) values (pg_temp.pid('user:preview'), 'Preview Member', 'previewmember');
+
+insert into public.journal_entries (id, user_id, title, entry_date, notes, location_id, visibility, status)
+values
+  -- JC by Location
+  (pg_temp.pid('moment:harbor'), pg_temp.pid('user:preview'), 'Cortado by the water', pg_temp.day(-2), 'Morning at Harbor Roast.', pg_temp.pid('loc:harbor-roast'), 'public', 'published'),
+  -- JC by Event connection only (no Location on the Moment itself)
+  (pg_temp.pid('moment:night-market'), pg_temp.pid('user:preview'), 'Night market haul', pg_temp.day(-1), 'Dumplings and flowers.', null, 'public', 'published'),
+  -- JC by Event DATE connection only
+  (pg_temp.pid('moment:flea'), pg_temp.pid('user:preview'), 'Found a 70s jacket', pg_temp.day(-7), null, null, 'public', 'published'),
+  -- private JC Moment: must never appear publicly
+  (pg_temp.pid('moment:private'), pg_temp.pid('user:preview'), 'Private: my notes', pg_temp.day(-1), null, pg_temp.pid('loc:pavonia-coffee-co'), 'private', 'published'),
+  -- CONTROL: public, but in Brooklyn
+  (pg_temp.pid('moment:control-brooklyn'), pg_temp.pid('user:preview'), 'Control: Brooklyn Moment', pg_temp.day(-1), null, pg_temp.pid('loc:control-brooklyn'), 'public', 'published'),
+  -- CONTROL: public, connected to a JC Brand only (who, not where) — not JC
+  (pg_temp.pid('moment:control-brand-only'), pg_temp.pid('user:preview'), 'Control: Brand-only Moment', pg_temp.day(-1), null, null, 'public', 'published');
+
+insert into public.journal_entry_connections (journal_entry_id, business_id, event_id, event_occurrence_id)
+select pg_temp.pid('moment:night-market'), null::uuid, pg_temp.pid('ev:heights-night-market'), null::uuid
+union all
+select pg_temp.pid('moment:flea'), null::uuid, null::uuid, (select id from public.event_occurrences where event_id = pg_temp.pid('ev:vintage-flea-on-grove') order by occurrence_date limit 1)
+union all
+select pg_temp.pid('moment:control-brand-only'), pg_temp.pid('biz:pier-dumpling-co'), null::uuid, null::uuid;
+
+-- ── Lavazza-style brand: based elsewhere, appearing in Jersey City ─────
+-- One brand record (NYC Market/Area) whose only JC link is a structured
+-- Appearance at a JC Location — must be listed on JC and on Findmi.
+insert into public.businesses (id, slug, name, short_description, logo_url, cover_image_url, city, state, is_demo, publication_status, is_featured)
+values (pg_temp.pid('biz:visiting-roaster'), 'visiting-roaster', 'Visiting Roaster', 'An NYC coffee brand on tour.', pg_temp.img('1495474472287-4d71bcdd2085'), pg_temp.img('1495474472287-4d71bcdd2085'), 'New York', 'NY', false, 'live', false);
+insert into public.business_markets (business_id, market_id, relationship, active) values (pg_temp.pid('biz:visiting-roaster'), pg_temp.mkt2('nyc'), 'primary', true);
+insert into public.business_market_areas (business_id, market_id, market_area_id) values (pg_temp.pid('biz:visiting-roaster'), pg_temp.mkt2('nyc'), pg_temp.area2('nyc', 'brooklyn'));
+insert into public.appearances (business_id, title, start_at, end_at, venue_name, city, state, status, show_on_home, market_id, location_id)
+values (pg_temp.pid('biz:visiting-roaster'), 'Visiting Roaster at Harbor Roast', pg_temp.at(4, 9), pg_temp.at(4, 14), 'Harbor Roast', 'Jersey City', 'NJ', 'confirmed', true, pg_temp.mkt(), pg_temp.pid('loc:harbor-roast'));

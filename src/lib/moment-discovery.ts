@@ -65,9 +65,20 @@ type EntryRow = {
 };
 
 /** One page of the public Moment feed. */
-export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cursor?: string | null } = {}): Promise<MomentFeedPage> {
+export async function getMomentFeed({
+  limit = 12,
+  cursor,
+  entryIds,
+}: {
+  limit?: number;
+  cursor?: string | null;
+  /** Restrict to these Moments (a geo-locked site's own — see
+   * lib/site-scope.ts getSiteMomentIds). Omitted/null: every public Moment. */
+  entryIds?: string[] | null;
+} = {}): Promise<MomentFeedPage> {
   const supabase = getSupabase();
   if (!supabase) return EMPTY;
+  if (entryIds && entryIds.length === 0) return EMPTY;
   const pageSize = Math.max(1, Math.min(limit, 48));
 
   let query = supabase
@@ -79,6 +90,7 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
     )
     .eq("visibility", "public")
     .eq("status", "published");
+  if (entryIds) query = query.in("id", entryIds);
   const after = parseCursor(cursor);
   if (after) query = query.or(`entry_date.lt.${after.date},and(entry_date.eq.${after.date},id.lt.${after.id})`);
   const { data, error } = await query.order("entry_date", { ascending: false }).order("id", { ascending: false }).limit(pageSize + 1);

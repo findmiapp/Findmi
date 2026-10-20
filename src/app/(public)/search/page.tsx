@@ -10,7 +10,7 @@ import { scopeDiscoveryQuery } from "@/lib/site-scope";
 
 export const metadata: Metadata = {
   title: "Search",
-  description: "Search Findmi by what, when and where: pop-ups, sample sales, events and places near you.",
+  description: `Search ${getSite().name} by what, when and where: pop-ups, sample sales, events and places near you.`,
 };
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   if (query.census) chips.push({ label: interpretation?.geo?.label ?? result.geoLabel ?? "Selected Area", without: drop("census") });
   if (query.text) chips.push({ label: `“${query.text}”`, without: drop("text") });
 
-  const heading = raw || chips.map((c) => c.label).join(" · ") || "Search Findmi";
+  const heading = raw || chips.map((c) => c.label).join(" · ") || `Search ${getSite().name}`;
   // A single-Topic view is a Topic page: its own signal and Like.
   const soloTopic = !raw && query.topics?.length === 1 ? vocab.topicRows.find((t) => t.slug === query.topics![0]) : undefined;
 

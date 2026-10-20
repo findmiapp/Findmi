@@ -31,7 +31,7 @@ import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Events",
-  description: "Browse upcoming markets, pop-ups, and events on Findmi.",
+  description: `Browse upcoming markets, pop-ups, and events on ${getSite().name}.`,
 };
 export const revalidate = 60;
 

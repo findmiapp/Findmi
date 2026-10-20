@@ -28,7 +28,7 @@ import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Discover",
-  description: "Find what's happening around you on Findmi: by area, by time, by category.",
+  description: `Find what's happening around you on ${getSite().name}: by area, by time, by category.`,
 };
 export const revalidate = 60;
 

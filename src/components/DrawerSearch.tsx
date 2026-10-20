@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
 import ChevronIcon from "./ChevronIcon";
+import { getSite } from "@/lib/site";
 
 interface SearchResultItem {
   id: string;
@@ -81,7 +82,7 @@ export default function DrawerSearch({ onNavigate }: { onNavigate: () => void })
           aria-expanded={hasQuery}
           aria-controls="drawer-search-results"
           aria-autocomplete="list"
-          placeholder="Search Findmi..."
+          placeholder={`Search ${getSite().name}...`}
           className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
         />
       </div>

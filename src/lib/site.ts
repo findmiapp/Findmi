@@ -42,6 +42,9 @@ export interface SiteConfig {
   homeSectionsKey: string;
   /** Section copy defaults that differ from Findmi's (hero, CTA…). */
   homeSectionDefaults: Record<string, { heading?: string; body?: string }>;
+  /** Words before a BrandHeading accent ("Findmi Moments"), per accent,
+   * with a fallback. */
+  headingPrefix: { default: string; byAccent?: Record<string, string> };
   features: {
     /** Sign in / Join, personal menus, Create, account-only nav rows. */
     accounts: boolean;
@@ -113,6 +116,7 @@ const FINDMI: SiteConfig = {
   discoveryPageSlug: null,
   homeSectionsKey: "homepage",
   homeSectionDefaults: {},
+  headingPrefix: { default: "Findmi" },
   features: { accounts: true, business: true, commerce: true, moments: true, bulletins: true, indexable: true },
   accountsOrigin: null,
 };
@@ -136,9 +140,10 @@ const JC: SiteConfig = {
     nav("events", "Events", "/events", "calendar"),
     nav("places", "Places", "/locations", "pin"),
     nav("brands", "Brands", "/businesses", "storefront"),
+    nav("moments", "Moments", "/moments", "moments"),
   ],
   footer: {
-    tagline: "What's happening in Jersey City right now. Powered by Findmi.",
+    tagline: "What's happening in Jersey City right now.",
     columns: [
       {
         title: "Discover",
@@ -147,27 +152,30 @@ const JC: SiteConfig = {
           { href: "/events", label: "Events" },
           { href: "/locations", label: "Places" },
           { href: "/businesses", label: "Brands" },
+          { href: "/moments", label: "Moments" },
         ],
       },
-      { title: "Findmi", links: [{ href: "https://findmi.app", label: "Findmi" }, { href: "https://findmi.app/join/business", label: "List Your Business" }] },
+      // Business onboarding and legal live on the shared platform.
+      { title: "Businesses", links: [{ href: "https://findmi.app/join/business", label: "List Your Business" }] },
       { title: "Legal", links: [{ href: "https://findmi.app/privacy", label: "Privacy" }, { href: "https://findmi.app/terms", label: "Terms" }] },
     ],
     mobileLinks: [
-      { href: "https://findmi.app", label: "Findmi" },
+      { href: "https://findmi.app/join/business", label: "List Your Business" },
       { href: "https://findmi.app/privacy", label: "Privacy" },
       { href: "https://findmi.app/terms", label: "Terms" },
     ],
-    legalName: "Findmi",
+    legalName: "JerseyCity.guide",
   },
   discoveryPageSlug: "jerseycity-guide",
   homeSectionsKey: "jc_homepage",
+  headingPrefix: { default: "Jersey City", byAccent: { Here: "Who You'll Find" } },
   homeSectionDefaults: {
     hero: {
       heading: "What's on in\nJersey City,\nright now.",
       body: "Events, pop-ups, places and local brands across every Jersey City neighborhood.",
     },
   },
-  features: { accounts: false, business: false, commerce: false, moments: false, bulletins: false, indexable: false },
+  features: { accounts: false, business: false, commerce: false, moments: true, bulletins: false, indexable: false },
   accountsOrigin: "https://findmi.app",
 };
 
