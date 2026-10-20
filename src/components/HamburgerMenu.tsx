@@ -8,7 +8,7 @@ import Logo from "./Logo";
 import NavIcon from "./NavIcon";
 import SignOutConfirm from "./SignOutConfirm";
 import DrawerSearch from "./DrawerSearch";
-import { navHrefActive, navItemActive, type ResolvedNavItem } from "@/lib/navigation";
+import { navChildActive, navChildrenWithLanding, navHrefActive, navItemActive, type ResolvedNavItem } from "@/lib/navigation";
 import { FOR_BUSINESS_NAV, YOUR_FINDMI_NAV, isPrimaryNavActive, manageNavEntry, type PrimaryNavItem } from "@/lib/primary-nav";
 import { signOut } from "@/app/(public)/account/profile/actions";
 
@@ -323,8 +323,8 @@ function DrawerGroup({
       )}
       {expanded && (
         <div id={panelId} className="ml-5 flex flex-col gap-0.5 border-l-2 border-black/5 pl-3">
-          {item.children.map((child) => (
-            <NavItemLink key={child.id} item={child} active={navHrefActive(pathname, child.href)} onNavigate={onNavigate} nested />
+          {navChildrenWithLanding(item).map((child) => (
+            <NavItemLink key={child.id} item={child} active={navChildActive(pathname, child.href)} onNavigate={onNavigate} nested />
           ))}
         </div>
       )}

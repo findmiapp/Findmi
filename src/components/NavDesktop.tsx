@@ -11,7 +11,7 @@ import QuickCreateMenu from "./QuickCreateMenu";
 import SignOutConfirm from "./SignOutConfirm";
 import { signOut } from "@/app/(public)/account/profile/actions";
 import { YOUR_FINDMI_NAV, isPrimaryNavActive, manageNavEntry } from "@/lib/primary-nav";
-import { navHrefActive, navItemActive, splitDesktopNav, type ResolvedNavItem } from "@/lib/navigation";
+import { navChildActive, navChildrenWithLanding, navHrefActive, navItemActive, splitDesktopNav, type ResolvedNavItem } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 /** Discovery links/dropdowns come from nav_items (Admin → Site →
@@ -74,7 +74,7 @@ export default function NavDesktop({
                 active={navItemActive(pathname, item)}
                 open={openId === item.id}
                 onToggle={() => toggle(item.id)}
-                groups={[{ label: null, href: item.href, items: item.children }]}
+                groups={[{ label: null, href: item.href, items: navChildrenWithLanding(item) }]}
                 pathname={pathname}
               />
             ) : (
@@ -87,7 +87,7 @@ export default function NavDesktop({
               active={more.some((i) => navItemActive(pathname, i))}
               open={openId === "__more"}
               onToggle={() => toggle("__more")}
-              groups={more.map((i) => ({ label: i.children.length > 0 ? i.label : null, href: i.href, items: i.children.length > 0 ? i.children : [i] }))}
+              groups={more.map((i) => ({ label: i.children.length > 0 ? i.label : null, href: i.href, items: i.children.length > 0 ? navChildrenWithLanding(i) : [i] }))}
               pathname={pathname}
             />
           )}
@@ -167,7 +167,7 @@ function NavDropdown({
             <div key={gi}>
               {g.label && <p className="px-3 pb-0.5 pt-2 text-[11px] font-bold uppercase tracking-wide text-ink/40">{g.label}</p>}
               {g.items.map((child) => (
-                <DropdownLink key={child.id} item={child} active={navHrefActive(pathname, child.href)} />
+                <DropdownLink key={child.id} item={child} active={navChildActive(pathname, child.href)} />
               ))}
             </div>
           ))}

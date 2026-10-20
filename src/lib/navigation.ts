@@ -237,11 +237,13 @@ export function publicDiscoveryNav(items: ResolvedNavItem[]): ResolvedNavItem[] 
  * DESKTOP_NAV_MAX_ITEMS items and DESKTOP_NAV_CHAR_BUDGET label characters
  * (measured: the bar has ~490px at 1024px signed out, ~8px per character
  * plus ~32px per item). Everything after moves into "More ▾", which itself
- * takes a slot. The approved five labels use 33 characters. Admin also
+ * takes a slot. The approved five labels use 33 characters (43 with five chevrons). Admin also
  * caps each top-level label at NAV_TOP_LABEL_MAX and warns when items
  * will move into More. */
 export const DESKTOP_NAV_MAX_ITEMS = 5;
-export const DESKTOP_NAV_CHAR_BUDGET = 36;
+// 33 characters for the approved five labels + 2 per dropdown chevron, so
+// the five primary items keep their bar slots once each has a submenu.
+export const DESKTOP_NAV_CHAR_BUDGET = 43;
 export const NAV_TOP_LABEL_MAX = 14;
 const MORE_COST = 6; // "More" + chevron
 
@@ -277,6 +279,33 @@ export function navHrefActive(pathname: string, href: string | null): boolean {
   if (!href || !href.startsWith("/") || href === "/") return href === "/" && pathname === "/";
   const path = href.split(/[?#]/)[0];
   return [path, ...(ACTIVE_ALIASES[path] ?? [])].some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/** A child link whose href carries a query string ("/events?when=today")
+ * is never marked active — the pathname alone can't tell which filter the
+ * visitor is on, and every sibling would otherwise light up together. */
+export function navChildActive(pathname: string, href: string | null): boolean {
+  return !!href && !href.includes("?") && navHrefActive(pathname, href);
+}
+
+/** The children a dropdown/accordion shows. A parent that has children AND
+ * its own landing page lists that page first as "All {Label}", so the
+ * landing page stays reachable wherever the parent label itself only
+ * toggles (the desktop bar). Skipped when a child already points there. */
+export function navChildrenWithLanding(item: ResolvedNavItem): ResolvedNavItem[] {
+  if (item.children.length === 0 || !item.href) return item.children;
+  if (item.children.some((c) => c.href === item.href)) return item.children;
+  const landing: ResolvedNavItem = {
+    id: `${item.id}:all`,
+    label: `All ${item.label}`,
+    href: item.href,
+    external: item.external,
+    icon: null,
+    highlight: false,
+    audience: item.audience,
+    children: [],
+  };
+  return [landing, ...item.children];
 }
 
 export function navItemActive(pathname: string, item: ResolvedNavItem): boolean {

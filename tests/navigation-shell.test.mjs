@@ -109,7 +109,7 @@ test("mobile, signed out: Search, DISCOVER, FOR BUSINESS, one Log In / Join For 
 test("mobile, signed in: DISCOVER first, then YOUR FINDMI; one Sign Out; no login actions", async () => {
   const { sections, text } = await openDrawer({ authenticated: true, businesses: [] });
   assert.deepEqual(titles(sections), ["Discover", "Your Findmi"]);
-  assert.deepEqual(sections[1].links.map(([l]) => l), ["My World", "Saved", "My Moments", "Add Moment", "Messages", "Account"]);
+  assert.deepEqual(sections[1].links.map(([l]) => l), ["Saved & Following", "Saved", "My Moments", "Add Moment", "Messages", "Account"]);
   assert.equal(count(text, "Sign Out"), 1);
   assert.doesNotMatch(text, /Log In|Join For Free|For Business/);
 });
@@ -150,7 +150,7 @@ test("desktop, signed in: the account menu holds Your Findmi, Manage, Admin and 
   assert.doesNotMatch(document.querySelector("header").textContent, /Log In|Join For Free/);
   await click(document.querySelector('button[aria-label="Your Findmi"]'));
   const menu = document.querySelector('[role="menu"]');
-  assert.deepEqual([...menu.querySelectorAll("a")].map((a) => a.textContent), ["My World", "Saved", "My Moments", "Messages", "Account", "FUJIFILM", "Findmi Admin"]);
+  assert.deepEqual([...menu.querySelectorAll("a")].map((a) => a.textContent), ["Saved & Following", "Saved", "My Moments", "Messages", "Account", "FUJIFILM", "Findmi Admin"]);
   assert.equal(count(menu.textContent, "Sign Out"), 1);
   await act(async () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })));
   assert.equal(document.querySelector('[role="menu"]'), null, "Escape closes it");
@@ -295,10 +295,10 @@ test("more than five top-level items: extras move into More ▾ — no horizonta
 });
 
 test("desktop budget: long labels move into More by width, not just by count", async () => {
-  const long = ["Neighbourhoods", "Things To Do!!", "Local Makers XL"].map((label, i) => row({ label: label.slice(0, 14), custom: `/x${i}`, sort: i }));
+  const long = ["Neighbourhoods", "Things To Do!!", "Local Makers XL", "Another Long One"].map((label, i) => row({ label: label.slice(0, 14), custom: `/x${i}`, sort: i }));
   const { bar, more } = NAVLIB.splitDesktopNav(pipeline(long, false));
   assert.deepEqual(bar.map((i) => i.label), ["Neighbourhoods", "Things To Do!!"]);
-  assert.deepEqual(more.map((i) => i.label), ["Local Makers X"]);
+  assert.deepEqual(more.map((i) => i.label), ["Local Makers X", "Another Long O"]);
   const used = bar.reduce((n, i) => n + i.label.length + (i.children.length ? 2 : 0), 0);
   assert.ok(used + 6 <= NAVLIB.DESKTOP_NAV_CHAR_BUDGET && bar.length + 1 <= NAVLIB.DESKTOP_NAV_MAX_ITEMS);
   const approvedChars = pipeline(APPROVED, false).reduce((n, i) => n + i.label.length, 0);
@@ -358,7 +358,7 @@ test("drawer: a parent with its own page navigates by label; a separate chevron 
   const panelId = chevron.getAttribute("aria-controls");
   await click(chevron);
   assert.equal(document.querySelector('button[aria-label="Collapse Events"]').getAttribute("aria-expanded"), "true");
-  assert.deepEqual([...document.getElementById(panelId).querySelectorAll("a")].map((a) => a.getAttribute("href")), ["/locations"]);
+  assert.deepEqual([...document.getElementById(panelId).querySelectorAll("a")].map((a) => a.getAttribute("href")), ["/events", "/locations"], "All Events first, then the child");
   assert.ok(document.querySelector('[role="dialog"][aria-label="Menu"]'), "drawer stays open (no navigation)");
   await click(document.querySelector('button[aria-label="Collapse Events"]'));
   assert.equal(document.getElementById(panelId), null, "collapses again");
@@ -371,4 +371,63 @@ test("Moments shows the canonical photo glyph, not the Performance target, even 
   assert.equal(items[0].icon, "moments");
   assert.equal(items[1].icon, "target", "other rows keep their chosen icon");
   assert.equal(NAVLIB.FALLBACK_NAV_ITEMS.find((i) => i.label === "Moments").icon, "moments");
+});
+
+const HIERARCHY = [
+  row({ id: "d", label: "Discover", route: "discover", sort: 10 }),
+  row({ label: "Findmi Here", route: "find", parent: "d", sort: 1 }),
+  row({ id: "e", label: "Events", route: "events", sort: 20 }),
+  row({ label: "Happening Now", custom: "/events?when=live", parent: "e", sort: 1 }),
+  row({ label: "Today", custom: "/events?when=today", parent: "e", sort: 2 }),
+  row({ id: "m", label: "Moments", route: "moments", icon: "target", sort: 30 }),
+  row({ label: "Following", custom: "/moments?filter=following", parent: "m", sort: 1 }),
+  row({ label: "All Moments", custom: "/moments", parent: "m", sort: 0 }),
+];
+
+test("desktop: a parent with children AND a landing page lists 'All {Label}' first — the landing page stays reachable", async () => {
+  await desktopLinks(HIERARCHY);
+  const nav = document.querySelector('nav[aria-label="Discover"]');
+  const buttons = [...nav.querySelectorAll("button")];
+  assert.deepEqual(buttons.map((b) => b.textContent.trim()), ["Discover", "Events", "Moments"]);
+  await click(buttons[1]);
+  const menu = [...document.querySelectorAll('[role="menu"] a')].map((a) => [a.textContent, a.getAttribute("href")]);
+  assert.deepEqual(menu, [["All Events", "/events"], ["Happening Now", "/events?when=live"], ["Today", "/events?when=today"]]);
+  await click(document.querySelector('nav[aria-label="Discover"] button'));
+  assert.deepEqual([...document.querySelectorAll('[role="menu"] a')].map((a) => a.getAttribute("href")), ["/discover", "/find"]);
+});
+
+test("desktop: no duplicate 'All' row when a child already points at the parent's landing page", async () => {
+  await desktopLinks(HIERARCHY);
+  await click([...document.querySelectorAll('nav[aria-label="Discover"] button')][2]);
+  assert.deepEqual([...document.querySelectorAll('[role="menu"] a')].map((a) => a.getAttribute("href")), ["/moments", "/moments?filter=following"]);
+});
+
+test("desktop: query-string children are never marked active (siblings don't light up together)", async () => {
+  await desktopLinks(HIERARCHY, { pathname: "/events" });
+  await click([...document.querySelectorAll('nav[aria-label="Discover"] button')][1]);
+  const active = [...document.querySelectorAll('[role="menu"] a')].filter((a) => a.getAttribute("aria-current") === "page").map((a) => a.textContent);
+  assert.deepEqual(active, ["All Events"]);
+});
+
+test("mobile: expanded group shows All {Label} first, then the children; label still links to the landing page", async () => {
+  const { drawer } = await openDrawer({ items: pipeline(HIERARCHY, false), authenticated: false });
+  await click(drawer.querySelector('button[aria-label="Expand Events"]'));
+  const panel = document.getElementById(drawer.querySelector('button[aria-label="Collapse Events"]').getAttribute("aria-controls"));
+  assert.deepEqual([...panel.querySelectorAll("a")].map((a) => [a.textContent.trim(), a.getAttribute("href")]), [["All Events", "/events"], ["Happening Now", "/events?when=live"], ["Today", "/events?when=today"]]);
+  assert.equal([...drawer.querySelectorAll("a")].find((a) => a.textContent.trim() === "Events").getAttribute("href"), "/events");
+});
+
+test("Your Findmi (code-owned) is unchanged and My Moments never appears for signed-out visitors", async () => {
+  const signedOut = await openDrawer({ items: pipeline(HIERARCHY, false), authenticated: false });
+  assert.doesNotMatch(signedOut.text, /My Moments|Add Moment|Your Findmi/);
+  const MOMENTS_NAV = NAVLIB.publicDiscoveryNav(NAVLIB.filterNavItemsForAudience(NAVLIB.resolveNavTree(HIERARCHY), true));
+  assert.ok(!JSON.stringify(MOMENTS_NAV).includes("my-world"), "no journal links in the public hierarchy");
+});
+
+test("desktop budget: the approved five items all keep their bar slots even when every one has a submenu", async () => {
+  const bar = await desktopLinks(HIERARCHY.concat([
+    row({ id: "p", label: "Places", route: "locations", sort: 40 }), row({ label: "Venues", custom: "/locations?category=event-venue", parent: "p", sort: 1 }),
+    row({ id: "b", label: "Brands", route: "businesses", sort: 50 }), row({ label: "Featured Brands", custom: "/businesses?featured=1", parent: "b", sort: 1 }),
+  ]));
+  assert.deepEqual(bar, ["Discover", "Events", "Moments", "Places", "Brands"]);
 });
