@@ -1,0 +1,17 @@
+/* JerseyCity.guide — scoped to the .jc root in app/jc/layout.tsx. */
+
+.jc {
+  --jc-accent: #e5482b;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jc .jc-rail {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.jc .jc-rail::-webkit-scrollbar {
+  display: none;
+}

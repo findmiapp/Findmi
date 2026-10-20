@@ -31,7 +31,7 @@ const R = await import("../src/lib/event-import/review.ts");
 const C = await import("../src/lib/appearance-conversion.ts");
 const S = await import("../src/lib/admin/appearance-stale-link.ts");
 const L = await import("../src/lib/event-attendance.ts");
-const CTA = await import("../src/components/EventScheduleCtas.tsx").catch(() => null);
+const CTA = await import("../src/lib/event-ctas.ts").catch(() => null);
 const F = await import("./fixtures/event-sources.mjs");
 const read = (p) => readFileSync(p, "utf8");
 
@@ -190,7 +190,7 @@ test("existing Admin RSVP / Get Tickets behavior unchanged; Register only relabe
   assert.equal(L.rsvpActionLabel("rsvp"), "RSVP");
   assert.equal(L.rsvpActionLabel("register"), "Register");
   assert.equal(L.rsvpActionLabel("bogus"), "RSVP");
-  const ctas = read("src/components/EventScheduleCtas.tsx");
+  const ctas = read("src/lib/event-ctas.ts");
   assert.match(ctas, /label: "Get Tickets"/);
   assert.match(ctas, /label: c\.rsvpLabel \?\? "RSVP"/);
   const view = read("src/app/(public)/event/[slug]/EventPublicView.tsx");

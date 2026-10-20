@@ -2482,6 +2482,15 @@ async function resolveGeoEventIds(supabase: NonNullable<ReturnType<typeof getSup
   return [...ids];
 }
 
+/** Public form of resolveGeoEventIds for callers outside this module
+ * (JerseyCity.guide scope) — the same canonical-geography event-id rule,
+ * not a second one. Null = no scope given; [] = nothing matches. */
+export async function getEventIdsInCanonicalGeo(canonicalGeo: CanonicalGeoScope | null | undefined): Promise<string[] | null> {
+  const supabase = getSupabase();
+  if (!supabase) return isCanonicalGeoScopeEmpty(canonicalGeo) ? null : [];
+  return resolveGeoEventIds(supabase, canonicalGeo);
+}
+
 export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Promise<FindmiEvent[]> {
   const supabase = getSupabase();
   if (!supabase) return [];

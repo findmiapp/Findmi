@@ -1,3 +1,6 @@
+/** JerseyCity.guide host match (apex + www) — see redirects/rewrites. */
+const jcHost = { type: "host", value: "(?:www\\.)?jerseycity\\.guide" };
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -179,6 +182,26 @@ const nextConfig = {
         ],
       },
     ];
+  },
+  // JerseyCity.guide — the same deployment serves the JC product layer
+  // (src/app/jc/**) at the root of its own domain. On that host, every
+  // page path maps onto /jc (Findmi routes are unreachable there); the
+  // app's own /jc/* links redirect to their un-prefixed form so the
+  // public URL never shows the prefix. _next assets and dotted files
+  // (icon.png, robots.txt) pass through untouched.
+  async redirects() {
+    return [
+      { source: "/jc", has: [jcHost], destination: "/", permanent: false },
+      { source: "/jc/:path*", has: [jcHost], destination: "/:path*", permanent: false },
+    ];
+  },
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: "/", has: [jcHost], destination: "/jc" },
+        { source: "/:path((?!_next/|jc(?:/|$))(?!.*\\.).+)", has: [jcHost], destination: "/jc/:path" },
+      ],
+    };
   },
 };
 
