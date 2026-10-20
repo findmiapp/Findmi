@@ -3,6 +3,7 @@ import { buildVisibleAreaTree } from "./area-visibility";
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
+import { hasUsableImageUrl, selectFeaturedLocations } from "./featured-locations";
 import {
   APP_TIMEZONE,
   formatAppearanceDateRange,
@@ -4386,10 +4387,18 @@ export interface LocationsDiscoveryOptions {
    * server-side before `.limit()`, additive alongside marketSlug/areaSlug
    * and the free-text `q`. */
   canonicalGeo?: CanonicalGeoScope | null;
+  /** Homepage Featured Locations only: keep only Locations with a non-empty
+   * cover_image_url, applied in the query BEFORE `.limit()` so image-less
+   * Locations can't displace valid ones. Off everywhere else. */
+  requireCoverImage?: boolean;
+  /** Homepage Featured Locations only: build each Location's activity
+   * preview from happenings that have a usable image, filtered BEFORE the
+   * per-Location top-3 slice. Off everywhere else. */
+  requireActivityImages?: boolean;
 }
 
 export async function getLocations(options: LocationsDiscoveryOptions = {}): Promise<LocationWithCategory[]> {
-  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo } = options;
+  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo, requireCoverImage = false, requireActivityImages = false } = options;
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -4427,6 +4436,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }
 
   let query = supabase.from("locations").select("*, category:categories(id, name, slug)").eq("is_demo", false);
+  if (requireCoverImage) query = query.not("cover_image_url", "is", null).neq("cover_image_url", "");
   if (areaId) {
     // Canonical Entity Geography completion pass — same read-time Area
     // rollup as getBusinessIdsInArea: a Location with no explicit
@@ -4482,7 +4492,8 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
 
   const activityByLocation = await getLocationActivitySummaries(
     supabase,
-    locations.map((l) => l.id)
+    locations.map((l) => l.id),
+    { requireImages: requireActivityImages }
   );
 
   return locations.map((l) => ({
@@ -4503,9 +4514,17 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
 // no parallel query, no fabricated data. Over-fetches a generous batch
 // (rather than adding a DB-level activityCount filter) since eligibility
 // here is small-scale merchandising, not a paginated listing.
+//
+// Image eligibility (lib/featured-locations.ts): a Location needs a real cover
+// image and every happening in its rail needs a real image. The cover filter
+// runs in the query before the 60-row candidate limit, the happening-image
+// filter runs before each Location's top-3 preview slice, and
+// selectFeaturedLocations applies the final carousel limit last — so
+// image-less records never displace valid ones. No placeholders, no network
+// image checks; the Locations/Events themselves are untouched elsewhere.
 export async function getFeaturedLocations(limit = 8): Promise<LocationWithCategory[]> {
-  const locations = await getLocations({ limit: 60 });
-  return locations.filter((l) => (l.activityCount ?? 0) > 0).slice(0, limit);
+  const locations = await getLocations({ limit: 60, requireCoverImage: true, requireActivityImages: true });
+  return selectFeaturedLocations(locations, limit);
 }
 
 // Location Discovery Card V2 — how many of each type to over-fetch PER
@@ -4516,6 +4535,9 @@ export async function getFeaturedLocations(limit = 8): Promise<LocationWithCateg
 // PER_SOURCE_FETCH_LIMIT uses for an analogous multi-entity batch.
 const ACTIVITY_PREVIEW_FETCH_PER_LOCATION = 6;
 const ACTIVITY_PREVIEW_ITEMS_PER_LOCATION = 3;
+// Image-filtered previews (Featured Locations) fetch deeper per Location,
+// since image-less happenings are dropped after the fetch.
+const ACTIVITY_PREVIEW_FETCH_PER_LOCATION_IMAGES = 12;
 
 /** Location Discovery Card V2 — real upcoming-activity count + a small
  * preview per Location, for MANY locations in one pass (never one query
@@ -4529,8 +4551,10 @@ const ACTIVITY_PREVIEW_ITEMS_PER_LOCATION = 3;
  * per-location counts is never a double-count. */
 async function getLocationActivitySummaries(
   supabase: NonNullable<ReturnType<typeof getSupabase>>,
-  locationIds: string[]
+  locationIds: string[],
+  { requireImages = false }: { requireImages?: boolean } = {}
 ): Promise<Map<string, { count: number; items: LocationActivityPreviewItem[] }>> {
+  const previewFetchPerLocation = requireImages ? ACTIVITY_PREVIEW_FETCH_PER_LOCATION_IMAGES : ACTIVITY_PREVIEW_FETCH_PER_LOCATION;
   const result = new Map<string, { count: number; items: LocationActivityPreviewItem[] }>();
   if (locationIds.length === 0) return result;
   const nowIso = new Date().toISOString();
@@ -4564,7 +4588,7 @@ async function getLocationActivitySummaries(
         .or(occurrenceUpcomingOr(nowIso, todayIn(APP_TIMEZONE)))
         .order("occurrence_date", { ascending: true })
         .order("start_at", { ascending: true, nullsFirst: false })
-        .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
+        .limit(previewFetchPerLocation * locationIds.length),
       supabase
         .from("appearances")
         .select("id, location_id, start_at, title, business:businesses!appearances_business_id_fkey(slug, name, logo_url, cover_image_url, is_demo, publication_status)")
@@ -4573,7 +4597,7 @@ async function getLocationActivitySummaries(
         .neq("status", "canceled")
         .gt("end_at", nowIso)
         .order("start_at", { ascending: true })
-        .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
+        .limit(previewFetchPerLocation * locationIds.length),
     ]);
 
   // Hidden-location Events never count toward / preview on a precise place.
@@ -4603,6 +4627,7 @@ async function getLocationActivitySummaries(
     if (!row.location_id) continue;
     const e = Array.isArray(row.event) ? (row.event[0] ?? null) : row.event;
     if (!e || e.is_demo) continue;
+    if (requireImages && !hasUsableImageUrl(e.cover_image_url)) continue;
     pushItem(row.location_id, {
       id: `occurrence-${row.id}`,
       title: e.name,
@@ -4627,6 +4652,8 @@ async function getLocationActivitySummaries(
     if (!row.location_id) continue;
     const b = Array.isArray(row.business) ? (row.business[0] ?? null) : row.business;
     if (!b || b.is_demo || b.publication_status !== "live") continue;
+    const appearanceImage = b.logo_url ?? b.cover_image_url;
+    if (requireImages && !hasUsableImageUrl(appearanceImage)) continue;
     pushItem(row.location_id, {
       id: `appearance-${row.id}`,
       title: row.title,
