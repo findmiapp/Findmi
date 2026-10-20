@@ -175,10 +175,10 @@ test("'My Moments' (Personal bottom nav) already uses the canonical photo icon, 
 });
 
 test("the two remaining NavIcon target/radar usages are legitimately Performance/Analytics, not Moments — correctly left alone", () => {
-  assert.match(MORE_MENU, /label: "Performance".*icon: <NavIcon name="target"/);
-  assert.match(BIZ_SHELL, /label: "Performance"/);
-  const perfBlock = BIZ_SHELL.slice(BIZ_SHELL.indexOf('section: "performance"'), BIZ_SHELL.indexOf('section: "more"'));
-  assert.match(perfBlock, /<NavIcon name="target"/);
+  assert.match(MORE_MENU, /label: T\.performance\.label, description: T\.performance\.description, icon: <NavIcon name="target"/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/business-nav.ts"), /performance: \{ label: navLabel\("performance"\)/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/business-nav.ts"), /label: "Performance", tab: "performance"/);
+  assert.match(BIZ_SHELL, /performance: <NavIcon name="target"/);
   assert.doesNotMatch(MORE_MENU, /label: "Moments?"[^}]*NavIcon name="target"/);
 });
 

@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const MORE_MENU = readFileSync("src/app/(public)/account/business/[id]/v2/MoreMenu.tsx", "utf8");
+const BUSINESS_NAV_DEF = readFileSync("src/app/(public)/account/business/[id]/v2/business-nav.ts", "utf8");
 const BUSINESS_PAGE = readFileSync("src/app/(public)/account/business/[id]/page.tsx", "utf8");
 const ADMIN_BUSINESS_FORM = readFileSync("src/app/admin/(protected)/businesses/BusinessForm.tsx", "utf8");
 const ADMIN_BUSINESS_DETAIL = readFileSync("src/app/admin/(protected)/businesses/[id]/page.tsx", "utf8");
@@ -28,8 +29,8 @@ const INQUIRIES_ACTIONS = readFileSync("src/app/(public)/account/business/inquir
 // ── 1. The Business Manager no longer labels the settings-only surface ───
 // ── as though it were the inquiry inbox itself. ──────────────────────────
 test("the More menu's inquiry-settings nav entry is labeled accurately, not as an inbox", () => {
-  assert.match(MORE_MENU, /label: "Inquiry Settings"/, "the ?tab=inquiries nav entry must describe itself as settings, not as an inbox destination");
-  assert.doesNotMatch(MORE_MENU, /label: "Customer Inquiries"/, "the misleading inbox-sounding label must be gone");
+  assert.match(BUSINESS_NAV_DEF, /inquiries: \{ label: "Inquiry Settings"/, "the ?tab=inquiries nav entry must describe itself as settings, not as an inbox destination");
+  assert.doesNotMatch(MORE_MENU + BUSINESS_NAV_DEF, /label: "Customer Inquiries"/, "the misleading inbox-sounding label must be gone");
   // The real inbox destination, right alongside it, is untouched.
   assert.match(MORE_MENU, /href: "\/account\/messages", label: "Inbox"/);
 });

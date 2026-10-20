@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import NavIcon from "@/components/NavIcon";
 import { QrGlyph } from "./CreateActionIcon";
 import ChevronIcon from "@/components/ChevronIcon";
+import { BUSINESS_MORE_TABS as T } from "./business-nav";
 
 /** /account V2, Pass 1 — "More": every secondary destination that no longer
  * competes for primary navigation, grouped by job. Only real, existing
@@ -23,19 +24,22 @@ export default function MoreMenu({
   showReferral: boolean;
 }) {
   const yourBusiness: MoreLink[] = [
-    { href: `${basePath}?tab=profile`, label: "Business Profile", description: "Identity, photos, contact & links", icon: <NavIcon name="storefront" className="h-5 w-5" /> },
-    { href: `${basePath}?tab=performance`, label: "Performance", description: "Views, actions and how people find you", icon: <NavIcon name="target" className="h-5 w-5" /> },
+    { href: `${basePath}?tab=profile`, label: T.profile.label, description: T.profile.description, icon: <NavIcon name="storefront" className="h-5 w-5" /> },
+    { href: `${basePath}?tab=performance`, label: T.performance.label, description: T.performance.description, icon: <NavIcon name="target" className="h-5 w-5" /> },
     ...(businessSlug
       ? [{ href: `/business/${businessSlug}`, label: "View Public Page", icon: <NavIcon name="compass" className="h-5 w-5" /> }]
       : []),
   ];
   const tools: MoreLink[] = [
-    { href: `${basePath}?tab=qr`, label: "QR Campaigns", description: "Create and track QR codes", icon: <QrGlyph className="h-5 w-5" /> },
-    { href: `${basePath}?tab=inquiries`, label: "Inquiry Settings", description: "How customers can contact you", icon: <ChatGlyph className="h-5 w-5" /> },
+    { href: `${basePath}?tab=qr`, label: T.qr.label, description: T.qr.description, icon: <QrGlyph className="h-5 w-5" /> },
+    { href: `${basePath}?tab=inquiries`, label: T.inquiries.label, description: T.inquiries.description, icon: <ChatGlyph className="h-5 w-5" /> },
     ...(ordersRelevant
-      ? [{ href: `${basePath}?tab=orders`, label: "Orders", description: "Marketplace orders to fulfill", icon: <NavIcon name="cart" className="h-5 w-5" /> }]
+      ? [{ href: `${basePath}?tab=orders`, label: T.orders.label, description: T.orders.description, icon: <NavIcon name="cart" className="h-5 w-5" /> }]
       : []),
     { href: "/account/messages", label: "Inbox", description: "Messages and opportunities", icon: <InboxGlyph className="h-5 w-5" /> },
+    // The operator schedule of the Pages you manage (not a personal
+    // destination — see PersonalAppShell), so it stays a Manager tool.
+    { href: "/account/schedule", label: "Schedule", description: "Appearances, Events and Locations you manage", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
   ];
   // Business Account Correction Pass (#12) — this group used to be one
   // "Account" bucket mixing Business-context destinations (Plan &
@@ -50,15 +54,13 @@ export default function MoreMenu({
   // Locations together — it's the unified personal view, not a
   // Business-scoped one, so it belongs here too. No route/data change.
   const businessPlan: MoreLink[] = [
-    { href: `${basePath}?tab=settings`, label: "Plan & Settings", description: "Findmi Pro, areas and business settings", icon: <GearGlyph className="h-5 w-5" /> },
-    ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: "Referral Program", icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
+    { href: `${basePath}?tab=settings`, label: T.settings.label, description: T.settings.description, icon: <GearGlyph className="h-5 w-5" /> },
+    ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: T.referral.label, icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
   ];
+  // Personal destinations (Saved, Following, Purchases, Profile & Sign Out)
+  // live in the personal account shell — one clear entry, not five links.
   const yourAccount: MoreLink[] = [
-    { href: "/account/schedule", label: "Schedule", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
-    { href: "/account/saved", label: "Saved", icon: <NavIcon name="bookmark" className="h-5 w-5" /> },
-    { href: "/account/following", label: "Following", icon: <NavIcon name="person" className="h-5 w-5" /> },
-    { href: "/account/orders", label: "Your Purchases", icon: <NavIcon name="cart" className="h-5 w-5" /> },
-    { href: "/account/profile", label: "Your Profile & Sign Out", icon: <NavIcon name="person" className="h-5 w-5" /> },
+    { href: "/account", label: "Your Account", description: "Saved, Following, Purchases, Profile & Sign Out", icon: <NavIcon name="person" className="h-5 w-5" /> },
   ];
 
   return (

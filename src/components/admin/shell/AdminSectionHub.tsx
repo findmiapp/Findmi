@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { getAdminSection, type AdminSectionKey } from "../adminNavItems";
+import { getAdminSection, type AdminNavGroup, type AdminSectionKey } from "../adminNavItems";
 import { ChevronRightGlyph } from "./AdminIcons";
 
 /** Admin V2 — a section's index page: every destination in that section
@@ -10,24 +10,29 @@ export default function AdminSectionHub({
   section,
   badges = {},
   footer,
+  override,
 }: {
   section: AdminSectionKey;
   /** Keyed by destination href. Only real values — omit when unknown. */
   badges?: Record<string, { text: string; tone?: "attention" | "neutral" }>;
   footer?: ReactNode;
+  /** A sub-hub page (e.g. Import) reusing this list layout with its own
+   * title and items instead of the section's. */
+  override?: { title: string; description?: string; groups: AdminNavGroup[] };
 }) {
-  const def = getAdminSection(section);
+  const section_ = getAdminSection(section);
+  const def = override ? { ...section_, label: override.title, description: override.description, groups: override.groups } : section_;
   return (
     <div className="flex max-w-3xl flex-col gap-5">
       <div>
         <h1 className="font-display text-page-title-lg font-bold text-primary">{def.label}</h1>
         {def.description && <p className="mt-1 text-body text-muted">{def.description}</p>}
       </div>
-      {def.groups.map((group, i) => (
+      {def.groups.filter((g) => g.items.some((i) => i.hub !== false)).map((group, i) => (
         <section key={group.label ?? i} aria-label={group.label ?? def.label}>
           {group.label && <h2 className="mb-2 px-1 text-label font-bold uppercase text-subtle">{group.label}</h2>}
           <ul className="divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
-            {group.items.map((item) => {
+            {group.items.filter((item) => item.hub !== false).map((item) => {
               const badge = badges[item.href];
               return (
                 <li key={item.href}>

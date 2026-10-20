@@ -5,6 +5,7 @@ import NavIcon from "@/components/NavIcon";
 import AccountContextSwitcher from "@/components/account/AccountContextSwitcher";
 import type { AccountBusinessContext } from "@/lib/accountContext";
 import { Chip } from "../../../owner-ui";
+import { BUSINESS_NAV, type BusinessSection } from "./business-nav";
 
 /** /account V2, Pass 1 — the Business app shell. One persistent Business
  * context (logo + name + switcher) and one navigation model:
@@ -14,7 +15,7 @@ import { Chip } from "../../../owner-ui";
  * /account/business/[id] underneath (no route migration), so every
  * deep link, server action redirect and authorization path is unchanged. */
 
-export type BusinessSection = "home" | "presence" | "products" | "opportunities" | "performance" | "more";
+export type { BusinessSection };
 
 /** Existing tab key -> V2 section. Anything not promoted to primary
  * navigation (Profile, QR, Settings, Inquiries, Orders, Referral) lives
@@ -36,23 +37,19 @@ export function sectionForTab(tab: string): BusinessSection {
   }
 }
 
-type NavItem = { section: BusinessSection; label: string; tab: string; icon: ReactNode; desktopOnly?: boolean };
+type NavItem = (typeof BUSINESS_NAV)[number] & { icon: ReactNode };
+
+const NAV_ICONS: Record<BusinessSection, ReactNode> = {
+  home: <NavIcon name="home" className="h-[22px] w-[22px]" />,
+  presence: <NavIcon name="pin" className="h-[22px] w-[22px]" />,
+  products: <NavIcon name="tag" className="h-[22px] w-[22px]" />,
+  opportunities: <SparkGlyph className="h-[22px] w-[22px]" />,
+  performance: <NavIcon name="target" className="h-[22px] w-[22px]" />,
+  more: <MoreGlyph className="h-[22px] w-[22px]" />,
+};
 
 function navItems(): NavItem[] {
-  return [
-    { section: "home", label: "Home", tab: "overview", icon: <NavIcon name="home" className="h-[22px] w-[22px]" /> },
-    { section: "presence", label: "Findmi Here", tab: "findmi-here", icon: <NavIcon name="pin" className="h-[22px] w-[22px]" /> },
-    { section: "products", label: "Products", tab: "products", icon: <NavIcon name="tag" className="h-[22px] w-[22px]" /> },
-    { section: "opportunities", label: "Opportunities", tab: "opportunities", icon: <SparkGlyph className="h-[22px] w-[22px]" /> },
-    {
-      section: "performance",
-      label: "Performance",
-      tab: "performance",
-      icon: <NavIcon name="target" className="h-[22px] w-[22px]" />,
-      desktopOnly: true,
-    },
-    { section: "more", label: "More", tab: "more", icon: <MoreGlyph className="h-[22px] w-[22px]" /> },
-  ];
+  return BUSINESS_NAV.map((n) => ({ ...n, icon: NAV_ICONS[n.section] }));
 }
 
 export default function BusinessAppShell({

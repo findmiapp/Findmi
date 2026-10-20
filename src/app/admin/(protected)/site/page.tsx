@@ -7,12 +7,13 @@ export const dynamic = "force-dynamic";
 // each additional public page gets its own Site Editor screen later.
 const PAGES = [
   { key: "homepage", label: "Homepage", href: "/admin/site/homepage", available: true },
-  { key: "pages", label: "Discovery Pages (Phase 1)", href: "/admin/site/pages", available: true },
+  { key: "bulletins", label: "Homepage Bulletins", href: "/admin/bulletins", available: true },
+  { key: "pages", label: "Discovery Pages", href: "/admin/site/pages", available: true },
   { key: "join", label: "Join Page", href: "/admin/site/join", available: true },
   { key: "about", label: "About Page", href: "/admin/site/about", available: true },
   { key: "navigation", label: "Navigation", href: "/admin/site/navigation", available: true },
   { key: "contact", label: "Contact Info", href: "/admin/site/contact", available: true },
-  { key: "discovery", label: "Discovery (Topics + Lanes)", href: "/admin/site/discovery", available: true },
+  { key: "discovery", label: "Topics & Lanes", href: "/admin/site/discovery", available: true },
   { key: "geography", label: "Geography (Census + Areas)", href: "/admin/site/geography", available: true },
 ];
 

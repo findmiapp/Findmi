@@ -17,11 +17,10 @@ test("Admin Home: Markets & Areas management shortcut → /admin/markets, outsid
   assert.ok(HOME.indexOf('href="/admin/markets"') > HOME.indexOf("{QUICK_CREATE.map("), "just below the create actions");
 });
 
-test("More: a permanent Discovery section with Markets & Areas (not under Legacy)", () => {
-  const more = NAV.getAdminSection("more").groups;
-  const discovery = more.find((g) => g.label === "Discovery");
-  assert.deepEqual(discovery?.items, [{ href: "/admin/markets", label: "Markets & Areas", hint: "Control where Findmi is available" }]);
-  assert.ok(!more.find((g) => g.label === "Legacy")?.items.some((i) => i.href === "/admin/markets"));
+test("Markets & Areas is listed once (Directory) — the duplicate More › Discovery entry is gone", () => {
+  const all = NAV.ADMIN_SECTIONS.flatMap((s) => s.groups.flatMap((g) => g.items)).filter((i) => i.href === "/admin/markets");
+  assert.equal(all.length, 1);
+  assert.ok(!NAV.getAdminSection("more").groups.some((g) => g.items.some((i) => i.href === "/admin/markets")));
 });
 
 test("Directory still lists it; Requests already has Market Requests; section highlight unchanged", () => {

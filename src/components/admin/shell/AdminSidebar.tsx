@@ -50,7 +50,7 @@ export default function AdminSidebar() {
               </Link>
               {section.groups.length > 0 && (
                 <div className="mt-0.5 flex flex-col gap-px pl-[30px]">
-                  {section.groups.flatMap((g) => g.items).map((item) => {
+                  {section.groups.flatMap((g) => g.items).filter((item) => item.sidebar !== false).map((item) => {
                     const active = activeItem?.href === item.href || (!activeItem && isActive(pathname, item.href));
                     return (
                       <Link

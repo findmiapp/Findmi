@@ -28,22 +28,11 @@ import {
   type DashboardAppearanceSource,
 } from "@/lib/business-dashboard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
-// Visual System Pass 1 — the Business Manager renders its own lightweight
-// text-tab navigation directly below (Section 5 of this pass) rather than
-// the shared pill-styled TabNav component; TabNavItem's shape (key/label)
-// is small enough to define locally instead of importing an unused
-// component just for its type, and this way Event/Location Managers
-// (TabNav's other two callers) are left completely untouched.
-interface TabNavItem {
-  key: string;
-  label: string;
-  icon: NavIconKey;
-}
-import type { NavIconKey } from "@/lib/navigation";
 import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow } from "../../owner-ui";
 import BusinessAppShell, { sectionForTab } from "./v2/BusinessAppShell";
 import BusinessHome from "./v2/BusinessHome";
 import MoreMenu from "./v2/MoreMenu";
+import { LEGACY_TAB_REDIRECTS, VALID_BUSINESS_TAB_KEYS } from "./v2/business-nav";
 import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "./v2/OpportunitiesView";
 import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
 import AddToPresence from "./v2/AddToPresence";
@@ -220,57 +209,9 @@ const cardClass = "rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5";
 // key now redirects straight to the canonical Inbox's Opportunities
 // filter (see the redirect below), since it was a genuine duplicate of
 // what Inbox already shows.
-const PRIMARY_TABS: TabNavItem[] = [
-  { key: "overview", label: "Overview", icon: "home" },
-  { key: "findmi-here", label: "Findmi Here", icon: "calendar" },
-  // Performance -> Analytics (owner-facing rename only — see
-  // lib/analytics/ownerPerformance.ts's own doc comment; the tab KEY
-  // stays "performance" on purpose so every existing ?tab=performance
-  // link/bookmark keeps working).
-  { key: "performance", label: "Analytics", icon: "target" },
-  // First-Class QR Campaigns — a real Business Manager destination of its
-  // own (create/manage/reopen trackable QR codes), deliberately separate
-  // from Analytics/Performance (measuring what they did). Placed right
-  // after Analytics so the two related-but-distinct jobs sit together in
-  // this desktop-sidebar ordering. Mobile's own primary-row placement is
-  // independent of this array position — see MOBILE_PRIMARY_KEYS below,
-  // which puts QR Campaigns (not Analytics) in mobile's 3rd always-
-  // tappable slot.
-  { key: "qr", label: "QR Campaigns", icon: "pin" },
-  { key: "profile", label: "Profile", icon: "person" },
-  { key: "products", label: "Products", icon: "tag" },
-];
-const ORDERS_TAB: TabNavItem = { key: "orders", label: "Orders", icon: "cart" };
-
-// Old tab key -> new canonical destination. A visit to any of these
-// keys redirects immediately (before any of this page's heavier data
-// fetching) rather than rendering a second, now-dead copy of content
-// that's been moved elsewhere.
-const LEGACY_TAB_REDIRECTS: Record<string, string> = {
-  gallery: "profile",
-  links: "profile",
-  plan: "settings",
-  market: "settings",
-  followers: "performance",
-};
-
-// Every reachable tab key — primary, secondary (settings), Orders, the
-// still-independent Customer Inquiries configuration workflow, the
-// referral-partner-only tab, and every redirect-only legacy key
-// (including "opportunities" itself now — Unified Inbox V3) so the
-// param is recognized long enough to redirect rather than silently
-// falling back to Overview.
-const VALID_TAB_KEYS = new Set<string>([
-  ...PRIMARY_TABS.map((t) => t.key),
-  "orders",
-  "settings",
-  "opportunities",
-  "inquiries",
-  "referral",
-  // /account V2 — the More menu (secondary destinations).
-  "more",
-  ...Object.keys(LEGACY_TAB_REDIRECTS),
-]);
+// Tab keys, nav labels and legacy redirects live in ./v2/business-nav.ts
+// (shared with the shell and the More menu).
+const VALID_TAB_KEYS = VALID_BUSINESS_TAB_KEYS;
 
 const ORDER_STATUS_LABELS: Record<"new" | "confirmed" | "ready" | "fulfilled" | "cancelled", string> = {
   new: "New",
