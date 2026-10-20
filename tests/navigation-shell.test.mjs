@@ -174,7 +174,7 @@ test("Admin toolbar groups come from adminNavItems and point at real routes", as
     assert.ok(g.items.length > 0, g.label);
     for (const item of g.items) assert.ok(existsSync(`src/app/admin/(protected)${item.href.replace(/^\/admin/, "")}/page.tsx`), item.href);
   }
-  assert.deepEqual(ADMIN_TOOLBAR_GROUPS[1].items.map((i) => i.label), ["Import Events", "Import Locations", "Import Brands", "Import Appearances", "Convert To Events"]);
+  assert.deepEqual(ADMIN_TOOLBAR_GROUPS[1].items.map((i) => i.label), ["Import Events", "Import Locations", "Import Brands", "Import Appearances", "Convert To Events", "Media Enrichment"]);
 });
 
 test("toolbar offsets use ONE token (--admin-bar-h), not scattered 1.75rem values", () => {

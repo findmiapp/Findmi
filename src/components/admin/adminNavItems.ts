@@ -89,6 +89,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
           { href: "/admin/businesses/import", label: "Import Brands", hint: "Read a Brand from its website" },
           { href: "/admin/appearances/import", label: "Import Appearances", hint: "Paste or upload a schedule" },
           { href: "/admin/appearances/convert", label: "Convert To Events", hint: "Turn Appearances into Events" },
+          { href: "/admin/media-enrichment", label: "Media Enrichment", hint: "Add cover & logo images from source URLs" },
         ],
       },
     ],
