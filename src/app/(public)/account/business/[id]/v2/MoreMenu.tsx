@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import NavIcon from "@/components/NavIcon";
 import { QrGlyph } from "./CreateActionIcon";
 import ChevronIcon from "@/components/ChevronIcon";
+import SignOutConfirm from "@/components/SignOutConfirm";
+import { signOut } from "@/app/(public)/account/profile/actions";
 import { BUSINESS_MORE_TABS as T } from "./business-nav";
 
 /** /account V2, Pass 1 — "More": every secondary destination that no longer
@@ -70,6 +72,16 @@ export default function MoreMenu({
       <MoreGroup title="Tools" links={tools} />
       <MoreGroup title="Business Plan" links={businessPlan} />
       <MoreGroup title="Your Account" links={yourAccount} />
+      {/* A direct Sign Out — the same confirm-then-signOut action every
+          other sign-out trigger uses; no separate auth flow. */}
+      <div className="overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
+        <SignOutConfirm
+          action={signOut}
+          className="flex min-h-[56px] w-full items-center px-4 py-3 text-left text-card-title font-semibold text-subtle transition hover:bg-black/[0.02] hover:text-primary focus-visible:bg-black/[0.03] focus-visible:outline-none"
+        >
+          Sign Out
+        </SignOutConfirm>
+      </div>
     </div>
   );
 }

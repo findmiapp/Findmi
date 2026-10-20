@@ -102,3 +102,12 @@ test("Business More: personal destinations sit behind one Your Account entry; Ma
   const personal = read("src/app/(public)/account/PersonalAppShell.tsx");
   for (const dest of ["/account/saved", "/account/following", "/account/orders", "/account/profile"]) assert.ok(personal.includes(`"${dest}"`), `${dest} still reachable from the personal shell`);
 });
+
+test("Business More ends with a direct Sign Out that reuses the existing confirm + signOut action", () => {
+  const more = read(`${B}/v2/MoreMenu.tsx`);
+  assert.match(more, /import SignOutConfirm from "@\/components\/SignOutConfirm";/);
+  assert.match(more, /import \{ signOut \} from "@\/app\/\(public\)\/account\/profile\/actions";/);
+  assert.match(more, /<SignOutConfirm\s+action=\{signOut\}/);
+  assert.ok(more.indexOf('title="Your Account"') < more.indexOf("<SignOutConfirm"), "Sign Out sits below Your Account, at the bottom");
+  assert.ok(more.includes('href: "/account", label: "Your Account"') && more.includes("/account/schedule"), "Your Account and Schedule kept");
+});
