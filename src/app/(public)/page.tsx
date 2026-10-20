@@ -199,7 +199,11 @@ export default async function HomePage({
   // (returns null, or a result with `conditions: null`) rather than
   // throwing, so a provider outage never breaks the homepage.
   const weatherConfig = resolveWeatherConfig(siteSections);
-  const weatherContext = weatherConfig.show ? await getWeatherContext(weatherConfig.city) : null;
+  // A geographically locked site (JerseyCity.guide) always shows its own
+  // fixed location, never the founder's Findmi city.
+  const weatherContext = weatherConfig.show
+    ? await (site.weather ? getWeatherContext(site.weather.city, site.weather.label) : getWeatherContext(weatherConfig.city))
+    : null;
 
   return (
     <div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { JournalIndexEntry } from "@/lib/journal";
 import { parseYmd, formatEntryTime } from "@/lib/journalArchive";
+import { getSite } from "@/lib/site";
 
 /** Journal V1.1 — the archive's own richer card (replacing the old
  * Index's small square gallery tile): a large cover image leads, title
@@ -50,7 +51,7 @@ export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry
           <Image src={entry.coverUrl} alt="" fill unoptimized sizes="112px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">
-            <span className="text-[9px] font-bold uppercase tracking-wide text-white/25">Findmi</span>
+            <span className="text-[9px] font-bold uppercase tracking-wide text-white/25">{getSite().name}</span>
           </div>
         )}
       </div>

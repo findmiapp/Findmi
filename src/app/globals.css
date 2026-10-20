@@ -13,6 +13,77 @@ html {
   --font-display: var(--font-inter);
 }
 
+/* Brand color tokens (RGB channels) behind tailwind.config.ts's findmi /
+   harbor / ink / paper / mist / stone colors. These defaults ARE Findmi:
+   Findmi Aqua #14B0BC and its tint/shade scale, ink #111111, paper
+   #F8F8F6, mist #E5E5E5, stone #666666. */
+:root {
+  --c-findmi: 20 176 188;
+  --c-findmi-50: 237 251 252;
+  --c-findmi-100: 211 245 246;
+  --c-findmi-200: 168 236 238;
+  --c-findmi-300: 127 225 227;
+  --c-findmi-400: 63 199 206;
+  --c-findmi-500: 20 176 188;
+  --c-findmi-600: 15 142 152;
+  --c-findmi-700: 12 111 119;
+  --c-findmi-800: 10 87 93;
+  --c-findmi-900: 8 69 74;
+  --c-harbor: 20 176 188;
+  --c-harbor-50: 237 251 252;
+  --c-harbor-100: 211 245 246;
+  --c-harbor-200: 168 236 238;
+  --c-harbor-300: 127 225 227;
+  --c-harbor-400: 63 199 206;
+  --c-harbor-500: 20 176 188;
+  --c-harbor-600: 15 142 152;
+  --c-harbor-700: 12 111 119;
+  --c-harbor-800: 10 87 93;
+  --c-harbor-900: 8 69 74;
+  --c-ink: 17 17 17;
+  --c-paper: 248 248 246;
+  --c-mist: 229 229 229;
+  --c-stone: 102 102 102;
+}
+
+/* JerseyCity.guide — Brick + Harbor + Industrial Ink. Same components,
+   same layout; only the token values change (html[data-site] is set from
+   lib/site.ts in the root layout). Brick #A64232 (dark #7E3026, soft
+   #F7ECE9) is the brand accent; Harbor #287D8E (dark #1F6472, soft
+   #EAF3F4) carries navigation/location states; Ink #20292D, Muted
+   #68757C, Background #FAFAF8. */
+html[data-site="jc"] {
+  --c-findmi: 166 66 50;
+  --c-findmi-50: 247 236 233;
+  --c-findmi-100: 239 214 208;
+  --c-findmi-200: 223 174 164;
+  --c-findmi-300: 204 133 118;
+  --c-findmi-400: 185 96 79;
+  --c-findmi-500: 166 66 50;
+  --c-findmi-600: 146 57 43;
+  --c-findmi-700: 126 48 38;
+  --c-findmi-800: 101 39 32;
+  --c-findmi-900: 77 30 25;
+  --c-harbor: 40 125 142;
+  --c-harbor-50: 234 243 244;
+  --c-harbor-100: 207 228 232;
+  --c-harbor-200: 164 203 211;
+  --c-harbor-300: 116 175 187;
+  --c-harbor-400: 73 148 164;
+  --c-harbor-500: 40 125 142;
+  --c-harbor-600: 36 113 127;
+  --c-harbor-700: 31 100 114;
+  --c-harbor-800: 25 79 90;
+  --c-harbor-900: 19 60 68;
+  --c-ink: 32 41 45;
+  --c-paper: 250 250 248;
+  --c-stone: 104 117 124;
+}
+html[data-site="jc"] body {
+  background-color: #fafaf8;
+  color: #20292d;
+}
+
 /* The original FindMi site's headings read more open than Tailwind's
    tracking-tight default (-0.025em) once paired with Inter — soften it
    centrally here instead of touching every heading's className. */

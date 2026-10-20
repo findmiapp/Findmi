@@ -243,12 +243,12 @@ function DrawerSection({ title, children }: { title: string; children: React.Rea
 function NavItemLink({ item, active, onNavigate, nested = false, grow = false }: { item: ResolvedNavItem; active: boolean; onNavigate: () => void; nested?: boolean; grow?: boolean }) {
   if (!item.href) return null;
   const className = `flex min-h-11 items-center gap-3 rounded-xl px-3 font-semibold transition ${grow ? "min-w-0 flex-1" : ""} active:scale-[0.99] ${nested ? "text-sm" : "text-[15px]"} ${
-    item.highlight ? "bg-findmi text-white hover:bg-findmi-600" : active ? "bg-findmi-50 text-findmi-700" : "text-ink hover:bg-black/[0.03]"
+    item.highlight ? "bg-findmi text-white hover:bg-findmi-600" : active ? "bg-harbor-50 text-harbor-700" : "text-ink hover:bg-black/[0.03]"
   }`;
   const content = (
     <>
       {item.icon ? (
-        <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${item.highlight ? "text-white" : active ? "text-findmi-700" : "text-ink/55"}`} />
+        <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${item.highlight ? "text-white" : active ? "text-harbor-700" : "text-ink/55"}`} />
       ) : (
         !nested && <span aria-hidden="true" className="h-5 w-5 shrink-0" />
       )}
@@ -283,7 +283,7 @@ function DrawerGroup({
   const active = navItemActive(pathname, item);
   const panelId = `drawer-group-${item.id}`;
   const icon = item.icon ? (
-    <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-findmi-700" : "text-ink/55"}`} />
+    <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-harbor-700" : "text-ink/55"}`} />
   ) : (
     <span aria-hidden="true" className="h-5 w-5 shrink-0" />
   );
@@ -317,7 +317,7 @@ function DrawerGroup({
           aria-expanded={expanded}
           aria-controls={panelId}
           className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] font-semibold transition ${
-            active ? "text-findmi-700" : "text-ink hover:bg-black/[0.03]"
+            active ? "text-harbor-700" : "text-ink hover:bg-black/[0.03]"
           }`}
         >
           {icon}
@@ -343,10 +343,10 @@ function DrawerLink({ item, active, onNavigate }: { item: PrimaryNavItem; active
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-[15px] font-semibold transition active:scale-[0.99] ${
-        active ? "bg-findmi-50 text-findmi-700" : "text-ink hover:bg-black/[0.03]"
+        active ? "bg-harbor-50 text-harbor-700" : "text-ink hover:bg-black/[0.03]"
       }`}
     >
-      {item.icon ? <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-findmi-700" : "text-ink/55"}`} /> : <span aria-hidden="true" className="h-5 w-5 shrink-0" />}
+      {item.icon ? <NavIcon name={item.icon} className={`h-5 w-5 shrink-0 ${active ? "text-harbor-700" : "text-ink/55"}`} /> : <span aria-hidden="true" className="h-5 w-5 shrink-0" />}
       <span className="truncate">{item.label}</span>
     </Link>
   );

@@ -1,5 +1,15 @@
 import type { Config } from "tailwindcss";
 
+// Brand colors are CSS-variable tokens (RGB channels, defined in
+// globals.css) so a site theme can re-skin them once at the root. The
+// default values are byte-for-byte the original hex values below, so
+// Findmi renders exactly as before.
+const token = (name: string) => `rgb(var(--c-${name}) / <alpha-value>)`;
+const tokenScale = (name: string) => ({
+  DEFAULT: token(name),
+  ...Object.fromEntries([50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((step) => [step, token(`${name}-${step}`)])),
+});
+
 const config: Config = {
   content: [
     "./src/app/**/*.{ts,tsx}",
@@ -14,23 +24,16 @@ const config: Config = {
         // sampled directly from the real logo asset (public/logo-lockup.png)
         // — it is the authoritative brand color, not an invented one.
         // Used scarcely and intentionally, never as a flood background.
-        findmi: {
-          DEFAULT: "#14B0BC",
-          50: "#EDFBFC",
-          100: "#D3F5F6",
-          200: "#A8ECEE",
-          300: "#7FE1E3",
-          400: "#3FC7CE",
-          500: "#14B0BC",
-          600: "#0F8E98",
-          700: "#0C6F77",
-          800: "#0A575D",
-          900: "#08454A",
-        },
-        ink: "#111111",
-        paper: "#F8F8F6",
-        mist: "#E5E5E5",
-        stone: "#666666",
+        findmi: tokenScale("findmi"),
+        // Navigation / location-oriented interactive states (active nav
+        // item, open area picker). Defaults to exactly the Findmi Aqua
+        // scale above, so Findmi renders unchanged; a site theme (see
+        // globals.css html[data-site]) may give it its own hue.
+        harbor: tokenScale("harbor"),
+        ink: token("ink"),
+        paper: token("paper"),
+        mist: token("mist"),
+        stone: token("stone"),
       },
       fontFamily: {
         sans: [

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { PublicJournalCard } from "@/lib/journal-distribution";
 import { parseYmd } from "@/lib/journalArchive";
+import { getSite } from "@/lib/site";
 
 /** Journal Distribution V1 — the PUBLIC Journal preview card used on
  * Business/Event/Location/Product pages and the /journal collection.
@@ -43,7 +44,7 @@ export default function JournalPreviewCard({
             <Image src={entry.coverUrl} alt="" fill unoptimized sizes="224px" className="object-cover transition duration-300 group-hover:scale-[1.02]" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-ink">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">Findmi</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">{getSite().name}</span>
             </div>
           )}
         </div>
@@ -75,7 +76,7 @@ export default function JournalPreviewCard({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">Findmi</span>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">{getSite().name}</span>
           </div>
         )}
       </div>

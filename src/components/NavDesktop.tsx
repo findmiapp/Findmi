@@ -124,7 +124,7 @@ const barItemClass = (active: boolean, highlight = false) =>
     highlight
       ? "bg-findmi text-white hover:bg-findmi-600"
       : active
-        ? "bg-findmi-50 text-findmi-700"
+        ? "bg-harbor-50 text-harbor-700"
         : "text-ink/70 hover:bg-black/[0.04] hover:text-ink"
   }`;
 
@@ -185,7 +185,7 @@ function NavDropdown({
 function DropdownLink({ item, active }: { item: ResolvedNavItem; active: boolean }) {
   if (!item.href) return null;
   const className = `flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
-    item.highlight ? "text-findmi-700 hover:bg-findmi-50" : active ? "bg-findmi-50 text-findmi-700" : "text-ink hover:bg-black/[0.04]"
+    item.highlight ? "text-findmi-700 hover:bg-findmi-50" : active ? "bg-harbor-50 text-harbor-700" : "text-ink hover:bg-black/[0.04]"
   }`;
   const content = (
     <>
@@ -288,7 +288,7 @@ function MenuItem({ href, label, active }: { href: string; label: string; active
       role="menuitem"
       aria-current={active ? "page" : undefined}
       className={`block truncate rounded-xl px-3 py-2 text-sm font-medium transition ${
-        active ? "bg-findmi-50 text-findmi-700" : "text-ink hover:bg-black/[0.04]"
+        active ? "bg-harbor-50 text-harbor-700" : "text-ink hover:bg-black/[0.04]"
       }`}
     >
       {label}

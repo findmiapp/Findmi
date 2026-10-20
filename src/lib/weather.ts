@@ -95,11 +95,11 @@ async function fetchCurrentConditions(lat: number, lon: number): Promise<Current
  * treats null as "render nothing" and a non-null result with
  * `conditions: null` as "render location/date/time, skip the weather
  * chip", matching Section 5 exactly. */
-export async function getWeatherContext(city: string): Promise<WeatherContextData | null> {
+export async function getWeatherContext(city: string, label?: string): Promise<WeatherContextData | null> {
   const trimmed = city.trim();
   if (!trimmed) return null;
   const geo = await geocodeCity(trimmed);
   if (!geo) return null;
   const conditions = await fetchCurrentConditions(geo.lat, geo.lon);
-  return { cityLabel: geo.label, timeZone: geo.timeZone, conditions };
+  return { cityLabel: label ?? geo.label, timeZone: geo.timeZone, conditions };
 }

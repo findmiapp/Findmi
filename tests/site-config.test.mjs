@@ -48,6 +48,7 @@ test("Findmi is the default site and keeps its exact previous brand values", asy
   assert.equal(s.footer.legalName, "Findmi");
   assert.deepEqual(s.headingPrefix, { default: "Findmi" }, "BrandHeading still reads \"Findmi …\" on Findmi");
   assert.deepEqual(s.footer.columns.map((c) => c.title), ["Discover", "Business", "Legal"]);
+  assert.equal(s.weather, null, "Findmi keeps the founder-configured weather city");
 });
 
 test("JerseyCity.guide is locked to the Jersey City Area with its own brand, nav and editorial page", async () => {
@@ -64,6 +65,17 @@ test("JerseyCity.guide is locked to the Jersey City Area with its own brand, nav
   assert.equal(s.headingPrefix.default, "Jersey City");
   assert.equal(s.footer.legalName, "JerseyCity.guide");
   assert.ok(!JSON.stringify(s.footer).includes("Findmi\""), "no Findmi-branded footer labels on JC");
+  assert.deepEqual(s.weather, { city: "Jersey City", label: "Jersey City, NJ" }, "JC weather is fixed to its own geography");
+});
+
+test("theme: Findmi tokens keep their exact values; JC re-skins only via html[data-site=jc]", () => {
+  const css = read("src/app/globals.css");
+  const root = css.slice(css.indexOf(":root {"), css.indexOf("}", css.indexOf(":root {")));
+  for (const v of ["--c-findmi: 20 176 188;", "--c-findmi-700: 12 111 119;", "--c-harbor: 20 176 188;", "--c-ink: 17 17 17;", "--c-paper: 248 248 246;"]) assert.ok(root.includes(v), v);
+  const jc = css.slice(css.indexOf('html[data-site="jc"] {'), css.indexOf("}", css.indexOf('html[data-site="jc"] {')));
+  for (const v of ["--c-findmi: 166 66 50;", "--c-findmi-700: 126 48 38;", "--c-harbor: 40 125 142;", "--c-ink: 32 41 45;", "--c-paper: 250 250 248;"]) assert.ok(jc.includes(v), v);
+  assert.match(read("src/app/layout.tsx"), /data-site=\{site\.id\}/);
+  assert.match(read("src/app/(public)/page.tsx"), /site\.weather \? getWeatherContext\(site\.weather\.city, site\.weather\.label\)/);
 });
 
 test("next.config: Findmi gets no site redirects or rewrites; NEXT_PUBLIC_SITE is inlined", async () => {

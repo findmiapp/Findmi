@@ -205,7 +205,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </JournalPhotoTrigger>
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">
-            <span className="text-label uppercase tracking-wide text-white/25">Findmi</span>
+            <span className="text-label uppercase tracking-wide text-white/25">{getSite().name}</span>
           </div>
         )}
         {/* Journal Pass 1 — authorized-admin-only edit control. Same glass
@@ -472,7 +472,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             entirely when none qualify. */}
         {relatedMoments.length > 0 && (
           <section className="mt-10">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">More Findmi Moments</h2>
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">More {getSite().headingPrefix.default} Moments</h2>
             <div className="mt-3">
               <MomentsCarousel entries={relatedMoments} total={null} viewAllHref="/journal" />
             </div>

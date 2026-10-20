@@ -60,7 +60,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" data-site={site.id} className={inter.variable}>
       <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
         {children}
       </body>
