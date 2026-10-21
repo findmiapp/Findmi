@@ -16,4 +16,5 @@ registerHooks({
   },
 });
 
-await import("./backfill.ts");
+// JC_BACKFILL_MODE=exceptions runs the one-off exception pass instead.
+await import(process.env.JC_BACKFILL_MODE === "exceptions" ? "./exceptions.ts" : "./backfill.ts");

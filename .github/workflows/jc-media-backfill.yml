@@ -11,6 +11,11 @@ on:
       confirm:
         description: "Type RUN to fill empty Jersey City media fields"
         required: true
+      mode:
+        description: "backfill (generic first pass) or exceptions (official-page assets for the remaining empty fields)"
+        type: choice
+        options: [backfill, exceptions]
+        default: backfill
   push:
     branches: [media-enrichment-preview]
     paths: [".github/workflows/jc-media-backfill.yml"]
@@ -38,4 +43,5 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JC_BACKFILL_MODE: ${{ github.event.inputs.mode }}
         run: node --experimental-strip-types --no-warnings scripts/jc-media-backfill/run.mjs
