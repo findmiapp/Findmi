@@ -109,16 +109,15 @@ test("sticky section rail: in-page anchors only, Attention only with items (with
   assert.match(NAV, /if \(lock\) \{[\s\S]*?return;\s*\}/);
 });
 
-test("Create on Findmi: six actions in the intentional order, each with icon + title + one explanatory line", () => {
+test("Create on Findmi: five actions in the intentional order, each with icon + title + one explanatory line", () => {
   const actions = CA.orderedCreateActions("/account/business/biz", "biz");
-  assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "Add a Location", "Add a Product", "Add a Moment", "Create a QR Code"]);
-  assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "pin", "tag", "moment", "qr"]);
+  assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Create A QR Code"]);
+  assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "pin", "tag", "qr"]);
   assert.deepEqual(actions.map((x) => x.description), [
     "Add something your Business is participating in.",
     "Create something your Business is organizing.",
     "Add a place customers can regularly find your Business.",
     "Add something people can discover from your Business.",
-    "Document something your Business experienced.",
     "Create a trackable QR code for your Business or campaign.",
   ]);
   for (const a of actions) {
@@ -126,7 +125,10 @@ test("Create on Findmi: six actions in the intentional order, each with icon + t
     assert.doesNotMatch(a.description + a.detail, /Appearance record|Occurrence|entity|foreign key/i);
   }
   const all = actions.map((a) => a.label).join(" ") + read(`${B}/v2/createActions.ts`);
-  assert.doesNotMatch(all, /Go Somewhere|Host Something|At a Location|Add To Product Catalog|Create A QR Code/);
+  // The product owner's Account revision adopted At a Location / Add To Product
+  // Catalog / Create A QR Code as the owner-facing labels; "Appearance" is never one.
+  assert.doesNotMatch(all, /Go Somewhere|Host Something/);
+  assert.doesNotMatch(actions.map((a) => a.label).join(" "), /Appearance|Moment/);
 });
 
 test("participating vs organizing: Where I'll Be = taking part in someone else's; Host an Event = organizing", () => {

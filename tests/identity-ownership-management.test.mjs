@@ -397,8 +397,8 @@ test("Products You Might Like: deterministic Brand diversity (max 2 per Brand wh
   assert.deepEqual(AH.diversifyByBrand(ranked, 6), AH.diversifyByBrand(ranked, 6), "no randomness");
 });
 
-test("From Brands You Follow has no misleading See All; Upcoming Events stays follow-derived", () => {
-  assert.match(HOME, /<HomeSection id="from-brands" title="From Brands You Follow">/);
+test("From Pages You Follow has no misleading See All; Upcoming Events stays follow-derived", () => {
+  assert.match(HOME, /<HomeSection id="from-brands" title="From Pages You Follow">/);
   assert.match(HOME, /getPersonalUpcoming\(\s*\{\s*savedEvents: \[\],/);
 });
 

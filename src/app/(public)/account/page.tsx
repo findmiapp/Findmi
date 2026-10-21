@@ -635,7 +635,7 @@ export default async function AccountHomePage({
         {brandTiles.length > 0 && (
           // No See All: there's no single feed of followed Brands' content
           // yet — the tabs below are the browse surface for this rail.
-          <HomeSection id="from-brands" title="From Brands You Follow">
+          <HomeSection id="from-brands" title="From Pages You Follow">
             <FromBrandsSection tiles={brandTiles} />
           </HomeSection>
         )}
@@ -679,7 +679,7 @@ export default async function AccountHomePage({
         )}
 
         {momentTiles.length > 0 && (
-          <HomeSection id="your-moments" title="Your Moments" href="/my-world/journal" linkLabel="See All">
+          <HomeSection id="your-moments" title="Your Recent Moments" href="/my-world/journal" linkLabel="See All">
             <div className={RAIL_CLASS + " lg:grid-cols-6"}>
               {momentTiles.map((tile) => (
                 <WorldTileCard key={tile.key} tile={tile} />
@@ -792,16 +792,20 @@ export default async function AccountHomePage({
             <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
               {myPendingClaims.map((c) => (
                 <div key={c.id} className="flex flex-col gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/50 p-4">
-                  <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
+                  <Link href={`/business/${c.slug}`} className="flex flex-col gap-1.5">
                     <p className="text-card-title font-bold text-primary">{c.name}</p>
-                    <p className="text-metadata font-semibold text-accent">Claim under review</p>
-                    <p className="text-metadata text-muted">Typically reviewed within 48–72 hours.</p>
+                    <span>
+                      <Chip tone="amber">Pending Review</Chip>
+                    </span>
+                    <p className="text-metadata text-muted">
+                      Findmi is reviewing your claim to manage this Page — typically within 48–72 hours. You&rsquo;ll see it under Pages I Manage once approved.
+                    </p>
                   </Link>
                   <Link
-                    href="/join/business"
-                    className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-label font-bold uppercase text-white transition hover:bg-findmi-600"
+                    href={`/business/${c.slug}`}
+                    className="flex h-9 w-fit items-center justify-center rounded-xl border border-findmi/40 bg-white px-4 text-label font-bold uppercase text-findmi-700 transition hover:bg-findmi-50"
                   >
-                    Upgrade to Pro
+                    View Page
                   </Link>
                 </div>
               ))}

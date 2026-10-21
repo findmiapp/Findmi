@@ -7,8 +7,8 @@ import { orderedCreateActions } from "./createActions";
 import CreateActionIcon from "./CreateActionIcon";
 
 /** The ONE "+ Add" entry for a Business owner — choose by intent, never by
- * Findmi's internal model. Its six creation actions (Where I'll Be, Host an
- * Event, Add a Location, Add a Product, Add a Moment, Create a QR Code) come
+ * Findmi's internal model. Its five creation actions (Where I'll Be, Host an
+ * Event, At a Location, Add To Product Catalog, Create A QR Code) come
  * from ./createActions, the same definition Business Home's Create on
  * Findmi rail uses (label, icon, route); this sheet shows each one's richer
  * `detail` line.
@@ -23,6 +23,7 @@ export default function AddToPresence({
   businessId,
   initialOpen = false,
   variant = "primary",
+  label = "Add",
 }: {
   basePath: string;
   businessId: string;
@@ -30,6 +31,9 @@ export default function AddToPresence({
   /** "link" — a quiet text trigger (Business Home's Create on Findmi
    * "View All"); opens this same sheet, never a second modal. */
   variant?: "primary" | "chip" | "link";
+  /** Text of the primary/chip trigger (default "Add"); Account Home's
+   * completion card uses "Create on Findmi". The sheet is the same. */
+  label?: string;
 }) {
   const [open, setOpen] = useState(initialOpen);
 
@@ -91,7 +95,7 @@ export default function AddToPresence({
           }
         >
           <PlusGlyph className="h-4 w-4" />
-          Add
+          {label}
         </button>
       )}
 

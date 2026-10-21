@@ -280,11 +280,11 @@ test("Home: Opportunities section; no informational Needs Attention item", () =>
   assert.equal(/Nothing happening yet/.test(DASHBOARD), false);
 });
 
-test("Add modal: six intents, canonical Moment route, Grow Your Business", () => {
+test("Add modal: five create intents, Moment route definition kept, Grow Your Business", () => {
   // B2 — the four "do" labels/routes come from the shared createActions.
   const CREATE = read("src/app/(public)/account/business/[id]/v2/createActions.ts");
   assert.match(ADD, /const doOptions = orderedCreateActions\(basePath, businessId\)\.map\(/);
-  for (const t of ["Add a Moment", "Host an Event", "Where I\u2019ll Be", "Add a Location"]) assert.ok(CREATE.includes(`label: "${t}"`), t);
+  for (const t of ["Host an Event", "Where I\u2019ll Be", "At a Location"]) assert.ok(CREATE.includes(`label: "${t}"`), t);
   for (const t of ["Find An Opportunity", "Tell Findmi Your Goals"]) assert.ok(ADD.includes(`"${t}"`), t);
   assert.match(CREATE, /\/my-world\/journal\/new\?business=\$\{id\}/);
   assert.match(ADD, /Grow Your Business/);

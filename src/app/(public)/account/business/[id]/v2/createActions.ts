@@ -6,14 +6,17 @@
  * Be, Host an Event), Business content (Location, Product), publishing /
  * tooling (Moment, QR):
  *
- *   Where I'll Be    → Findmi Here's request-to-join composer
- *                      (?tab=findmi-here&compose=1, manual fallback)
- *   Host an Event    → /account/event/new?business_id= (validated
- *                      server-side: Owner/Manager of this Business)
- *   Add a Location   → Findmi Here's Locations add panel (?view=locations&add=1)
- *   Add a Product    → Products' Add Product panel (?tab=products&compose=1)
- *   Add a Moment     → the canonical Moment composer, prefilled with this Business
- *   Create a QR Code → the Business QR creator (/qr/new)
+ *   Where I'll Be          → Findmi Here's request-to-join composer
+ *                            (?tab=findmi-here&compose=1, manual fallback)
+ *   Host an Event          → /account/event/new?business_id= (validated
+ *                            server-side: Owner/Manager of this Business)
+ *   At a Location          → Findmi Here's Locations add panel (?view=locations&add=1)
+ *   Add To Product Catalog → Products' Add Product panel (?tab=products&compose=1)
+ *   (not listed) moment    → kept as a definition only; see BUSINESS_CREATE_ORDER
+ *   Create A QR Code       → the Business QR creator (/qr/new)
+ *
+ * Owner-facing labels follow the product owner's Account revision: never
+ * "Appearance" as a creation label (that stays the internal entity).
  *
  * Locked Business-facing distinction (UX vocabulary only — the internal
  * Event / Appearance domain is unchanged):
@@ -63,7 +66,7 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
     },
     location: {
       key: "location",
-      label: "Add a Location",
+      label: "At a Location",
       description: "Add a place customers can regularly find your Business.",
       detail: "A store, café, showroom, venue or office where customers can regularly find your Business.",
       href: `${basePath}?tab=findmi-here&view=locations&add=1`,
@@ -71,7 +74,7 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
     },
     product: {
       key: "product",
-      label: "Add a Product",
+      label: "Add To Product Catalog",
       description: "Add something people can discover from your Business.",
       detail: "Something you make, sell or offer, so people can discover it from your Business.",
       href: `${basePath}?tab=products&compose=1`,
@@ -87,7 +90,7 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
     },
     qr: {
       key: "qr",
-      label: "Create a QR Code",
+      label: "Create A QR Code",
       description: "Create a trackable QR code for your Business or campaign.",
       detail: "A trackable QR code for your Business, a product, an Event or a campaign.",
       href: `${basePath}/qr/new`,
@@ -96,8 +99,13 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
   };
 }
 
-/** Every Business creation action, in the intentional order. */
-export const BUSINESS_CREATE_ORDER: BusinessCreateKey[] = ["where", "event", "location", "product", "moment", "qr"];
+/** Every Business creation action SHOWN in Create on Findmi, in the
+ * intentional order. Moments are deliberately not one of them: a Business's
+ * Moments will be curated from activity across Findmi, not hand-created from
+ * this menu. The `moment` definition above is kept (route intact) for that
+ * future Business Moments area; the Moment composer itself is unchanged and
+ * still reachable everywhere else (+ menu, My Moments, Moment pages). */
+export const BUSINESS_CREATE_ORDER: BusinessCreateKey[] = ["where", "event", "location", "product", "qr"];
 
 export function orderedCreateActions(basePath: string, businessId: string): BusinessCreateAction[] {
   const a = businessCreateActions(basePath, businessId);

@@ -3,6 +3,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
 import { Chip } from "./owner-ui";
 import ScrollToTopOnArrival from "./ScrollToTopOnArrival";
+import AddToPresence from "./business/[id]/v2/AddToPresence";
 
 /** VCL A2 — the completion state Brand onboarding lands on
  * (/account?created=<id>): success + status for the Business that was just
@@ -43,21 +44,25 @@ export default function CreatedBusinessCard({
       <p className="mt-1 max-w-xl text-body text-secondary">
         It&rsquo;s visible to you now and will appear in discovery after Findmi reviews it.
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* SUBMISSION -> ACCOUNT HOME -> CLEAR STATUS -> NEXT ACTION: the one
+          Create on Findmi entry (the same sheet Business Home uses) leads,
+          then Manage and Preview. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <AddToPresence basePath={`/account/business/${business.id}`} businessId={business.id} variant="primary" label="Create on Findmi" />
+        <Link
+          href={`/account/business/${business.id}`}
+          className="inline-flex h-11 min-w-0 max-w-full items-center rounded-xl border border-findmi/40 bg-white px-4 text-button font-bold text-findmi-700 transition hover:bg-findmi-50"
+        >
+          <span className="truncate">Manage {business.name}</span>
+        </Link>
         {business.slug && (
           <Link
             href={`/business/${business.slug}`}
-            className="inline-flex h-11 items-center rounded-xl border border-findmi/40 bg-white px-4 text-button font-bold text-findmi-700 transition hover:bg-white/70"
+            className="inline-flex h-11 items-center rounded-xl border border-findmi/40 bg-white px-4 text-button font-bold text-findmi-700 transition hover:bg-findmi-50"
           >
             Preview
           </Link>
         )}
-        <Link
-          href={`/account/business/${business.id}`}
-          className="inline-flex h-11 min-w-0 max-w-full items-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600"
-        >
-          <span className="truncate">Manage {business.name}</span>
-        </Link>
       </div>
     </section>
   );
