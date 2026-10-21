@@ -35,7 +35,7 @@ test("script: reuses the existing pipeline and logo selection; empty fields only
 
 test("the four reviewed-and-cleared covers are never re-fetched; their logos and everything else still are", () => {
   for (const slug of ["battello-jersey-city", "newark-avenue-pedestrian-plaza", "lincoln-park-jersey-city"]) assert.ok(SCRIPT.match(/EXCLUDED_PLACE_COVER_SLUGS = new Set\(\[([^\]]*)\]/)[1].includes(`"${slug}"`), slug);
-  assert.match(SCRIPT, /EXCLUDED_BUSINESS_COVER_SLUGS = new Set\(\["nimbus-dance"\]\)/);
+  assert.ok(SCRIPT.match(/EXCLUDED_BUSINESS_COVER_SLUGS = new Set\(\[([^\]]*)\]/)[1].includes('"nimbus-dance"'));
   // Checked before any fetch, and only for the cover field.
   assert.match(SCRIPT, /else if \(EXCLUDED_PLACE_COVER_SLUGS\.has\(l\.slug\)\) log\(\{ table: "locations", name: l\.name, column: "cover_image_url", status: "unresolved"/);
   assert.match(SCRIPT, /else if \(EXCLUDED_BUSINESS_COVER_SLUGS\.has\(b\.slug\)\) log\(\{ table: "businesses", name: b\.name, column: "cover_image_url", status: "unresolved"/);

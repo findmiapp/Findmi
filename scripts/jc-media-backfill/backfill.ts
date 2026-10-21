@@ -36,13 +36,26 @@ const EXCLUDED_EVENT_SLUGS = new Set([
   "mana-contemporary-three-works-by-athena-latocha",
   "jcymap-2026-celebration-art-exhibition-documentary-premiere",
   "cat-stick-easel-moon-closing-reception",
+  // Exception pass, cleared on review: only generic LSC After Dark artwork.
+  "lsc-after-dark-covens-2026",
 ]);
 /** Covers whose official source's share image is branding, not a photo
  * (Battello's logo, the Downtown SID icon, the Hudson County seal, Nimbus
  * Dance's logo). Stored by the first run, then cleared on review; never
  * re-fetched from these sources. */
-const EXCLUDED_PLACE_COVER_SLUGS = new Set(["battello-jersey-city", "newark-avenue-pedestrian-plaza", "lincoln-park-jersey-city"]);
-const EXCLUDED_BUSINESS_COVER_SLUGS = new Set(["nimbus-dance"]);
+const EXCLUDED_PLACE_COVER_SLUGS = new Set([
+  "battello-jersey-city",
+  "newark-avenue-pedestrian-plaza",
+  "lincoln-park-jersey-city",
+  // Exception pass, cleared on review: the shared Modcup locations page's
+  // image isn't verified to show this café.
+  "modcup-coffee-bergen-lafayette",
+]);
+const EXCLUDED_BUSINESS_COVER_SLUGS = new Set([
+  "nimbus-dance",
+  // Exception pass, cleared on review: the site's image is AI-generated.
+  "modcup-coffee",
+]);
 /** Rocky Horror's source is the LSC After Dark series page: its image is
  * accepted only when the resolved image itself is clearly Rocky Horror's. */
 const SPECIFIC_IMAGE_REQUIRED: Record<string, RegExp> = {

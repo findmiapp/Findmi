@@ -83,3 +83,19 @@ test("writes: READY + high confidence only, empty fields only, existing pipeline
   assert.match(WF, /options: \[backfill, exceptions\]/);
   assert.match(WF, /if: github\.event_name == 'workflow_dispatch' && github\.event\.inputs\.confirm == 'RUN'/);
 });
+
+test("covers cleared on review are never re-resolved by either pass", () => {
+  const B = readFileSync("scripts/jc-media-backfill/backfill.ts", "utf8");
+  for (const slug of ["modcup-coffee-bergen-lafayette", "battello-jersey-city", "newark-avenue-pedestrian-plaza", "lincoln-park-jersey-city"]) {
+    assert.ok(B.match(/EXCLUDED_PLACE_COVER_SLUGS = new Set\(\[([\s\S]*?)\]\)/)[1].includes(`"${slug}"`), `backfill ${slug}`);
+    assert.ok(SRC.match(/locations: new Set\(\[([^\]]*)\]\)/)[1].includes(`"${slug}"`), `exceptions ${slug}`);
+  }
+  for (const slug of ["modcup-coffee", "nimbus-dance"]) {
+    assert.ok(B.match(/EXCLUDED_BUSINESS_COVER_SLUGS = new Set\(\[([\s\S]*?)\]\)/)[1].includes(`"${slug}"`), `backfill ${slug}`);
+    assert.ok(SRC.match(/businesses: new Set\(\[([^\]]*)\]\)/)[1].includes(`"${slug}"`), `exceptions ${slug}`);
+  }
+  assert.ok(B.includes('"lsc-after-dark-covens-2026"') && SRC.includes('"lsc-after-dark-covens-2026"'));
+  // Only covers: logos are still eligible.
+  assert.match(SRC, /if \(!b\.logo_url\) list\.push\(/);
+});
+

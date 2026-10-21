@@ -38,7 +38,15 @@ const SKIP_EVENTS = new Set([
   "mana-contemporary-three-works-by-athena-latocha", // until the 2026 listing itself is verified
   "jcymap-2026-celebration-art-exhibition-documentary-premiere", // no generic Mana media
   "cat-stick-easel-moon-closing-reception", // no generic SMUSH / Cultural Affairs media
+  "lsc-after-dark-covens-2026", // cleared on review: only generic LSC After Dark artwork
 ]);
+/** Covers stored by a pass and cleared on review — never re-resolved
+ * automatically (branding, an AI-generated image, an image not verified
+ * to show this specific location). */
+const EXCLUDED_COVERS: Record<"locations" | "businesses", Set<string>> = {
+  locations: new Set(["battello-jersey-city", "newark-avenue-pedestrian-plaza", "lincoln-park-jersey-city", "modcup-coffee-bergen-lafayette"]),
+  businesses: new Set(["nimbus-dance", "modcup-coffee"]),
+};
 /** The chosen asset (its URL, alt text or the page it came from) must
  * name the event itself. */
 const REQUIRE_KEYWORD: Record<string, RegExp> = {
@@ -376,10 +384,10 @@ async function targets(db: SupabaseClient): Promise<Target[]> {
   const bizIds = [...new Set([...(own ?? []).map((b) => b.id), ...(atPlaces ?? []).map((b) => b.business_id), ...(onRosters ?? []).map((b) => b.business_id)])] as string[];
   const { data: businesses } = await db.from("businesses").select("id, slug, name, website_url, cover_image_url, logo_url").in("id", bizIds).is("trashed_at", null);
   const list: Target[] = [];
-  for (const l of locations ?? []) if (!l.cover_image_url) list.push({ table: "locations", kind: "place", id: l.id, slug: l.slug, name: l.name, column: "cover_image_url", source: l.website_url, site: l.website_url });
+  for (const l of locations ?? []) if (!l.cover_image_url && !EXCLUDED_COVERS.locations.has(l.slug)) list.push({ table: "locations", kind: "place", id: l.id, slug: l.slug, name: l.name, column: "cover_image_url", source: l.website_url, site: l.website_url });
   for (const e of events ?? []) if (!e.cover_image_url && !SKIP_EVENTS.has(e.slug)) list.push({ table: "events", kind: "event", id: e.id, slug: e.slug, name: e.name, column: "cover_image_url", source: e.external_url, site: null });
   for (const b of businesses ?? []) {
-    if (!b.cover_image_url) list.push({ table: "businesses", kind: "business", id: b.id, slug: b.slug, name: b.name, column: "cover_image_url", source: b.website_url, site: b.website_url });
+    if (!b.cover_image_url && !EXCLUDED_COVERS.businesses.has(b.slug)) list.push({ table: "businesses", kind: "business", id: b.id, slug: b.slug, name: b.name, column: "cover_image_url", source: b.website_url, site: b.website_url });
     if (!b.logo_url) list.push({ table: "businesses", kind: "business", id: b.id, slug: b.slug, name: b.name, column: "logo_url", source: b.website_url, site: b.website_url });
   }
   return list;
