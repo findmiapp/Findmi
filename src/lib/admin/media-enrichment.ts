@@ -15,10 +15,22 @@ import "server-only";
 // URL — the third-party URL is never written to a record. The record's
 // existing media column is then set to that URL (the same column the
 // admin edit form's upload field writes); nothing else on the row changes.
+//
+// The source URL may be a direct image OR an official webpage. A direct
+// image is handled exactly as before. When the guarded image fetch says the
+// URL isn't an image, the page itself is read once through the guarded
+// HTML fetch (safeFetchEventPage: same destination/DNS/redirect/TLS/
+// timeout/size rules), its representative image is resolved
+// (representativePageImages: og:image:secure_url → og:image →
+// twitter:image → JSON-LD → conservative fallback; parsing only, no page
+// script runs), and each candidate goes through the SAME guarded fetch +
+// verification as a direct image. Provenance (source page + resolved image
+// URL) is kept as a small JSON sidecar next to the stored original.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchVerifiedEventImage, storeEventImage, previewEventImage, type EventImageRejection } from "@/lib/event-import/media";
+import { fetchVerifiedEventImage, storeEventImage, type EventImageRejection, type VerifiedEventImage } from "@/lib/event-import/media";
 import { fetchVerifiedBrandImage, storeBrandImage, brandImagePreview, brandImageFailureReason, type VerifiedBrandImage } from "@/lib/brand-images";
-import { validateFetchUrl } from "@/lib/safe-fetch";
+import { representativePageImages, type PageImageSource } from "@/lib/event-import/extract";
+import { validateFetchUrl, safeFetchImage, safeFetchBrandImage, safeFetchSvg, safeFetchEventPage, type SafeFetchImageResult, type SafeFetchResult } from "@/lib/safe-fetch";
 
 export type MediaEntityType = "location" | "event" | "business";
 export type MediaTarget = "cover" | "logo";
@@ -38,28 +50,55 @@ const PUBLIC_PATHS: Record<MediaEntityType, (slug: string) => string> = {
   business: (s) => `/business/${s}`,
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BUCKET = "findmi-media";
+const PUBLIC_SEGMENT = `/storage/v1/object/public/${BUCKET}/`;
+/** Candidates tried from one page before giving up. */
+const MAX_PAGE_CANDIDATES = 4;
+const PAGE_SOURCES: ReadonlySet<PageImageSource> = new Set(["og:image:secure_url", "og:image", "twitter:image", "jsonld", "page"]);
 
 export interface MediaEnrichmentRequest {
   entityType: string;
   entityId: string;
   target: string;
+  /** A direct image URL or an official webpage. */
   url: string;
+  /** The image a Preview resolved from the webpage and the admin confirmed;
+   * still fetched and verified like any other image. */
+  resolvedImageUrl?: string | null;
+  /** Which page tag that confirmed image came from (provenance only). */
+  resolvedFrom?: string | null;
+}
+
+/** Where the stored image came from. */
+export interface MediaProvenance {
+  /** The webpage the image was resolved from (null for a direct image). */
+  sourcePageUrl: string | null;
+  /** The image URL that was actually fetched. */
+  resolvedImageUrl: string;
+  resolvedFrom: PageImageSource | "direct";
 }
 
 export type MediaEnrichmentResult =
-  | { ok: true; url: string; column: string; previousUrl: string | null; publicPath: string; adminPath: string }
-  | { ok: false; error: string };
+  | ({ ok: true; url: string; column: string; previousUrl: string | null; publicPath: string; adminPath: string } & MediaProvenance)
+  | { ok: false; error: string; sourcePageUrl?: string | null; resolvedImageUrl?: string | null };
+
+export type MediaPreviewResult = ({ preview: string } & MediaProvenance) | { error: string; sourcePageUrl?: string | null; resolvedImageUrl?: string | null };
 
 export interface MediaEnrichmentDeps {
-  verifyCover: typeof fetchVerifiedEventImage;
+  fetchCoverImage: (url: string) => Promise<SafeFetchImageResult>;
+  fetchLogoImage: (url: string) => Promise<SafeFetchImageResult>;
+  fetchSvg: (url: string) => Promise<SafeFetchImageResult>;
+  fetchPage: (url: string) => Promise<SafeFetchResult>;
   storeCover: typeof storeEventImage;
-  verifyLogo: typeof fetchVerifiedBrandImage;
   storeLogo: typeof storeBrandImage;
 }
+// The same fetchers each existing pipeline uses by default.
 const defaultDeps: MediaEnrichmentDeps = {
-  verifyCover: fetchVerifiedEventImage,
+  fetchCoverImage: (url) => safeFetchImage(url),
+  fetchLogoImage: (url) => safeFetchBrandImage(url),
+  fetchSvg: (url) => safeFetchSvg(url),
+  fetchPage: (url) => safeFetchEventPage(url),
   storeCover: storeEventImage,
-  verifyLogo: fetchVerifiedBrandImage,
   storeLogo: storeBrandImage,
 };
 
@@ -72,6 +111,18 @@ const COVER_REASONS: Record<EventImageRejection, string> = {
   store_failed: "The image couldn't be saved to Findmi storage. Please try again.",
 };
 
+function checkUrl(raw: string | null | undefined): { ok: true; url: string } | { ok: false; error: string } {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return { ok: false, error: "Paste a source URL." };
+  // The same destination rules the fetch itself enforces (https only, no
+  // credentials/ports/IP literals, no localhost/internal/special-use
+  // names). Private addresses behind a public name are refused again at
+  // connect time by safe-fetch's guarded DNS lookup, on every redirect.
+  const checked = validateFetchUrl(trimmed, { allowSharedPlatforms: true });
+  if (!checked.ok) return { ok: false, error: checked.code === "blocked_destination" ? "That address isn't allowed." : "Use a full https:// URL." };
+  return { ok: true, url: checked.url.href };
+}
+
 /** Request shape + URL rules, before anything is fetched. Exported for tests. */
 export function checkMediaRequest(req: MediaEnrichmentRequest): { ok: true; type: MediaEntityType; target: MediaTarget; column: string; url: string } | { ok: false; error: string } {
   const type = req.entityType as MediaEntityType;
@@ -80,15 +131,101 @@ export function checkMediaRequest(req: MediaEnrichmentRequest): { ok: true; type
   const column = MEDIA_TARGETS[type][target];
   if (!column) return { ok: false, error: `A ${type === "location" ? "Place" : type === "event" ? "Event" : "Business"} has no ${req.target} image.` };
   if (!UUID.test(req.entityId ?? "")) return { ok: false, error: "Choose an existing record first." };
-  const raw = (req.url ?? "").trim();
-  if (!raw) return { ok: false, error: "Paste an image URL." };
-  // The same destination rules the fetch itself enforces (https only, no
-  // credentials/ports/IP literals, no localhost/internal/special-use
-  // names). Private addresses behind a public name are refused again at
-  // connect time by safe-fetch's guarded DNS lookup.
-  const checked = validateFetchUrl(raw, { allowSharedPlatforms: true });
-  if (!checked.ok) return { ok: false, error: checked.code === "blocked_destination" ? "That address isn't allowed." : "Use a full https:// image URL." };
-  return { ok: true, type, target, column, url: checked.url.href };
+  const url = checkUrl(req.url);
+  if (!url.ok) return url;
+  return { ok: true, type, target, column, url: url.url };
+}
+
+type Verified = { kind: "cover"; image: VerifiedEventImage } | { kind: "logo"; image: VerifiedBrandImage };
+/** `notImage`: the guarded image fetch says this URL isn't an image (an
+ * HTML page, or a page host the image fetch doesn't accept) — the only
+ * case in which the URL is then read as a webpage. */
+type VerifyOutcome = { ok: true; verified: Verified } | { ok: false; error: string; notImage: boolean };
+
+/** One image URL through the existing pipeline's own verification. */
+async function verifyImage(target: MediaTarget, url: string, deps: MediaEnrichmentDeps): Promise<VerifyOutcome> {
+  let code: string | null = null;
+  const record = (fetcher: (u: string) => Promise<SafeFetchImageResult>) => async (u: string) => {
+    const r = await fetcher(u);
+    if (!r.ok) code = r.code;
+    return r;
+  };
+  const notImage = () => code === "unsupported_content" || code === "blocked_destination";
+  if (target === "logo") {
+    const v = await fetchVerifiedBrandImage(url, "logo", { fetchImage: record(deps.fetchLogoImage), fetchSvg: record(deps.fetchSvg) });
+    return v.ok ? { ok: true, verified: { kind: "logo", image: v.image } } : { ok: false, error: brandImageFailureReason(v), notImage: notImage() || v.reason === "type_mismatch" };
+  }
+  const v = await fetchVerifiedEventImage(url, { fetchImage: record(deps.fetchCoverImage) });
+  return v.ok ? { ok: true, verified: { kind: "cover", image: v.image } } : { ok: false, error: COVER_REASONS[v.reason], notImage: notImage() || v.reason === "type_mismatch" };
+}
+
+type Resolved = { ok: true; verified: Verified } & MediaProvenance;
+type Unresolved = { ok: false; error: string; sourcePageUrl?: string | null; resolvedImageUrl?: string | null };
+
+/** Source URL → one verified image (direct, or resolved from the page). */
+export async function resolveSourceImage(
+  target: MediaTarget,
+  sourceUrl: string,
+  confirmed: { url?: string | null; from?: string | null } | null,
+  deps: MediaEnrichmentDeps = defaultDeps
+): Promise<Resolved | Unresolved> {
+  // A Preview already resolved and showed this image: verify exactly it.
+  const confirmedImageUrl = confirmed?.url;
+  if (confirmedImageUrl && confirmedImageUrl !== sourceUrl) {
+    const checked = checkUrl(confirmedImageUrl);
+    if (!checked.ok) return { ok: false, error: checked.error, sourcePageUrl: sourceUrl, resolvedImageUrl: confirmedImageUrl };
+    const v = await verifyImage(target, checked.url, deps);
+    if (!v.ok) return { ok: false, error: v.error, sourcePageUrl: sourceUrl, resolvedImageUrl: checked.url };
+    const from = PAGE_SOURCES.has(confirmed?.from as PageImageSource) ? (confirmed?.from as PageImageSource) : "page";
+    return { ok: true, verified: v.verified, sourcePageUrl: sourceUrl, resolvedImageUrl: checked.url, resolvedFrom: from };
+  }
+
+  const direct = await verifyImage(target, sourceUrl, deps);
+  if (direct.ok) return { ok: true, verified: direct.verified, sourcePageUrl: null, resolvedImageUrl: sourceUrl, resolvedFrom: "direct" };
+  if (!direct.notImage) return { ok: false, error: direct.error, resolvedImageUrl: sourceUrl };
+
+  const page = await deps.fetchPage(sourceUrl);
+  if (!page.ok) {
+    return {
+      ok: false,
+      error: page.code === "blocked_destination" ? "That address isn't allowed." : "That URL isn't an image, and the webpage couldn't be read (blocked, missing, too large, or the site refused).",
+      sourcePageUrl: sourceUrl,
+    };
+  }
+  const pageUrl = page.url.href;
+  const candidates = representativePageImages(page.html, page.url);
+  if (candidates.length === 0) {
+    return { ok: false, error: "That webpage doesn't declare a representative image (no og:image, twitter:image or structured image). Paste a direct image URL instead.", sourcePageUrl: pageUrl };
+  }
+  let firstError: Unresolved | null = null;
+  for (const c of candidates.slice(0, MAX_PAGE_CANDIDATES)) {
+    const v = await verifyImage(target, c.url, deps);
+    if (v.ok) return { ok: true, verified: v.verified, sourcePageUrl: pageUrl, resolvedImageUrl: c.url, resolvedFrom: c.source };
+    firstError ??= { ok: false, error: `The page's image couldn't be used: ${v.error}`, sourcePageUrl: pageUrl, resolvedImageUrl: c.url };
+  }
+  return firstError ?? { ok: false, error: "The page's image couldn't be used.", sourcePageUrl: pageUrl };
+}
+
+/** Best-effort provenance sidecar next to the stored original
+ * (<path>.provenance.json in findmi-media). Never fails the row. */
+async function writeProvenance(admin: SupabaseClient, storedUrl: string, p: MediaProvenance & { entityType: string; entityId: string; column: string }): Promise<void> {
+  try {
+    const i = storedUrl.indexOf(PUBLIC_SEGMENT);
+    if (i === -1) return;
+    const path = `${decodeURIComponent(storedUrl.slice(i + PUBLIC_SEGMENT.length).split("?")[0])}.provenance.json`;
+    const body = JSON.stringify({
+      source_page_url: p.sourcePageUrl,
+      resolved_source_image_url: p.resolvedImageUrl,
+      resolved_from: p.resolvedFrom,
+      entity_type: p.entityType,
+      entity_id: p.entityId,
+      column: p.column,
+      stored_at: new Date().toISOString(),
+    });
+    await admin.storage.from(BUCKET).upload(path, new Blob([body], { type: "application/json" }), { contentType: "application/json", upsert: false });
+  } catch {
+    // provenance is a record, never a gate
+  }
 }
 
 /** Fetch → verify → store → write the record's media column. Never throws. */
@@ -104,49 +241,34 @@ export async function enrichEntityImage(admin: SupabaseClient, req: MediaEnrichm
     const previousUrl = record[column] ?? null;
     const slug = record.slug ?? "";
 
-    let stored: string | null;
-    if (target === "logo") {
-      const verified = await deps.verifyLogo(url, "logo");
-      if (!verified.ok) return { ok: false, error: brandImageFailureReason(verified) };
-      stored = await deps.storeLogo(admin, verified.image as VerifiedBrandImage);
-    } else {
-      const verified = await deps.verifyCover(url);
-      if (!verified.ok) return { ok: false, error: COVER_REASONS[verified.reason] };
-      stored = await deps.storeCover(admin, verified.image);
-    }
-    if (!stored) return { ok: false, error: COVER_REASONS.store_failed };
+    const resolved = await resolveSourceImage(target, url, { url: req.resolvedImageUrl, from: req.resolvedFrom }, deps);
+    if (!resolved.ok) return resolved;
+    const stored = resolved.verified.kind === "logo" ? await deps.storeLogo(admin, resolved.verified.image) : await deps.storeCover(admin, resolved.verified.image);
+    if (!stored) return { ok: false, error: COVER_REASONS.store_failed, sourcePageUrl: resolved.sourcePageUrl, resolvedImageUrl: resolved.resolvedImageUrl };
 
     const { error: writeError } = await admin.from(TABLES[type]).update({ [column]: stored }).eq("id", req.entityId);
     if (writeError) return { ok: false, error: "The image was stored but the record couldn't be updated. Please try again." };
-    return {
-      ok: true,
-      url: stored,
-      column,
-      previousUrl,
-      publicPath: PUBLIC_PATHS[type](slug),
-      adminPath: `/admin/${TABLES[type]}/${req.entityId}`,
-    };
+    const provenance: MediaProvenance = { sourcePageUrl: resolved.sourcePageUrl, resolvedImageUrl: resolved.resolvedImageUrl, resolvedFrom: resolved.resolvedFrom };
+    await writeProvenance(admin, stored, { ...provenance, entityType: type, entityId: req.entityId, column });
+    return { ok: true, url: stored, column, previousUrl, publicPath: PUBLIC_PATHS[type](slug), adminPath: `/admin/${TABLES[type]}/${req.entityId}`, ...provenance };
   } catch {
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 }
 
-/** A small verified data-URI preview (the admin CSP only allows Findmi /
- * data: images, so the source URL is never shown directly). Nothing is
- * stored. Never throws. */
-export async function previewEntityImage(target: string, rawUrl: string): Promise<{ preview: string } | { error: string }> {
-  const checked = validateFetchUrl((rawUrl ?? "").trim(), { allowSharedPlatforms: true });
-  if (!checked.ok) return { error: checked.code === "blocked_destination" ? "That address isn't allowed." : "Use a full https:// image URL." };
+/** A small verified data-URI preview of the image this source resolves to
+ * (the admin CSP only allows Findmi / data: images, so the source is never
+ * shown directly). Reads no record and writes nothing. Never throws. */
+export async function previewEntityImage(target: string, rawUrl: string, deps: MediaEnrichmentDeps = defaultDeps): Promise<MediaPreviewResult> {
+  const checked = checkUrl(rawUrl);
+  if (!checked.ok) return { error: checked.error };
   try {
-    if (target === "logo") {
-      const verified = await fetchVerifiedBrandImage(checked.url.href, "logo");
-      if (!verified.ok) return { error: brandImageFailureReason(verified) };
-      const preview = await brandImagePreview(verified.image);
-      return preview ? { preview } : { error: "Couldn't make a preview." };
-    }
-    const result = await previewEventImage(checked.url.href);
-    if (result.reason === null) return { preview: result.preview };
-    return { error: result.reason === "preview_failed" ? "Couldn't make a preview." : COVER_REASONS[result.reason] };
+    const resolved = await resolveSourceImage(target === "logo" ? "logo" : "cover", checked.url, null, deps);
+    if (!resolved.ok) return { error: resolved.error, sourcePageUrl: resolved.sourcePageUrl ?? null, resolvedImageUrl: resolved.resolvedImageUrl ?? null };
+    const image = resolved.verified.kind === "logo" ? resolved.verified.image : ({ ...resolved.verified.image, role: "cover" } as VerifiedBrandImage);
+    const preview = await brandImagePreview(image);
+    if (!preview) return { error: "Couldn't make a preview.", sourcePageUrl: resolved.sourcePageUrl, resolvedImageUrl: resolved.resolvedImageUrl };
+    return { preview, sourcePageUrl: resolved.sourcePageUrl, resolvedImageUrl: resolved.resolvedImageUrl, resolvedFrom: resolved.resolvedFrom };
   } catch {
     return { error: "Couldn't make a preview." };
   }

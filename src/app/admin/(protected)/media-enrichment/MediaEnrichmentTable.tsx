@@ -15,6 +15,8 @@ interface Row {
   target: Target;
   url: string;
   preview: string | null;
+  /** What the source URL resolved to (set by Preview, confirmed on Process). */
+  resolved: { sourcePageUrl: string | null; resolvedImageUrl: string | null; resolvedFrom: string | null } | null;
   status: Status;
   message: string | null;
   /** A pasted row's entity match that needs a human look. */
@@ -41,6 +43,7 @@ const newRow = (over: Partial<Row> = {}): Row => ({
   target: "cover",
   url: "",
   preview: null,
+  resolved: null,
   status: "idle",
   message: null,
   matchNote: null,
@@ -131,9 +134,13 @@ export default function MediaEnrichmentTable() {
   async function preview(row: Row) {
     if (!row.url.trim()) return;
     update(row.key, { status: "previewing", message: null });
-    const res = await previewMediaRow(row.target, row.url).catch(() => ({ error: "Couldn't make a preview." }));
-    if ("preview" in res) update(row.key, { preview: res.preview, status: "idle" });
-    else update(row.key, { preview: null, status: "error", message: res.error });
+    const res = await previewMediaRow(row.target, row.url).catch(() => ({ error: "Couldn't make a preview." }) as { error: string; sourcePageUrl?: string | null; resolvedImageUrl?: string | null });
+    if ("preview" in res) {
+      update(row.key, { preview: res.preview, resolved: { sourcePageUrl: res.sourcePageUrl, resolvedImageUrl: res.resolvedImageUrl, resolvedFrom: res.resolvedFrom }, status: "idle" });
+    } else {
+      const shown = res.sourcePageUrl || res.resolvedImageUrl ? { sourcePageUrl: res.sourcePageUrl ?? null, resolvedImageUrl: res.resolvedImageUrl ?? null, resolvedFrom: null } : null;
+      update(row.key, { preview: null, resolved: shown, status: "error", message: res.error });
+    }
   }
 
   async function processRows(keys: number[]) {
@@ -147,11 +154,27 @@ export default function MediaEnrichmentTable() {
         continue;
       }
       update(key, { status: "processing", message: null });
-      const res = await processMediaRow({ entityType: row.entityType, entityId: row.entity.id, target: row.target, url: row.url }).catch(() => ({
+      // A webpage the admin previewed: process exactly the image they saw.
+      const confirmed = row.preview && row.resolved?.sourcePageUrl ? row.resolved : null;
+      const res = await processMediaRow({
+        entityType: row.entityType,
+        entityId: row.entity.id,
+        target: row.target,
+        url: row.url,
+        resolvedImageUrl: confirmed?.resolvedImageUrl ?? null,
+        resolvedFrom: confirmed?.resolvedFrom ?? null,
+      }).catch(() => ({
         ok: false as const,
         error: "The request failed. Please try again.",
       }));
-      if (res.ok) update(key, { status: "done", selected: false, message: res.previousUrl ? "Saved — replaced the previous image." : "Saved." });
+      if (res.ok) {
+        update(key, {
+          status: "done",
+          selected: false,
+          resolved: { sourcePageUrl: res.sourcePageUrl, resolvedImageUrl: res.resolvedImageUrl, resolvedFrom: res.resolvedFrom },
+          message: res.previousUrl ? "Saved — replaced the previous image." : "Saved.",
+        });
+      }
       else update(key, { status: "error", message: res.error });
     }
     setBusy(false);
@@ -163,9 +186,9 @@ export default function MediaEnrichmentTable() {
   return (
     <div className="flex flex-col gap-4">
       <details className="rounded-2xl border border-black/[0.07] bg-white p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-ink">Paste rows (type | name | target | image URL)</summary>
+        <summary className="cursor-pointer text-sm font-semibold text-ink">Paste rows (type | name | target | source URL)</summary>
         <p className="mt-2 text-xs text-ink/55">
-          One per line, tab- or |-separated, e.g. <code>Place | Mana Contemporary | cover | https://…/hero.jpg</code>. Each name is matched to an
+          One per line, tab- or |-separated, e.g. <code>Place | Mana Contemporary | Cover | https://www.manacontemporary.com/</code>. Each name is matched to an
           existing record for you to review before processing — nothing is created.
         </p>
         <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={5} className={`${inputClass} mt-2 font-mono text-xs`} />
@@ -174,6 +197,7 @@ export default function MediaEnrichmentTable() {
         </button>
       </details>
 
+      <p className="text-xs text-ink/55">Paste a direct image URL or an official webpage. Findmi can extract the page&apos;s representative image.</p>
       <div className="overflow-x-auto rounded-2xl border border-black/[0.07] bg-white">
         <table className="w-full min-w-[880px] text-left text-sm">
           <thead className="border-b border-black/[0.06] text-xs uppercase tracking-wide text-ink/45">
@@ -182,7 +206,7 @@ export default function MediaEnrichmentTable() {
               <th className="w-28 px-2 py-2">Type</th>
               <th className="px-2 py-2">Record</th>
               <th className="w-24 px-2 py-2">Target</th>
-              <th className="px-2 py-2">Image URL</th>
+              <th className="px-2 py-2">Source URL</th>
               <th className="w-28 px-2 py-2">Preview</th>
               <th className="w-48 px-2 py-2">Status</th>
               <th className="w-8 px-2 py-2" />
@@ -266,7 +290,7 @@ function RowView({
         {row.matchNote && <p className="mt-1 text-xs text-amber-700">{row.matchNote}</p>}
       </td>
       <td className="px-2 py-2">
-        <select value={row.target} disabled={locked} onChange={(e) => onChange({ target: e.target.value as Target, preview: null })} className={inputClass}>
+        <select value={row.target} disabled={locked} onChange={(e) => onChange({ target: e.target.value as Target, preview: null, resolved: null })} className={inputClass}>
           {TARGETS[row.entityType].map((t) => (
             <option key={t} value={t}>
               {t === "cover" ? "Cover" : "Logo"}
@@ -279,11 +303,23 @@ function RowView({
           type="url"
           value={row.url}
           disabled={locked}
-          onChange={(e) => onChange({ url: e.target.value, preview: null, status: row.status === "error" ? "idle" : row.status, message: null })}
+          onChange={(e) => onChange({ url: e.target.value, preview: null, resolved: null, status: row.status === "error" ? "idle" : row.status, message: null })}
           onBlur={() => row.url.trim() && !row.preview && onPreview()}
-          placeholder="https://…"
+          placeholder="https://… image or official page"
           className={inputClass}
         />
+        {row.resolved?.sourcePageUrl && (
+          <div className="mt-1 space-y-0.5 break-all text-[11px] leading-snug text-ink/55">
+            <p>
+              <span className="font-semibold text-ink/70">Source page:</span> {row.resolved.sourcePageUrl}
+            </p>
+            {row.resolved.resolvedImageUrl && (
+              <p>
+                <span className="font-semibold text-ink/70">Resolved image{row.resolved.resolvedFrom ? ` (${row.resolved.resolvedFrom})` : ""}:</span> {row.resolved.resolvedImageUrl}
+              </p>
+            )}
+          </div>
+        )}
       </td>
       <td className="px-2 py-2">
         {row.preview ? (

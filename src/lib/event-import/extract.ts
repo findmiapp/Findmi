@@ -582,3 +582,96 @@ export function isPastDate(d: { start: string; end: string | null; hasTime: bool
   const end = d.end ? Date.parse(d.end) : Date.parse(d.start) + 3 * 60 * 60 * 1000;
   return end < now;
 }
+
+// ── Representative page image (Admin Media Enrichment) ───────────────────
+
+export type PageImageSource = "og:image:secure_url" | "og:image" | "twitter:image" | "jsonld" | "page";
+
+/** JSON-LD node types whose `image` is not the page's own picture. */
+const NON_ENTITY_TYPES = new Set(["WebSite", "BreadcrumbList", "SearchAction", "ImageObject", "ListItem", "SiteNavigationElement"]);
+/** Fallback <img> only when its declared size is clearly a hero/photo. */
+const FALLBACK_IMG_MIN_PX = 400;
+const FALLBACK_SKIP = new Set(["header", "nav", "footer", "aside", "noscript", "template", "svg"]);
+
+/** JSON-LD images that belong to the page's own entity: an Event whose url
+ * is this page (else the first Event), then other entity nodes (Place,
+ * LocalBusiness, Museum, WebPage …) — `primaryImageOfPage` / `image` /
+ * an ImageObject's `contentUrl`. Never `logo`, never site-level nodes. */
+function jsonLdPageImages(blocks: string[], pageUrl: URL): string[] {
+  const out: string[] = [];
+  const events = collectEventNodes(blocks);
+  const primary = events.find((n) => sameEventUrl(absoluteHttps(str(n.url), pageUrl), pageUrl)) ?? events[0];
+  const fromEvent = primary ? imageOf(primary.image, pageUrl) : null;
+  if (fromEvent) out.push(fromEvent);
+  let budget = 400;
+  const visit = (value: unknown, depth: number) => {
+    if (budget <= 0 || depth > 6 || !value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 60)) visit(item, depth + 1);
+      return;
+    }
+    budget -= 1;
+    const node = value as JsonObject;
+    const types = typeList(node["@type"]);
+    if (!types.some((t) => NON_ENTITY_TYPES.has(t))) {
+      for (const v of [node.primaryImageOfPage, node.image]) {
+        const img = v ? imageOf(v, pageUrl) : null;
+        if (img) out.push(img);
+      }
+    }
+    for (const [key, child] of Object.entries(node).slice(0, 100)) {
+      if (key !== "@context" && key !== "logo" && key !== "image" && key !== "primaryImageOfPage" && child && typeof child === "object") visit(child, depth + 1);
+    }
+  };
+  for (const block of blocks) {
+    try {
+      visit(JSON.parse(block), 0);
+    } catch {
+      // not JSON — ignored
+    }
+  }
+  return out;
+}
+
+/** Conservative last resort: <link rel="image_src">, then the first <img>
+ * outside header/nav/footer whose DECLARED width and height are both at
+ * least FALLBACK_IMG_MIN_PX (icons, sprites and trackers never qualify). */
+function fallbackPageImages(html: string, pageUrl: URL): string[] {
+  const out: string[] = [];
+  let img: string | null = null;
+  const doc = parse(html) as unknown as HtmlNode;
+  const walk = (node: HtmlNode, budget: { n: number }) => {
+    if (budget.n-- <= 0 || (node.tagName && FALLBACK_SKIP.has(node.tagName))) return;
+    if (node.tagName === "link" && (attr(node, "rel") ?? "").toLowerCase().split(/\s+/).includes("image_src")) {
+      const href = absoluteHttps(attr(node, "href"), pageUrl);
+      if (href) out.push(href);
+    } else if (node.tagName === "img" && !img) {
+      const w = Number(attr(node, "width"));
+      const h = Number(attr(node, "height"));
+      if (w >= FALLBACK_IMG_MIN_PX && h >= FALLBACK_IMG_MIN_PX) img = absoluteHttps(attr(node, "src"), pageUrl);
+    }
+    for (const child of node.childNodes ?? []) walk(child, budget);
+  };
+  walk(doc, { n: MAX_DOM_NODES });
+  if (img) out.push(img);
+  return out;
+}
+
+/** The images a page declares as representing itself, best first:
+ * og:image:secure_url → og:image → twitter:image → the page entity's
+ * JSON-LD image → (only when none of those exist) a conservative page
+ * fallback. Relative URLs resolve against the page; https only; deduped.
+ * Parsing only — no script on the page is ever run. Every returned URL is
+ * still untrusted: the caller fetches it through the guarded image fetch. */
+export function representativePageImages(html: string, pageUrl: URL): { url: string; source: PageImageSource }[] {
+  const c = collect(html);
+  const found: { url: string; source: PageImageSource }[] = [];
+  for (const key of META_IMAGE_KEYS) {
+    const url = absoluteHttps(c.meta.get(key), pageUrl);
+    if (url) found.push({ url, source: key });
+  }
+  for (const url of jsonLdPageImages(c.jsonLd, pageUrl)) found.push({ url, source: "jsonld" });
+  if (found.length === 0) for (const url of fallbackPageImages(html, pageUrl)) found.push({ url, source: "page" });
+  const seen = new Set<string>();
+  return found.filter((f) => !seen.has(f.url) && seen.add(f.url)).slice(0, 6);
+}

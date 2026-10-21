@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
-import { enrichEntityImage, previewEntityImage, type MediaEnrichmentRequest, type MediaEnrichmentResult } from "@/lib/admin/media-enrichment";
+import { enrichEntityImage, previewEntityImage, type MediaEnrichmentRequest, type MediaEnrichmentResult, type MediaPreviewResult } from "@/lib/admin/media-enrichment";
 
 /** Media Enrichment — one row: fetch the source image server-side, store
  * it through Findmi's image pipeline, write it to the existing record.
@@ -25,8 +25,9 @@ export async function processMediaRow(req: MediaEnrichmentRequest): Promise<Medi
   return result;
 }
 
-/** A verified preview of a source image (nothing stored). Admin only. */
-export async function previewMediaRow(target: string, url: string): Promise<{ preview: string } | { error: string }> {
+/** A verified preview of the image a source URL (direct image or official
+ * webpage) resolves to. Reads no record, stores nothing. Admin only. */
+export async function previewMediaRow(target: string, url: string): Promise<MediaPreviewResult> {
   try {
     await requireAdmin();
   } catch {
