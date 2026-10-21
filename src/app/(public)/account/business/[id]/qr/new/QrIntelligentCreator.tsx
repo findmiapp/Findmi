@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
 import type { QrCreatorOption, QrCreatorOptions } from "@/lib/qr-manager";
+import QrOptionPicker from "./QrOptionPicker";
 import type { QrDestinationType } from "@/lib/qr-v2";
 import { createIntelligentQrCampaign, type QrContextType } from "../../../qr-manager-actions";
 import type { CreatedQrCampaign } from "../../../qr-actions";
@@ -27,6 +28,14 @@ const DESTINATION_TYPE_LABEL: Record<QrDestinationType, string> = {
 
 const PLACEMENT_OPTIONS = ["Table sign", "Counter", "Packaging", "Poster", "Window", "Booth signage", "Menu", "Product display"];
 
+/** "Sat, Oct 25 · 11:00 AM" — an occurrence's date + time, in the app zone. */
+function occurrenceDateTime(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+  return `${date} · ${time}`;
+}
+
 function shortLabel(label: string): string {
   return label.split(" · ")[0];
 }
@@ -48,6 +57,9 @@ export default function QrIntelligentCreator({
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [contextType, setContextType] = useState<QrContextType | null>(null);
   const [contextId, setContextId] = useState("");
+  // Event context only: Entire Event (every date) or one Specific Occurrence.
+  const [occurrenceScope, setOccurrenceScope] = useState<"entire" | "specific">("entire");
+  const [occurrenceId, setOccurrenceId] = useState("");
   const [placement, setPlacement] = useState("");
   const [placementOther, setPlacementOther] = useState("");
   const [destinationType, setDestinationType] = useState<QrDestinationType | null>(null);
@@ -74,9 +86,14 @@ export default function QrIntelligentCreator({
     (t) => t === "business" || t === "custom" || optionsFor(t).length > 0
   );
 
+  const selectedEvent = contextType === "event" ? options.events.find((e) => e.id === contextId) : undefined;
+  const selectedOccurrence = occurrenceScope === "specific" ? selectedEvent?.occurrences?.find((o) => o.id === occurrenceId) : undefined;
+
   function labelForContext(): string {
     if (contextType === "business") return businessName;
-    return optionsFor(contextType).find((o) => o.id === contextId)?.label ?? "";
+    const base = optionsFor(contextType).find((o) => o.id === contextId)?.label ?? "";
+    if (contextType === "event" && base) return selectedOccurrence ? `${base} · ${selectedOccurrence.label}` : `${base} · Entire Event`;
+    return base;
   }
   function labelForDestination(): string {
     if (destinationType === "business") return `${businessName} on Findmi`;
@@ -88,7 +105,12 @@ export default function QrIntelligentCreator({
     return placement || null;
   }
   function defaultName(): string {
-    const base = contextType === "business" ? businessName : shortLabel(labelForContext()) || businessName;
+    const base =
+      contextType === "business"
+        ? businessName
+        : contextType === "event"
+          ? [selectedEvent?.label, selectedOccurrence?.label].filter(Boolean).join(" ") || businessName
+          : shortLabel(labelForContext()) || businessName;
     const place = effectivePlacement();
     return place ? `${base} — ${place}` : base;
   }
@@ -124,7 +146,10 @@ export default function QrIntelligentCreator({
     setStep(4);
   }
 
-  const canAdvanceStep1 = Boolean(contextType) && (contextType === "business" || Boolean(contextId));
+  const canAdvanceStep1 =
+    Boolean(contextType) &&
+    (contextType === "business" || Boolean(contextId)) &&
+    (contextType !== "event" || occurrenceScope === "entire" || Boolean(occurrenceId));
   const canAdvanceStep3 =
     Boolean(destinationType) &&
     (destinationType === "business" || (destinationType === "custom" ? destinationUrl.trim().length > 0 : Boolean(destinationId)));
@@ -138,6 +163,7 @@ export default function QrIntelligentCreator({
       businessId,
       contextType,
       contextId: contextType === "business" ? undefined : contextId,
+      contextOccurrenceId: contextType === "event" && occurrenceScope === "specific" ? occurrenceId : null,
       destinationType,
       destinationId: destinationType === "business" || destinationType === "custom" ? undefined : destinationId,
       destinationUrl: destinationType === "custom" ? destinationUrl.trim() : undefined,
@@ -190,6 +216,8 @@ export default function QrIntelligentCreator({
                 onClick={() => {
                   setContextType(t);
                   setContextId("");
+                  setOccurrenceScope("entire");
+                  setOccurrenceId("");
                   setDestinationType(null);
                 }}
                 className={`rounded-xl border p-3 text-left transition ${
@@ -205,21 +233,61 @@ export default function QrIntelligentCreator({
           {contextType && contextType !== "business" && (
             <div className="flex flex-col gap-1.5">
               <span className="text-microcopy font-semibold text-muted">Choose {CONTEXT_TYPE_META[contextType].label.toLowerCase()}</span>
-              <div className="flex max-h-72 flex-col gap-1.5 overflow-y-auto rounded-xl border border-black/10 bg-white p-1.5">
-                {optionsFor(contextType).map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => setContextId(o.id)}
-                    className={`rounded-lg px-3 py-2.5 text-left text-body transition ${
-                      contextId === o.id ? "bg-findmi-50 font-semibold text-accent" : "text-primary hover:bg-black/[0.03]"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
+              <QrOptionPicker
+                options={optionsFor(contextType)}
+                value={contextId}
+                noun={CONTEXT_TYPE_META[contextType].label.toLowerCase()}
+                onChange={(id) => {
+                  setContextId(id);
+                  setOccurrenceScope("entire");
+                  setOccurrenceId("");
+                }}
+              />
             </div>
+          )}
+
+          {contextType === "event" && selectedEvent && (selectedEvent.occurrences?.length ?? 0) > 0 && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 text-microcopy font-semibold text-muted">Which dates?</legend>
+              {(
+                [
+                  { value: "entire", label: "Entire Event", helper: "Counts scans for every date of this Event." },
+                  { value: "specific", label: "Specific Occurrence", helper: "Counts scans for one date only." },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={occurrenceScope === o.value}
+                  onClick={() => {
+                    setOccurrenceScope(o.value);
+                    if (o.value === "entire") setOccurrenceId("");
+                  }}
+                  className={`rounded-xl border p-3 text-left transition ${occurrenceScope === o.value ? "border-findmi bg-findmi-50" : "border-black/10 bg-white hover:border-black/20"}`}
+                >
+                  <span className="block text-body font-bold text-primary">{o.label}</span>
+                  <span className="mt-0.5 block text-microcopy text-subtle">{o.helper}</span>
+                </button>
+              ))}
+              {occurrenceScope === "specific" && (
+                <div role="listbox" aria-label="Choose a date" className="flex max-h-60 flex-col gap-1 overflow-y-auto rounded-xl border border-black/10 bg-white p-1.5">
+                  {selectedEvent.occurrences?.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="option"
+                      aria-selected={occurrenceId === o.id}
+                      onClick={() => setOccurrenceId(o.id)}
+                      className={`rounded-lg px-3 py-2.5 text-left transition ${occurrenceId === o.id ? "bg-findmi-50 text-accent" : "text-primary hover:bg-black/[0.03]"}`}
+                    >
+                      <span className={`block text-body ${occurrenceId === o.id ? "font-semibold" : ""}`}>{occurrenceDateTime(o.startAt)}</span>
+                      {o.place && <span className="block text-metadata text-muted">{o.place}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </fieldset>
           )}
 
           <button type="button" disabled={!canAdvanceStep1} onClick={goToPlacementStep} className={`${primaryButtonClass("md")} disabled:opacity-50`}>
@@ -298,20 +366,7 @@ export default function QrIntelligentCreator({
           </div>
 
           {destinationType && destinationType !== "business" && destinationType !== "custom" && (
-            <div className="flex max-h-72 flex-col gap-1.5 overflow-y-auto rounded-xl border border-black/10 bg-white p-1.5">
-              {optionsFor(destinationType).map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={() => setDestinationId(o.id)}
-                  className={`rounded-lg px-3 py-2.5 text-left text-body transition ${
-                    destinationId === o.id ? "bg-findmi-50 font-semibold text-accent" : "text-primary hover:bg-black/[0.03]"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
+            <QrOptionPicker options={optionsFor(destinationType)} value={destinationId} onChange={setDestinationId} noun={DESTINATION_TYPE_LABEL[destinationType].split(" ")[0].toLowerCase()} />
           )}
 
           {destinationType === "custom" && (

@@ -17,6 +17,7 @@ import { generateQrCode } from "@/lib/analytics/qrCode";
 import { validateCustomDestination } from "@/lib/navigation";
 import {
   deriveQrContextFromAppearance,
+  getBusinessQrAllowedOccurrences,
   getBusinessQrEligibleEvents,
   getBusinessQrEligibleLocations,
   type QrCampaignStatus,
@@ -33,6 +34,10 @@ export interface CreateIntelligentQrInput {
   contextType: QrContextType;
   /** Ignored for contextType "business" (the Business itself is the context). */
   contextId?: string;
+  /** contextType "event" only — scopes the QR to ONE scheduled occurrence
+   * ("Specific Occurrence"); omitted/null = the Entire Event. Verified
+   * server-side to belong to the chosen Event. */
+  contextOccurrenceId?: string | null;
   destinationType: QrDestinationType;
   /** Required for business/product/event/location destination types. */
   destinationId?: string;
@@ -188,6 +193,21 @@ export async function createIntelligentQrCampaign(input: CreateIntelligentQrInpu
     const eligible = await getBusinessQrEligibleEvents(admin, input.businessId);
     if (!eligible.some((e) => e.id === input.contextId)) return { ok: false, error: "That event isn't associated with this business." };
     eventId = input.contextId;
+    if (input.contextOccurrenceId) {
+      const { data: occurrence } = await admin
+        .from("event_occurrences")
+        .select("id, event_id, status")
+        .eq("id", input.contextOccurrenceId)
+        .maybeSingle();
+      if (!occurrence || occurrence.event_id !== eventId || occurrence.status === "cancelled") {
+        return { ok: false, error: "That date isn't part of this event." };
+      }
+      // The Business must also be entitled to THIS date (not only the Event).
+      const { data: siblings } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).neq("status", "cancelled");
+      const allowed = (await getBusinessQrAllowedOccurrences(admin, input.businessId, new Map([[eventId, (siblings ?? []) as { id: string }[]]]))).get(eventId);
+      if (!allowed?.has(occurrence.id)) return { ok: false, error: "Your business isn't set up for that date of this event." };
+      eventOccurrenceId = occurrence.id;
+    }
   } else if (input.contextType === "location") {
     if (!input.contextId) return { ok: false, error: "Choose a location." };
     const eligible = await getBusinessQrEligibleLocations(admin, input.businessId);

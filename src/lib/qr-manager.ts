@@ -5,7 +5,7 @@
 // destination-safety logic that already lives there.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDateShort } from "./format";
-import { getBusinessQrEligibleEvents, getBusinessQrEligibleLocations, type QrCampaignStatus, type QrDestinationType } from "./qr-v2";
+import { getBusinessQrAllowedOccurrences, getBusinessQrEligibleEvents, getBusinessQrEligibleLocations, type QrCampaignStatus, type QrDestinationType } from "./qr-v2";
 
 export interface QrCampaignSummary {
   id: string;
@@ -31,7 +31,7 @@ export interface QrCampaignSummary {
 }
 
 function describeLegacyDestinationPath(path: string): string {
-  if (path.startsWith("/business/")) return path.includes("#") ? "Business profile (FindMi Here)" : "Business profile";
+  if (path.startsWith("/business/")) return path.includes("#") ? "Business profile (Findmi Here)" : "Business profile";
   if (path.startsWith("/product/")) return "Product page";
   if (path.startsWith("/event/")) return "Event page";
   if (path.startsWith("/location/")) return "Location page";
@@ -145,13 +145,15 @@ export async function getBusinessQrCampaigns(admin: SupabaseClient, businessId: 
     } else if (c.event_id) {
       const e = eventMap.get(c.event_id);
       const occ = c.event_occurrence_id ? occurrenceMap.get(c.event_occurrence_id) : null;
-      contextSummary = [e?.name ?? "Event", occ ? formatDateShort(occ.start_at) : null].filter(Boolean).join(" · ");
+      // A QR scoped to one occurrence names its date; one for the Entire
+      // Event says so (event_occurrence_id null = every date).
+      contextSummary = [e?.name ?? "Event", occ ? formatDateShort(occ.start_at) : "All Dates"].filter(Boolean).join(" · ");
     } else if (c.location_id) {
       contextSummary = locationMap.get(c.location_id)?.name ?? "Location";
     }
 
     let destinationSummary = "Custom link";
-    if (c.destination_type === "business") destinationSummary = `${businessMap.get(c.destination_id ?? "")?.name ?? "Business"} on FindMi`;
+    if (c.destination_type === "business") destinationSummary = `${businessMap.get(c.destination_id ?? "")?.name ?? "Business"} on Findmi`;
     else if (c.destination_type === "product") destinationSummary = productMap.get(c.destination_id ?? "")?.name ?? "Product page";
     else if (c.destination_type === "event") destinationSummary = eventMap.get(c.destination_id ?? "")?.name ?? "Event page";
     else if (c.destination_type === "location") destinationSummary = locationMap.get(c.destination_id ?? "")?.name ?? "Location page";
@@ -181,9 +183,22 @@ export async function getBusinessQrCampaigns(admin: SupabaseClient, businessId: 
   });
 }
 
+/** One scheduled date of an Event, for the creator's "Specific Occurrence"
+ * choice. `label` carries date + time; `place` the occurrence's Location. */
+export interface QrOccurrenceOption {
+  id: string;
+  startAt: string;
+  label: string;
+  place: string | null;
+}
+
 export interface QrCreatorOption {
   id: string;
   label: string;
+  /** Secondary line for pickers (an Event's next date / date count). */
+  meta?: string | null;
+  /** Event options only — every scheduled occurrence, soonest first. */
+  occurrences?: QrOccurrenceOption[];
   /** Appearance options only — lets the Intelligent Creator default the
    * DESTINATION to this Appearance's real linked Event when one exists
    * (per the "smart default" spec), without re-deriving eligibility
@@ -243,6 +258,40 @@ export async function getBusinessQrCreatorOptions(admin: SupabaseClient, busines
       : { data: [] as { id: string; name: string }[] };
   const appearanceLocationMap = new Map((appearanceLocations ?? []).map((l) => [l.id, l.name]));
 
+  // Event occurrences — one batched read for every eligible Event (never one
+  // query per Event), with each occurrence's Location name resolved in one
+  // more batched read.
+  const eligibleEventIds = events.map((e) => e.id);
+  const { data: occurrenceRows } = eligibleEventIds.length
+    ? await admin
+        .from("event_occurrences")
+        .select("id, event_id, start_at, location_id, status")
+        .in("event_id", eligibleEventIds)
+        .neq("status", "cancelled")
+        .order("start_at", { ascending: true })
+    : { data: [] as { id: string; event_id: string; start_at: string; location_id: string | null; status: string }[] };
+  const occRows = (occurrenceRows ?? []) as { id: string; event_id: string; start_at: string; location_id: string | null }[];
+  const occLocationIds = [...new Set(occRows.map((o) => o.location_id).filter((v): v is string => Boolean(v)))];
+  const { data: occLocations } = occLocationIds.length
+    ? await admin.from("locations").select("id, name").in("id", occLocationIds)
+    : { data: [] as { id: string; name: string }[] };
+  const occLocationMap = new Map((occLocations ?? []).map((l) => [l.id, l.name]));
+  // Only the dates this Business may scope a QR to (see allowedQrOccurrenceIds).
+  const rawByEvent = new Map<string, { id: string }[]>(eligibleEventIds.map((id) => [id, occRows.filter((o) => o.event_id === id).map((o) => ({ id: o.id }))]));
+  const allowedByEvent = await getBusinessQrAllowedOccurrences(admin, businessId, rawByEvent);
+  const occurrencesByEvent = new Map<string, QrOccurrenceOption[]>();
+  for (const o of occRows) {
+    if (!allowedByEvent.get(o.event_id)?.has(o.id)) continue;
+    const list = occurrencesByEvent.get(o.event_id) ?? [];
+    list.push({
+      id: o.id,
+      startAt: o.start_at,
+      label: formatDateShort(o.start_at),
+      place: o.location_id ? (occLocationMap.get(o.location_id) ?? null) : null,
+    });
+    occurrencesByEvent.set(o.event_id, list);
+  }
+
   return {
     appearances: appearanceRows.map((a) => ({
       id: a.id,
@@ -250,7 +299,15 @@ export async function getBusinessQrCreatorOptions(admin: SupabaseClient, busines
       eventId: a.event_id,
     })),
     products: ((productRes.data ?? []) as { id: string; name: string }[]).map((p) => ({ id: p.id, label: p.name })),
-    events: events.map((e) => ({ id: e.id, label: e.name })),
+    events: events.map((e) => {
+      const occurrences = occurrencesByEvent.get(e.id) ?? [];
+      return {
+        id: e.id,
+        label: e.name,
+        occurrences,
+        meta: occurrences.length === 0 ? null : occurrences.length === 1 ? occurrences[0].label : `${occurrences.length} dates · from ${occurrences[0].label}`,
+      };
+    }),
     locations: locations.map((l) => ({ id: l.id, label: l.name })),
   };
 }

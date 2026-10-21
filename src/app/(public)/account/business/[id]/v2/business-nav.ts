@@ -5,7 +5,7 @@
 // render them. Every destination is still an existing `?tab=` view of
 // /account/business/[id].
 
-export type BusinessSection = "home" | "presence" | "products" | "opportunities" | "performance" | "more";
+export type BusinessSection = "home" | "presence" | "moments" | "performance" | "products" | "growth" | "more";
 
 export interface BusinessNavEntry {
   section: BusinessSection;
@@ -20,9 +20,12 @@ export interface BusinessNavEntry {
 export const BUSINESS_NAV: BusinessNavEntry[] = [
   { section: "home", label: "Home", tab: "overview" },
   { section: "presence", label: "Findmi Here", tab: "findmi-here" },
-  { section: "products", label: "Products", tab: "products" },
-  { section: "opportunities", label: "Opportunities", tab: "opportunities" },
-  { section: "performance", label: "Performance", tab: "performance", desktopOnly: true },
+  { section: "moments", label: "Moments", tab: "moments" },
+  { section: "performance", label: "Performance", tab: "performance" },
+  // Products and Growth keep full destinations but not a bottom-bar slot:
+  // phones reach them from Home / More; the desktop rail lists them.
+  { section: "products", label: "Products", tab: "products", desktopOnly: true },
+  { section: "growth", label: "Growth", tab: "growth", desktopOnly: true },
   { section: "more", label: "More", tab: "more" },
 ];
 
@@ -33,7 +36,9 @@ const navLabel = (tab: string): string => BUSINESS_NAV.find((n) => n.tab === tab
 export const BUSINESS_MORE_TABS = {
   profile: { label: "Business Profile", description: "Identity, photos, contact & links" },
   performance: { label: navLabel("performance"), description: "Views, actions and how people find you" },
-  qr: { label: "QR Campaigns", description: "Create and track QR codes" },
+  products: { label: "Products", description: "Your catalog, and where each product is available" },
+  growth: { label: "Growth", description: "Goals, preferences and Opportunity matches" },
+  qr: { label: "QR Codes", description: "Create, manage and track QR codes" },
   inquiries: { label: "Inquiry Settings", description: "How customers can contact you" },
   orders: { label: "Orders", description: "Marketplace orders to fulfill" },
   settings: { label: "Plan & Settings", description: "Findmi Pro, areas and business settings" },
@@ -57,6 +62,7 @@ export const LEGACY_TAB_REDIRECTS: Record<string, string> = {
  * long enough to redirect instead of silently falling back to Overview. */
 export const VALID_BUSINESS_TAB_KEYS: ReadonlySet<string> = new Set<string>([
   ...BUSINESS_NAV.map((n) => n.tab),
+  "opportunities",
   "qr",
   "profile",
   "orders",

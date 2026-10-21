@@ -4,8 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /** Business Home's thin sticky section rail — moves WITHIN the Home page
  * only (anchored smooth scroll), never between routes. That job belongs
- * to the Business bottom navigation (Home · Findmi Here · Products ·
- * Opportunities · More); identity/status belongs to the header above.
+ * to the Business bottom navigation (Home · Findmi Here · Moments ·
+ * Performance · More); identity/status belongs to the header above.
  *
  * Sticks directly under the 48px OwnerHeader (3px Aqua strip + 44px bar +
  * 1px border). Each target section carries the matching scroll-margin

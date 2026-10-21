@@ -204,10 +204,10 @@ export default function BrandAuditFlow({
 
       {step === "intro" && (
         <div className="rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-6">
-          <p className="text-label font-bold uppercase text-findmi-700">AI-Assisted Brand Audit Powered By Findmi</p>
-          <h1 className="mt-1.5 font-display text-page-title font-bold leading-tight text-primary">Findmi Brand Audit</h1>
+          <p className="text-label font-bold uppercase text-findmi-700">Tell Findmi What You’re Looking For</p>
+          <h1 className="mt-1.5 font-display text-page-title font-bold leading-tight text-primary">Growth Setup</h1>
           <p className="mt-2 text-body text-secondary">
-            Help Findmi understand where you&rsquo;re headed so we can surface better ideas, connections and opportunities for your brand.
+            Tell Findmi your goals and preferences so we can surface more relevant opportunities, ideas and connections. Share as much as you like — there are no wrong answers, and you can change it anytime.
           </p>
           <ol className="mt-4 flex flex-col gap-2 text-body text-primary">
             {["Your Goals", "Current Challenges", "Target Audience", "Markets", "Activation Environments"].map((label, i) => (
@@ -220,7 +220,7 @@ export default function BrandAuditFlow({
           <p className="mt-3 text-metadata text-muted">About 5 minutes. Save anytime and come back later.</p>
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <button type="button" onClick={() => go("goals")} className="flex h-12 items-center justify-center rounded-xl bg-findmi px-6 text-button font-bold text-white transition hover:bg-findmi-600">
-              Start Brand Audit
+              Set Up Growth
             </button>
             <Link href={homeHref} className="flex h-12 items-center justify-center rounded-xl border border-black/10 px-6 text-button font-semibold text-primary transition hover:border-black/20">
               Maybe Later
@@ -336,7 +336,7 @@ export default function BrandAuditFlow({
       {step === "review" && (
         <>
           <div>
-            <h1 className="font-display text-page-title font-bold leading-tight text-primary">{complete ? "Your Brand Audit" : "Review Your Brand Audit"}</h1>
+            <h1 className="font-display text-page-title font-bold leading-tight text-primary">{complete ? "Your Growth Setup" : "Review Your Growth Setup"}</h1>
             <p className="mt-1 text-body text-muted">{canEdit ? "You can update your answers anytime as your brand evolves." : readOnlyMessage}</p>
           </div>
           <ReviewSection title="Your Goals" onEdit={canEdit ? () => go("goals") : null}>
@@ -379,7 +379,7 @@ export default function BrandAuditFlow({
                   onClick={finish}
                   className="flex h-12 items-center justify-center rounded-xl bg-findmi px-6 text-button font-bold text-white transition hover:bg-findmi-600 disabled:opacity-40"
                 >
-                  {pending ? "Saving…" : "Complete Brand Audit"}
+                  {pending ? "Saving…" : "Save Growth Setup"}
                 </button>
               )}
             </div>

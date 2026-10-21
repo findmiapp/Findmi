@@ -42,6 +42,7 @@ import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
 import { getOperatorsForLocation } from "@/lib/business-locations";
 import { getAvailableBrandsForLocation } from "@/lib/business-location-availability";
+import AvailabilityDetailLine from "@/components/AvailabilityDetail";
 
 /** Brands Available Here shown on a Location page (bounded). */
 const BRANDS_AVAILABLE_HERE_LIMIT = 12;
@@ -586,18 +587,19 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             <h2 id="brands-available-here-heading" className="font-display text-lg font-bold tracking-tight text-ink">
               Brands Available Here
             </h2>
-            <ul className="mt-3 flex flex-wrap gap-2">
+            <ul className="mt-3 flex flex-wrap items-start gap-x-2 gap-y-3">
               {availableBrands.items.map((b) => (
                 <li key={b.businessId} className="min-w-0 max-w-full">
                   <Link
                     href={`/business/${b.slug}`}
-                    className="flex min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white py-1.5 pl-1.5 pr-3.5 transition hover:border-findmi/40"
+                    className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1.5 pl-1.5 pr-3.5 transition hover:border-findmi/40"
                   >
                     <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
                       {b.logoUrl ? <SupabaseImage src={b.logoUrl} alt="" fill sizes="32px" className="object-contain p-0.5" /> : b.name.charAt(0)}
                     </span>
                     <span className="truncate text-sm font-semibold text-ink">{b.name}</span>
                   </Link>
+                  <AvailabilityDetailLine detail={b.detail} className="pl-2 pt-1" />
                 </li>
               ))}
             </ul>

@@ -153,7 +153,7 @@ export default async function AdminIntelligencePage({ searchParams }: { searchPa
 
       {!cc.available ? (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Opportunity Intelligence isn&rsquo;t available yet — the Brand Audit + Opportunity Ideas migration hasn&rsquo;t been applied to this database.
+          Opportunity Intelligence isn&rsquo;t available yet — the Growth Setup + Opportunity Ideas migration hasn&rsquo;t been applied to this database.
         </p>
       ) : (
         <>
@@ -171,7 +171,7 @@ export default async function AdminIntelligencePage({ searchParams }: { searchPa
             <Metric label="Maybe Signals" value={m.maybe} href={link("ideas", false)} />
             <Metric label="Brands Open To Ideas" value={m.brandsOpenToIdeas} href={link("brands", false)} />
             <Metric label="Brands Profiled" value={m.brandsProfiled} href={link("brands", false)} />
-            <Metric label="Completed Audits" value={m.completedAudits} href={link("brands", false)} />
+            <Metric label="Completed Growth Setups" value={m.completedAudits} href={link("brands", false)} />
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
@@ -225,7 +225,7 @@ export default async function AdminIntelligencePage({ searchParams }: { searchPa
                         <span className="flex items-center gap-2">
                           {b.isNew && <NewPill />}
                           <Pill className={b.auditEvent && b.auditEvent !== "audit_in_progress" ? "bg-findmi-50 text-findmi-700" : "bg-black/5 text-ink/50"}>
-                            {!b.audit ? "No Audit" : b.auditEvent === "audit_in_progress" ? `Audit ${b.audit.progress}%` : "Audit Complete"}
+                            {!b.audit ? "No Growth Setup" : b.auditEvent === "audit_in_progress" ? `Growth Setup ${b.audit.progress}%` : "Growth Setup Complete"}
                           </Pill>
                         </span>
                       </div>

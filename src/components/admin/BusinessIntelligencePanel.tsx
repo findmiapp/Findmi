@@ -63,7 +63,7 @@ export default function BusinessIntelligencePanel({
   if (!data.available) {
     return (
       <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Opportunity Intelligence isn&rsquo;t available yet — the Brand Audit + Opportunity Ideas migration hasn&rsquo;t been applied to this database.
+        Opportunity Intelligence isn&rsquo;t available yet — the Growth Setup + Opportunity Ideas migration hasn&rsquo;t been applied to this database.
       </p>
     );
   }
@@ -77,7 +77,7 @@ export default function BusinessIntelligencePanel({
       <section aria-labelledby="intel-audit" className="rounded-2xl border border-black/5 bg-white p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="intel-audit" className="font-display text-lg font-semibold text-ink">
-            Brand Audit
+            Growth Setup
           </h2>
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${state === "complete" ? "bg-findmi-50 text-findmi-700" : "bg-black/5 text-ink/55"}`}>{status}</span>
         </div>
@@ -88,7 +88,7 @@ export default function BusinessIntelligencePanel({
             {data.summary.updatedAt && `Last Updated ${fmt(data.summary.updatedAt)}`}
           </p>
         )}
-        <p className="mt-1 text-xs text-ink/45">Declared by the Brand in its Brand Audit.</p>
+        <p className="mt-1 text-xs text-ink/45">Declared by the Brand in Growth Setup.</p>
       </section>
 
       <Group id="intel-objectives" title="Objectives">

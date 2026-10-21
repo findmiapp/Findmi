@@ -361,8 +361,8 @@ export function auditState(s: AuditSummary): AuditState {
 /** The dashboard entry's call to action. */
 export function auditActionLabel(s: AuditSummary): string {
   const state = auditState(s);
-  if (state === "complete") return auditMissingSections(s).length > 0 ? "Complete Your Profile" : "Review & Update";
-  return state === "not_started" ? "Start Brand Audit" : "Continue Brand Audit";
+  if (state === "complete") return auditMissingSections(s).length > 0 ? "Improve Your Matches" : "Review & Update";
+  return state === "not_started" ? "Set Up Growth" : "Continue Growth Setup";
 }
 
 export type AuditStep = "intro" | "goals" | "challenges" | "audience" | "markets" | "environments" | "review";

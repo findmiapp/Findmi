@@ -1,9 +1,10 @@
 import { CompactLocationCard } from "./OurLocations";
+import AvailabilityDetailLine from "./AvailabilityDetail";
 import type { AvailabilityLocationItem } from "@/lib/business-location-availability";
 
 /** Find Us At — third-party places where this Business/Brand is normally
- * available (business_location_availability: explicit Admin connections
- * only). Never places it operates (Our Locations), never Event/Appearance
+ * available (business_location_availability: explicit connections only —
+ * Findmi-entered, or owner-submitted and approved; Live and in-effect only). Never places it operates (Our Locations), never Event/Appearance
  * venues. Same compact canonical-Location card as Our Locations; the
  * caller passes only the small displayed set (no View All in V1 — the
  * reader already pages, so one can be added later). Nothing renders with
@@ -21,6 +22,7 @@ export default function FindUsAt({ businessName, locations }: { businessName: st
         {locations.map((l) => (
           <li key={l.locationId}>
             <CompactLocationCard location={l} />
+            <AvailabilityDetailLine detail={l.detail} className="px-3 pt-1.5" />
           </li>
         ))}
       </ul>

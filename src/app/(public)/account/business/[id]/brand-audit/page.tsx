@@ -32,12 +32,12 @@ export default async function BrandAuditPage({ params, searchParams }: { params:
   }));
 
   return (
-    <BusinessAppShell {...shell} activeSection="home">
+    <BusinessAppShell {...shell} activeSection="growth">
       <GoalFrame>
         {!audit.available ? (
           <div className="rounded-2xl border border-black/[0.07] bg-white p-5">
-            <p className="text-card-title font-semibold text-primary">Findmi Brand Audit</p>
-            <p className="mt-1 text-body text-muted">The Brand Audit isn&rsquo;t available yet. Check back soon.</p>
+            <p className="text-card-title font-semibold text-primary">Growth Setup</p>
+            <p className="mt-1 text-body text-muted">Growth Setup isn&rsquo;t available yet. Check back soon.</p>
           </div>
         ) : (
           <BrandAuditFlow
@@ -58,8 +58,8 @@ export default async function BrandAuditPage({ params, searchParams }: { params:
             canEdit={canEdit}
             readOnlyMessage={
               membership.viaAdmin
-                ? "Viewing as a Findmi Admin. The Brand Audit comes from the Business, so it can’t be changed here."
-                : "Only a Business owner or manager can change the Brand Audit."
+                ? "Viewing as a Findmi Admin. Growth Setup comes from the Business, so it can’t be changed here."
+                : "Only a Business owner or manager can change Growth Setup."
             }
             saveStep={saveBrandAuditStepAction.bind(null, id)}
             saveAudience={saveBrandAuditAudienceAction.bind(null, id)}

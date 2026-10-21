@@ -254,10 +254,10 @@ test("resume + edit later: lands on the next step; deselecting removes only that
 
 test("dashboard entry labels: Start / Continue · N% / Complete", () => {
   const s = (o) => ({ status: null, goalCount: 0, challengeCount: 0, completedAt: null, updatedAt: null, ...o });
-  assert.equal(D.auditActionLabel(s({})), "Start Brand Audit");
-  assert.equal(D.auditActionLabel(s({ status: "in_progress", goalCount: 2 })), "Continue Brand Audit");
+  assert.equal(D.auditActionLabel(s({})), "Set Up Growth");
+  assert.equal(D.auditActionLabel(s({ status: "in_progress", goalCount: 2 })), "Continue Growth Setup");
   assert.equal(D.auditProgress(s({ status: "in_progress", goalCount: 2 })), 20);
-  assert.equal(D.auditActionLabel(s({ status: "complete", goalCount: 1, challengeCount: 1, completedAt: "x" })), "Complete Your Profile", "V1-complete, newer sections open");
+  assert.equal(D.auditActionLabel(s({ status: "complete", goalCount: 1, challengeCount: 1, completedAt: "x" })), "Improve Your Matches", "V1-complete, newer sections open");
   assert.equal(D.auditActionLabel(s({ status: "complete", goalCount: 1, challengeCount: 1, audienceCount: 1, marketCount: 1, environmentCount: 1, completedAt: "x" })), "Review & Update");
 });
 

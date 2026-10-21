@@ -5,6 +5,7 @@ import { formatTime } from "@/lib/format";
 import type { BusinessLocationItem, ManagedLocationItem } from "@/lib/business-locations";
 import { connectBusinessLocation, makePrimaryBusinessLocation, removeBusinessLocation } from "../../location-actions";
 import { imageVariantUrl } from "@/lib/image-variants";
+import ScrollActiveIntoView from "./ScrollActiveIntoView";
 
 /** /account V2, Pass 1 — Presence. Establishes the structure the next pass
  * builds on (Upcoming · Past · Locations) while reusing what exists today:
@@ -13,12 +14,12 @@ import { imageVariantUrl } from "@/lib/image-variants";
  *   Locations — Pass 2: the Business's own connected Locations
  *               (business_locations), see LocationsPresence below. */
 
-export type PresenceView = "upcoming" | "past" | "locations";
+export type PresenceView = "upcoming" | "past" | "locations" | "find-us";
 
 const APP_TIMEZONE = "America/New_York";
 
 export function parsePresenceView(raw: string | undefined): PresenceView {
-  return raw === "past" || raw === "locations" ? raw : "upcoming";
+  return raw === "past" || raw === "locations" || raw === "find-us" ? raw : "upcoming";
 }
 
 export function PresenceHeader({ basePath, view }: { basePath: string; view: PresenceView }) {
@@ -31,6 +32,7 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
     { key: "upcoming", label: "Happening" },
     { key: "past", label: "Past" },
     { key: "locations", label: "Our Locations" },
+    { key: "find-us", label: "Find Us At" },
   ];
   return (
     <div className="flex flex-col gap-3">
@@ -38,7 +40,7 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
         <h1 className="font-display text-page-title-lg font-bold text-primary">Findmi Here</h1>
         <p className="mt-0.5 text-body text-muted">Manage where your business shows up.</p>
       </div>
-      <nav aria-label="Findmi Here" className="flex w-full gap-1 rounded-full bg-black/[0.04] p-1 sm:w-fit">
+      <nav aria-label="Findmi Here" className="flex w-full gap-1 overflow-x-auto rounded-full bg-black/[0.04] p-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:w-fit [&::-webkit-scrollbar]:hidden">
         {items.map((i) => {
           const active = i.key === view;
           return (
@@ -46,7 +48,7 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
               key={i.key}
               href={i.key === "upcoming" ? `${basePath}?tab=findmi-here` : `${basePath}?tab=findmi-here&view=${i.key}`}
               aria-current={active ? "page" : undefined}
-              className={`flex h-9 flex-1 items-center justify-center rounded-full px-4 text-button font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 sm:flex-none ${
+              className={`flex h-9 flex-1 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-button font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 sm:flex-none ${
                 active ? "bg-white text-primary shadow-sm" : "text-muted hover:text-primary"
               }`}
             >
@@ -54,6 +56,7 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
             </Link>
           );
         })}
+        <ScrollActiveIntoView />
       </nav>
     </div>
   );

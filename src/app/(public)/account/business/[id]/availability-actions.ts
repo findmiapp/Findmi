@@ -1,0 +1,94 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireBusinessMember } from "@/lib/permissions";
+import { isManagingRole } from "@/lib/business-locations";
+import {
+  removeOwnerAvailability,
+  requestOwnerAvailability,
+  searchAvailabilityLocations,
+  updateOwnerAvailability,
+  type OwnerAvailabilityResult,
+} from "@/lib/business-availability-owner";
+import type { AvailabilityRequestInput } from "@/lib/business-availability-domain";
+
+/** Owner mutations for Findmi Here → Where To Find Us. Each re-verifies the
+ * caller against THIS Business server-side (never trusts the id as sent);
+ * only an owner/manager (or an elevated Admin session, which
+ * requireBusinessMember already resolves) may write. */
+
+/** The Location page slug for one of this Business's entries (looked up
+ * BEFORE a removal, while the row still exists). */
+async function locationSlugFor(businessId: string, availabilityId: string): Promise<string | null> {
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data } = await admin.from("business_location_availability").select("locations(slug)").eq("id", availabilityId).eq("business_id", businessId).maybeSingle();
+  const loc = (data as { locations: { slug: string } | { slug: string }[] | null } | null)?.locations;
+  return (Array.isArray(loc) ? loc[0]?.slug : loc?.slug) ?? null;
+}
+
+/** Public pages that render this Business's Find Us At / a Location's Brands
+ * Available Here — refreshed after any change that can alter what is public
+ * (an edit sends a Live entry back to review, a removal takes it down). */
+async function revalidatePublic(businessId: string, locationSlug?: string | null) {
+  revalidatePath(`/account/business/${businessId}`);
+  const admin = getAdminSupabase();
+  if (!admin) return;
+  const { data: business } = await admin.from("businesses").select("slug").eq("id", businessId).maybeSingle();
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  if (locationSlug) revalidatePath(`/location/${locationSlug}`);
+}
+
+async function authorize(businessId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const membership = await requireBusinessMember(businessId);
+    if (membership.viaAdmin || isManagingRole(membership.role)) return { ok: true };
+    return { ok: false, error: "Only a Business owner or manager can change where to find you." };
+  } catch {
+    return { ok: false, error: "You don't have access to this business." };
+  }
+}
+
+export async function searchLocationsForAvailability(businessId: string, query: string) {
+  const auth = await authorize(businessId);
+  const admin = getAdminSupabase();
+  if (!auth.ok || !admin) return [];
+  return searchAvailabilityLocations(admin, query);
+}
+
+export async function requestAvailabilityAction(businessId: string, input: AvailabilityRequestInput): Promise<OwnerAvailabilityResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await requestOwnerAvailability(admin, businessId, input);
+  if (result.ok) await revalidatePublic(businessId);
+  return result;
+}
+
+export async function updateAvailabilityAction(
+  businessId: string,
+  availabilityId: string,
+  input: Omit<AvailabilityRequestInput, "locationId">
+): Promise<OwnerAvailabilityResult & { changed?: boolean }> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const locationSlug = await locationSlugFor(businessId, availabilityId);
+  const result = await updateOwnerAvailability(admin, businessId, availabilityId, input);
+  if (result.ok) await revalidatePublic(businessId, locationSlug);
+  return result;
+}
+
+export async function removeAvailabilityAction(businessId: string, availabilityId: string): Promise<OwnerAvailabilityResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const locationSlug = await locationSlugFor(businessId, availabilityId);
+  const result = await removeOwnerAvailability(admin, businessId, availabilityId);
+  if (result.ok) await revalidatePublic(businessId, locationSlug);
+  return result;
+}

@@ -21,7 +21,7 @@ export default async function EditGoalPage({ params }: { params: Promise<{ id: s
   const markets = allowed ? await getGoalMarketOptions() : [];
 
   return (
-    <BusinessAppShell {...shell} activeSection="opportunities">
+    <BusinessAppShell {...shell} activeSection="growth">
       <GoalFrame>
         {!allowed ? (
           <GoalNotAllowed

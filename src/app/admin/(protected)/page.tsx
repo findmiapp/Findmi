@@ -193,7 +193,7 @@ export default async function AdminDashboardPage() {
                   { count: intelligence.newBreakdown.interested, label: "new Interested signal", plural: "new Interested signals", view: "recent" },
                   { count: intelligence.newBreakdown.maybe, label: "new Maybe signal", plural: "new Maybe signals", view: "recent" },
                   { count: intelligence.newBreakdown.notForUs, label: "new Not For Us response", plural: "new Not For Us responses", view: "recent" },
-                  { count: intelligence.newBreakdown.auditsCompleted, label: "Brand Audit completed", plural: "Brand Audits completed", view: "recent" },
+                  { count: intelligence.newBreakdown.auditsCompleted, label: "Growth Setup completed", plural: "Growth Setups completed", view: "recent" },
                   { count: intelligence.newBreakdown.auditsUpdated, label: "Brand profile updated", plural: "Brand profiles updated", view: "recent" },
                 ]
                   .filter((row) => row.count > 0)

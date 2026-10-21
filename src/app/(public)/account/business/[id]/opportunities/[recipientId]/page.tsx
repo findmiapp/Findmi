@@ -166,7 +166,7 @@ export default async function BusinessOpportunityDetailPage({
     : null;
 
   return (
-    <BusinessAppShell {...shell} activeSection="opportunities">
+    <BusinessAppShell {...shell} activeSection="growth">
       <div className="flex max-w-4xl flex-col gap-4">
         <Link href={`${shell.basePath}?tab=opportunities`} className="flex w-fit items-center gap-1 text-metadata font-semibold text-accent hover:underline">
           <ChevronIcon direction="left" className="h-3 w-3" />

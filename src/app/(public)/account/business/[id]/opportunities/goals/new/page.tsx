@@ -23,7 +23,7 @@ export default async function NewGoalPage({ params, searchParams }: { params: Pr
 
   if (createdGoal) {
     return (
-      <BusinessAppShell {...shell} activeSection="opportunities">
+      <BusinessAppShell {...shell} activeSection="growth">
         <GoalFrame>
           <div className="rounded-2xl border border-black/[0.07] bg-white p-6 text-center">
             <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
@@ -56,7 +56,7 @@ export default async function NewGoalPage({ params, searchParams }: { params: Pr
   const [{ available }, markets] = allowed ? await Promise.all([getBusinessGoals(id), getGoalMarketOptions()]) : [{ available: true }, []];
 
   return (
-    <BusinessAppShell {...shell} activeSection="opportunities">
+    <BusinessAppShell {...shell} activeSection="growth">
       <GoalFrame>
         {!allowed ? (
           <GoalNotAllowed

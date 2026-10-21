@@ -40,6 +40,12 @@ import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUs
 import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
 import { getBrandAudit, getIdeasForBusiness } from "@/lib/brand-audit";
+import { getBusinessMoments } from "@/lib/business-moments";
+import GrowthView, { growthSummaryFor } from "./v2/GrowthView";
+import MomentsView from "./v2/MomentsView";
+import AvailableAtView from "./v2/AvailableAtView";
+import { getOwnerAvailability } from "@/lib/business-availability-owner";
+import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "./v2/PerformanceViews";
 import { respondToIdeaAction } from "./brand-audit/actions";
 import { getBusinessGoals } from "@/lib/opportunity-goals";
 import { canManageGoals, type GoalRole } from "@/lib/opportunity-goals-domain";
@@ -609,12 +615,29 @@ export default async function ManageBusinessPage({
   // invitations/applications above). Business-safe items only; any member
   // role may view. Also loaded for Home (Opportunities preview).
   const recommendedOpportunities =
-    activeTab === "opportunities" || activeTab === "overview" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
+    activeTab === "opportunities" || activeTab === "overview" || activeTab === "growth" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
   // Findmi Brand Audit + Opportunity Ideas (Home only). Both tolerate the
   // migration not being applied yet (available: false → the entry and the
   // Ideas rail simply don't render).
-  const [brandAudit, opportunityIdeas] =
-    activeTab === "overview" ? await Promise.all([getBrandAudit(id), getIdeasForBusiness(id)]) : [null, { available: false, ideas: [] }];
+  // Growth (Home's mini-dashboard + the Growth tab) reads the same Growth
+  // Setup summary, active Opportunity goals and Ideas; Ideas only feed the
+  // full Growth tab.
+  const needsGrowth = activeTab === "overview" || activeTab === "growth";
+  const [brandAudit, opportunityIdeas, growthGoals] = needsGrowth
+    ? await Promise.all([
+        getBrandAudit(id),
+        activeTab === "growth" ? getIdeasForBusiness(id) : Promise.resolve({ available: false, ideas: [] }),
+        getBusinessGoals(id),
+      ])
+    : [null, { available: false, ideas: [] }, { available: false, goals: [] }];
+  // Findmi Here → Find Us At (owner view; every status). Fails safe to
+  // { available: false } until the details migration is applied.
+  const ownerAvailability =
+    activeTab === "findmi-here" && presenceView === "find-us" && admin ? await getOwnerAvailability(admin, id) : { available: false, items: [] };
+  // Moments posted as this Business: all of them for the Moments view, the
+  // latest few for Home's strip.
+  const businessMoments =
+    activeTab === "moments" ? await getBusinessMoments(id) : activeTab === "overview" ? await getBusinessMoments(id, { limit: 6 }) : [];
   // Opportunities V2 — the page's four views. Explore and Goals data are
   // only read when that view is open; both tolerate the V2 migration not
   // being applied yet (available: false).
@@ -1424,7 +1447,7 @@ export default async function ManageBusinessPage({
   scheduleLoadMoreParams.set("schedule_limit", String(scheduleLimitUsed + SCHEDULE_PAGE_SIZE));
   const scheduleLoadMoreHref = `${basePath}?${scheduleLoadMoreParams.toString()}`;
   // QR tab — every campaign this Business owns, grouped by lifecycle.
-  const businessQrCampaigns = activeTab === "qr" && admin ? await getBusinessQrCampaigns(admin, id) : [];
+  const businessQrCampaigns = (activeTab === "qr" || activeTab === "performance") && admin ? await getBusinessQrCampaigns(admin, id) : [];
 
   // /account V2 Home — the performance snapshot reads these already-
   // computed values (no new analytics definition).
@@ -1578,14 +1601,31 @@ export default async function ManageBusinessPage({
               newOrderCount={orderSummary.newCount}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
-              opportunityItems={[...recommendedOpportunities.active, ...recommendedOpportunities.past]}
-              brandAudit={brandAudit?.available ? brandAudit.summary : null}
-              ideas={opportunityIdeas.ideas}
-              canRespondToIdeas={canManageOpportunityGoals}
-              respondToIdea={respondToIdeaAction.bind(null, id)}
+              growth={growthSummaryFor({
+                audit: brandAudit?.available ? brandAudit.summary : null,
+                activeGoalCount: growthGoals.goals.filter((g) => g.status === "active").length,
+                opportunityItems: [...recommendedOpportunities.active, ...recommendedOpportunities.past],
+              })}
+              recentMoments={businessMoments}
             />
           </div>
         )}
+
+        {/* ── Growth ───────────────────────────────────────────────── */}
+        {activeTab === "growth" && (
+          <GrowthView
+            basePath={basePath}
+            audit={brandAudit?.available ? brandAudit.summary : null}
+            activeGoalCount={growthGoals.goals.filter((g) => g.status === "active").length}
+            opportunityItems={[...recommendedOpportunities.active, ...recommendedOpportunities.past]}
+            ideas={opportunityIdeas.ideas}
+            canRespondToIdeas={canManageOpportunityGoals}
+            respondToIdea={respondToIdeaAction.bind(null, id)}
+          />
+        )}
+
+        {/* ── Moments ──────────────────────────────────────────────── */}
+        {activeTab === "moments" && <MomentsView businessId={id} moments={businessMoments} canPost={isManagingRole(membershipRole) || isAdminElevated} />}
 
         {/* ── Performance ──────────────────────────────────────────── */}
         {/* Free/Pro Entitlement Realignment pass — Analytics (including
@@ -1593,55 +1633,47 @@ export default async function ManageBusinessPage({
             same UpgradeLockedTab pattern as every other Pro-gated tab on
             this page. PerformanceTab/getOwnerBusinessPerformance
             themselves are completely unchanged — only this gate moved. */}
-        {activeTab === "performance" &&
-          (pro && performanceData ? (
-            <PerformanceTab
-              data={performanceData}
-              basePath={basePath}
-              range={perfRange}
-              businessId={id}
-              businessName={business.name}
-              businessSlug={business.slug ?? null}
-              followerSummary={followerSummary}
-            />
-          ) : (
-            <UpgradeLockedTab
-              businessId={id}
-              tabKey="performance"
-              description="Understand how people discover and engage with your business."
-              isAdminElevated={isAdminElevated}
-            />
-          ))}
+        {activeTab === "performance" && (
+          <>
+            <PerformanceViewTabs basePath={basePath} view="overview" />
+            <QrSnapshot basePath={basePath} campaigns={businessQrCampaigns} />
+            {pro && performanceData ? (
+              <PerformanceTab
+                data={performanceData}
+                basePath={basePath}
+                range={perfRange}
+                businessId={id}
+                businessName={business.name}
+                businessSlug={business.slug ?? null}
+                followerSummary={followerSummary}
+              />
+            ) : (
+              <UpgradeLockedTab
+                businessId={id}
+                tabKey="performance"
+                description="Understand how people discover and engage with your business."
+                isAdminElevated={isAdminElevated}
+              />
+            )}
+          </>
+        )}
 
-        {/* ── QR Campaigns ─────────────────────────────────────────── */}
-        {/* The one Business Manager QR destination: creation (+ New QR →
-            the V2 creator at /qr/new) and every campaign this Business
-            owns (qr_campaigns.business_id), grouped by lifecycle. Detail
-            lives at the unchanged /account/qr/[id]. Free-tier reachable
-            (see qr-actions.ts on why QR creation is never plan-gated).
+        {/* ── QR Codes (a view of Performance) ─────────────────────── */}
+        {/* The one Business Manager QR destination: creation (Create QR
+            Code → the creator at /qr/new) and every campaign this
+            Business owns (qr_campaigns.business_id), searchable and
+            filterable, grouped by lifecycle. Detail lives at the
+            unchanged /account/qr/[id]. Free-tier reachable (see
+            qr-actions.ts on why QR creation is never plan-gated).
             Event/Location campaigns have no business_id (that ownership
             is independent — see lib/permissions.ts), so they stay
             reachable from that Event's/Location's own manager page. The
             old /qr Campaign Manager URL redirects here. */}
         {activeTab === "qr" && (
-          <div className="flex flex-col gap-4 lg:max-w-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">QR Campaigns</h1>
-                <p className="mt-1 text-body text-muted">
-                  Create and manage trackable QR codes for your business, products, where you show up, events and locations.
-                </p>
-              </div>
-              {/* The one creator (QR Campaigns V2, step-by-step with
-                  placement and destination). Lifecycle and detail live on
-                  the unchanged /account/qr/[id] pages. */}
-              <Link href={`${basePath}/qr/new`} className={`shrink-0 ${primaryButtonClass}`}>
-                + New QR
-              </Link>
-            </div>
-
-            <QrCampaignGroups campaigns={businessQrCampaigns} newHref={`${basePath}/qr/new`} />
-          </div>
+          <>
+            <PerformanceViewTabs basePath={basePath} view="qr" />
+            <QrCodesView basePath={basePath} campaigns={businessQrCampaigns} />
+          </>
         )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
@@ -2209,6 +2241,15 @@ export default async function ManageBusinessPage({
               ].sort((x, y) => new Date(y.startAt).getTime() - new Date(x.startAt).getTime())}
             />
           </div>
+        )}
+        {activeTab === "findmi-here" && presenceView === "find-us" && (
+          <AvailableAtView
+            businessId={id}
+            available={ownerAvailability.available}
+            items={ownerAvailability.items}
+            products={products.map((p) => ({ id: p.id, name: p.name }))}
+            canEdit={isManagingRole(membershipRole) || isAdminElevated}
+          />
         )}
         {activeTab === "findmi-here" && presenceView === "locations" && (
           <LocationsPresence

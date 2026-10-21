@@ -175,7 +175,9 @@ test("'My Moments' (Personal bottom nav) already uses the canonical photo icon, 
 });
 
 test("the two remaining NavIcon target/radar usages are legitimately Performance/Analytics, not Moments — correctly left alone", () => {
-  assert.match(MORE_MENU, /label: T\.performance\.label, description: T\.performance\.description, icon: <NavIcon name="target"/);
+  // Business Manager redesign: Performance is a primary bottom-nav slot, so
+  // the More menu no longer repeats it.
+  assert.doesNotMatch(MORE_MENU, /label: T\.performance\.label/);
   assert.match(read("src/app/(public)/account/business/[id]/v2/business-nav.ts"), /performance: \{ label: navLabel\("performance"\)/);
   assert.match(read("src/app/(public)/account/business/[id]/v2/business-nav.ts"), /label: "Performance", tab: "performance"/);
   assert.match(BIZ_SHELL, /performance: <NavIcon name="target"/);

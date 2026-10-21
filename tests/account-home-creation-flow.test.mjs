@@ -61,11 +61,11 @@ test("pending Claims read as Pending Review with a useful next action (no Pro up
   assert.doesNotMatch(claims.slice(0, 2500), /Upgrade to Pro/);
 });
 
-test("Create on Findmi: exactly five owner-facing actions (no Appearance, no Add a Moment); each maps to an existing flow", () => {
+test("Create on Findmi: six owner-facing actions (no Appearance; Add a Moment restored); each maps to an existing flow", () => {
   const actions = CA.orderedCreateActions("/account/business/biz", "biz");
-  assert.deepEqual(actions.map((a) => a.label), ["Where I’ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Create A QR Code"]);
-  assert.ok(!actions.some((a) => /Appearance|Moment/i.test(a.label)), "neither Appearance nor Add a Moment is a Create on Findmi action");
-  // Moment functionality elsewhere is untouched: the definition/route is kept and the composer routes exist.
+  assert.deepEqual(actions.map((a) => a.label), ["Where I’ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
+  assert.ok(!actions.some((a) => /Appearance/i.test(a.label)), "Appearance is never a Create on Findmi label");
+  // Add a Moment routes into the one existing composer (no second composer).
   assert.equal(CA.businessCreateActions("/account/business/biz", "biz").moment.href, "/my-world/journal/new?business=biz&postAs=biz");
   assert.ok(existsSync("src/app/(public)/my-world/journal/new/page.tsx") && existsSync("src/app/(public)/my-world/journal/page.tsx"));
   const by = Object.fromEntries(actions.map((a) => [a.key, a.href]));
@@ -73,6 +73,7 @@ test("Create on Findmi: exactly five owner-facing actions (no Appearance, no Add
   assert.equal(by.event, "/account/event/new?business_id=biz");
   assert.equal(by.location, "/account/business/biz?tab=findmi-here&view=locations&add=1");
   assert.equal(by.product, "/account/business/biz?tab=products&compose=1");
+  assert.equal(by.moment, "/my-world/journal/new?business=biz&postAs=biz");
   assert.equal(by.qr, "/account/business/biz/qr/new");
 });
 
@@ -84,10 +85,16 @@ test("Account Home terminology: From Pages You Follow, Your Recent Moments, Page
   assert.doesNotMatch(HOME, />\s*(Must Have|Must Do|Want|Have|Done)\s*</, "the old intent taxonomy is not surfaced");
 });
 
-test("the sheet and the Business Home rail both render from the same five actions; the completion card opens that same sheet", () => {
+test("the sheet renders every action from the shared definitions; Home's Quick Create is a separate compact selection; the completion card opens that same sheet", () => {
   assert.match(ADD, /orderedCreateActions\(basePath, businessId\)\.map\(/);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx"), /orderedCreateActions\(basePath, businessId\)\.map\(/);
+  // Business Manager redesign: Home's carousel became a compact Quick Create
+  // — the same shared definitions (businessCreateActions), a few high-value
+  // actions, and View All opening this same sheet.
+  const home = read("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx");
+  assert.match(home, /businessCreateActions\(basePath, businessId\)/);
+  assert.match(home, /\[create\.where, create\.event, create\.product, create\.qr\]/);
+  assert.match(home, /<AddToPresence basePath=\{basePath\} businessId=\{businessId\} variant="link" label="View All" \/>/);
   assert.match(CARD, /<AddToPresence[^>]*label="Create on Findmi"/);
-  assert.equal(CA.BUSINESS_CREATE_ORDER.length, 5);
-  assert.deepEqual(CA.BUSINESS_CREATE_ORDER, ["where", "event", "location", "product", "qr"]);
+  assert.equal(CA.BUSINESS_CREATE_ORDER.length, 6);
+  assert.deepEqual(CA.BUSINESS_CREATE_ORDER, ["where", "event", "location", "product", "moment", "qr"]);
 });

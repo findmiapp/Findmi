@@ -63,10 +63,13 @@ test("Admin Business detail: Locations workspace holds Our Locations and Find Us
 
 test("Manager QR: ?tab=qr is canonical; /qr redirects; one creator; detail pages untouched", () => {
   const page = read(`${MB}/page.tsx`);
-  assert.match(page, /import QrCampaignGroups from "\.\/QrCampaignGroups"/);
+  // Business Manager redesign: QR lives inside Performance (QR Codes view).
+  const perfViews = read(`${MB}/v2/PerformanceViews.tsx`);
+  assert.match(perfViews, /import QrCampaignGroups from "\.\.\/QrCampaignGroups"/);
   assert.doesNotMatch(page, /import QrCampaignCreator,/, "no second central creator in the Manager page");
   assert.doesNotMatch(page, /centralOptions/);
-  assert.match(page, /href=\{`\$\{basePath\}\/qr\/new`\}/);
+  assert.match(perfViews, /href=\{`\$\{basePath\}\/qr\/new`\}/);
+  assert.match(page, /<PerformanceViewTabs basePath=\{basePath\} view="qr" \/>/);
   assert.match(page, /getBusinessQrCampaigns\(admin, id\)/);
   const qr = read(`${MB}/qr/page.tsx`);
   assert.match(qr, /redirect\(`\/account\/business\/\$\{id\}\?tab=qr`\)/);
@@ -83,14 +86,15 @@ test("Manager QR: ?tab=qr is canonical; /qr redirects; one creator; detail pages
   assert.match(read(`${M}/business/qr-manager-actions.ts`), /revalidatePath\(`\/account\/business\/\$\{row\.business_id\}`\)/);
 });
 
-test("Manager More: no redundant Referral entry (redirect kept); Performance hidden only where the rail has it", () => {
+test("Manager More: no redundant Referral entry (redirect kept); Performance lives in the primary nav, not More", () => {
   const more = read(`${MB}/v2/MoreMenu.tsx`).replace(/\/\/.*$/gm, "");
   assert.doesNotMatch(more, /Referral|showReferral|tab=referral/);
   assert.match(more, /desktopHidden: true/);
   assert.match(more, /className=\{l\.desktopHidden \? "lg:hidden" : undefined\}/);
-  assert.match(more, /\?tab=performance/, "mobile still reaches Performance from More");
+  assert.doesNotMatch(more, /\?tab=performance/, "Performance is a primary slot now — not repeated in More");
   const nav = read(`${MB}/v2/business-nav.ts`);
-  assert.match(nav, /tab: "performance", desktopOnly: true/, "the desktop rail lists Performance");
+  assert.match(nav, /section: "performance", label: "Performance", tab: "performance"/, "the bottom nav and rail list Performance");
+  assert.doesNotMatch(nav.match(/section: "performance"[^\n]*/)[0], /desktopOnly/, "…on mobile too");
   assert.match(nav, /"referral",/, "?tab=referral stays a valid key");
   assert.match(read(`${MB}/page.tsx`), /tab === "referral" && referralPartner[\s\S]{0,80}redirect\(`\/account\/business\/\$\{id\}\?tab=settings`\)/, "…and still redirects to Settings");
   assert.doesNotMatch(read(`${MB}/page.tsx`), /showReferral=/);

@@ -30,16 +30,20 @@ const biz = (id, name, over = {}) => ({ id, name, slug: id, logo_url: null, is_d
  * (+ any others, recorded but never consulted by the helpers). */
 function store(init = {}) {
   const t = {
-    locations: [], businesses: [], business_locations: [], business_location_availability: [], appearances: [], event_occurrences: [], event_businesses: [],
+    locations: [], businesses: [], business_locations: [], business_location_availability: [], business_location_availability_products: [], products: [], appearances: [], event_occurrences: [], event_businesses: [],
     ...init,
   };
   let n = 0;
   const read = [];
   const embed = (table, row) => {
+    if (table === "business_location_availability_products") return { ...row, products: t.products?.find((p) => p.id === row.product_id) ?? null };
     if (table !== "business_location_availability") return row;
     return { ...row, locations: t.locations.find((l) => l.id === row.location_id) ?? null, businesses: t.businesses.find((b) => b.id === row.business_id) ?? null };
   };
-  const get = (row, key) => (key.includes(".") ? row[key.split(".")[0]]?.[key.split(".")[1]] : row[key]);
+  // Column defaults from the Where To Find Us details migration: status 'live',
+  // no dates (ongoing) — rows in these fixtures predate/ignore those columns.
+  const DEFAULTS = { status: "live", starts_on: null, ends_on: null };
+  const get = (row, key) => (key.includes(".") ? row[key.split(".")[0]]?.[key.split(".")[1]] : (row[key] ?? DEFAULTS[key]));
   return {
     t,
     read,
@@ -67,10 +71,23 @@ function store(init = {}) {
       const api = {
         select: () => api,
         eq: (k, v) => (filters.push((r) => get(r, k) === v), api),
+        in: (k, list) => (filters.push((r) => list.includes(get(r, k))), api),
         is: (k, v) => (filters.push((r) => (get(r, k) ?? null) === v), api),
         not: (k, opName, list) => {
           const ids = list.replace(/[()]/g, "").split(",");
           filters.push((r) => !ids.includes(get(r, k)));
+          return api;
+        },
+        // PostgREST "col.op.value,col.op.value" (OR of the clauses), enough for
+        // the in-effect date window: is.null / lte / gte.
+        or: (expr) => {
+          const clauses = expr.split(",").map((c) => c.split("."));
+          filters.push((r) =>
+            clauses.some(([col, op, val]) => {
+              const v = get(r, col) ?? null;
+              return op === "is" ? v === null : op === "lte" ? v !== null && v <= val : v !== null && v >= val;
+            })
+          );
           return api;
         },
         order: () => api,
@@ -227,4 +244,42 @@ test("placement, Admin wiring, RLS migration, no map", () => {
   assert.match(sql, /revoke all on public\.business_location_availability from anon, authenticated;/);
   assert.doesNotMatch(sql.replace(/--.*$/gm, ""), /insert into|update public\.|delete from|for (insert|update|delete|all)\b/i, "no write policies, no data");
   assert.doesNotMatch(sql.replace(/--.*$/gm, ""), /address|latitude|longitude|hours|kind|status|product_id/, "no copied/speculative columns");
+});
+
+test("public detail: relationship, products, dates come through for Live in-effect entries only; Pending/Declined/expired never do", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const s = store({
+    locations: [WHOLE_FOODS, EATALY, HUDSON_YARDS, CORGI_CAFE],
+    businesses: [BRAND],
+    products: [
+      { id: "p1", name: "Espresso", slug: "espresso", is_active: true },
+      { id: "p2", name: "Lungo", slug: "lungo", is_active: true },
+      { id: "p3", name: "Retired", slug: "retired", is_active: false },
+    ],
+    business_location_availability: [
+      { id: "a-live", business_id: "brand-x", location_id: "eataly-flatiron", created_at: "2026-10-15T00:00:01Z", relationship: "served", status: "live", starts_on: null, ends_on: day(20), note: "Counter" },
+      { id: "a-pending", business_id: "brand-x", location_id: "whole-foods-bowery", created_at: "2026-10-15T00:00:02Z", relationship: "sold", status: "pending" },
+      { id: "a-declined", business_id: "brand-x", location_id: "hudson-yards", created_at: "2026-10-15T00:00:03Z", relationship: "sold", status: "declined" },
+      { id: "a-expired", business_id: "brand-x", location_id: "corgi-cafe-nyc", created_at: "2026-10-15T00:00:04Z", relationship: "sold", status: "live", ends_on: day(-3) },
+    ],
+    business_location_availability_products: [
+      { availability_id: "a-live", product_id: "p1" },
+      { availability_id: "a-live", product_id: "p2" },
+      { availability_id: "a-live", product_id: "p3" },
+      { availability_id: "a-pending", product_id: "p1" },
+    ],
+  });
+  const page = await A.getAvailabilityLocationsForBusiness(s, "brand-x", { publicOnly: true });
+  assert.deepEqual(page.items.map((i) => i.locationId), ["eataly-flatiron"], "only the Live, in-effect entry");
+  const d = page.items[0].detail;
+  assert.equal(d.relationship, "served");
+  assert.equal(d.endsOn, day(20));
+  assert.equal(d.note, "Counter");
+  assert.deepEqual(d.products.map((p) => p.name), ["Espresso", "Lungo"], "inactive products never named");
+  const brands = await A.getAvailableBrandsForLocation(s, "eataly-flatiron", { publicOnly: true });
+  assert.equal(brands.items[0].detail.relationship, "served");
+  assert.deepEqual((await A.getAvailableBrandsForLocation(s, "whole-foods-bowery", { publicOnly: true })).items, [], "Pending not public from the Location side either");
+  assert.deepEqual((await A.getAvailableBrandsForLocation(s, "hudson-yards", { publicOnly: true })).items, [], "Declined neither");
+  assert.ok(today);
 });

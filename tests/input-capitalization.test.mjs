@@ -230,5 +230,5 @@ test("29-36. earlier checkpoints intact; A3b search still off", async () => {
   assert.match(read(NEW_BIZ), /\{!brandOnboarding && geography\}/, "A2b: no Brand geography");
   assert.match(read("src/app/(public)/account/business/actions.ts"), /redirect\(`\/account\?created=\$\{businessId\}`\);/, "A2");
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261025000000_canonical_entity_geography.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1, Brand Intelligence V1.1, Brand Intelligence V1.2, Discovery Intelligence V1, Canonical Entity Geography) */, "no migration in C1");
+  assert.equal(files.at(-1), "20261026000000_business_availability_details.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1, Brand Intelligence V1.1, Brand Intelligence V1.2, Discovery Intelligence V1, Canonical Entity Geography) */, "no migration in C1");
 });

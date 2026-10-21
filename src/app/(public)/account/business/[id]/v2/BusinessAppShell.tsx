@@ -9,8 +9,8 @@ import { BUSINESS_NAV, type BusinessSection } from "./business-nav";
 
 /** /account V2, Pass 1 — the Business app shell. One persistent Business
  * context (logo + name + switcher) and one navigation model:
- *   mobile  — a fixed bottom tab bar: Home · Findmi Here · Products · Opportunities · More
- *   desktop — a left rail: the same five plus Performance
+ *   mobile  — a fixed bottom tab bar: Home · Findmi Here · Moments · Performance · More
+ *   desktop — a left rail: the same plus Products and Growth
  * Every destination is still the existing `?tab=` view of
  * /account/business/[id] underneath (no route migration), so every
  * deep link, server action redirect and authorization path is unchanged. */
@@ -26,11 +26,15 @@ export function sectionForTab(tab: string): BusinessSection {
       return "home";
     case "findmi-here":
       return "presence";
+    case "moments":
+      return "moments";
     case "products":
       return "products";
+    case "growth":
     case "opportunities":
-      return "opportunities";
+      return "growth";
     case "performance":
+    case "qr":
       return "performance";
     default:
       return "more";
@@ -41,9 +45,10 @@ type NavItem = (typeof BUSINESS_NAV)[number] & { icon: ReactNode };
 
 const NAV_ICONS: Record<BusinessSection, ReactNode> = {
   home: <NavIcon name="home" className="h-[22px] w-[22px]" />,
-  presence: <NavIcon name="pin" className="h-[22px] w-[22px]" />,
+  presence: <NavIcon name="findmi" className="h-[22px] w-[22px]" />,
+  moments: <NavIcon name="moments" className="h-[22px] w-[22px]" />,
   products: <NavIcon name="tag" className="h-[22px] w-[22px]" />,
-  opportunities: <SparkGlyph className="h-[22px] w-[22px]" />,
+  growth: <SparkGlyph className="h-[22px] w-[22px]" />,
   performance: <NavIcon name="target" className="h-[22px] w-[22px]" />,
   more: <MoreGlyph className="h-[22px] w-[22px]" />,
 };
@@ -131,7 +136,9 @@ export default function BusinessAppShell({
           {items
             .filter((i) => !i.desktopOnly)
             .map((item) => {
-              const active = item.section === activeSection || (item.section === "more" && activeSection === "performance");
+              // Products and Growth have no bottom-bar slot on phones: they sit
+              // under More, so More stays highlighted while inside them.
+              const active = item.section === activeSection || (item.section === "more" && (activeSection === "products" || activeSection === "growth"));
               return (
                 <Link
                   key={item.section}

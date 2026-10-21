@@ -81,6 +81,17 @@ export default function NavIcon({ name, className }: { name: NavIconKey; classNa
           <path d="M10 20.5V16a1 1 0 011-1h2a1 1 0 011 1v4.5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
         </svg>
       );
+    case "findmi":
+      // Findmi Here — the brand mark's sprout/leaf (two petals under an arc),
+      // not a map pin: Findmi Here is where a brand shows up and can be found,
+      // broader than "Locations". Same glyph wherever Findmi Here appears.
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={className}>
+          <path d="M8.2 5.2c2.3-1.3 5.3-1.3 7.6 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M12 21v-7.2C12 10.4 9.6 8 5.8 8c0 3.8 2 6 6.2 5.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M12 13.8c4.2.2 6.2-2 6.2-5.8C14.4 8 12 10.4 12 13.8z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
     case "moments":
       // Moments — a photo (Moments are captured experiences). Distinct
       // from "target", which also means Performance / Analytics.

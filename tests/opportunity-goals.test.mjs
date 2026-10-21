@@ -264,19 +264,14 @@ test("Opportunities page has the four views and no longer embeds Event participa
 });
 
 // ---------------------------------------------------------------- Home + Add
-test("Home: Opportunities section; no informational Needs Attention item", () => {
-  assert.match(HOME, /<HomeOpportunities basePath=\{basePath\} items=\{opportunityItems\} \/>/);
-  // Business Overview Information-Hierarchy pass — Opportunities moved
-  // BELOW the business's own operational sections (it used to outrank
-  // Needs Attention, making its own empty state the first substantive
-  // section a new business saw). See tests/business-overview-hierarchy.test.mjs
-  // for the full render-order regression coverage.
-  assert.ok(HOME.indexOf('aria-labelledby="needs-attention"') < HOME.indexOf("<HomeOpportunities"), "Needs Attention above Opportunities");
-  assert.ok(HOME.indexOf('aria-labelledby="needs-attention"') < HOME.indexOf('aria-labelledby="coming-up"'));
-  assert.match(HOME, /attention\.length > 0 &&/);
-  assert.match(HOME, /Explore Opportunities/);
-  assert.match(HOME, /Tell Findmi Your Goals/);
-  assert.equal(/No recommendations yet/.test(HOME), false);
+test("Growth: Opportunity Matches section; Home no longer carries Opportunities; no informational Needs Attention item", () => {
+  const growth = read(`${B}/v2/GrowthView.tsx`);
+  assert.match(growth, /Opportunity Matches/);
+  assert.match(growth, /Explore Opportunities/);
+  assert.match(growth, /Add A Goal/);
+  assert.equal(/No recommendations yet/.test(growth), false);
+  assert.equal(/HomeOpportunities|Opportunities For You/.test(HOME), false, "Home's own Opportunities section is retired — Growth owns matches");
+  assert.ok(HOME.indexOf("<NeedsAttentionBar") < HOME.indexOf('aria-labelledby="coming-up"'));
   assert.equal(/Nothing happening yet/.test(DASHBOARD), false);
 });
 

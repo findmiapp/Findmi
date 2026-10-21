@@ -16,7 +16,7 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
 
 const B = "src/app/(public)/account/business/[id]";
 const VIEW = read(`${B}/v2/OpportunitiesView.tsx`);
-const HOME = read(`${B}/v2/BusinessHome.tsx`);
+const HOME = read(`${B}/v2/GrowthView.tsx`); // Opportunity Matches moved from Home into Growth
 const GOALS_NEW = read(`${B}/opportunities/goals/new/page.tsx`);
 const WIZARD = read(`${B}/opportunities/goals/GoalWizard.tsx`);
 const BIZ_ACTIONS = read(`${B}/opportunities/actions.ts`);
@@ -123,9 +123,10 @@ test("the commercial Opportunities view no longer embeds Event Invitations & App
 // ---------------------------------------------------------------- 8. Home Event Invitation tile routing
 // B1 — the tile became a Needs Attention item; same canonical routing.
 test("Home's Event Invitation attention item routes to the Inbox's Event destination, not the commercial Opportunities tab", () => {
-  const at = HOME.indexOf('id: "event-invitations"');
+  const BIZ_HOME = read(`${B}/v2/BusinessHome.tsx`);
+  const at = BIZ_HOME.indexOf('id: "event-invitations"');
   assert.ok(at > -1, "attention item present");
-  const item = HOME.slice(at, HOME.indexOf("...needsAttention", at));
+  const item = BIZ_HOME.slice(at, BIZ_HOME.indexOf("...needsAttention", at));
   assert.match(item, /Event Invitation\$\{pendingInvitationCount === 1 \? "" : "s"\}/);
   assert.match(item, /actionHref: "\/account\/messages\?filter=opportunities"/);
   assert.equal(/tab=opportunities/.test(item), false);
@@ -167,7 +168,7 @@ test("Home's Opportunities badge no longer says 'New' for an offered-and-unanswe
   assert.equal(/\d? ?New<\/Chip>|\} New<\/Chip>/.test(HOME), false);
   assert.match(HOME, /Needs Response<\/Chip>/);
   // Same underlying filter (offered + open), just renamed from newOnes.
-  assert.match(HOME, /awaitingResponse = items\.filter\(\(i\) => i\.view\.group === "for_you"\)/);
+  assert.match(HOME, /awaiting = opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)/);
 });
 
 // ---------------------------------------------------------------- 11. authorization unchanged

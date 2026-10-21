@@ -6,6 +6,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import SignOutConfirm from "@/components/SignOutConfirm";
 import { signOut } from "@/app/(public)/account/profile/actions";
 import { BUSINESS_MORE_TABS as T } from "./business-nav";
+import { SparkGlyph } from "./BusinessAppShell";
 
 /** /account V2, Pass 1 — "More": every secondary destination that no longer
  * competes for primary navigation, grouped by job. Only real, existing
@@ -32,7 +33,11 @@ export default function MoreMenu({
 }) {
   const yourBusiness: MoreLink[] = [
     { href: `${basePath}?tab=profile`, label: T.profile.label, description: T.profile.description, icon: <NavIcon name="storefront" className="h-5 w-5" /> },
-    { href: `${basePath}?tab=performance`, label: T.performance.label, description: T.performance.description, icon: <NavIcon name="target" className="h-5 w-5" />, desktopHidden: true },
+    // Products and Growth have no bottom-bar slot on phones (Performance
+    // and Moments do), so they are reached here; the desktop rail already
+    // lists both.
+    { href: `${basePath}?tab=products`, label: T.products.label, description: T.products.description, icon: <NavIcon name="tag" className="h-5 w-5" />, desktopHidden: true },
+    { href: `${basePath}?tab=growth`, label: T.growth.label, description: T.growth.description, icon: <SparkGlyph className="h-5 w-5" />, desktopHidden: true },
     ...(businessSlug
       ? [{ href: `/business/${businessSlug}`, label: "View Public Page", icon: <NavIcon name="compass" className="h-5 w-5" /> }]
       : []),

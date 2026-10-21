@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { connectBusinessLocationAvailability, removeBusinessLocationAvailability } from "@/lib/business-location-availability";
+import { reviewAvailability } from "@/lib/business-availability-owner";
 
 /** Find Us At V1 — founder admin management of where a Business/Brand is
  * normally available (business_location_availability). Admin only (no
@@ -35,5 +36,17 @@ export async function adminConnectFindUsAt(businessId: string, formData: FormDat
 export async function adminRemoveFindUsAt(businessId: string, locationId: string) {
   const admin = await requireAdminSupabase();
   const result = await removeBusinessLocationAvailability(admin, businessId, locationId);
+  return done(businessId, result.ok ? { saved: "1" } : { error: result.error });
+}
+
+/** Where To Find Us — approve or decline an owner-submitted entry. Only an
+ * approved (live) entry ever shows publicly. */
+export async function adminReviewFindUsAt(businessId: string, availabilityId: string, status: "live" | "declined") {
+  const admin = await requireAdminSupabase();
+  const { data: row } = await admin.from("business_location_availability").select("locations(slug)").eq("id", availabilityId).maybeSingle();
+  const loc = (row as { locations: { slug: string } | { slug: string }[] | null } | null)?.locations;
+  const locationSlug = Array.isArray(loc) ? loc[0]?.slug : loc?.slug;
+  if (locationSlug) revalidatePath(`/location/${locationSlug}`);
+  const result = await reviewAvailability(admin, availabilityId, status);
   return done(businessId, result.ok ? { saved: "1" } : { error: result.error });
 }

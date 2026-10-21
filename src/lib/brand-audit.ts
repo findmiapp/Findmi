@@ -46,7 +46,7 @@ import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 // pending): reads return { available: false }, writes a friendly error.
 
 type Result = { ok: true } | { ok: false; error: string };
-const UNAVAILABLE = "The Brand Audit isn’t available yet. Please try again soon.";
+const UNAVAILABLE = "Growth Setup isn’t available yet. Please try again soon.";
 
 function client() {
   const admin = getAdminSupabase();
@@ -168,8 +168,8 @@ async function authorizeManage(businessId: string): Promise<{ ok: true; userId: 
     return {
       ok: false,
       error: membership.viaAdmin
-        ? "The Brand Audit comes from the Business. Viewing as a Findmi Admin can\u2019t change it."
-        : "Only a Business owner or manager can change the Brand Audit.",
+        ? "Growth Setup comes from the Business. Viewing as a Findmi Admin can\u2019t change it."
+        : "Only a Business owner or manager can change Growth Setup.",
     };
   }
   const userId = await getCurrentUserId();
@@ -331,7 +331,7 @@ export async function completeBrandAudit(businessId: string): Promise<Result> {
       updated_at: new Date().toISOString(),
     })
     .eq("business_id", businessId);
-  return error ? { ok: false, error: "Couldn’t complete the Brand Audit. Please try again." } : { ok: true };
+  return error ? { ok: false, error: "Couldn’t save Growth Setup. Please try again." } : { ok: true };
 }
 
 // ---------------------------------------------------------------- business: ideas
@@ -343,6 +343,10 @@ export interface BusinessIdea {
   details: string | null;
   ideaType: IdeaType;
   displayOrder: number;
+  /** Findmi chose this Idea for this Business specifically (audience =
+   * selected_businesses) — as opposed to an "All Brands" Idea. Growth shows
+   * All-Brands Ideas only once the Business has told Findmi what it wants. */
+  targeted: boolean;
   response: { value: IdeaResponse; note: string | null; updatedAt: string } | null;
 }
 
@@ -385,6 +389,7 @@ export async function getIdeasForBusiness(businessId: string): Promise<{ availab
           details: i.details,
           ideaType: i.idea_type,
           displayOrder: i.display_order,
+          targeted: i.audience === "selected_businesses",
           response: r ? { value: r.response, note: r.note, updatedAt: r.updated_at } : null,
         };
       })

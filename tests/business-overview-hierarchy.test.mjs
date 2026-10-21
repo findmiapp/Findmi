@@ -1,7 +1,8 @@
 // Business Command Center — /account/business/[id] Home (BusinessHome.tsx),
-// final UX pass. The Home for ONE Business reads: Status → sticky section
-// rail → Needs Attention → Happening Now → Coming Up → Create on Findmi →
-// Opportunities For You → Performance → Public Profile Link.
+// Business Manager redesign. The Home for ONE Business reads: Status → sticky
+// section rail → Needs Attention (compact collapsed bar) → Happening Now →
+// Coming Up → Quick Create → Recent Moments → Growth → Performance → Public
+// Profile Link.
 // No JSX rendering harness exists in this node:test suite, so render order
 // is proven with source-level guards (indexOf comparisons), the attention
 // rules by calling buildNeedsAttentionItems itself, and every Create on
@@ -32,6 +33,8 @@ const read = (p) => readFileSync(p, "utf8");
 const HOME = read(`${B}/v2/BusinessHome.tsx`);
 const PAGE = read(`${B}/page.tsx`);
 const ADD = read(`${B}/v2/AddToPresence.tsx`);
+const ATTENTION_BAR = read(`${B}/v2/NeedsAttentionBar.tsx`);
+const GROWTH_VIEW = read(`${B}/v2/GrowthView.tsx`);
 const EVENT_NEW = read("src/app/(public)/account/event/new/page.tsx");
 const ACCOUNT_HOME = read("src/app/(public)/account/page.tsx");
 
@@ -41,22 +44,24 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → section rail → Needs Attention → Happening Now → Coming Up → Create → Opportunities → Performance → Public Profile", () => {
+test("Home hierarchy: Status → section rail → Needs Attention → Happening Now → Coming Up → Quick Create → Moments → Growth → Performance → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
     "<HomeSectionNav items={navItems} />",
-    'aria-labelledby="needs-attention"',
+    "<NeedsAttentionBar items={attention} />",
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
-    'aria-labelledby="create-on-findmi"',
-    "<HomeOpportunities",
+    'aria-labelledby="quick-create"',
+    "<MomentsStrip",
+    "<GrowthPanel",
     'aria-labelledby="performance-snapshot"',
     'aria-labelledby="findmi-link"',
   ].map(at);
   for (let i = 1; i < order.length; i++) assert.ok(order[i - 1] < order[i], `marker #${i} out of order (${order.join(", ")})`);
   assert.doesNotMatch(HOME, /<Greeting \/>|aria-label="Quick actions"/);
   // conditional sections disappear, never render empty
-  assert.match(HOME, /\{attention\.length > 0 && \(\s*<section id="home-attention"/);
+  // The old large Brand Audit card, Ideas rail and Opportunities section are gone from Home.
+  assert.doesNotMatch(HOME, /BrandAuditEntry|Findmi Brand Audit|IdeasForYourBrand|HomeOpportunities|Create on Findmi/);
   assert.match(HOME, /\{liveNow\.length > 0 && \(\s*<section aria-labelledby="happening-now">/);
 });
 
@@ -72,17 +77,18 @@ test("Status is compact: chip + View Public Profile; explanation only where the 
   assert.match(PAGE, /publicationStatus=\{business\.publication_status\}/);
 });
 
-test("sticky section rail: in-page anchors only, Attention only with items (with its count), no route changes", () => {
+test("sticky section rail: in-page anchors only, no Attention entry (it is a status bar), no route changes", () => {
   const NAV = read(`${B}/v2/HomeSectionNav.tsx`);
   const items = HOME.slice(HOME.indexOf("const navItems"), HOME.indexOf("];", HOME.indexOf("const navItems")));
   assert.match(items, /\{ id: "overview", label: "Overview" \}/);
-  assert.match(items, /attention\.length > 0 \? \[\{ id: "home-attention", label: "Attention", count: attention\.length \}\] : \[\]/);
+  assert.doesNotMatch(items, /Attention/, "the top-level Attention anchor is retired");
   assert.match(items, /\{ id: "home-schedule", label: "Schedule" \}/);
   assert.match(items, /\{ id: "home-create", label: "Create" \}/);
+  assert.match(items, /\{ id: "home-growth", label: "Growth" \}/);
   assert.match(items, /metrics \? \[\{ id: "home-performance", label: "Performance" \}\] : \[\]/);
   assert.doesNotMatch(items, /Products|Opportunities|Findmi Here|More/, "never duplicates the bottom navigation");
   // every anchor target exists on Home, each with the sticky-chrome scroll margin
-  for (const id of ["home-attention", "home-schedule", "home-create", "home-performance"]) assert.match(HOME, new RegExp(`id="${id}"[^>]*\\{?SECTION_CLASS|id="${id}" className=\\{\`[^\`]*\\$\\{SECTION_CLASS\\}`), id);
+  for (const id of ["home-schedule", "home-create", "home-performance"]) assert.match(HOME, new RegExp(`id="${id}"[^>]*\\{?SECTION_CLASS|id="${id}" className=\\{\`[^\`]*\\$\\{SECTION_CLASS\\}`), id);
   assert.match(HOME, /const SECTION_CLASS = "scroll-mt-\[104px\]";/);
   // sticky directly under the 48px owner header, ~44px tall, rail-internal horizontal scroll
   assert.match(NAV, /className="sticky top-12 z-30 /);
@@ -109,15 +115,16 @@ test("sticky section rail: in-page anchors only, Attention only with items (with
   assert.match(NAV, /if \(lock\) \{[\s\S]*?return;\s*\}/);
 });
 
-test("Create on Findmi: five actions in the intentional order, each with icon + title + one explanatory line", () => {
+test("Create sheet: six actions in the intentional order, each with icon + title + one explanatory line", () => {
   const actions = CA.orderedCreateActions("/account/business/biz", "biz");
-  assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Create A QR Code"]);
-  assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "pin", "tag", "qr"]);
+  assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
+  assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "pin", "tag", "moment", "qr"]);
   assert.deepEqual(actions.map((x) => x.description), [
     "Add something your Business is participating in.",
     "Create something your Business is organizing.",
     "Add a place customers can regularly find your Business.",
     "Add something people can discover from your Business.",
+    "Document something your Business experienced.",
     "Create a trackable QR code for your Business or campaign.",
   ]);
   for (const a of actions) {
@@ -128,7 +135,7 @@ test("Create on Findmi: five actions in the intentional order, each with icon + 
   // The product owner's Account revision adopted At a Location / Add To Product
   // Catalog / Create A QR Code as the owner-facing labels; "Appearance" is never one.
   assert.doesNotMatch(all, /Go Somewhere|Host Something/);
-  assert.doesNotMatch(actions.map((a) => a.label).join(" "), /Appearance|Moment/);
+  assert.doesNotMatch(actions.map((a) => a.label).join(" "), /Appearance/);
 });
 
 test("participating vs organizing: Where I'll Be = taking part in someone else's; Host an Event = organizing", () => {
@@ -141,21 +148,17 @@ test("participating vs organizing: Where I'll Be = taking part in someone else's
   assert.equal(a.event.detail, "Create an activation, pop-up, tasting, class, launch or other Event your Business is organizing.");
 });
 
-test("Create rail: horizontal, compact cards (no title wrap), next card peeks; View All opens the existing + sheet", () => {
-  const create = HOME.slice(at('aria-labelledby="create-on-findmi"'), at("<HomeOpportunities"));
-  assert.match(create, /\{orderedCreateActions\(basePath, businessId\)\.map\(\(action\) => \(/);
-  assert.match(create, /<ul className=\{`mt-3 \$\{RAIL_CLASS\} snap-mandatory gap-4 lg:grid lg:grid-cols-3 lg:gap-3 lg:overflow-visible`\}>/, "a whole card always settles on the gutter; gap = gutter, so no sliver");
-  assert.match(create, /<li aria-hidden="true" className="w-\[calc\(100vw-min\(20rem,84vw\)-3rem\)\] shrink-0 sm:w-\[calc\(100vw-min\(20rem,84vw\)-4rem\)\] lg:hidden" \/>/, "the last card can rest on the gutter too");
-  assert.match(HOME, /const RAIL_CLASS =\s*"-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4/);
-  assert.match(create, /className="w-\[min\(20rem,84vw\)\] shrink-0 snap-start lg:w-auto"/, "< full width → the next card peeks");
-  // row anatomy: 56px icon block left (32px icon), title over description to its right, quiet chevron
-  assert.match(create, /className="flex h-full min-h-\[88px\] items-center gap-3 rounded-2xl border/);
-  assert.match(create, /<span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">\s*<CreateActionIcon icon=\{action\.icon\} className="h-8 w-8" \/>/);
-  assert.match(create, /<span className="min-w-0 flex-1">\s*<span className="block truncate text-card-title font-semibold text-primary">\{action\.label\}<\/span>\s*<span className="mt-0\.5 line-clamp-2 block text-metadata text-muted">\{action\.description\}<\/span>/, "one-line title, two-line description");
-  assert.match(create, /<ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink\/25" \/>/);
-  assert.match(create, /<AddToPresence basePath=\{basePath\} businessId=\{businessId\} variant="link" \/>/);
+test("Quick Create: a few high-value actions from the shared definitions; View All opens the existing + sheet", () => {
+  const create = HOME.slice(at('aria-labelledby="quick-create"'), at("<MomentsStrip"));
+  assert.match(HOME, /const quick = \[create\.where, create\.event, create\.product, create\.qr\];/);
+  assert.match(create, /\{quick\.map\(\(action\) => \(/);
+  assert.doesNotMatch(create, /snap-mandatory|orderedCreateActions/, "no carousel any more");
+  assert.match(create, /<ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">/, "fits 360px without sideways scrolling");
+  assert.match(create, /<CreateActionIcon icon=\{action\.icon\} className="h-5 w-5" \/>/);
+  assert.match(create, /<AddToPresence basePath=\{basePath\} businessId=\{businessId\} variant="link" label="View All" \/>/);
+  assert.match(HOME, /\{ where: "Where I\\u2019ll Be", event: "Host An Event", product: "Add Product", qr: "Create QR" \}/, "Title Case chip labels");
   assert.match(ADD, /variant === "link" \? \(/);
-  assert.match(ADD, /View All/);
+  assert.match(ADD, /label = "Add"/);
 });
 
 test("route integrity: every creation destination is an existing Business-scoped flow that reads its params", () => {
@@ -198,7 +201,23 @@ const base = { businessId: "biz", hasPrimaryMarket: true, pendingMarketRequestTe
 
 test("complete profile, geography assigned, nothing pending → no attention items (section omitted)", () => {
   assert.deepEqual(BD.buildNeedsAttentionItems(base), []);
-  assert.match(HOME, /\{attention\.length > 0 && \(\s*<section id="home-attention" aria-labelledby="needs-attention"/);
+  // The bar itself renders nothing at zero.
+  assert.match(ATTENTION_BAR, /if \(items\.length === 0\) return null;/);
+});
+
+test("Needs Attention is a compact status bar: collapsed by default, count badge, circular chevron, tap expands inline", () => {
+  assert.match(ATTENTION_BAR, /"use client";/);
+  assert.match(ATTENTION_BAR, /const \[open, setOpen\] = useState\(false\);/, "collapsed by default");
+  assert.match(ATTENTION_BAR, /aria-expanded=\{open\}/);
+  assert.match(ATTENTION_BAR, /aria-controls=\{panelId\}/);
+  assert.match(ATTENTION_BAR, /onClick=\{\(\) => setOpen\(\(v\) => !v\)\}/, "the whole row toggles");
+  assert.match(ATTENTION_BAR, /Needs Attention<\/span>/);
+  assert.match(ATTENTION_BAR, /rounded-full bg-amber-500/, "small circular count badge");
+  assert.match(ATTENTION_BAR, /rounded-full bg-white[^"]*"[^>]*>\s*<ChevronIcon direction="down" className=\{`[^`]*\$\{open \? "rotate-180" : ""\}`\}/, "circular chevron that rotates");
+  assert.match(ATTENTION_BAR, /\{open && \(\s*<ul id=\{panelId\}/, "items only when expanded");
+  assert.match(ATTENTION_BAR, /href=\{item\.actionHref\}/, "each item keeps its existing CTA");
+  // Detection/logic is untouched: Home still feeds the same items.
+  assert.match(PAGE, /needsAttention=\{needsAttention\}/);
 });
 
 test("a Business with NO geography is valid: no attention item and never 'won't appear in general discovery'", () => {
@@ -248,10 +267,9 @@ test("every attention item has a title (what), a message (why) and an action", (
     profileIncomplete: true,
   });
   for (const i of all) assert.ok(i.title && i.message && i.actionLabel && i.actionHref, i.id);
-  const list = HOME.slice(at('aria-labelledby="needs-attention"'), at('id="home-schedule"'));
-  assert.match(list, /\{item\.title\}/);
-  assert.match(list, /\{item\.message\}/);
-  assert.match(list, /\{item\.actionLabel\}/);
+  assert.match(ATTENTION_BAR, /\{item\.title\}/);
+  assert.match(ATTENTION_BAR, /\{item\.message\}/);
+  assert.match(ATTENTION_BAR, /\{item\.actionLabel\}/);
   assert.match(HOME, /You\\u2019re invited to participate in \$\{invitedTo\}\./);
   assert.match(PAGE, /pendingInvitationNames=\{pendingInvitations\.filter\(\(o\) => o\.status === "pending"\)\.map\(\(o\) => o\.eventName\)\}/);
 });
@@ -266,22 +284,22 @@ test("Schedule: Happening Now (only when live) then Coming Up; useful empty stat
   assert.match(sched, /\{\[create\.where, create\.event\]\.map\(\(a\) => \(/);
 });
 
-test("Opportunities For You: existing data only, compact, never Pro-gated", () => {
-  assert.match(HOME, /<HomeOpportunities basePath=\{basePath\} items=\{opportunityItems\} \/>/);
-  const opp = HOME.slice(HOME.indexOf("function HomeOpportunities"), HOME.indexOf("function SectionTitle"));
-  assert.doesNotMatch(opp, /\bpro\b/);
-  assert.match(opp, /Opportunities For You/);
+test("Growth (Home mini-dashboard + Growth tab): existing data only, never Pro-gated, no fabricated metrics", () => {
+  assert.match(HOME, /<GrowthPanel basePath=\{basePath\} summary=\{growth\} \/>/);
+  const opp = GROWTH_VIEW.slice(GROWTH_VIEW.indexOf("const ranked"));
+  assert.doesNotMatch(GROWTH_VIEW, /\bpro\b/);
   assert.match(opp, /\]\.slice\(0, 3\);/, "at most three existing recommendations");
-  assert.match(opp, /ranked\.length === 1 \? \(/);
-  assert.match(opp, /ranked\.length > 1 \? \(\s*<ul className=\{`mt-3 \$\{RAIL_CLASS\}`\}>/, "several real ones → a short horizontal collection");
-  assert.match(opp, /Explore Opportunities/);
-  assert.match(opp, /Tell Findmi Your Goals/);
-  assert.doesNotMatch(opp, /Browse Opportunities/);
+  assert.match(GROWTH_VIEW, /ranked\.length === 1 \? \(/);
+  assert.match(GROWTH_VIEW, /ranked\.length > 1 \? \(\s*<ul className=\{`mt-3 \$\{RAIL_CLASS\}`\}>/, "several real ones → a short horizontal collection");
+  assert.match(GROWTH_VIEW, /Explore Opportunities/);
+  assert.match(GROWTH_VIEW, /Add A Goal/);
+  assert.match(GROWTH_VIEW, /<BusinessOpportunityCard item=\{ranked\[0\]\.view\}/);
+  assert.match(PAGE, /<GrowthView\s/);
 });
 
 test("Performance: existing metrics + Free/Pro gating; all-zero explains itself instead of four zeros", () => {
   const perf = HOME.slice(at('aria-labelledby="performance-snapshot"'), at('aria-labelledby="findmi-link"'));
-  for (const l of ["Profile Views", "QR Scans"]) assert.match(perf, new RegExp(`<MetricTile label="${l}"`));
+  for (const l of ["Views", "Scans"]) assert.match(perf, new RegExp(`<MetricTile label="${l}"`));
   assert.match(perf, /<MetricTile label=\{metrics\.actionsTaken\.value === 1 \? "Action" : "Actions"\} metric=\{metrics\.actionsTaken\}/, "1 Action, 0/N Actions");
   assert.match(perf, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
   assert.match(perf, /metrics\.profileViews\.value \+ metrics\.actionsTaken\.value \+ metrics\.qrScans\.value \+ metrics\.followers === 0 \? \(/);

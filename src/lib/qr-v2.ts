@@ -189,3 +189,70 @@ export async function getBusinessQrEligibleLocations(
   const { data: locations } = await supabase.from("locations").select("id, name").in("id", Array.from(locationIds));
   return ((locations ?? []) as QrEligibleEntity[]).sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * Which scheduled dates (event_occurrences) of an Event this Business may
+ * scope a QR code to — the "Specific Occurrence" choice. Stricter than the
+ * Event-level eligibility above, on purpose:
+ *   - approved Event participation that is not `selected_dates` (all_dates, or
+ *     legacy null) → every date of that Event;
+ *   - a non-canceled Appearance at the Event with no specific date → every date;
+ *   - otherwise only the dates it is approved for (event_occurrence_businesses,
+ *     status 'approved') or has an Appearance on.
+ * Pure over already-loaded rows so the creator's options and the server action
+ * apply the identical rule.
+ */
+export interface QrOccurrenceAuthorityInput {
+  occurrences: { id: string }[];
+  /** This Business's event_businesses row for the Event, when approved. */
+  eventLevel: { participation_scope: string | null } | null;
+  /** This Business's non-canceled Appearances at the Event. */
+  appearances: { event_occurrence_id: string | null }[];
+  /** event_occurrence_businesses occurrence ids approved for this Business. */
+  approvedOccurrenceIds: ReadonlySet<string>;
+}
+
+export function allowedQrOccurrenceIds(input: QrOccurrenceAuthorityInput): Set<string> {
+  const all = new Set(input.occurrences.map((o) => o.id));
+  if (input.eventLevel && input.eventLevel.participation_scope !== "selected_dates") return all;
+  if (input.appearances.some((a) => !a.event_occurrence_id)) return all;
+  const allowed = new Set<string>();
+  for (const a of input.appearances) if (a.event_occurrence_id && all.has(a.event_occurrence_id)) allowed.add(a.event_occurrence_id);
+  for (const id of input.approvedOccurrenceIds) if (all.has(id)) allowed.add(id);
+  return allowed;
+}
+
+/** Loads the rows allowedQrOccurrenceIds needs for MANY Events in four
+ * batched reads (never per Event) and returns each Event's allowed set. */
+export async function getBusinessQrAllowedOccurrences(
+  supabase: SupabaseClient,
+  businessId: string,
+  occurrencesByEvent: Map<string, { id: string }[]>
+): Promise<Map<string, Set<string>>> {
+  const eventIds = [...occurrencesByEvent.keys()];
+  const result = new Map<string, Set<string>>();
+  if (eventIds.length === 0) return result;
+  const allOccurrenceIds = [...occurrencesByEvent.values()].flat().map((o) => o.id);
+  const [{ data: levels }, { data: appearances }, { data: approved }] = await Promise.all([
+    supabase.from("event_businesses").select("event_id, participation_scope").eq("business_id", businessId).eq("status", "approved").in("event_id", eventIds),
+    supabase.from("appearances").select("event_id, event_occurrence_id").eq("business_id", businessId).neq("status", "canceled").in("event_id", eventIds),
+    allOccurrenceIds.length
+      ? supabase.from("event_occurrence_businesses").select("occurrence_id").eq("business_id", businessId).eq("status", "approved").in("occurrence_id", allOccurrenceIds)
+      : Promise.resolve({ data: [] as { occurrence_id: string }[] }),
+  ]);
+  const levelByEvent = new Map(((levels ?? []) as { event_id: string; participation_scope: string | null }[]).map((r) => [r.event_id, r]));
+  const apps = (appearances ?? []) as { event_id: string; event_occurrence_id: string | null }[];
+  const approvedIds = new Set(((approved ?? []) as { occurrence_id: string }[]).map((r) => r.occurrence_id));
+  for (const [eventId, occurrences] of occurrencesByEvent) {
+    result.set(
+      eventId,
+      allowedQrOccurrenceIds({
+        occurrences,
+        eventLevel: levelByEvent.get(eventId) ?? null,
+        appearances: apps.filter((a) => a.event_id === eventId),
+        approvedOccurrenceIds: approvedIds,
+      })
+    );
+  }
+  return result;
+}

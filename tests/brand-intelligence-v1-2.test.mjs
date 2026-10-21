@@ -191,7 +191,7 @@ test("an existing completed V1 Audit survives untouched: Complete, Goals/Challen
   assert.equal(D.auditProgress(a.summary), 40);
   assert.equal(D.auditState(a.summary), "complete");
   assert.equal(D.auditResumeStep(a.summary), "audience");
-  assert.equal(D.auditActionLabel(a.summary), "Complete Your Profile");
+  assert.equal(D.auditActionLabel(a.summary), "Improve Your Matches");
 });
 
 test("Target Audience: audiences, ages and priorities save, resume and edit; Other needs its text", async () => {

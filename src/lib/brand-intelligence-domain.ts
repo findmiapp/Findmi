@@ -323,9 +323,9 @@ export function auditChangeHeadline(s: IntelligenceSignal, sectionLabels: Record
 }
 
 export const SIGNAL_HEADLINE: Record<SignalEvent, string> = {
-  audit_completed: "Completed Brand Audit",
-  audit_updated: "Updated Brand Audit",
-  audit_in_progress: "Brand Audit In Progress",
+  audit_completed: "Completed Growth Setup",
+  audit_updated: "Updated Growth Setup",
+  audit_in_progress: "Growth Setup In Progress",
   idea_responded: "Responded",
   idea_response_changed: "Changed Response",
 };

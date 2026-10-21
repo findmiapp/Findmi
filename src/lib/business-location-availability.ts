@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeLocationHours } from "./locationHours";
 import type { LocationHours } from "./types";
+import { isAvailabilityInEffect, isAvailabilityRelationship, type AvailabilityRelationship } from "./business-availability-domain";
 
 /** Find Us At — business_location_availability (see the migration
  * 20261015000000_business_location_availability.sql).
@@ -25,8 +26,21 @@ import type { LocationHours } from "./types";
 export const FIND_US_AT_PUBLIC_LIMIT = 6;
 export const AVAILABILITY_PAGE_SIZE = 50;
 
+/** What the consumer can learn about HOW and WHAT, from the Where To Find Us
+ * detail columns. Absent before that migration is applied (and for rows
+ * Findmi entered with no detail: stocked, Brand-wide, ongoing). */
+export interface AvailabilityDetail {
+  relationship: AvailabilityRelationship;
+  startsOn: string | null;
+  endsOn: string | null;
+  note: string | null;
+  /** Live, active Products this entry names. Empty = the Brand generally. */
+  products: { id: string; name: string; slug: string }[];
+}
+
 export interface AvailabilityLocationItem {
   locationId: string;
+  detail?: AvailabilityDetail;
   linkedAt: string;
   name: string;
   slug: string;
@@ -44,6 +58,7 @@ export interface AvailabilityLocationItem {
 
 export interface AvailableBrandItem {
   businessId: string;
+  detail?: AvailabilityDetail;
   name: string;
   slug: string;
   logoUrl: string | null;
@@ -68,6 +83,18 @@ export function isMissingAvailabilityTable(error: { code?: string; message?: str
   return error.code === "42P01" || error.code === "PGRST205" || /business_location_availability/.test(error.message ?? "");
 }
 
+/** Public reads show only Live entries that are in effect today (the
+ * Where To Find Us detail columns: status / starts_on / ends_on). An expired
+ * temporary entry just stops showing — it is never deleted. Before the
+ * details migration is applied the columns don't exist (42703); callers
+ * then fall back to the original unfiltered read so nothing regresses. */
+function liveInEffect<T extends { eq: (c: string, v: string) => T; or: (f: string) => T }>(query: T): T {
+  const today = new Date().toISOString().slice(0, 10);
+  return query.eq("status", "live").or(`starts_on.is.null,starts_on.lte.${today}`).or(`ends_on.is.null,ends_on.gte.${today}`);
+}
+
+const isMissingDetailColumn = (e: { code?: string; message?: string } | null | undefined) => Boolean(e && e.code === "42703");
+
 const LOCATION_FIELDS = "id, name, slug, address, city, state, logo_url, cover_image_url, hours, is_demo, archived_at, trashed_at";
 
 type LocationEmbed = {
@@ -88,6 +115,33 @@ type LocationEmbed = {
 function one<T>(embed: T | T[] | null): T | null {
   if (!embed) return null;
   return Array.isArray(embed) ? (embed[0] ?? null) : embed;
+}
+
+type DetailRow = { id: string; relationship?: string | null; starts_on?: string | null; ends_on?: string | null; note?: string | null };
+
+/** Live, active Products for a set of availability rows — one batched read,
+ * under the caller's own RLS (anon sees only products of LIVE entries and
+ * only publicly visible Products). */
+async function loadProducts(client: SupabaseClient, ids: string[]): Promise<Map<string, AvailabilityDetail["products"]>> {
+  const byRow = new Map<string, AvailabilityDetail["products"]>();
+  if (ids.length === 0) return byRow;
+  const { data } = await client
+    .from("business_location_availability_products")
+    .select("availability_id, products!inner(id, name, slug, is_active)")
+    .in("availability_id", ids)
+    .eq("products.is_active", true);
+  type P = { id: string; name: string; slug: string };
+  for (const r of (data ?? []) as unknown as { availability_id: string; products: P | P[] | null }[]) {
+    const p = one(r.products);
+    if (p) byRow.set(r.availability_id, [...(byRow.get(r.availability_id) ?? []), { id: p.id, name: p.name, slug: p.slug }]);
+  }
+  for (const list of byRow.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  return byRow;
+}
+
+function toDetail(row: DetailRow, products: Map<string, AvailabilityDetail["products"]>): AvailabilityDetail | undefined {
+  if (!isAvailabilityRelationship(row.relationship)) return undefined;
+  return { relationship: row.relationship, startsOn: row.starts_on ?? null, endsOn: row.ends_on ?? null, note: row.note ?? null, products: products.get(row.id) ?? [] };
 }
 
 /** PostgREST `in` list for uuids (ids come from our own rows). */
@@ -118,20 +172,31 @@ export async function getAvailabilityLocationsForBusiness(
 ): Promise<Page<AvailabilityLocationItem>> {
   if (!client) return { items: [], hasMore: false };
   const operated = await operatedLocationIds(client, businessId);
-  let query = client
-    .from("business_location_availability")
-    .select(`created_at, locations!inner(${LOCATION_FIELDS})`)
-    .eq("business_id", businessId);
-  if (operated.length > 0) query = query.not("location_id", "in", inList(operated));
-  if (publicOnly) {
-    query = query.eq("locations.is_demo", false).is("locations.archived_at", null).is("locations.trashed_at", null);
-  }
-  const { data, error } = await query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + limit);
+  const build = (details: boolean) => {
+    let query = client
+      .from("business_location_availability")
+      .select(`${details ? "id, relationship, starts_on, ends_on, note, " : ""}created_at, locations!inner(${LOCATION_FIELDS})`)
+      .eq("business_id", businessId);
+    if (operated.length > 0) query = query.not("location_id", "in", inList(operated));
+    if (publicOnly) {
+      query = query.eq("locations.is_demo", false).is("locations.archived_at", null).is("locations.trashed_at", null);
+      if (details) query = liveInEffect(query);
+    }
+    return query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + limit);
+  };
+  let { data, error } = await build(true);
+  if (publicOnly && isMissingDetailColumn(error)) ({ data, error } = await build(false));
   if (error) {
     if (!isMissingAvailabilityTable(error)) console.error("getAvailabilityLocationsForBusiness failed:", error.message);
     return { items: [], hasMore: false };
   }
-  const rows = (data ?? []) as unknown as { created_at: string; locations: LocationEmbed | LocationEmbed[] | null }[];
+  type Row = DetailRow & { created_at: string; locations: LocationEmbed | LocationEmbed[] | null };
+  const today = new Date().toISOString().slice(0, 10);
+  // Public: also hide entries outside their date window (an expired temporary
+  // entry just stops showing; it is never deleted).
+  const rows = ((data ?? []) as unknown as Row[]).filter((r) => !publicOnly || !("starts_on" in r) || isAvailabilityInEffect(r.starts_on ?? null, r.ends_on ?? null, today));
+  const detailIds = rows.map((r) => r.id).filter(Boolean);
+  const productMap = await loadProducts(client, detailIds.slice(0, limit + 1));
   const seen = new Set<string>();
   const items: AvailabilityLocationItem[] = [];
   for (const row of rows) {
@@ -140,6 +205,7 @@ export async function getAvailabilityLocationsForBusiness(
     seen.add(l.id);
     items.push({
       locationId: l.id,
+      detail: row.id ? toDetail(row, productMap) : undefined,
       linkedAt: row.created_at,
       name: l.name,
       slug: l.slug,
@@ -165,26 +231,36 @@ export async function getAvailableBrandsForLocation(
 ): Promise<Page<AvailableBrandItem>> {
   if (!client) return { items: [], hasMore: false };
   const operators = await operatorBusinessIds(client, locationId);
-  let query = client
-    .from("business_location_availability")
-    .select("created_at, businesses!inner(id, name, slug, logo_url, is_demo, publication_status)")
-    .eq("location_id", locationId);
-  if (operators.length > 0) query = query.not("business_id", "in", inList(operators));
-  if (publicOnly) query = query.eq("businesses.is_demo", false).eq("businesses.publication_status", "live");
-  const { data, error } = await query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + limit);
+  const build = (details: boolean) => {
+    let query = client
+      .from("business_location_availability")
+      .select(`${details ? "id, relationship, starts_on, ends_on, note, " : ""}created_at, businesses!inner(id, name, slug, logo_url, is_demo, publication_status)`)
+      .eq("location_id", locationId);
+    if (operators.length > 0) query = query.not("business_id", "in", inList(operators));
+    if (publicOnly) {
+      query = query.eq("businesses.is_demo", false).eq("businesses.publication_status", "live");
+      if (details) query = liveInEffect(query);
+    }
+    return query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + limit);
+  };
+  let { data, error } = await build(true);
+  if (publicOnly && isMissingDetailColumn(error)) ({ data, error } = await build(false));
   if (error) {
     if (!isMissingAvailabilityTable(error)) console.error("getAvailableBrandsForLocation failed:", error.message);
     return { items: [], hasMore: false };
   }
   type BizEmbed = { id: string; name: string; slug: string; logo_url: string | null };
-  const rows = (data ?? []) as unknown as { businesses: BizEmbed | BizEmbed[] | null }[];
+  type BrandRow = DetailRow & { businesses: BizEmbed | BizEmbed[] | null };
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = ((data ?? []) as unknown as BrandRow[]).filter((r) => !publicOnly || !("starts_on" in r) || isAvailabilityInEffect(r.starts_on ?? null, r.ends_on ?? null, today));
+  const productMap = await loadProducts(client, rows.map((r) => r.id).filter(Boolean).slice(0, limit + 1));
   const seen = new Set<string>();
   const items: AvailableBrandItem[] = [];
   for (const row of rows) {
     const b = one(row.businesses);
     if (!b || seen.has(b.id) || operators.includes(b.id)) continue;
     seen.add(b.id);
-    items.push({ businessId: b.id, name: b.name, slug: b.slug, logoUrl: b.logo_url });
+    items.push({ businessId: b.id, name: b.name, slug: b.slug, logoUrl: b.logo_url, detail: row.id ? toDetail(row, productMap) : undefined });
   }
   return { items: items.slice(0, limit), hasMore: items.length > limit };
 }

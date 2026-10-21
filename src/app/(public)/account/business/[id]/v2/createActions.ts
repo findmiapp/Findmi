@@ -1,6 +1,6 @@
 /** The ONE definition of every Business-scoped creation action: label,
  * descriptions, icon and destination (always carrying this Business).
- * Business Home's Create on Findmi rail and the Business "+" sheet
+ * Business Home's compact Quick Create and the Business "+" sheet
  * (AddToPresence) both read from here, so the same action can never drift
  * in wording, icon or route. Order is intentional — presence (Where I'll
  * Be, Host an Event), Business content (Location, Product), publishing /
@@ -12,7 +12,8 @@
  *                            server-side: Owner/Manager of this Business)
  *   At a Location          → Findmi Here's Locations add panel (?view=locations&add=1)
  *   Add To Product Catalog → Products' Add Product panel (?tab=products&compose=1)
- *   (not listed) moment    → kept as a definition only; see BUSINESS_CREATE_ORDER
+ *   Add a Moment           → the existing Moment composer, posted as this
+ *                            Business (/my-world/journal/new?business=&postAs=)
  *   Create A QR Code       → the Business QR creator (/qr/new)
  *
  * Owner-facing labels follow the product owner's Account revision: never
@@ -99,13 +100,13 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
   };
 }
 
-/** Every Business creation action SHOWN in Create on Findmi, in the
- * intentional order. Moments are deliberately not one of them: a Business's
- * Moments will be curated from activity across Findmi, not hand-created from
- * this menu. The `moment` definition above is kept (route intact) for that
- * future Business Moments area; the Moment composer itself is unchanged and
- * still reachable everywhere else (+ menu, My Moments, Moment pages). */
-export const BUSINESS_CREATE_ORDER: BusinessCreateKey[] = ["where", "event", "location", "product", "qr"];
+/** Every Business creation action SHOWN in the full "+" Create sheet, in the
+ * intentional order. "Add a Moment" is one of them: Moments also have their
+ * own Business Manager tab, but a tab is a place to browse and manage, not a
+ * replacement for global creation — the sheet routes into the same existing
+ * Moment composer (no second composer). Business Home's compact Quick Create
+ * is a separate, smaller selection of these (see BusinessHome.tsx). */
+export const BUSINESS_CREATE_ORDER: BusinessCreateKey[] = ["where", "event", "location", "product", "moment", "qr"];
 
 export function orderedCreateActions(basePath: string, businessId: string): BusinessCreateAction[] {
   const a = businessCreateActions(basePath, businessId);

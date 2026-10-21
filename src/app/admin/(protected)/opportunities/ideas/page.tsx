@@ -37,7 +37,7 @@ export default async function AdminIdeasPage({ searchParams }: { searchParams: P
 
       {!available ? (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Opportunity Ideas aren&rsquo;t available yet — the Brand Audit + Opportunity Ideas migration hasn&rsquo;t been applied to this database.
+          Opportunity Ideas aren&rsquo;t available yet — the Growth Setup + Opportunity Ideas migration hasn&rsquo;t been applied to this database.
         </p>
       ) : (
         <>

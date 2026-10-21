@@ -82,10 +82,10 @@ test("Homepage Bulletins sits with Site Editor; Discovery labels are clearer; th
 });
 
 test("Manager: one shared tab definition — same valid keys as before, legacy redirects intact", () => {
-  const expected = ["overview", "findmi-here", "performance", "qr", "profile", "products", "orders", "settings", "opportunities", "inquiries", "referral", "more", "gallery", "links", "plan", "market", "followers"];
+  const expected = ["overview", "findmi-here", "performance", "qr", "profile", "products", "orders", "settings", "opportunities", "inquiries", "referral", "more", "gallery", "links", "plan", "market", "followers", "moments", "growth"];
   assert.deepEqual([...BIZ.VALID_BUSINESS_TAB_KEYS].sort(), [...expected].sort());
   assert.deepEqual(BIZ.LEGACY_TAB_REDIRECTS, { gallery: "profile", links: "profile", plan: "settings", market: "settings", followers: "performance" });
-  assert.deepEqual(BIZ.BUSINESS_NAV.map((n) => [n.label, n.tab]), [["Home", "overview"], ["Findmi Here", "findmi-here"], ["Products", "products"], ["Opportunities", "opportunities"], ["Performance", "performance"], ["More", "more"]]);
+  assert.deepEqual(BIZ.BUSINESS_NAV.map((n) => [n.label, n.tab]), [["Home", "overview"], ["Findmi Here", "findmi-here"], ["Moments", "moments"], ["Performance", "performance"], ["Products", "products"], ["Growth", "growth"], ["More", "more"]]);
   const page = read(`${B}/page.tsx`);
   assert.doesNotMatch(page, /const PRIMARY_TABS|const LEGACY_TAB_REDIRECTS|const ORDERS_TAB/);
   assert.match(page, /from "\.\/v2\/business-nav"/);

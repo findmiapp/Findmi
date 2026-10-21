@@ -17,7 +17,9 @@ import {
   adminRemoveBusinessLocation,
   adminSetPrimaryBusinessLocation,
 } from "../location-actions";
-import { adminConnectFindUsAt, adminRemoveFindUsAt } from "../availability-actions";
+import { adminConnectFindUsAt, adminRemoveFindUsAt, adminReviewFindUsAt } from "../availability-actions";
+import { getOwnerAvailability } from "@/lib/business-availability-owner";
+import { AVAILABILITY_RELATIONSHIP_LABELS, availabilityWhenLabel } from "@/lib/business-availability-domain";
 import { getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
 import BusinessIntelligencePanel from "@/components/admin/BusinessIntelligencePanel";
@@ -189,6 +191,11 @@ export default async function EditBusinessPage({
   // (its second section).
   const availabilityLocations =
     tab === "locations" && marketsAdmin ? await getAvailabilityLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
+  // Where To Find Us — owner-submitted entries awaiting review (fails safe
+  // to none until the details migration is applied).
+  const ownerAvailabilityAll = tab === "locations" && marketsAdmin ? (await getOwnerAvailability(marketsAdmin, id)).items : [];
+  const pendingAvailability = ownerAvailabilityAll.filter((i) => i.status === "pending");
+  const availabilityStatusByLocation = new Map(ownerAvailabilityAll.map((i) => [i.locationId, i.status]));
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
@@ -757,9 +764,37 @@ export default async function EditBusinessPage({
               Third-party places where this business is normally available — stocked, sold, served or carried. Not places
               it operates (those are Our Locations above) and not one-off events or pop-ups.
             </p>
-            {availabilityLocations.items.length > 0 ? (
+            {pendingAvailability.length > 0 && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Awaiting Review ({pendingAvailability.length})</p>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {pendingAvailability.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <Link href={`/admin/locations/${p.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
+                          {p.locationName}
+                        </Link>
+                        <p className="text-xs text-ink/55">
+                          {AVAILABILITY_RELATIONSHIP_LABELS[p.relationship]} · {availabilityWhenLabel(p.startsOn, p.endsOn)} ·{" "}
+                          {p.products.length > 0 ? p.products.map((x) => x.name).join(", ") : "Brand"}
+                        </p>
+                      </div>
+                      <div className="flex gap-3">
+                        <form action={adminReviewFindUsAt.bind(null, id, p.id, "live")}>
+                          <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">Approve</button>
+                        </form>
+                        <form action={adminReviewFindUsAt.bind(null, id, p.id, "declined")}>
+                          <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">Decline</button>
+                        </form>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {availabilityLocations.items.filter((l) => availabilityStatusByLocation.get(l.locationId) !== "pending").length > 0 ? (
               <ul className="mt-3 flex flex-col gap-2">
-                {availabilityLocations.items.map((l) => (
+                {availabilityLocations.items.filter((l) => availabilityStatusByLocation.get(l.locationId) !== "pending").map((l) => (
                   <li key={l.locationId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 px-3 py-2">
                     <div className="min-w-0">
                       <Link href={`/admin/locations/${l.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
@@ -768,6 +803,7 @@ export default async function EditBusinessPage({
                       <p className="text-xs text-ink/45">
                         {[l.city, l.state].filter(Boolean).join(", ") || "No city"}
                         {l.isPending ? " · Not public" : ""}
+                        {availabilityStatusByLocation.get(l.locationId) === "declined" ? " · Declined" : ""}
                         {l.isArchived ? " · Archived" : ""}
                       </p>
                     </div>
