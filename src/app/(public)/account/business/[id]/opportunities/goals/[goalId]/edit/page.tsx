@@ -16,13 +16,13 @@ export default async function EditGoalPage({ params }: { params: Promise<{ id: s
   const { membership, shell } = await loadBusinessShell(id, `/account/business/${id}/opportunities/goals/${goalId}/edit`);
   const goal = await getBusinessGoal(id, goalId);
   if (!goal) notFound();
-  const goalsHref = `${shell.basePath}?tab=opportunities&view=goals`;
+  const goalsHref = `${shell.basePath}?tab=growth`;
   const allowed = canManageGoals(membership.role, membership.viaAdmin);
   const markets = allowed ? await getGoalMarketOptions() : [];
 
   return (
     <BusinessAppShell {...shell} activeSection="growth">
-      <GoalFrame>
+      <GoalFrame basePath={shell.basePath}>
         {!allowed ? (
           <GoalNotAllowed
             backHref={goalsHref}

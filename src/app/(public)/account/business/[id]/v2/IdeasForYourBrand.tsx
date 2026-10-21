@@ -36,8 +36,11 @@ export default function IdeasForYourBrand({
   ideas: initialIdeas,
   canRespond,
   respond,
+  layout = "rail",
 }: {
   ideas: BusinessIdea[];
+  /** "rail" (Home-style swipe rail) or "grid" (the Growth Ideas page). */
+  layout?: "rail" | "grid";
   canRespond: boolean;
   respond: (ideaId: string, response: string, note?: string | null) => Promise<ActionResult>;
 }) {
@@ -60,9 +63,9 @@ export default function IdeasForYourBrand({
         {unanswered > 0 && unanswered < ideas.length && <span className="text-metadata font-semibold text-muted">{unanswered} New</span>}
       </div>
       <p className="mt-0.5 text-metadata text-muted">Explore ways Findmi could help you reach your goals.</p>
-      <ul className={`mt-3 ${RAIL_CLASS}`}>
+      <ul className={layout === "grid" ? "mt-3 grid gap-3 sm:grid-cols-2" : `mt-3 ${RAIL_CLASS}`}>
         {ideas.map((idea) => (
-          <li key={idea.id} className="w-[min(15.5rem,72vw)] shrink-0 snap-start">
+          <li key={idea.id} className={layout === "grid" ? "min-w-0" : "w-[min(15.5rem,72vw)] shrink-0 snap-start"}>
             <button
               type="button"
               onClick={() => setOpenId(idea.id)}
@@ -86,7 +89,7 @@ export default function IdeasForYourBrand({
             </button>
           </li>
         ))}
-        <li aria-hidden="true" className="w-1 shrink-0" />
+        {layout === "rail" && <li aria-hidden="true" className="w-1 shrink-0" />}
       </ul>
       {open && <IdeaSheet idea={open} canRespond={canRespond} respond={respond} onSaved={update} onClose={() => setOpenId(null)} />}
     </section>

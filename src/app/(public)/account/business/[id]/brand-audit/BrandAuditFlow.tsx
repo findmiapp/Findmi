@@ -168,7 +168,7 @@ export default function BrandAuditFlow({
       setError(null);
       const result = await completeAudit();
       if (!result.ok) return setError(result.error);
-      router.push(`${homeHref}?brand_audit=complete`);
+      router.push(`${homeHref}${homeHref.includes("?") ? "&" : "?"}brand_audit=complete`);
       router.refresh();
     });
 
@@ -193,7 +193,7 @@ export default function BrandAuditFlow({
           <div className="flex items-center justify-between gap-3 text-metadata text-muted">
             <span>{step === "review" ? "Review" : `Step ${stepIndex} of ${STEPS.length}`}</span>
             <Link href={homeHref} className="font-semibold text-muted hover:text-primary">
-              {canEdit && step !== "review" ? "Cancel" : "Back To Home"}
+              {canEdit && step !== "review" ? "Cancel" : "Back To Growth"}
             </Link>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/[0.06]" aria-hidden="true">
@@ -339,18 +339,18 @@ export default function BrandAuditFlow({
             <h1 className="font-display text-page-title font-bold leading-tight text-primary">{complete ? "Your Growth Setup" : "Review Your Growth Setup"}</h1>
             <p className="mt-1 text-body text-muted">{canEdit ? "You can update your answers anytime as your brand evolves." : readOnlyMessage}</p>
           </div>
-          <ReviewSection title="Your Goals" onEdit={canEdit ? () => go("goals") : null}>
+          <ReviewSection title="Your Goals" empty={Object.keys(goals).length === 0} onEdit={canEdit ? () => go("goals") : null}>
             <AnswerList kind="goal" selection={goals} />
           </ReviewSection>
-          <ReviewSection title="Current Challenges" onEdit={canEdit ? () => go("challenges") : null}>
+          <ReviewSection title="Current Challenges" empty={Object.keys(challenges).length === 0} onEdit={canEdit ? () => go("challenges") : null}>
             <AnswerList kind="challenge" selection={challenges} />
           </ReviewSection>
-          <ReviewSection title="Target Audience" onEdit={canEdit ? () => go("audience") : null}>
+          <ReviewSection title="Target Audience" empty={Object.keys(audiences).length + Object.keys(ages).length + Object.keys(priorities).length === 0} onEdit={canEdit ? () => go("audience") : null}>
             <AnswerList kind="audience" selection={audiences} />
             <InlineList label="Age Ranges" kind="age_range" selection={ages} />
             <AnswerList kind="audience_priority" selection={priorities} label="Audience Priorities" />
           </ReviewSection>
-          <ReviewSection title="Markets" onEdit={canEdit ? () => go("markets") : null}>
+          <ReviewSection title="Markets" empty={!scope && geo.length === 0} onEdit={canEdit ? () => go("markets") : null}>
             {scope && <p className="text-card-title font-semibold text-primary">{auditOptionLabel("market_scope", scope)}</p>}
             {(["current", "priority"] as const).map((intent) => {
               const places = geo.filter((g) => g.intent === intent);
@@ -360,9 +360,8 @@ export default function BrandAuditFlow({
                 </p>
               ) : null;
             })}
-            {!scope && geo.length === 0 && <p className="text-body text-muted">Not answered yet.</p>}
           </ReviewSection>
-          <ReviewSection title="Activation Environments" onEdit={canEdit ? () => go("environments") : null}>
+          <ReviewSection title="Activation Environments" empty={Object.keys(environments).length === 0} onEdit={canEdit ? () => go("environments") : null}>
             <AnswerList kind="environment" selection={environments} />
           </ReviewSection>
           {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
@@ -577,7 +576,25 @@ function MarketsStep({
   );
 }
 
-function ReviewSection({ title, onEdit, children }: { title: string; onEdit: (() => void) | null; children: ReactNode }) {
+/** One review section. A section with no answers yet collapses to a single
+ * compact "Not Added Yet" row (with its Add action) instead of a full empty
+ * card — an unfinished Growth Profile reads as a short checklist, not a stack
+ * of blank report cards. */
+function ReviewSection({ title, onEdit, empty = false, children }: { title: string; onEdit: (() => void) | null; empty?: boolean; children: ReactNode }) {
+  if (empty) {
+    return (
+      <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] px-1 py-2.5">
+        <p className="min-w-0 text-card-title font-semibold text-primary">
+          {title} <span className="font-normal text-muted">· Not Added Yet</span>
+        </p>
+        {onEdit && (
+          <button type="button" onClick={onEdit} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
+            Add
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
     <section className="rounded-2xl border border-black/[0.07] bg-white px-4 py-3.5">
       <div className="flex items-baseline justify-between gap-3">
@@ -595,7 +612,7 @@ function ReviewSection({ title, onEdit, children }: { title: string; onEdit: (()
 
 function AnswerList({ kind, selection, label }: { kind: AuditKind; selection: AuditSelection; label?: string }) {
   const entries = AUDIT_KEYS[kind].filter((k) => k in selection).map((k) => [k, selection[k]] as const);
-  if (entries.length === 0) return label ? null : <p className="text-body text-muted">Not answered yet.</p>;
+  if (entries.length === 0) return label ? null : <p className="text-body text-muted">Not added yet.</p>;
   return (
     <div className={label ? "mt-2" : ""}>
       {label && <p className="text-metadata font-semibold text-secondary">{label}</p>}

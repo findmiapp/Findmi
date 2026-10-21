@@ -1,3 +1,4 @@
+import OptimisticTabs from "./OptimisticTabs";
 import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import type { QrCampaignSummary } from "@/lib/qr-manager";
@@ -16,24 +17,16 @@ export function PerformanceViewTabs({ basePath, view }: { basePath: string; view
   ];
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <div role="tablist" aria-label="Performance views" className="flex gap-0.5 rounded-full bg-black/[0.04] p-0.5">
-        {tabs.map((t) => {
-          const active = t.value === view;
-          return (
-            <Link
-              key={t.value}
-              href={t.href}
-              role="tab"
-              aria-selected={active}
-              className={`flex h-8 items-center rounded-full px-3.5 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
-                active ? "bg-white text-primary shadow-sm" : "text-muted hover:text-primary"
-              }`}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
+      <OptimisticTabs
+        ariaLabel="Performance views"
+        semantics="tab"
+        navClass="flex gap-0.5 rounded-full bg-black/[0.04] p-0.5"
+        linkClass="flex h-8 items-center rounded-full px-3.5 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+        activeClass="bg-white text-primary shadow-sm"
+        inactiveClass="text-muted hover:text-primary"
+        active={view}
+        items={tabs.map((t) => ({ key: t.value, href: t.href, label: t.label }))}
+      />
       <Link href={`${basePath}/qr/new`} className="flex h-9 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
         Create QR Code
       </Link>

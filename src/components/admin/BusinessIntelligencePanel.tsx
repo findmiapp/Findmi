@@ -32,7 +32,7 @@ function Answers({ title, kind, answers }: { title: string; kind: AuditKind; ans
     <div>
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">{title}</h3>
       {answers.length === 0 ? (
-        <p className="mt-1 text-sm text-ink/45">Not answered yet.</p>
+        <p className="mt-1 text-sm text-ink/45">Not added yet.</p>
       ) : (
         <ul className="mt-1.5 flex flex-col gap-2">
           {answers.map((a) => (
@@ -91,49 +91,74 @@ export default function BusinessIntelligencePanel({
         <p className="mt-1 text-xs text-ink/45">Declared by the Brand in Growth Setup.</p>
       </section>
 
-      <Group id="intel-objectives" title="Objectives">
-        <Answers title="What They Want · Goals" kind="goal" answers={data.goals} />
-        <Answers title="What's In Their Way · Challenges" kind="challenge" answers={data.challenges} />
-      </Group>
-
-      <Group id="intel-audience" title="Audience">
-        <Answers title="Target Audiences" kind="audience" answers={data.audiences} />
-        <div className="flex flex-col gap-4">
-          <Answers title="Age Ranges" kind="age_range" answers={data.ages} />
-          <Answers title="Audience Priorities" kind="audience_priority" answers={data.priorities} />
-        </div>
-      </Group>
-
-      <Group id="intel-geography" title="Geography">
-        <div>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">Market Scope</h3>
-          <p className="mt-1 text-sm text-ink">{data.marketScope[0] ? auditOptionLabel("market_scope", data.marketScope[0].key) : <span className="text-ink/45">Not answered yet.</span>}</p>
-        </div>
-        {GEO_INTENTS.map((intent) => {
-          const places = data.geo.filter((g) => g.intent === intent);
-          return (
-            <div key={intent}>
-              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">{GEO_INTENT_LABELS[intent]}</h3>
-              {places.length === 0 ? (
-                <p className="mt-1 text-sm text-ink/45">Not answered yet.</p>
-              ) : (
-                <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                  {places.map((g) => (
-                    <li key={`${g.level}:${g.place_key}`} className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-semibold text-ink">
-                      {g.label}
-                      {LEVEL_NOTE[g.level] && <span className="font-medium text-ink/45"> · {LEVEL_NOTE[g.level]}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })}
-      </Group>
-
-      <Group id="intel-activation" title="Activation">
-        <Answers title="Preferred Environments" kind="environment" answers={data.environments} />
-      </Group>
+      {(() => {
+        // Only what the Brand actually provided gets a section; everything
+        // missing collapses into ONE compact line (never a stack of empty
+        // report cards).
+        const hasGeo = data.marketScope.length > 0 || data.geo.length > 0;
+        const missing = [
+          data.goals.length === 0 && "Goals",
+          data.challenges.length === 0 && "Challenges",
+          data.audiences.length + data.ages.length + data.priorities.length === 0 && "Target Audience",
+          !hasGeo && "Markets",
+          data.environments.length === 0 && "Activation Environments",
+        ].filter(Boolean) as string[];
+        return (
+          <>
+            {(data.goals.length > 0 || data.challenges.length > 0) && (
+              <Group id="intel-objectives" title="Objectives">
+                {data.goals.length > 0 && <Answers title="What They Want · Goals" kind="goal" answers={data.goals} />}
+                {data.challenges.length > 0 && <Answers title="What's In Their Way · Challenges" kind="challenge" answers={data.challenges} />}
+              </Group>
+            )}
+            {data.audiences.length + data.ages.length + data.priorities.length > 0 && (
+              <Group id="intel-audience" title="Audience">
+                {data.audiences.length > 0 && <Answers title="Target Audiences" kind="audience" answers={data.audiences} />}
+                <div className="flex flex-col gap-4">
+                  {data.ages.length > 0 && <Answers title="Age Ranges" kind="age_range" answers={data.ages} />}
+                  {data.priorities.length > 0 && <Answers title="Audience Priorities" kind="audience_priority" answers={data.priorities} />}
+                </div>
+              </Group>
+            )}
+            {hasGeo && (
+              <Group id="intel-geography" title="Geography">
+                {data.marketScope[0] && (
+                  <div>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">Market Scope</h3>
+                    <p className="mt-1 text-sm text-ink">{auditOptionLabel("market_scope", data.marketScope[0].key)}</p>
+                  </div>
+                )}
+                {GEO_INTENTS.map((intent) => {
+                  const places = data.geo.filter((g) => g.intent === intent);
+                  return places.length === 0 ? null : (
+                    <div key={intent}>
+                      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">{GEO_INTENT_LABELS[intent]}</h3>
+                      <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                        {places.map((g) => (
+                          <li key={`${g.level}:${g.place_key}`} className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-semibold text-ink">
+                            {g.label}
+                            {LEVEL_NOTE[g.level] && <span className="font-medium text-ink/45"> · {LEVEL_NOTE[g.level]}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </Group>
+            )}
+            {data.environments.length > 0 && (
+              <Group id="intel-activation" title="Activation">
+                <Answers title="Preferred Environments" kind="environment" answers={data.environments} />
+              </Group>
+            )}
+            {missing.length > 0 && (
+              <p className="px-1 text-xs text-ink/50">
+                <span className="font-semibold text-ink/60">Not provided yet:</span> {missing.join(" · ")}
+              </p>
+            )}
+          </>
+        );
+      })()}
 
       <section aria-labelledby="intel-signals" className="rounded-2xl border border-black/5 bg-white p-4">
         <h2 id="intel-signals" className="font-display text-lg font-semibold text-ink">

@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 
 const MORE_MENU = readFileSync("src/app/(public)/account/business/[id]/v2/MoreMenu.tsx", "utf8");
 const BUSINESS_NAV_DEF = readFileSync("src/app/(public)/account/business/[id]/v2/business-nav.ts", "utf8");
-const BUSINESS_PAGE = readFileSync("src/app/(public)/account/business/[id]/page.tsx", "utf8");
+const BUSINESS_PAGE = readFileSync("src/app/(public)/account/business/[id]/(manager)/page.tsx", "utf8");
 const ADMIN_BUSINESS_FORM = readFileSync("src/app/admin/(protected)/businesses/BusinessForm.tsx", "utf8");
 const ADMIN_BUSINESS_DETAIL = readFileSync("src/app/admin/(protected)/businesses/[id]/page.tsx", "utf8");
 const PLANS = readFileSync("src/lib/commerce/plans.ts", "utf8");
@@ -104,7 +104,8 @@ test("every remaining PRO_PLAN feature claim corresponds to something genuinely 
   // Pro-gated (query-level, not just UI) -- confirmed directly against
   // the Business Manager's own tab-gating code.
   if (/Analytics|Performance|Discovery-source|Audience insights/.test(features)) {
-    assert.match(BUSINESS_PAGE, /activeTab === "performance" && pro/, "Performance/Analytics claims require the Performance tab's query itself to be pro-gated, not just its UI");
+    assert.match(BUSINESS_PAGE, /const onPerformance = activeTab === "performance"/);
+    assert.match(BUSINESS_PAGE, /\(onPerformance && pro\)/, "Performance/Analytics claims require the Performance tab's query itself to be pro-gated, not just its UI");
   }
   // Customer Inquiries claim -> re-checked just above (server-enforced).
   assert.match(features, /Customer Inquiries/);

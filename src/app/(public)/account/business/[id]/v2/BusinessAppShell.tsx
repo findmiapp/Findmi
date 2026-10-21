@@ -5,7 +5,8 @@ import NavIcon from "@/components/NavIcon";
 import AccountContextSwitcher from "@/components/account/AccountContextSwitcher";
 import type { AccountBusinessContext } from "@/lib/accountContext";
 import { Chip } from "../../../owner-ui";
-import { BUSINESS_NAV, type BusinessSection } from "./business-nav";
+import { BUSINESS_NAV, sectionForTab, type BusinessSection } from "./business-nav";
+import { ManagerBottomBar, ManagerContentFrame, ManagerNavProvider, ManagerRail, type ManagerNavItem } from "./ManagerNav";
 
 /** /account V2, Pass 1 — the Business app shell. One persistent Business
  * context (logo + name + switcher) and one navigation model:
@@ -17,43 +18,22 @@ import { BUSINESS_NAV, type BusinessSection } from "./business-nav";
 
 export type { BusinessSection };
 
-/** Existing tab key -> V2 section. Anything not promoted to primary
- * navigation (Profile, QR, Settings, Inquiries, Orders, Referral) lives
- * under More, so its section highlights there. */
-export function sectionForTab(tab: string): BusinessSection {
-  switch (tab) {
-    case "overview":
-      return "home";
-    case "findmi-here":
-      return "presence";
-    case "moments":
-      return "moments";
-    case "products":
-      return "products";
-    case "growth":
-    case "opportunities":
-      return "growth";
-    case "performance":
-    case "qr":
-      return "performance";
-    default:
-      return "more";
-  }
-}
+// The tab -> section mapping is pure data in ./business-nav (the client
+// navigation shares it); re-exported so existing imports keep working.
+export { sectionForTab };
 
-type NavItem = (typeof BUSINESS_NAV)[number] & { icon: ReactNode };
 
 const NAV_ICONS: Record<BusinessSection, ReactNode> = {
   home: <NavIcon name="home" className="h-[22px] w-[22px]" />,
-  presence: <NavIcon name="findmi" className="h-[22px] w-[22px]" />,
+  presence: <NavIcon name="pin" className="h-[22px] w-[22px]" />,
   moments: <NavIcon name="moments" className="h-[22px] w-[22px]" />,
   products: <NavIcon name="tag" className="h-[22px] w-[22px]" />,
   growth: <SparkGlyph className="h-[22px] w-[22px]" />,
-  performance: <NavIcon name="target" className="h-[22px] w-[22px]" />,
+  performance: <ChartGlyph className="h-[22px] w-[22px]" />,
   more: <MoreGlyph className="h-[22px] w-[22px]" />,
 };
 
-function navItems(): NavItem[] {
+function navItems(): ManagerNavItem[] {
   return BUSINESS_NAV.map((n) => ({ ...n, icon: NAV_ICONS[n.section] }));
 }
 
@@ -77,94 +57,46 @@ export default function BusinessAppShell({
    * their email (see CLAUDE.md). */
   personalLabel: string;
   managedBusinesses: AccountBusinessContext[];
-  activeSection: BusinessSection;
+  /** Fixed highlight for a standalone sub-page. Omit it in the manager's own
+   * layout: the client navigation derives it from the URL (and moves it the
+   * instant a destination is tapped). */
+  activeSection?: BusinessSection;
   isAdminElevated: boolean;
   children: ReactNode;
 }) {
   const items = navItems();
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-4 sm:px-6 lg:pb-12 lg:pt-6">
-      {isAdminElevated && (
-        <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-metadata">
-          <span className="truncate font-semibold text-amber-800">Admin mode · Managing {business.name}</span>
-          <Link href={`/admin/businesses/${business.id}`} className="shrink-0 font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900">
-            Exit
-          </Link>
+    <ManagerNavProvider fixedSection={activeSection}>
+      <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-4 sm:px-6 lg:pb-12 lg:pt-6">
+        {isAdminElevated && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-metadata">
+            <span className="truncate font-semibold text-amber-800">Admin mode · Managing {business.name}</span>
+            <Link href={`/admin/businesses/${business.id}`} className="shrink-0 font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900">
+              Exit
+            </Link>
+          </div>
+        )}
+
+        <BusinessContextBar
+          business={business}
+          pro={pro}
+          isExpiredPro={isExpiredPro}
+          personalLabel={personalLabel}
+          managedBusinesses={managedBusinesses}
+        />
+
+        <div className="mt-5 lg:grid lg:grid-cols-[200px_1fr] lg:items-start lg:gap-10">
+          {/* Desktop rail */}
+          <ManagerRail basePath={basePath} items={items} />
+
+          <ManagerContentFrame>{children}</ManagerContentFrame>
         </div>
-      )}
 
-      <BusinessContextBar
-        business={business}
-        pro={pro}
-        isExpiredPro={isExpiredPro}
-        personalLabel={personalLabel}
-        managedBusinesses={managedBusinesses}
-      />
-
-      <div className="mt-5 lg:grid lg:grid-cols-[200px_1fr] lg:items-start lg:gap-10">
-        {/* Desktop rail */}
-        <nav aria-label="Business" className="hidden lg:sticky lg:top-[4.25rem] lg:flex lg:flex-col lg:gap-0.5">
-          {items.map((item) => {
-            const active = item.section === activeSection;
-            return (
-              <Link
-                key={item.section}
-                href={`${basePath}?tab=${item.tab}`}
-                aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-button font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
-                  active ? "bg-findmi-50 text-accent" : "text-muted hover:bg-black/[0.03] hover:text-primary"
-                }`}
-              >
-                <span className={active ? "text-findmi-700" : "text-ink/40"}>{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="min-w-0">{children}</div>
+        {/* Mobile bottom tab bar — thumb-reachable, five equal columns. */}
+        <ManagerBottomBar basePath={basePath} items={items} />
       </div>
-
-      {/* Mobile bottom tab bar — thumb-reachable, five equal columns (never
-          a scrolling strip), safe-area aware. */}
-      <nav
-        aria-label="Business"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.07] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
-      >
-        <div className="mx-auto grid max-w-lg grid-cols-5">
-          {items
-            .filter((i) => !i.desktopOnly)
-            .map((item) => {
-              // Products and Growth have no bottom-bar slot on phones: they sit
-              // under More, so More stays highlighted while inside them.
-              const active = item.section === activeSection || (item.section === "more" && (activeSection === "products" || activeSection === "growth"));
-              return (
-                <Link
-                  key={item.section}
-                  href={`${basePath}?tab=${item.tab}`}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-0.5 pt-1.5 text-[10.5px] font-semibold leading-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 ${
-                    active ? "text-accent" : "text-ink/45 hover:text-ink/70"
-                  }`}
-                >
-                  <span className={`flex h-7 w-12 items-center justify-center rounded-full transition ${active ? "bg-findmi-50" : ""}`}>
-                    {item.icon}
-                  </span>
-                  {/* Mobile nav label truncation fix — "Opportunities" (and
-                      any other label that doesn't quite fit a 1/5-width
-                      column at 360-412px) wraps onto a controlled second
-                      line instead of being cut to "Opportuniti…" by
-                      `truncate`. min-h-[56px] above is a floor, not a cap,
-                      so a wrapped 2-line label just grows the bar slightly
-                      rather than clipping — labels are never renamed. */}
-                  <span className="max-w-full text-center leading-[1.15]">{item.label}</span>
-                </Link>
-              );
-            })}
-        </div>
-      </nav>
-    </div>
+    </ManagerNavProvider>
   );
 }
 
@@ -230,6 +162,19 @@ export function SparkGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Performance — a plain bar chart (analytics / reports). Same 24px /
+ * 1.8-stroke family as NavIcon. */
+export function ChartGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M4.5 20h15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="5.5" y="11" width="3.4" height="6.5" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="10.3" y="6" width="3.4" height="11.5" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="15.1" y="9" width="3.4" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }

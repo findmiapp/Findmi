@@ -19,11 +19,11 @@ import type { OwnerAvailabilityItem } from "@/lib/business-availability-owner";
 import { removeAvailabilityAction, requestAvailabilityAction, searchLocationsForAvailability, updateAvailabilityAction } from "../availability-actions";
 import { Chip } from "../../../owner-ui";
 
-type Place = { id: string; name: string; city: string | null; state: string | null };
+type Place = { id: string; name: string; address?: string | null; city: string | null; state: string | null };
 
 const STATUS_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as const;
 
-/** Findmi Here → Find Us At: where people can find this Business's
+/** Findmi Here → Find Us Here: where people can find this Business's
  * products and services OUTSIDE its own Locations and dated Events — a
  * retailer that stocks it, a café that serves it, a venue that features it.
  * Each entry says WHERE (a canonical Location), HOW (stocked / sold /
@@ -169,7 +169,7 @@ function PlaceForm({
       return;
     }
     if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(async () => setResults(await searchLocationsForAvailability(businessId, query)), 250);
+    timer.current = window.setTimeout(async () => setResults(await searchLocationsForAvailability(businessId, query)), 180);
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
@@ -213,14 +213,14 @@ function PlaceForm({
           </div>
         ) : (
           <>
-            <input id="avail-place" type="search" autoComplete="off" autoCapitalize="none" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for a retailer, café or venue" className={`mt-1 ${inputClass}`} />
+            <input id="avail-place" type="search" autoComplete="off" autoCapitalize="none" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by place name or city" className={`mt-1 ${inputClass}`} />
             {results.length > 0 && (
               <ul role="listbox" aria-label="Locations" className="mt-1 max-h-56 overflow-y-auto rounded-xl border border-black/10 bg-white p-1">
                 {results.map((r) => (
                   <li key={r.id}>
                     <button type="button" role="option" aria-selected={false} onClick={() => setPlace(r)} className="w-full rounded-lg px-3 py-2 text-left hover:bg-black/[0.03]">
                       <span className="block text-body text-primary">{r.name}</span>
-                      <span className="block text-metadata text-muted">{[r.city, r.state].filter(Boolean).join(", ")}</span>
+                      <span className="block text-metadata text-muted">{[r.address, r.city, r.state].filter(Boolean).join(", ")}</span>
                     </button>
                   </li>
                 ))}
@@ -243,16 +243,39 @@ function PlaceForm({
       </div>
 
       <div>
-        <p className="text-metadata font-semibold text-secondary">What? <span className="font-normal text-muted">(Leave empty for your Brand generally)</span></p>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-metadata font-semibold text-secondary">Products</p>
+          {products.length > 0 && (
+            <span className="flex items-center gap-3 text-metadata">
+              <span className="font-semibold text-muted">{productIds.length === 0 ? "None Selected" : `${productIds.length} Selected`}</span>
+              <button type="button" onClick={() => setProductIds(productIds.length === products.length ? [] : products.map((p) => p.id))} className="font-semibold text-accent hover:underline">
+                {productIds.length === products.length ? "Clear" : "Select All"}
+              </button>
+            </span>
+          )}
+        </div>
+        <p className="text-microcopy text-subtle">Leave empty if this is your Brand generally.</p>
         {products.length === 0 ? (
           <p className="mt-1 text-metadata text-muted">Add products to your catalog to be specific.</p>
         ) : (
-          <div className="mt-1.5 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-            {products.map((p) => (
-              <button key={p.id} type="button" aria-pressed={productIds.includes(p.id)} onClick={() => toggleProduct(p.id)} className={`h-8 max-w-full truncate rounded-full px-3 text-metadata font-semibold transition ${productIds.includes(p.id) ? "bg-findmi-50 text-findmi-700 ring-1 ring-findmi/40" : "bg-black/[0.04] text-muted hover:text-primary"}`}>
-                {p.name}
-              </button>
-            ))}
+          <div className="mt-1.5 flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+            {products.map((p) => {
+              const on = productIds.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleProduct(p.id)}
+                  className={`flex h-9 max-w-full items-center gap-1.5 rounded-full px-3 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`}
+                >
+                  <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${on ? "bg-white/25" : "border border-black/20 text-transparent"}`}>
+                    ✓
+                  </span>
+                  <span className="truncate">{p.name}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

@@ -15,7 +15,7 @@ export default function FindUsAt({ businessName, locations }: { businessName: st
   return (
     <section id="find-us-at" className="mt-8 scroll-mt-24" aria-labelledby="find-us-at-heading">
       <h2 id="find-us-at-heading" className="font-display text-lg font-bold tracking-tight text-ink">
-        Find Us At
+        Find Us Here
       </h2>
       <p className="mt-1 text-sm text-ink/55">Places that carry or serve {businessName}.</p>
       <ul className={`mt-3 grid gap-3 ${single ? "" : "sm:grid-cols-2"}`}>

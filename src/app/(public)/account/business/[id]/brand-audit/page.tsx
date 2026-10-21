@@ -33,7 +33,7 @@ export default async function BrandAuditPage({ params, searchParams }: { params:
 
   return (
     <BusinessAppShell {...shell} activeSection="growth">
-      <GoalFrame>
+      <GoalFrame basePath={shell.basePath}>
         {!audit.available ? (
           <div className="rounded-2xl border border-black/[0.07] bg-white p-5">
             <p className="text-card-title font-semibold text-primary">Growth Setup</p>
@@ -41,7 +41,7 @@ export default async function BrandAuditPage({ params, searchParams }: { params:
           </div>
         ) : (
           <BrandAuditFlow
-            homeHref={shell.basePath}
+            homeHref={`${shell.basePath}?tab=growth`}
             initialStep={requested ?? auditResumeStep(audit.summary)}
             initial={{
               goals: audit.goals,

@@ -21,7 +21,7 @@ const PREVIOUS = sql(read("supabase/migrations/20260905230000_area_picker_and_ma
 const FIELDS = code(read("src/components/BusinessGeographyFields.tsx"));
 const NEW_PAGE = code(read("src/app/(public)/account/business/new/page.tsx"));
 const CREATE = read("src/app/(public)/account/business/actions.ts");
-const MANAGER = read("src/app/(public)/account/business/[id]/page.tsx");
+const MANAGER = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
 const fnBody = (src) => {
   const start = src.search(/create or replace function public\.create_owned_business\(/i);
   return src.slice(start, src.indexOf("$function$;", start) + 11);

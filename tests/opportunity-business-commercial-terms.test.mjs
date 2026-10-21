@@ -44,8 +44,8 @@ const CARD = read("src/components/opportunities/BusinessOpportunityCard.tsx");
 const LISTINGS_LIB = read("src/lib/opportunity-listings.ts");
 const LISTINGS_DOMAIN = read("src/lib/opportunity-listings-domain.ts");
 const VIEW = read("src/app/(public)/account/business/[id]/v2/OpportunitiesView.tsx");
-const HOME = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx"); // Opportunity Matches moved from Home into Growth
-const BUSINESS_PAGE = read("src/app/(public)/account/business/[id]/page.tsx");
+const HOME = read("src/app/(public)/account/business/[id]/v2/OpportunitiesView.tsx"); // Opportunity cards live in the Growth → Opportunities view
+const BUSINESS_PAGE = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
 const DETAIL = read("src/app/(public)/account/business/[id]/opportunities/[recipientId]/page.tsx");
 const EXPLORE_DETAIL = read("src/app/(public)/account/business/[id]/opportunities/explore/[listingId]/page.tsx");
 const ADMIN_DETAIL = read("src/app/admin/(protected)/opportunities/[id]/page.tsx");
@@ -383,9 +383,9 @@ test("55. Clear Filters / empty-state copy keys off participationCost, not the r
 // SECTION H — BusinessHome.tsx (verification only, no new pricing logic)
 // ============================================================================
 
-test("56. BusinessHome passes the fetched Options through to the card preview and adds no pricing logic of its own", () => {
-  assert.match(HOME, /commercialOptions=\{top\.options\}/);
-  assert.equal(/opportunityPriceParts|formatOpportunityPrice|summarizeOptionForCard|summarizeOptionsForCard/.test(HOME), false, "BusinessHome must never compute its own commercial summary");
+test("56. The Opportunities view passes the fetched Options through to the card preview and adds no pricing logic of its own", () => {
+  assert.match(HOME, /commercialOptions=\{item\.options\}/);
+  assert.equal(/opportunityPriceParts|formatOpportunityPrice|summarizeOptionForCard|summarizeOptionsForCard/.test(HOME), false, "the view must never compute its own commercial summary");
 });
 
 // ============================================================================

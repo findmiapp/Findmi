@@ -1,9 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import GrowthNav from "../../v2/GrowthNav";
 
-/** Shared frame for the goal flow pages (inside the Business shell). */
-export function GoalFrame({ children }: { children: ReactNode }) {
-  return <div className="mx-auto flex w-full max-w-xl flex-col gap-4">{children}</div>;
+/** Shared frame for the Growth setup pages (the goal wizard and Growth
+ * Setup), inside the Business shell. With `basePath` it carries the
+ * persistent Growth navigation (Goals · Opportunities · Ideas), so these
+ * flows are never a dead end. */
+export function GoalFrame({ children, basePath }: { children: ReactNode; basePath?: string }) {
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
+      {basePath && <GrowthNav basePath={basePath} active="goals" />}
+      {children}
+    </div>
+  );
 }
 
 export function GoalNotAllowed({ message, backHref }: { message: string; backHref: string }) {

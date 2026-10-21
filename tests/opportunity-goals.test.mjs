@@ -264,11 +264,12 @@ test("Opportunities page has the four views and no longer embeds Event participa
 });
 
 // ---------------------------------------------------------------- Home + Add
-test("Growth: Opportunity Matches section; Home no longer carries Opportunities; no informational Needs Attention item", () => {
+test("Growth: hub with Goals / Opportunities / Ideas destinations; Home no longer carries Opportunities; no informational Needs Attention item", () => {
   const growth = read(`${B}/v2/GrowthView.tsx`);
-  assert.match(growth, /Opportunity Matches/);
-  assert.match(growth, /Explore Opportunities/);
-  assert.match(growth, /Add A Goal/);
+  const nav = read(`${B}/v2/GrowthNav.tsx`);
+  assert.match(nav, /GROWTH_DESTINATIONS/);
+  assert.match(growth, /<GoalsSection /);
+  assert.match(growth, /<GrowthNav /);
   assert.equal(/No recommendations yet/.test(growth), false);
   assert.equal(/HomeOpportunities|Opportunities For You/.test(HOME), false, "Home's own Opportunities section is retired — Growth owns matches");
   assert.ok(HOME.indexOf("<NeedsAttentionBar") < HOME.indexOf('aria-labelledby="coming-up"'));

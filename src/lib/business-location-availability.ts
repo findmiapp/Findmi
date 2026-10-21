@@ -266,13 +266,13 @@ export async function getAvailableBrandsForLocation(
 }
 
 function writeError(error: { code?: string; message?: string }, fallback: string): AvailabilityWriteResult {
-  if (isMissingAvailabilityTable(error)) return { ok: false, error: "Find Us At isn't available yet. Please try again later." };
+  if (isMissingAvailabilityTable(error)) return { ok: false, error: "Find Us Here isn't available yet. Please try again later." };
   console.error(fallback, error.message);
   return { ok: false, error: fallback };
 }
 
 export const ALREADY_OUR_LOCATION_ERROR =
-  "That Location is already one of this business's Our Locations (it operates it), so it can't also be a Find Us At place.";
+  "That Location is already one of this business's Our Locations (it operates it), so it can't also be a Find Us Here place.";
 
 /** Connect a third-party Location to a Business (idempotent). Refused when
  * the Business already operates it (business_locations) or the Location is

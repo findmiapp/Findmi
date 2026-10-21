@@ -18,13 +18,13 @@ export default async function NewGoalPage({ params, searchParams }: { params: Pr
   const { id } = await params;
   const { created } = await searchParams;
   const { membership, shell } = await loadBusinessShell(id, `/account/business/${id}/opportunities/goals/new`);
-  const goalsHref = `${shell.basePath}?tab=opportunities&view=goals`;
+  const goalsHref = `${shell.basePath}?tab=growth`;
   const createdGoal = created ? await getBusinessGoal(id, created) : null;
 
   if (createdGoal) {
     return (
       <BusinessAppShell {...shell} activeSection="growth">
-        <GoalFrame>
+        <GoalFrame basePath={shell.basePath}>
           <div className="rounded-2xl border border-black/[0.07] bg-white p-6 text-center">
             <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
               <GoalGlyph className="h-6 w-6" />
@@ -57,7 +57,7 @@ export default async function NewGoalPage({ params, searchParams }: { params: Pr
 
   return (
     <BusinessAppShell {...shell} activeSection="growth">
-      <GoalFrame>
+      <GoalFrame basePath={shell.basePath}>
         {!allowed ? (
           <GoalNotAllowed
             backHref={goalsHref}

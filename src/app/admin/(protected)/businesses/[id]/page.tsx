@@ -759,7 +759,7 @@ export default async function EditBusinessPage({
             the connection. */}
         {tab === "locations" && (
           <div className="mt-5 rounded-2xl border border-black/10 bg-white p-4">
-            <p className="text-sm font-semibold text-ink">Find Us At</p>
+            <p className="text-sm font-semibold text-ink">Find Us Here</p>
             <p className="mt-1 text-xs text-ink/45">
               Third-party places where this business is normally available — stocked, sold, served or carried. Not places
               it operates (those are Our Locations above) and not one-off events or pop-ups.
@@ -816,7 +816,7 @@ export default async function EditBusinessPage({
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-sm text-ink/50">No Find Us At locations.</p>
+              <p className="mt-2 text-sm text-ink/50">No Find Us Here locations.</p>
             )}
             {availabilityLocations.hasMore && (
               <p className="mt-2 text-xs text-ink/45">Showing the first {availabilityLocations.items.length}.</p>

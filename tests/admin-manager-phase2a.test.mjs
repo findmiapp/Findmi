@@ -53,8 +53,8 @@ test("Admin Business detail: Locations workspace holds Our Locations and Find Us
   assert.doesNotMatch(page, /\{ key: "find-us-at", label: "Find Us At" \}/);
   assert.ok(page.includes('{ key: "locations", label: "Locations" }'));
   const a = page.indexOf('<p className="text-sm font-semibold text-ink">Our Locations</p>');
-  const b = page.indexOf('<p className="text-sm font-semibold text-ink">Find Us At</p>');
-  assert.ok(a > 0 && b > a, "Our Locations first, then Find Us At");
+  const b = page.indexOf('<p className="text-sm font-semibold text-ink">Find Us Here</p>');
+  assert.ok(a > 0 && b > a, "Our Locations first, then Find Us Here");
   assert.match(page, /tab === "locations" && marketsAdmin \? await getAvailabilityLocationsForBusiness/, "availability data loads with the Locations tab");
   assert.match(page, /adminConnectFindUsAt/);
   assert.match(page, /adminDisconnectFindUsAt|adminRemoveFindUsAt|FindUsAt/);
@@ -62,7 +62,7 @@ test("Admin Business detail: Locations workspace holds Our Locations and Find Us
 });
 
 test("Manager QR: ?tab=qr is canonical; /qr redirects; one creator; detail pages untouched", () => {
-  const page = read(`${MB}/page.tsx`);
+  const page = read(`${MB}/(manager)/page.tsx`);
   // Business Manager redesign: QR lives inside Performance (QR Codes view).
   const perfViews = read(`${MB}/v2/PerformanceViews.tsx`);
   assert.match(perfViews, /import QrCampaignGroups from "\.\.\/QrCampaignGroups"/);
@@ -96,6 +96,6 @@ test("Manager More: no redundant Referral entry (redirect kept); Performance liv
   assert.match(nav, /section: "performance", label: "Performance", tab: "performance"/, "the bottom nav and rail list Performance");
   assert.doesNotMatch(nav.match(/section: "performance"[^\n]*/)[0], /desktopOnly/, "…on mobile too");
   assert.match(nav, /"referral",/, "?tab=referral stays a valid key");
-  assert.match(read(`${MB}/page.tsx`), /tab === "referral" && referralPartner[\s\S]{0,80}redirect\(`\/account\/business\/\$\{id\}\?tab=settings`\)/, "…and still redirects to Settings");
-  assert.doesNotMatch(read(`${MB}/page.tsx`), /showReferral=/);
+  assert.match(read(`${MB}/(manager)/page.tsx`), /tab === "referral" && \(await referralPromise\)[\s\S]{0,80}redirect\(`\/account\/business\/\$\{id\}\?tab=settings`\)/, "…and still redirects to Settings");
+  assert.doesNotMatch(read(`${MB}/(manager)/page.tsx`), /showReferral=/);
 });

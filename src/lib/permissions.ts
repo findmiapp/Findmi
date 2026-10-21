@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getServerSupabase } from "@/lib/supabase/server";
+import { getCurrentUser, getServerSupabase } from "@/lib/supabase/server";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 
@@ -57,9 +57,9 @@ async function requireMembership(
   entityId: string
 ): Promise<Membership> {
   const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // One validated user per request (see getCurrentUser) — this used to be a
+  // second Auth round trip right after the page's own.
+  const user = await getCurrentUser();
 
   if (user) {
     const { data } = await supabase.from(table).select("id, role").eq("user_id", user.id).eq(column, entityId).maybeSingle();

@@ -123,7 +123,7 @@ test("adding an existing Location never duplicates; removing deletes only the re
   // Management stays on the existing, authorized paths.
   assert.match(read("src/app/(public)/account/business/location-actions.ts"), /await requireBusinessManager\(businessId\);\n\s+await requireLocationManager\(businessId, locationId\);/, "a Business can only connect a Location it also manages");
   assert.match(read("src/app/admin/(protected)/businesses/[id]/page.tsx"), /<p className="text-sm font-semibold text-ink">Our Locations<\/p>/);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/PresenceViews.tsx"), /\{ key: "locations", label: "Our Locations" \}/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/PresenceViews.tsx"), /\{ key: "locations", label: "Locations" \}/);
 });
 
 test("placement + mobile: right after Findmi Here; compact cards, one column on phones", () => {

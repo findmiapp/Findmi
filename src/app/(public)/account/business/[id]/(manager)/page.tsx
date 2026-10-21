@@ -3,14 +3,10 @@ import { calendarDayOfMonth, calendarMonthAbbrev, compareChronological, formatCa
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
-import { requireBusinessMember } from "@/lib/permissions";
-import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
-import { getAccountContexts } from "@/lib/accountContext";
-import { getPersonalDisplayName } from "@/lib/personalGraph";
+import { getManagerCore } from "../managerContext";
 import {
   deriveEventIdsWithOccurrenceProjections,
   getCategories,
@@ -28,25 +24,25 @@ import {
   type DashboardAppearanceSource,
 } from "@/lib/business-dashboard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
-import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow } from "../../owner-ui";
-import BusinessAppShell, { sectionForTab } from "./v2/BusinessAppShell";
-import BusinessHome from "./v2/BusinessHome";
-import MoreMenu from "./v2/MoreMenu";
-import { LEGACY_TAB_REDIRECTS, VALID_BUSINESS_TAB_KEYS } from "./v2/business-nav";
-import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "./v2/OpportunitiesView";
-import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
-import AddToPresence from "./v2/AddToPresence";
+import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow } from "../../../owner-ui";
+import BusinessHome from "../v2/BusinessHome";
+import MoreMenu from "../v2/MoreMenu";
+import { LEGACY_TAB_REDIRECTS, VALID_BUSINESS_TAB_KEYS } from "../v2/business-nav";
+import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "../v2/OpportunitiesView";
+import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "../v2/PresenceViews";
+import AddToPresence from "../v2/AddToPresence";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
 import { getBrandAudit, getIdeasForBusiness } from "@/lib/brand-audit";
-import { getBusinessMoments } from "@/lib/business-moments";
-import GrowthView, { growthSummaryFor } from "./v2/GrowthView";
-import MomentsView from "./v2/MomentsView";
-import AvailableAtView from "./v2/AvailableAtView";
+import { getBusinessMoments, isMomentFilter } from "@/lib/business-moments";
+import { GrowthGoalsView, GrowthIdeasView, growthBadges, growthSummaryFor } from "../v2/GrowthView";
+import GrowthNav from "../v2/GrowthNav";
+import MomentsView from "../v2/MomentsView";
+import AvailableAtView from "../v2/AvailableAtView";
 import { getOwnerAvailability } from "@/lib/business-availability-owner";
-import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "./v2/PerformanceViews";
-import { respondToIdeaAction } from "./brand-audit/actions";
+import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
+import { respondToIdeaAction } from "../brand-audit/actions";
 import { getBusinessGoals } from "@/lib/opportunity-goals";
 import { canManageGoals, type GoalRole } from "@/lib/opportunity-goals-domain";
 import { isExploreTiming, isOpportunityType, type ExploreFilters } from "@/lib/opportunity-listings-domain";
@@ -67,17 +63,17 @@ import {
   updateMemberProduct,
   updateBusinessHandle,
   updateOwnerAppearance,
-} from "../actions";
+} from "../../actions";
 import { getEntityHandle } from "@/lib/handles";
-import MemberImageField from "./MemberImageField";
-import MemberGalleryField from "./MemberGalleryField";
-import MemberProductActiveButton from "./MemberProductActiveButton";
-import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
+import MemberImageField from "../MemberImageField";
+import MemberGalleryField from "../MemberGalleryField";
+import MemberProductActiveButton from "../MemberProductActiveButton";
+import AppearanceFieldsForm, { type AppearanceFieldValues } from "../AppearanceFieldsForm";
 import type { AccountSearchResult } from "@/components/account/AccountRelationPicker";
-import AppearanceEditorDetails from "./AppearanceEditorDetails";
-import EventSearchPicker from "./EventSearchPicker";
-import RemoveAppearanceButton from "./RemoveAppearanceButton";
-import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
+import AppearanceEditorDetails from "../AppearanceEditorDetails";
+import EventSearchPicker from "../EventSearchPicker";
+import RemoveAppearanceButton from "../RemoveAppearanceButton";
+import ProductFieldsForm, { type ProductFieldValues } from "../ProductFieldsForm";
 import {
   formatAppearanceDateRange,
   formatDateShort,
@@ -91,14 +87,14 @@ import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
-import CustomerInquiriesForm from "./CustomerInquiriesForm";
+import CustomerInquiriesForm from "../CustomerInquiriesForm";
 import {
   getBusinessOrderDetail,
   getBusinessOrderList,
   getBusinessOrderSummary,
   type BusinessOrderStatusFilter,
 } from "@/lib/business-orders";
-import { updateOrderItemFulfillment } from "../orders-actions";
+import { updateOrderItemFulfillment } from "../../orders-actions";
 import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
 import { getBusinessMarketAssignments } from "@/lib/admin/business-markets";
 import {
@@ -106,9 +102,9 @@ import {
   getOwnerBusinessPerformance,
   isOwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
-import PerformanceTab from "./PerformanceTab";
-import { QrCampaignContextualPanel } from "./QrCampaignCreator";
-import QrCampaignGroups from "./QrCampaignGroups";
+import PerformanceTab from "../PerformanceTab";
+import { QrCampaignContextualPanel } from "../QrCampaignCreator";
+import QrCampaignGroups from "../QrCampaignGroups";
 import { getBusinessQrCampaigns } from "@/lib/qr-manager";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
@@ -168,6 +164,24 @@ const primaryButtonClass =
   "flex h-10 w-full items-center justify-center rounded-lg bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]";
 const cardClass = "rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5";
 
+/** Starts a read right now and marks its rejection as handled, so several
+ * independent reads can be started together and awaited later without an
+ * unhandled-rejection warning if an earlier await throws first. Awaiting the
+ * returned promise still throws as usual. */
+function started<T>(p: Promise<T>): Promise<T> {
+  p.catch(() => {});
+  return p;
+}
+/** `make()` runs only when this destination renders what it feeds; otherwise
+ * the fallback stands in and nothing is read. */
+function whenP<T>(needed: boolean, make: () => Promise<T>, fallback: T): Promise<T> {
+  return needed ? started(make()) : Promise.resolve(fallback);
+}
+/** Same, for a Supabase list query: resolves to its rows ([] when skipped). */
+function rowsWhen<T>(needed: boolean, make: () => PromiseLike<{ data: T[] | null }>): Promise<T[]> {
+  return whenP(needed, async () => (await make()).data ?? [], [] as T[]);
+}
+
 // Owner Shell V3 — job-oriented primary navigation (replaces the old
 // 14-tab inventory-style rail from the Tabbed Business Manager pass).
 // Five disciplined destinations answer the owner's real questions
@@ -218,12 +232,7 @@ const ORDER_STATUS_LABELS: Record<"new" | "confirmed" | "ready" | "fulfilled" | 
  * updateBusinessProfile/updateBusinessLinks/updateBusinessGallery's own
  * allowlists exactly (../actions.ts), so nothing shown here can submit
  * a field those actions wouldn't already accept. */
-export default async function ManageBusinessPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{
+type ManagerSearchParams = {
     tab?: string;
     range?: string;
     saved?: string;
@@ -285,10 +294,47 @@ export default async function ManageBusinessPage({
     timing?: string;
     participationCost?: string;
     goal?: string;
-  }>;
+    show?: string;
+};
+
+export default async function ManageBusinessPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<ManagerSearchParams>;
 }) {
   const { id } = await params;
   const rawSearchParams = await searchParams;
+  const tab = rawSearchParams.tab && VALID_TAB_KEYS.has(rawSearchParams.tab) ? rawSearchParams.tab : "overview";
+
+  // Redirect-only tab keys depend on the URL alone, so they bounce here,
+  // before anything is rendered or read (a legacy key never renders a second
+  // copy of content that moved).
+  if (LEGACY_TAB_REDIRECTS[tab]) {
+    redirect(`/account/business/${id}?tab=${LEGACY_TAB_REDIRECTS[tab]}`);
+  }
+  // The Opportunity goals list moved to Growth → Goals; the old
+  // ?tab=opportunities&view=goals link (and the goal wizard's old return
+  // target) still lands there, with its saved/paused notice intact.
+  if (tab === "opportunities" && rawSearchParams.view === "goals") {
+    redirect(`/account/business/${id}?tab=growth${rawSearchParams.goal ? `&goal=${encodeURIComponent(rawSearchParams.goal)}` : ""}`);
+  }
+
+  // No server-side Suspense on purpose. Entering a destination already paints
+  // its skeleton on the tap itself (v2/ManagerNav → ManagerContentFrame), and
+  // moving within one keeps the current view with its tab highlight already
+  // moved (v2/OptimisticTabs), so the user never waits on a blank or stale
+  // screen. A Suspense fallback here would only add to that: React holds back
+  // the reveal of resolved content for ~300ms after a fallback is committed,
+  // which made fast responses slower, not faster.
+  return <ManagerContent id={id} rawSearchParams={rawSearchParams} />;
+}
+
+/** The content view of one Business Manager destination (everything inside
+ * the persistent shell). Authorizes for itself — a layout is not re-run on a
+ * `?tab=` switch. */
+async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchParams: ManagerSearchParams }) {
   const {
     tab: tabParam,
     range: rangeParam,
@@ -343,114 +389,14 @@ export default async function ManageBusinessPage({
   } = rawSearchParams;
   const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
-  const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  // Same defense-in-depth re-check every other /account Server
-  // Component/Action already does — Admin Manage-As Foundation extends it
-  // to also let a founder admin session through with NO personal Supabase
-  // Auth session at all (requireBusinessMember() below is still the real
-  // authorization for both paths; this is only what decides whether to
-  // bounce to /login before ever reaching it).
-  if (!user && !(await isAdminSession())) {
-    redirect(`/login?next=${encodeURIComponent(`/account/business/${id}`)}`);
-  }
-
-  // Real, session-scoped authorization — never trusts anything from the
-  // URL beyond the id itself. Same requireBusinessMember() foundation
-  // every split action uses; a visitor with no business_members row for
-  // this business (and no admin session — see lib/permissions.ts) never
-  // sees the form at all, existing account error pattern (an ?error=
-  // banner on the account home, same shape every other /account page
-  // already uses).
-  let isAdminElevated = false;
-  let membershipRole: string | null = null;
-  try {
-    const membership = await requireBusinessMember(id);
-    isAdminElevated = Boolean(membership.viaAdmin);
-    membershipRole = membership.role;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "You don't have access to that business.";
-    redirect(errorRedirectUrl("/account", message));
-  }
-
-  // Only reachable AFTER authorization succeeds above — plan_tier isn't in
-  // the public column grant (see restrict_internal_commerce_columns), so
-  // it's read via service-role here, same authorize-then-elevate shape as
-  // every split action itself.
-  const admin = getAdminSupabase();
-  if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
-
-  // Owner Shell V3 — redirect a legacy tab key BEFORE any of the heavier
-  // business data fetching below, straight to its new canonical
-  // destination (see LEGACY_TAB_REDIRECTS' own doc comment).
-  if (LEGACY_TAB_REDIRECTS[tab]) {
-    redirect(`/account/business/${id}?tab=${LEGACY_TAB_REDIRECTS[tab]}`);
-  }
-  // Unified Inbox V3 — this tab's own "Event Invitations"/"My Applications"
-  // lists were a genuine duplicate of the canonical Inbox's Opportunities
-  // filter (same getPendingInvitationsForBusiness/getApplicationsForBusiness,
-  // same respondToEventInvitation action, just business-scoped instead of
-  // aggregated). The owner now manages those there instead — this key
-  // redirects off-page (not to another tab on this page) so a bookmarked
-  // link, the Settings "More" link, and every existing email deep link
-  // that still points at ?tab=opportunities all land on the real thing.
-  // /account V2 — Opportunities is a primary Business destination again,
-  // rendered in-shell from the same loaders/action the Inbox uses (Inbox
-  // remains the account-wide view, linked from it).
-
-  // Owner Shell V3 — persistent Business switcher (Section 12 of this
-  // pass). Only queried for a real authenticated owner: a pure admin-
-  // elevated session (no personal Supabase Auth user) doesn't "manage"
-  // Businesses via business_members at all, so there is no list to
-  // switch between and the switcher simply never renders for it — admin
-  // authorization/access is otherwise completely untouched. Same RLS-
-  // scoped query shape /account and /account/business already use
-  // (`.eq("user_id", user.id)`, plain `supabase` client, never `admin`),
-  // so this can never surface a Business the visitor doesn't manage.
-  // Global Account Context Switcher V1 — same shared helper every shell
-  // uses now, replacing this page's own bespoke {id,name}-only query with
-  // the richer slug/logoUrl/role shape the switcher needs. personalLabel
-  // is the same canonical display-name helper every other /account page
-  // already calls (never the user's email).
-  let managedBusinesses: Awaited<ReturnType<typeof getAccountContexts>> = [];
-  let personalLabel = "Your Findmi Account";
-  if (user) {
-    const [contexts, displayName] = await Promise.all([
-      getAccountContexts(supabase, user.id),
-      getPersonalDisplayName(supabase, user.id),
-    ]);
-    managedBusinesses = contexts;
-    personalLabel = displayName || "Your Findmi Account";
-  }
-
-  const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }, businessHandle] = await Promise.all([
-    admin
-      .from("businesses")
-      .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id, featured_appearance_id"
-      )
-      .eq("id", id)
-      .maybeSingle(),
-    getCategories(),
-    // A business may still carry more than one category from before this
-    // action's one-category rule existed (admin's own editor allows
-    // several) — ordered + limited to 1 so the form simply defaults to
-    // one of them rather than erroring; saving collapses it to exactly
-    // one via updateBusinessProfile's own atomic set_business_category().
-    admin.from("business_categories").select("category_id").eq("business_id", id).order("category_id").limit(1),
-    // Existing gallery table (business_images) — same admin query shape
-    // (lib/admin/queries.ts's getAdminBusinessById), just read here too so
-    // the Pro-only gallery field below has something to preview.
-    admin
-      .from("business_images")
-      .select("url")
-      .eq("business_id", id)
-      .order("display_order", { ascending: true, nullsFirst: false }),
-    getEntityHandle(admin, "business", id),
-  ]);
-  if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
+  // Shared manager context — login bounce, requireBusinessMember (the real
+  // session-scoped authorization; never trusts anything from the URL beyond
+  // the id) and the Business row, resolved once per request. The persistent
+  // shell (the layout above this page) reads the same cached values, but a
+  // layout is not re-run when only `?tab=` changes, so this page authorizes
+  // for itself on every navigation. plan_tier isn't in the public column
+  // grant, hence the service-role read inside, after authorization.
+  const { user, admin, membershipRole, isAdminElevated, business } = await getManagerCore(id);
 
   const pro = isBusinessPro(business);
   // Business Pro Expiration Enforcement pass — plan_tier still 'pro'/
@@ -464,183 +410,166 @@ export default async function ManageBusinessPage({
   const planExpiresAtLabel = business.plan_expires_at
     ? new Date(business.plan_expires_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
     : null;
-  const currentCategoryId = businessCategoryRows?.[0]?.category_id ?? "";
-  const galleryImages = (galleryRows ?? []).map((r) => r.url);
   const profileAction = updateBusinessProfile.bind(null, id);
-
-  // QR Campaigns V1 — this Business's own QR campaigns, fetched once,
-  // unconditionally (same convention as appearances/products above), so
-  // every contextual "Create QR Code"/"View QR Code" affordance on a
-  // Product row or Appearance row — regardless of which tab is active —
-  // can show whether a campaign already exists for that specific entity
-  // without a new query per row. Free-tier reachable: this is NOT gated
-  // behind `pro` (see qr-actions.ts's own doc comment on why creation
-  // itself is never plan-gated).
-  const { data: qrCampaignRows } = await admin
-    .from("qr_campaigns")
-    .select("id, name, appearance_id, product_id, is_active")
-    .eq("business_id", id)
-    .order("created_at", { ascending: false });
-  // Product Correction — multiple campaigns per entity are the intended
-  // product model (e.g. "Table Sign" and "Store Window" both pointing at
-  // the same Product), so these are lists to append to, never a single
-  // slot to replace. Scan counts reuse the exact same qr_scan/
-  // qr_campaign_id shape ownerPerformance.ts/qrCampaignDetail.ts already
-  // query — one extra query here, not a new analytics concept.
-  const qrCampaignIds = (qrCampaignRows ?? []).map((c) => c.id);
-  const { data: qrScanRows } =
-    qrCampaignIds.length > 0
-      ? await admin.from("analytics_events").select("qr_campaign_id").eq("event_name", "qr_scan").in("qr_campaign_id", qrCampaignIds)
-      : { data: [] as { qr_campaign_id: string | null }[] };
-  const scansByQrCampaignId = new Map<string, number>();
-  for (const r of qrScanRows ?? []) {
-    if (!r.qr_campaign_id) continue;
-    scansByQrCampaignId.set(r.qr_campaign_id, (scansByQrCampaignId.get(r.qr_campaign_id) ?? 0) + 1);
-  }
-  const qrCampaignsByAppearanceId = new Map<string, { id: string; name: string; scans: number }[]>();
-  const qrCampaignsByProductId = new Map<string, { id: string; name: string; scans: number }[]>();
-  for (const c of qrCampaignRows ?? []) {
-    const scans = scansByQrCampaignId.get(c.id) ?? 0;
-    if (c.appearance_id) {
-      const list = qrCampaignsByAppearanceId.get(c.appearance_id) ?? [];
-      list.push({ id: c.id, name: c.name, scans });
-      qrCampaignsByAppearanceId.set(c.appearance_id, list);
-    }
-    if (c.product_id) {
-      const list = qrCampaignsByProductId.get(c.product_id) ?? [];
-      list.push({ id: c.id, name: c.name, scans });
-      qrCampaignsByProductId.set(c.product_id, list);
-    }
-  }
   const linksAction = updateBusinessLinks.bind(null, id);
   const galleryAction = updateBusinessGallery.bind(null, id);
 
-  // Referral Partner + Discount Foundation — this business's OWN
-  // referral-partner record, if an admin has ever set one up for it
-  // (unrelated to whether THIS business was itself referred — see
-  // referral_attributions, never read here). null for the overwhelming
-  // majority of businesses, in which case the whole Referral tab is
-  // simply omitted below — never an empty/broken tab.
-  const referralPartner = await getReferralPartnerByBusinessId(id);
-  // User Identity + Follow Foundation pass — same authorize-then-elevate
-  // admin client already established above (requireBusinessMember(id)
-  // ran before `admin` was ever created), never a new/looser access path.
-  const followerSummary = await getBusinessFollowerSummary(admin, id);
-  // Owner-Facing Market Display V1 — read-only for owners in this pass.
-  // Reuses the exact same admin-only read helper the Admin → Business →
-  // Markets management tab already uses (lib/admin/business-markets.ts),
-  // unmodified — its own `.eq("business_id", id)` is what actually scopes
-  // this to THIS business's assignments, same as every other read on this
-  // page. Same authorize-then-elevate admin client already established
-  // above (requireBusinessMember(id) ran before `admin` was ever
-  // created). No owner mutation path exists anywhere in this file for
-  // business_markets — admin remains the only place that writes it.
-  const marketAssignments = await getBusinessMarketAssignments(admin, id);
-  const primaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
-  const additionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
-  const marketLimit = await getBusinessMarketLimit(business);
-  const activeMarketCount = (primaryMarket ? 1 : 0) + additionalMarkets.length;
-  const overMarketAllowance = marketLimit !== null && activeMarketCount > marketLimit;
-  // Consumer Area Picker + Market Requests V1 — a business created via
-  // the "request a missing Market" path has no active Primary Market
-  // yet; show what was actually requested instead of a bare "Not
-  // assigned yet" so the owner isn't left guessing. Never implies an
-  // approved Market — see getPendingMarketRequestForBusiness's own note.
-  const pendingMarketRequest = primaryMarket ? null : await getPendingMarketRequestForBusiness(admin, id);
-  // Launch V2 Pass 1 — this tab no longer renders the legacy thread/reply
-  // UI (see Section 13 of that pass's own report: the real, live
-  // customer-inquiry inbox is now the canonical Inbox at
-  // /account/messages).
-  // Business Order Management Overhaul V1 — same authorize-then-elevate
-  // admin client; every query inside these helpers is itself filtered by
-  // business_id, so this business can never see another business's order
-  // items even within the same multi-vendor order (see lib/business-orders.ts).
-  const validOrderFilters = new Set<BusinessOrderStatusFilter>(["new", "open", "ready", "fulfilled", "cancelled"]);
-  const orderStatus = orderStatusFilter && validOrderFilters.has(orderStatusFilter as BusinessOrderStatusFilter)
-    ? (orderStatusFilter as BusinessOrderStatusFilter)
-    : undefined;
-  const orderSummary = await getBusinessOrderSummary(admin, id);
-  const orderList = await getBusinessOrderList(admin, id, orderStatus);
-  const openOrder = openOrderId ? await getBusinessOrderDetail(admin, openOrderId, id) : null;
+  // ── What this request actually needs ───────────────────────────────────
+  // The manager is one page with a `?tab=` per destination, and every
+  // destination used to pay for every other destination's data (a visit to
+  // the static More menu ran ~30 queries: orders, markets, QR scans, events,
+  // products…). Each read below now runs only for the destination that
+  // renders it, and everything a destination does need starts together, so
+  // the request waits for the slowest read rather than the sum of them.
+  // (The persistent shell's own data is not here at all — see ./layout.tsx.)
+  const presenceView = parsePresenceView(viewParam);
+  const composeOpen = composeParam === "1";
 
-  // Owner Shell V3 — Referral moved into Settings; a Business that
-  // genuinely has a referral_partners row redirects there (so its old
-  // bookmark lands on the real content), while a Business that was never
-  // a referral partner keeps the pre-existing safe fallback (silently
-  // Overview — "referral" was never a valid destination for it either).
-  if (tab === "referral" && referralPartner) {
+  // ?tab=referral only ever existed for a referral partner: a partner lands
+  // in Settings, anyone else falls back to Overview (see below).
+  const referralPromise = started(
+    tab === "referral" || tab === "settings" ? getReferralPartnerByBusinessId(id) : Promise.resolve(null)
+  );
+  if (tab === "referral" && (await referralPromise)) {
     redirect(`/account/business/${id}?tab=settings`);
   }
   const activeTab = tab === "referral" ? "overview" : tab;
 
-  // /account V2 — Opportunities (full list on its own view; pending
-  // invitation count for Home) and Presence's Past view, each only
-  // queried when actually shown. Same existing loaders as the Inbox and
-  // the account dashboard — no new query.
-  const presenceView = parsePresenceView(viewParam);
-  const composeOpen = composeParam === "1";
+  const onHome = activeTab === "overview";
+  const onFindmiHere = activeTab === "findmi-here";
+  const onUpcoming = onFindmiHere && presenceView === "upcoming";
+  const onPast = onFindmiHere && presenceView === "past";
+  const onFindUs = onFindmiHere && presenceView === "find-us";
+  const onLocations = onFindmiHere && presenceView === "locations";
+  const onProfile = activeTab === "profile";
+  const onProducts = activeTab === "products";
+  const onSettings = activeTab === "settings";
+  const onPerformance = activeTab === "performance";
+  const onOrders = activeTab === "orders";
+  const onMore = activeTab === "more";
+  const needsGrowth = onHome || activeTab === "growth" || activeTab === "opportunities";
+  /** Home and Findmi Here → Upcoming render the Business's own schedule; Home,
+   * Upcoming and Past also render the Events it hosts. */
+  const needsSchedule = onHome || onUpcoming;
+  const needsHosted = onHome || onUpcoming || onPast;
+
+  // QR Campaigns V1 — this Business's own QR campaigns, so every contextual
+  // "Create QR Code"/"View QR Code" affordance on a Product row or an
+  // Appearance row can show whether a campaign already exists without a new
+  // query per row. Only the two views with such rows need it (Findmi Here →
+  // Upcoming, Products). Free-tier reachable: never plan-gated (see
+  // qr-actions.ts). Multiple campaigns per entity are the intended model
+  // ("Table Sign" and "Store Window" on the same Product), so these are lists.
+  const loadQrByEntity = async () => {
+    const qrCampaignsByAppearanceId = new Map<string, { id: string; name: string; scans: number }[]>();
+    const qrCampaignsByProductId = new Map<string, { id: string; name: string; scans: number }[]>();
+    const { data: qrCampaignRows } = await admin
+      .from("qr_campaigns")
+      .select("id, name, appearance_id, product_id, is_active")
+      .eq("business_id", id)
+      .order("created_at", { ascending: false });
+    // Scan counts reuse the exact same qr_scan/qr_campaign_id shape
+    // ownerPerformance.ts/qrCampaignDetail.ts already query.
+    const qrCampaignIds = (qrCampaignRows ?? []).map((c) => c.id);
+    const { data: qrScanRows } =
+      qrCampaignIds.length > 0
+        ? await admin.from("analytics_events").select("qr_campaign_id").eq("event_name", "qr_scan").in("qr_campaign_id", qrCampaignIds)
+        : { data: [] as { qr_campaign_id: string | null }[] };
+    const scansByQrCampaignId = new Map<string, number>();
+    for (const r of qrScanRows ?? []) {
+      if (!r.qr_campaign_id) continue;
+      scansByQrCampaignId.set(r.qr_campaign_id, (scansByQrCampaignId.get(r.qr_campaign_id) ?? 0) + 1);
+    }
+    for (const c of qrCampaignRows ?? []) {
+      const scans = scansByQrCampaignId.get(c.id) ?? 0;
+      if (c.appearance_id) {
+        const list = qrCampaignsByAppearanceId.get(c.appearance_id) ?? [];
+        list.push({ id: c.id, name: c.name, scans });
+        qrCampaignsByAppearanceId.set(c.appearance_id, list);
+      }
+      if (c.product_id) {
+        const list = qrCampaignsByProductId.get(c.product_id) ?? [];
+        list.push({ id: c.id, name: c.name, scans });
+        qrCampaignsByProductId.set(c.product_id, list);
+      }
+    }
+    return { qrCampaignsByAppearanceId, qrCampaignsByProductId };
+  };
+
+  // Owner-Facing Market Display V1 — read-only for owners: the admin-only
+  // read helper the Admin → Business → Markets tab already uses, scoped to
+  // THIS business by its own `.eq("business_id", id)`. Needed by Settings and
+  // by Home's Needs Attention.
+  const loadMarkets = async () => {
+    const [marketAssignments, marketLimit] = await Promise.all([getBusinessMarketAssignments(admin, id), getBusinessMarketLimit(business)]);
+    const primaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
+    const additionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
+    const activeMarketCount = (primaryMarket ? 1 : 0) + additionalMarkets.length;
+    // Consumer Area Picker + Market Requests V1 — a business created via the
+    // "request a missing Market" path has no active Primary Market yet; show
+    // what was actually requested instead of a bare "Not assigned yet".
+    const pendingMarketRequest = primaryMarket ? null : await getPendingMarketRequestForBusiness(admin, id);
+    return {
+      primaryMarket,
+      additionalMarkets,
+      marketLimit,
+      activeMarketCount,
+      overMarketAllowance: marketLimit !== null && activeMarketCount > marketLimit,
+      pendingMarketRequest,
+    };
+  };
+  const noMarkets: Awaited<ReturnType<typeof loadMarkets>> = {
+    primaryMarket: null,
+    additionalMarkets: [],
+    marketLimit: null,
+    activeMarketCount: 0,
+    overMarketAllowance: false,
+    pendingMarketRequest: null,
+  };
+
+  // Business Order Management Overhaul V1 — every query inside these helpers
+  // is itself filtered by business_id, so this business can never see another
+  // business's order items even within the same multi-vendor order (see
+  // lib/business-orders.ts). The summary feeds Home's Needs Attention, the
+  // Orders tab and (Pro only) More's Orders link; the list and the open order
+  // are the Orders tab alone.
+  const validOrderFilters = new Set<BusinessOrderStatusFilter>(["new", "open", "ready", "fulfilled", "cancelled"]);
+  const orderStatus = orderStatusFilter && validOrderFilters.has(orderStatusFilter as BusinessOrderStatusFilter)
+    ? (orderStatusFilter as BusinessOrderStatusFilter)
+    : undefined;
+  const noOrderSummary = { newCount: 0, openCount: 0, readyCount: 0, fulfilledCount: 0, cancelledCount: 0 };
+
   // /account V2 Pass 2 — Business Locations, fetched only for that view.
   // Read via the service-role client (already authorized above) so the
   // owner also sees their own pending/archived connected Locations.
-  const businessLocationsView =
-    activeTab === "findmi-here" && presenceView === "locations"
-      ? await (async () => {
-          const [page, managed] = await Promise.all([
-            getLocationsForBusiness(admin, id),
-            user ? getManagedLocationsForUser(admin, user.id) : Promise.resolve([]),
-          ]);
-          const managedIds = new Set(managed.map((m) => m.id));
-          const linkedIds = new Set(page.items.map((l) => l.locationId));
-          // Linked ids beyond the first page still mustn't be offered again.
-          const alsoLinked = await getLinkedLocationIds(
-            admin,
-            id,
-            managed.filter((m) => !linkedIds.has(m.id)).map((m) => m.id)
-          );
-          return {
-            ...page,
-            connectable: managed.filter((m) => !linkedIds.has(m.id) && !alsoLinked.has(m.id)),
-            // Admin Manage-As can manage every Location (lib/permissions.ts).
-            manageableIds: isAdminElevated ? page.items.map((l) => l.locationId) : page.items.map((l) => l.locationId).filter((lid) => managedIds.has(lid)),
-          };
-        })()
-      : null;
-  // Opportunities Cleanup Pass A — the commercial Opportunities tab no
-  // longer embeds Event invitations/applications (that system now lives
-  // only in the Inbox and on the Event's own participants screen), so this
-  // is only needed for the Home "N Event Invitation(s)" tile count.
-  const pendingInvitations: OpportunityListItem[] = activeTab === "overview" ? await getPendingInvitationsForBusiness(admin, id) : [];
-  // Business-Facing Opportunities — commercial Opportunities Findmi
-  // recommended to THIS Business (separate system from the Event
-  // invitations/applications above). Business-safe items only; any member
-  // role may view. Also loaded for Home (Opportunities preview).
-  const recommendedOpportunities =
-    activeTab === "opportunities" || activeTab === "overview" || activeTab === "growth" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
-  // Findmi Brand Audit + Opportunity Ideas (Home only). Both tolerate the
-  // migration not being applied yet (available: false → the entry and the
-  // Ideas rail simply don't render).
-  // Growth (Home's mini-dashboard + the Growth tab) reads the same Growth
-  // Setup summary, active Opportunity goals and Ideas; Ideas only feed the
-  // full Growth tab.
-  const needsGrowth = activeTab === "overview" || activeTab === "growth";
-  const [brandAudit, opportunityIdeas, growthGoals] = needsGrowth
-    ? await Promise.all([
-        getBrandAudit(id),
-        activeTab === "growth" ? getIdeasForBusiness(id) : Promise.resolve({ available: false, ideas: [] }),
-        getBusinessGoals(id),
-      ])
-    : [null, { available: false, ideas: [] }, { available: false, goals: [] }];
-  // Findmi Here → Find Us At (owner view; every status). Fails safe to
-  // { available: false } until the details migration is applied.
-  const ownerAvailability =
-    activeTab === "findmi-here" && presenceView === "find-us" && admin ? await getOwnerAvailability(admin, id) : { available: false, items: [] };
+  const loadBusinessLocationsView = async () => {
+    const [page, managed] = await Promise.all([
+      getLocationsForBusiness(admin, id),
+      user ? getManagedLocationsForUser(admin, user.id) : Promise.resolve([]),
+    ]);
+    const managedIds = new Set(managed.map((m) => m.id));
+    const linkedIds = new Set(page.items.map((l) => l.locationId));
+    // Linked ids beyond the first page still mustn't be offered again.
+    const alsoLinked = await getLinkedLocationIds(
+      admin,
+      id,
+      managed.filter((m) => !linkedIds.has(m.id)).map((m) => m.id)
+    );
+    return {
+      ...page,
+      connectable: managed.filter((m) => !linkedIds.has(m.id) && !alsoLinked.has(m.id)),
+      // Admin Manage-As can manage every Location (lib/permissions.ts).
+      manageableIds: isAdminElevated ? page.items.map((l) => l.locationId) : page.items.map((l) => l.locationId).filter((lid) => managedIds.has(lid)),
+    };
+  };
+
   // Moments posted as this Business: all of them for the Moments view, the
   // latest few for Home's strip.
-  const businessMoments =
-    activeTab === "moments" ? await getBusinessMoments(id) : activeTab === "overview" ? await getBusinessMoments(id, { limit: 6 }) : [];
-  // Opportunities V2 — the page's four views. Explore and Goals data are
-  // only read when that view is open; both tolerate the V2 migration not
-  // being applied yet (available: false).
+  const momentFilter = isMomentFilter(rawSearchParams.show) ? rawSearchParams.show : "all";
+  const emptyMoments = { moments: [], counts: { all: 0, us: 0, connected: 0, events: 0, locations: 0 } };
+  // Opportunities V2 — the page's views. Explore data is only read when that
+  // view is open; both tolerate the V2 migration not being applied yet
+  // (available: false).
   const opportunityView: OpportunityView =
     activeTab === "opportunities" && OPPORTUNITY_VIEWS.includes(viewParam as OpportunityView) ? (viewParam as OpportunityView) : "for-you";
   const exploreFilters: ExploreFilters = {
@@ -650,13 +579,7 @@ export default async function ManageBusinessPage({
     timing: isExploreTiming(rawSearchParams.timing) ? rawSearchParams.timing : null,
     participationCost: isParticipationCostFilter(rawSearchParams.participationCost) ? rawSearchParams.participationCost : null,
   };
-  const [exploreData, goalsData] =
-    activeTab === "opportunities"
-      ? await Promise.all([
-          opportunityView === "explore" ? getExploreItems(id, exploreFilters) : Promise.resolve(null),
-          opportunityView === "goals" ? getBusinessGoals(id) : Promise.resolve(null),
-        ])
-      : [null, null];
+  const growthView = activeTab === "growth" && viewParam === "ideas" ? "ideas" : "goals";
   const canManageOpportunityGoals = canManageGoals((membershipRole ?? "staff") as GoalRole, isAdminElevated);
   const goalManageNote = canManageOpportunityGoals
     ? null
@@ -673,54 +596,19 @@ export default async function ManageBusinessPage({
           : rawSearchParams.goal === "active"
             ? "Goal is active."
             : null;
-  const pastAppearances =
-    activeTab === "findmi-here" && presenceView === "past" ? await getPastAppearancesForBusiness(id, 30) : [];
 
   // Owner Performance V1 — only queried when this tab is actually open
   // (analytics aggregation is heavier than this page's other summary
-  // reads, several of which double as Overview data). Same
-  // requireBusinessMember(id) authorization above already gates this —
-  // getOwnerBusinessPerformance does no authorization of its own, same
-  // convention as every other lib/business-*.ts read helper on this page.
+  // reads). Free/Pro Entitlement Realignment pass — Analytics is Pro-only
+  // again: gated here too, not just at render, so a Free owner on the deep
+  // Performance TAB never triggers the query at all. Business Overview V2 —
+  // Home's Performance Pulse needs the SAME numbers for BOTH Free and Pro
+  // (Free sees raw values only), so it reuses this one locked function rather
+  // than a second "basic" query, which guarantees Overview's numbers can
+  // never drift from the Performance tab's own definition. Free vs Pro is
+  // never a reporting-PERIOD distinction: both tiers get the resolved
+  // perfRange (30 days by default, ?range= if present).
   const perfRange = isOwnerPerformanceRange(rangeParam) ? rangeParam : DEFAULT_OWNER_PERFORMANCE_RANGE;
-  // Free/Pro Entitlement Realignment pass — Analytics is Pro-only again
-  // (it was reachable free before this pass). Gated here too, not just
-  // at render, so a Free owner on the deep Performance TAB never triggers
-  // the getOwnerBusinessPerformance query at all — same "don't do the
-  // paid feature's work for a Free caller" discipline as every other
-  // Pro-gated tab on this page. The Performance tab's own render gate
-  // below (`pro && performanceData`) is unchanged by the addition below.
-  //
-  // Business Overview V2 — Overview's Performance Pulse needs the SAME
-  // profileViews/impressions/actionsTaken/qr.totalScans numbers this
-  // function already computes correctly, for BOTH Free and Pro (Free
-  // sees the raw values only; BusinessOverviewV2 never renders
-  // `changeLabel`/discoverySources/appearances/products/trend for a Free
-  // business). Reusing this one locked, unmodified function — rather
-  // than writing a second, parallel "basic" query — is deliberate: it
-  // guarantees Overview's numbers can never drift from the Performance
-  // tab's own definition of the same metrics.
-  // Business Overview V2 — Free vs Pro is never a reporting-PERIOD
-  // distinction (Free = reporting, Pro = intelligence — comparisons and
-  // discovery breakdown, not a shorter/longer window). Overview has no
-  // range selector, so both tiers get the same resolved perfRange
-  // (defaults to 30 days, respects ?range= if present) — identical to
-  // what the deep Performance tab itself would use.
-  const performanceData =
-    (activeTab === "performance" && pro) || activeTab === "overview"
-      ? await getOwnerBusinessPerformance(admin, id, perfRange)
-      : null;
-
-  const requestPayoutAction = referralPartner
-    ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
-    : null;
-
-  // Legacy categories stay in the DB for existing relationships but are no
-  // longer offered as a new choice — except for a business already
-  // assigned to one, so editing this page can never silently drop it.
-  const selectableCategories = categories.filter(
-    (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
-  );
 
   // FindMi Here — Owner Appearance Manager. Appearance MANAGEMENT (add/
   // connect/edit/remove/withdraw) has always been a Free capability at
@@ -860,7 +748,7 @@ export default async function ManageBusinessPage({
   // existing participation -> Appearance sync is untouched).
   let pendingSchedule: EventOnlySchedule[] = [];
 
-  {
+  const loadSchedule = async () => {
     const nowIso = new Date().toISOString();
     // Schedule Scale Bound pass — the Where I'll Be list itself is now
     // bounded (a business with 100+ appearances was eagerly rendering a
@@ -880,8 +768,9 @@ export default async function ManageBusinessPage({
         ? Math.min(Math.ceil(requestedScheduleLimit / SCHEDULE_PAGE_SIZE) * SCHEDULE_PAGE_SIZE, SCHEDULE_LIMIT_CEILING)
         : SCHEDULE_PAGE_SIZE;
 
-    const [{ data: appearanceRows }, { data: linkedIdRows }, { data: ebStatusRows }, { data: eobStatusRows }] = await Promise.all([
-      admin
+    const skipped = Promise.resolve({ data: null });
+    const [{ data: appearanceRows }, { data: linkedIdRows }, { data: ebStatusRows }, { data: eobStatusRows }, { data: hostedEvents }] = await Promise.all([
+      !needsSchedule ? skipped : admin
         .from("appearances")
         .select(
           "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, created_at, location:locations(id, name, city, state)"
@@ -902,14 +791,41 @@ export default async function ManageBusinessPage({
       // Add flow itself, and its separate platform-wide Event/Occurrence
       // queries below, are an explicitly out-of-scope concern this pass —
       // see the Schedule Scalability audit).
-      admin
+      !needsSchedule ? skipped : admin
         .from("appearances")
         .select("id, event_id, event_occurrence_id, source, start_at, end_at, created_at")
         .eq("business_id", id)
         .neq("status", "canceled"),
-      admin.from("event_businesses").select("event_id, status").eq("business_id", id),
-      admin.from("event_occurrence_businesses").select("occurrence_id, status").eq("business_id", id),
+      !needsSchedule ? skipped : admin.from("event_businesses").select("event_id, status").eq("business_id", id),
+      !needsSchedule ? skipped : admin.from("event_occurrence_businesses").select("occurrence_id, status").eq("business_id", id),
+      // Business-Hosted Events V1 — Events this Business HOSTS, sourced ONLY
+      // from events.host_business_id (never participation, appearances, a
+      // featured flag or organizer_name). Independent of the reads above, so
+      // it shares their round trip.
+      !needsHosted
+        ? skipped
+        : admin
+            .from("events")
+            .select("id, name, slug, start_at, end_at, start_date, end_date, venue_name, city, state, is_demo, publication_status, cover_image_url")
+            .eq("host_business_id", id)
+            .is("trashed_at", null),
     ]);
+    // …and its dates, which need the hosted ids, start now and are awaited
+    // where the hosted rows are built (alongside the Add picker's own reads).
+    const hostedIds = (hostedEvents ?? []).map((ev) => ev.id as string);
+    const hostedOccurrencesPromise = hostedIds.length
+      ? started(
+          Promise.resolve(
+            admin
+              .from("event_occurrences")
+              .select("event_id, occurrence_date, timezone, start_at, end_at, status, venue_name, city, state, location:locations(name, city, state)")
+              .in("event_id", hostedIds)
+              .neq("status", "cancelled")
+              .order("occurrence_date", { ascending: true })
+              .order("start_at", { ascending: true, nullsFirst: false })
+          )
+        )
+      : null;
 
     scheduleHasMore = (appearanceRows ?? []).length > scheduleLimit;
     scheduleLimitUsed = scheduleLimit;
@@ -940,6 +856,11 @@ export default async function ManageBusinessPage({
     const linkedEventIds = new Set((linkedIdRows ?? []).filter((r) => !r.event_occurrence_id).map((r) => r.event_id));
     const linkedOccurrenceIds = new Set((linkedIdRows ?? []).map((r) => r.event_occurrence_id).filter((x): x is string => Boolean(x)));
 
+    // Findmi Here → Upcoming only: the Add picker's options and the
+    // approved/pending Event participations that have no `appearances` row.
+    // These read every upcoming platform Event and date, so no other
+    // destination pays for them.
+    if (onUpcoming) {
     // Picker: upcoming, non-demo events not already on this business's
     // own appearance calendar. An event with occurrences is only ever
     // offered per-date (never as a bare event-level option) — a
@@ -1059,22 +980,9 @@ export default async function ManageBusinessPage({
       pendingSchedule.push({ key: `pending-occurrence:${occ.id}`, title: ev.name, startAt: occ.start_at, endAt: null, date: occ.occurrence_date, where: venueFor(ev), href: `/event/${ev.slug}` });
     }
     pendingSchedule.sort(compareScheduleRows);
+    }
 
-    const { data: hostedEvents } = await admin
-      .from("events")
-      .select("id, name, slug, start_at, end_at, start_date, end_date, venue_name, city, state, is_demo, publication_status, cover_image_url")
-      .eq("host_business_id", id)
-      .is("trashed_at", null);
-    const hostedIds = (hostedEvents ?? []).map((ev) => ev.id as string);
-    const { data: hostedOccurrences } = hostedIds.length
-      ? await admin
-          .from("event_occurrences")
-          .select("event_id, occurrence_date, timezone, start_at, end_at, status, venue_name, city, state, location:locations(name, city, state)")
-          .in("event_id", hostedIds)
-          .neq("status", "cancelled")
-          .order("occurrence_date", { ascending: true })
-          .order("start_at", { ascending: true, nullsFirst: false })
-      : { data: [] };
+    const { data: hostedOccurrences } = hostedOccurrencesPromise ? await hostedOccurrencesPromise : { data: [] };
     type HostedOccurrence = {
       event_id: string;
       occurrence_date: string;
@@ -1150,86 +1058,7 @@ export default async function ManageBusinessPage({
     pendingSchedule = pendingSchedule.filter(
       (e) => !(e.key.startsWith("pending-event:") && hostedEventIds.has(e.key.slice("pending-event:".length)))
     );
-  }
-
-  // Command Center V1 — resolves the same appearances array above
-  // (standalone AND Event-linked alike, already carrying its
-  // participation status) into one flat, presentation-ready view-model,
-  // and separately resolves this business's own "Area · Market" label
-  // for the header — see lib/business-dashboard.ts for exactly how an
-  // Event-linked appearance's geography is derived and why it's a
-  // deliberately simpler lookup than the full occurrence-override
-  // precedence chain used elsewhere.
-  // One canonical, deduped list feeds both Home and Presence.
-  const canonicalAppearances = canonicalOwnerAppearances(appearances, eventIdsWithOccurrenceProjections);
-  const { appearances: dashboardAppearances, businessGeographyLabel } = await resolveDashboardAppearances(
-    admin,
-    id,
-    // Home's Happening now / Coming up show one card per real-world
-    // participation; the Where I'll Be management list keeps every row.
-    canonicalAppearances as DashboardAppearanceSource[],
-    { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null },
-    // Same image fallback the public Appearance cards use (flyer → Event
-    // cover → gallery → cover), then the logo.
-    {
-      galleryImages,
-      coverUrl: business.cover_image_url,
-      logoUrl: business.logo_url,
-    }
-  );
-  // Pass A — the same id-based integrity rule for Presence → Upcoming:
-  // a superseded Event-level projection (e.g. Lavazza TABLÌ) isn't listed
-  // beside its per-date rows. Display only; records untouched.
-  // Business-Hosted Events V1 — a hosted Event's Event-level projection
-  // (participation-derived, not one the owner typed in manually) is already
-  // represented by its Hosting row; date-level and manual rows stay.
-  const presenceAppearances = canonicalAppearances.filter(
-    (a) => !(a.event_id && hostedEventIds.has(a.event_id) && !a.event_occurrence_id && a.source !== "manual")
-  );
-  // Home is a summary (presentation grouping, not counting): one live card
-  // / Coming Up row per Event or standalone Appearance, with "+ N More
-  // Dates" read from the full (unpaged) schedule.
-  // B2 — Coming Up is the Business's actual upcoming activity: its
-  // Appearances AND the Events it hosts (events.host_business_id), one item
-  // per Event (deduped by Event id — see buildHomeComingUp). A hosted Event
-  // shows its cover, else the Business's own imagery; it opens the Event
-  // Manager with this Business as context, same as Findmi Here's Hosting row.
-  const homeActivities = buildHomeComingUp(
-    dashboardAppearances,
-    hostedUpcoming.map((h) => ({
-      eventId: h.id,
-      name: h.name,
-      // Home's Coming Up is built on exact times; a hosted date with no
-      // published time is listed in the Hosting section instead.
-      dates: h.upcomingDates.flatMap((d) => (d.startAt ? [{ startAt: d.startAt, endAt: d.endAt }] : [])),
-      where: h.where,
-      statusLabel: h.statusLabel,
-      imageUrl: h.coverImageUrl ?? business.cover_image_url ?? business.logo_url ?? null,
-      href: `/account/event/${h.id}?business_id=${encodeURIComponent(id)}`,
-    })),
-    countUpcomingDatesPerPreviewGroup(allScheduleRows, eventIdsWithOccurrenceProjections)
-  );
-  // "Materially affects discovery" — the same fields a visitor would
-  // actually need to find/trust this business, not every optional field
-  // on the Profile tab (e.g. website/social links are never required here).
-  // VCL A2b — City/State are optional for a Business (no geography beats
-  // false geography), so their absence alone never flags Complete Profile.
-  // Final Brand Build V1 UX cleanup — a Brand reviews only About at
-  // onboarding (no Short Description), so either description counts here.
-  const profileIncomplete = !business.logo_url || !(business.short_description || business.description) || !currentCategoryId;
-  const needsAttention = buildNeedsAttentionItems({
-    businessId: id,
-    hasPrimaryMarket: Boolean(primaryMarket),
-    pendingMarketRequestText: pendingMarketRequest?.requestedText ?? null,
-    upcomingAppearances: dashboardAppearances,
-    newOrderCount: orderSummary.newCount,
-    profileIncomplete,
-    missingProfile: {
-      logo: !business.logo_url,
-      description: !(business.short_description || business.description),
-      category: !currentCategoryId,
-    },
-  });
+  };
 
   // Pro Products Foundation pass — Products are genuinely Pro/Pro
   // Seller-only (locked rule), unlike appearances above. Fetched via the
@@ -1285,7 +1114,7 @@ export default async function ManageBusinessPage({
   // without it, a Free owner's own newly-created products would never
   // appear in their own management view even though creation itself
   // (createMemberProduct, ../actions.ts) already worked.
-  {
+  const loadProducts = async () => {
     const [{ data: productRows }, fetchedProductCategories] = await Promise.all([
       admin
         .from("products")
@@ -1350,7 +1179,226 @@ export default async function ManageBusinessPage({
         marketplaceStatus,
       };
     });
-  }
+  };
+
+  // ── One round trip for everything this destination needs ──────────────
+  // Every read below is independent of the others (the few that depend on an
+  // earlier result chain inside their own loader), so they all start together.
+  // A destination that needs none of a given group pays nothing for it.
+  const countProducts = async () => {
+    const { count } = await admin
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", id)
+      .is("archived_at", null)
+      .is("trashed_at", null);
+    return count ?? 0;
+  };
+  const growthTrio = () => Promise.all([getBrandAudit(id), getIdeasForBusiness(id), getBusinessGoals(id)]);
+  const schedulePromise = whenP(needsSchedule || needsHosted, loadSchedule, undefined);
+  const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
+  const galleryPromise = rowsWhen(onProfile || onHome, () =>
+    admin.from("business_images").select("url").eq("business_id", id).order("display_order", { ascending: true, nullsFirst: false })
+  );
+  // Command Center V1 — Home's dashboard view-model resolves the Appearances
+  // above (standalone AND Event-linked alike) into one flat, presentation-ready
+  // list, plus this business's own "Area · Market" label — see
+  // lib/business-dashboard.ts. It needs only the schedule, the primary Market
+  // and the gallery fallback imagery, so it chains behind exactly those and
+  // overlaps every other Home read instead of waiting for the slowest of them.
+  const dashboardPromise = whenP(
+    onHome,
+    async () => {
+      await schedulePromise;
+      const { primaryMarket: homeMarket } = await marketsPromise;
+      const homeGallery = (await galleryPromise).map((r) => r.url);
+      return resolveDashboardAppearances(
+        admin,
+        id,
+        // Home's Happening now / Coming up show one card per real-world
+        // participation; the Where I'll Be management list keeps every row.
+        canonicalOwnerAppearances(appearances, eventIdsWithOccurrenceProjections) as DashboardAppearanceSource[],
+        { primaryMarketId: homeMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null },
+        // Same image fallback the public Appearance cards use (flyer → Event
+        // cover → gallery → cover), then the logo.
+        { galleryImages: homeGallery, coverUrl: business.cover_image_url, logoUrl: business.logo_url }
+      );
+    },
+    { appearances: [], businessGeographyLabel: null } as Awaited<ReturnType<typeof resolveDashboardAppearances>>
+  );
+  const [
+    categories,
+    categoryRows,
+    galleryRows,
+    businessHandle,
+    qrByEntity,
+    referralPartner,
+    followerSummary,
+    markets,
+    orderSummary,
+    orderList,
+    openOrder,
+    moreProductCount,
+    businessLocationsView,
+    pendingInvitations,
+    recommendedOpportunities,
+    growthData,
+    ownerAvailability,
+    businessMoments,
+    exploreData,
+    pastAppearances,
+    performanceData,
+    businessQrCampaigns,
+    ,
+    ,
+    dashboardResult,
+  ] = await Promise.all([
+    whenP(onProfile || onProducts, () => getCategories(), [] as Awaited<ReturnType<typeof getCategories>>),
+    rowsWhen(onProfile || onHome, () => admin.from("business_categories").select("category_id").eq("business_id", id).order("category_id").limit(1)),
+    // Existing gallery table (business_images) — the Pro-only gallery field
+    // previews it, and Home's cards fall back to it for imagery.
+    galleryPromise,
+    whenP(onHome, () => getEntityHandle(admin, "business", id), null as Awaited<ReturnType<typeof getEntityHandle>>),
+    whenP(onUpcoming || onProducts, loadQrByEntity, {
+      qrCampaignsByAppearanceId: new Map<string, { id: string; name: string; scans: number }[]>(),
+      qrCampaignsByProductId: new Map<string, { id: string; name: string; scans: number }[]>(),
+    }),
+    referralPromise,
+    // User Identity + Follow Foundation pass — Home's pulse and Performance's
+    // Audience section.
+    whenP(onHome || onPerformance, () => getBusinessFollowerSummary(admin, id), {
+      totalCount: 0,
+      accountCount: 0,
+      legacyCount: 0,
+      profiles: [],
+    } as Awaited<ReturnType<typeof getBusinessFollowerSummary>>),
+    marketsPromise,
+    whenP(onHome || onOrders || (onMore && pro), () => getBusinessOrderSummary(admin, id), noOrderSummary),
+    whenP(onOrders, () => getBusinessOrderList(admin, id, orderStatus), [] as Awaited<ReturnType<typeof getBusinessOrderList>>),
+    whenP(onOrders && Boolean(openOrderId), () => getBusinessOrderDetail(admin, openOrderId as string, id), null as Awaited<ReturnType<typeof getBusinessOrderDetail>>),
+    whenP(onMore && pro, countProducts, 0),
+    whenP(onLocations, loadBusinessLocationsView, null as Awaited<ReturnType<typeof loadBusinessLocationsView>> | null),
+    // Opportunities Cleanup Pass A — only Home's "N Event Invitation(s)" tile
+    // count needs the Event invitations now.
+    whenP(onHome, () => getPendingInvitationsForBusiness(admin, id), [] as OpportunityListItem[]),
+    // Business-Facing Opportunities — commercial Opportunities Findmi
+    // recommended to THIS Business (a separate system from the Event
+    // invitations). Business-safe items only; any member role may view.
+    whenP(needsGrowth, () => getBusinessOpportunityItems(id), { active: [], past: [] } as Awaited<ReturnType<typeof getBusinessOpportunityItems>>),
+    // Growth Setup summary + Opportunity goals + Ideas. Home's mini-dashboard,
+    // the hub navigation badges and every Growth view read the SAME summary, so
+    // all three load wherever it is shown. Each tolerates its migration not
+    // being applied yet (available: false).
+    whenP(needsGrowth, growthTrio, [null, { available: false, ideas: [] }, { available: false, goals: [] }] as unknown as Awaited<ReturnType<typeof growthTrio>>),
+    // Findmi Here → Find Us Here (owner view; every status). Fails safe to
+    // { available: false } until the details migration is applied.
+    whenP(onFindUs, () => getOwnerAvailability(admin, id), { available: false, items: [] } as Awaited<ReturnType<typeof getOwnerAvailability>>),
+    whenP(
+      activeTab === "moments" || onHome,
+      () => getBusinessMoments(id, activeTab === "moments" ? { viewerUserId: user?.id ?? null } : { limit: 6, viewerUserId: user?.id ?? null }),
+      emptyMoments as Awaited<ReturnType<typeof getBusinessMoments>>
+    ),
+    whenP(activeTab === "opportunities" && opportunityView === "explore", () => getExploreItems(id, exploreFilters), null as Awaited<ReturnType<typeof getExploreItems>> | null),
+    whenP(onPast, () => getPastAppearancesForBusiness(id, 30), [] as Awaited<ReturnType<typeof getPastAppearancesForBusiness>>),
+    whenP((onPerformance && pro) || onHome, () => getOwnerBusinessPerformance(admin, id, perfRange), null as Awaited<ReturnType<typeof getOwnerBusinessPerformance>> | null),
+    // QR tab — every campaign this Business owns, grouped by lifecycle.
+    whenP(activeTab === "qr" || onPerformance, () => getBusinessQrCampaigns(admin, id), [] as Awaited<ReturnType<typeof getBusinessQrCampaigns>>),
+    // The schedule/hosted reads, and the Products list, load their own
+    // outer state (see loadSchedule / loadProducts above).
+    schedulePromise,
+    whenP(onProducts || onFindUs, loadProducts, undefined),
+    dashboardPromise,
+  ]);
+  const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
+  const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
+  const [brandAudit, opportunityIdeas, growthGoals] = growthData;
+  const currentCategoryId = categoryRows[0]?.category_id ?? "";
+  const galleryImages = galleryRows.map((r) => r.url);
+  const growthSummary = needsGrowth
+    ? growthSummaryFor({
+        audit: brandAudit?.available ? brandAudit.summary : null,
+        activeGoalCount: growthGoals.goals.filter((g) => g.status === "active").length,
+        opportunityItems: [...recommendedOpportunities.active, ...recommendedOpportunities.past],
+        ideas: opportunityIdeas.ideas,
+      })
+    : null;
+  const requestPayoutAction = referralPartner
+    ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
+    : null;
+
+  // Legacy categories stay in the DB for existing relationships but are no
+  // longer offered as a new choice — except for a business already
+  // assigned to one, so editing this page can never silently drop it.
+  const selectableCategories = categories.filter(
+    (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
+  );
+
+  // Command Center V1 — resolves the same appearances array above
+  // (standalone AND Event-linked alike, already carrying its
+  // participation status) into one flat, presentation-ready view-model,
+  // and separately resolves this business's own "Area · Market" label
+  // for the header — see lib/business-dashboard.ts for exactly how an
+  // Event-linked appearance's geography is derived and why it's a
+  // deliberately simpler lookup than the full occurrence-override
+  // precedence chain used elsewhere.
+  // One canonical, deduped list feeds both Home and Presence.
+  const canonicalAppearances = canonicalOwnerAppearances(appearances, eventIdsWithOccurrenceProjections);
+  const { appearances: dashboardAppearances, businessGeographyLabel } = dashboardResult;
+  // Pass A — the same id-based integrity rule for Presence → Upcoming:
+  // a superseded Event-level projection (e.g. Lavazza TABLÌ) isn't listed
+  // beside its per-date rows. Display only; records untouched.
+  // Business-Hosted Events V1 — a hosted Event's Event-level projection
+  // (participation-derived, not one the owner typed in manually) is already
+  // represented by its Hosting row; date-level and manual rows stay.
+  const presenceAppearances = canonicalAppearances.filter(
+    (a) => !(a.event_id && hostedEventIds.has(a.event_id) && !a.event_occurrence_id && a.source !== "manual")
+  );
+  // Home is a summary (presentation grouping, not counting): one live card
+  // / Coming Up row per Event or standalone Appearance, with "+ N More
+  // Dates" read from the full (unpaged) schedule.
+  // B2 — Coming Up is the Business's actual upcoming activity: its
+  // Appearances AND the Events it hosts (events.host_business_id), one item
+  // per Event (deduped by Event id — see buildHomeComingUp). A hosted Event
+  // shows its cover, else the Business's own imagery; it opens the Event
+  // Manager with this Business as context, same as Findmi Here's Hosting row.
+  const homeActivities = buildHomeComingUp(
+    dashboardAppearances,
+    hostedUpcoming.map((h) => ({
+      eventId: h.id,
+      name: h.name,
+      // Home's Coming Up is built on exact times; a hosted date with no
+      // published time is listed in the Hosting section instead.
+      dates: h.upcomingDates.flatMap((d) => (d.startAt ? [{ startAt: d.startAt, endAt: d.endAt }] : [])),
+      where: h.where,
+      statusLabel: h.statusLabel,
+      imageUrl: h.coverImageUrl ?? business.cover_image_url ?? business.logo_url ?? null,
+      href: `/account/event/${h.id}?business_id=${encodeURIComponent(id)}`,
+    })),
+    countUpcomingDatesPerPreviewGroup(allScheduleRows, eventIdsWithOccurrenceProjections)
+  );
+  // "Materially affects discovery" — the same fields a visitor would
+  // actually need to find/trust this business, not every optional field
+  // on the Profile tab (e.g. website/social links are never required here).
+  // VCL A2b — City/State are optional for a Business (no geography beats
+  // false geography), so their absence alone never flags Complete Profile.
+  // Final Brand Build V1 UX cleanup — a Brand reviews only About at
+  // onboarding (no Short Description), so either description counts here.
+  const profileIncomplete = !business.logo_url || !(business.short_description || business.description) || !currentCategoryId;
+  const needsAttention = buildNeedsAttentionItems({
+    businessId: id,
+    hasPrimaryMarket: Boolean(primaryMarket),
+    pendingMarketRequestText: pendingMarketRequest?.requestedText ?? null,
+    upcomingAppearances: dashboardAppearances,
+    newOrderCount: orderSummary.newCount,
+    profileIncomplete,
+    missingProfile: {
+      logo: !business.logo_url,
+      description: !(business.short_description || business.description),
+      category: !currentCategoryId,
+    },
+  });
+
+
   const addProduct = createMemberProduct.bind(null, id);
 
   // Owner Shell V3 — Orders only earns primary-nav visibility when it's
@@ -1362,7 +1410,7 @@ export default async function ManageBusinessPage({
   // whether the primary pill row bothers showing it.
   const ordersRelevant =
     pro &&
-    (products.length > 0 ||
+    (moreProductCount > 0 ||
       orderSummary.newCount + orderSummary.openCount + orderSummary.readyCount + orderSummary.fulfilledCount + orderSummary.cancelledCount > 0);
 
 
@@ -1446,8 +1494,6 @@ export default async function ManageBusinessPage({
   scheduleLoadMoreParams.set("tab", "findmi-here");
   scheduleLoadMoreParams.set("schedule_limit", String(scheduleLimitUsed + SCHEDULE_PAGE_SIZE));
   const scheduleLoadMoreHref = `${basePath}?${scheduleLoadMoreParams.toString()}`;
-  // QR tab — every campaign this Business owns, grouped by lifecycle.
-  const businessQrCampaigns = (activeTab === "qr" || activeTab === "performance") && admin ? await getBusinessQrCampaigns(admin, id) : [];
 
   // /account V2 Home — the performance snapshot reads these already-
   // computed values (no new analytics definition).
@@ -1468,16 +1514,9 @@ export default async function ManageBusinessPage({
   };
 
   return (
-    <BusinessAppShell
-      basePath={basePath}
-      business={{ id, name: business.name, slug: business.slug, logoUrl: business.logo_url }}
-      pro={pro}
-      isExpiredPro={isExpiredPro}
-      personalLabel={personalLabel}
-      managedBusinesses={managedBusinesses}
-      activeSection={sectionForTab(activeTab)}
-      isAdminElevated={isAdminElevated}
-    >
+    // The persistent shell (identity, switcher, navigation) is the layout
+    // above this page; this returns the content view only.
+    <>
         {error && (
           <p className="mb-4 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>
         )}
@@ -1601,23 +1640,29 @@ export default async function ManageBusinessPage({
               newOrderCount={orderSummary.newCount}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
-              growth={growthSummaryFor({
-                audit: brandAudit?.available ? brandAudit.summary : null,
-                activeGoalCount: growthGoals.goals.filter((g) => g.status === "active").length,
-                opportunityItems: [...recommendedOpportunities.active, ...recommendedOpportunities.past],
-              })}
-              recentMoments={businessMoments}
+              growth={growthSummary!}
+              recentMoments={businessMoments.moments}
             />
           </div>
         )}
 
         {/* ── Growth ───────────────────────────────────────────────── */}
-        {activeTab === "growth" && (
-          <GrowthView
+        {activeTab === "growth" && growthSummary && growthView === "goals" && (
+          <GrowthGoalsView
             basePath={basePath}
+            businessId={id}
             audit={brandAudit?.available ? brandAudit.summary : null}
-            activeGoalCount={growthGoals.goals.filter((g) => g.status === "active").length}
-            opportunityItems={[...recommendedOpportunities.active, ...recommendedOpportunities.past]}
+            summary={growthSummary}
+            goals={growthGoals}
+            canManage={canManageOpportunityGoals}
+            manageNote={goalManageNote}
+            notice={goalNotice}
+          />
+        )}
+        {activeTab === "growth" && growthSummary && growthView === "ideas" && (
+          <GrowthIdeasView
+            basePath={basePath}
+            summary={growthSummary}
             ideas={opportunityIdeas.ideas}
             canRespondToIdeas={canManageOpportunityGoals}
             respondToIdea={respondToIdeaAction.bind(null, id)}
@@ -1625,7 +1670,7 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Moments ──────────────────────────────────────────────── */}
-        {activeTab === "moments" && <MomentsView businessId={id} moments={businessMoments} canPost={isManagingRole(membershipRole) || isAdminElevated} />}
+        {activeTab === "moments" && <MomentsView basePath={basePath} businessId={id} data={businessMoments} filter={momentFilter} canPost={isManagingRole(membershipRole) || isAdminElevated} />}
 
         {/* ── Performance ──────────────────────────────────────────── */}
         {/* Free/Pro Entitlement Realignment pass — Analytics (including
@@ -3122,10 +3167,7 @@ export default async function ManageBusinessPage({
             recommended={recommendedOpportunities}
             explore={exploreData}
             filters={exploreFilters}
-            goals={goalsData}
-            canManage={canManageOpportunityGoals}
-            manageNote={goalManageNote}
-            notice={goalNotice}
+            nav={growthSummary ? <GrowthNav basePath={basePath} active="opportunities" badges={growthBadges(growthSummary)} /> : null}
           />
         )}
 
@@ -3138,7 +3180,7 @@ export default async function ManageBusinessPage({
             ?tab=referral redirects there whenever referralPartner exists
             (see the redirect logic above); activeTab can never equal
             "referral" by the time rendering reaches here. */}
-    </BusinessAppShell>
+    </>
   );
 }
 

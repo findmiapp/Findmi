@@ -1,3 +1,4 @@
+import OptimisticTabs from "./OptimisticTabs";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { BusinessOpportunityItem, ExploreItem } from "@/lib/opportunity-listings";
@@ -23,14 +24,13 @@ import BusinessOpportunityCard, { OpportunityCard } from "@/components/opportuni
 import { changeGoalStatus } from "../opportunities/actions";
 import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
 
-export const OPPORTUNITY_VIEWS = ["for-you", "explore", "yours", "goals"] as const;
+export const OPPORTUNITY_VIEWS = ["for-you", "explore", "yours"] as const;
 export type OpportunityView = (typeof OPPORTUNITY_VIEWS)[number];
 
 const VIEW_LABELS: Record<OpportunityView, string> = {
   "for-you": "For You",
   explore: "Explore",
   yours: "Your Opportunities",
-  goals: "Your Goals",
 };
 
 const inputClass =
@@ -53,10 +53,7 @@ export default function OpportunitiesView({
   recommended,
   explore,
   filters,
-  goals,
-  canManage,
-  manageNote,
-  notice,
+  nav,
 }: {
   basePath: string;
   businessId: string;
@@ -64,10 +61,8 @@ export default function OpportunitiesView({
   recommended: { active: BusinessOpportunityItem[]; past: BusinessOpportunityItem[] };
   explore: { available: boolean; items: ExploreItem[] } | null;
   filters: ExploreFilters;
-  goals: { available: boolean; goals: BusinessGoal[] } | null;
-  canManage: boolean;
-  manageNote: string | null;
-  notice: string | null;
+  /** The persistent Growth navigation (Goals · Opportunities · Ideas). */
+  nav: ReactNode;
 }) {
   const all = [...recommended.active, ...recommended.past];
   const forYou = all.filter((i) => i.view.group === "for_you");
@@ -81,32 +76,23 @@ export default function OpportunitiesView({
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="font-display text-page-title-lg font-bold text-primary">Opportunities</h1>
+        <h1 className="font-display text-page-title-lg font-bold text-primary">Growth</h1>
         <p className="mt-1 text-body text-muted">Opportunities Findmi recommends for your Business, and ways to find more.</p>
       </div>
+      {nav}
 
-      <nav aria-label="Opportunities" className="flex flex-wrap gap-1.5">
-        {OPPORTUNITY_VIEWS.map((v) => {
-          const active = v === view;
-          return (
-            <Link
-              key={v}
-              href={viewHref(v)}
-              aria-current={active ? "page" : undefined}
-              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-metadata font-semibold transition ${
-                active ? "border-ink bg-ink text-white" : "border-black/10 bg-white text-secondary hover:border-black/20"
-              }`}
-            >
-              {VIEW_LABELS[v]}
-              {(tabBadges[v] ?? 0) > 0 && (
-                <span className={`rounded-full px-1.5 text-[11px] font-bold ${active ? "bg-white/20 text-white" : "bg-findmi-50 text-findmi-700"}`}>{tabBadges[v]}</span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {notice && <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">{notice}</p>}
+      <OptimisticTabs
+        ariaLabel="Opportunities"
+        navClass="flex flex-wrap gap-1.5"
+        linkClass="flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-metadata font-semibold transition"
+        activeClass="border-ink bg-ink text-white"
+        inactiveClass="border-black/10 bg-white text-secondary hover:border-black/20"
+        badgeClass="rounded-full px-1.5 text-[11px] font-bold"
+        badgeActiveClass="bg-white/20 text-white"
+        badgeInactiveClass="bg-findmi-50 text-findmi-700"
+        active={view}
+        items={OPPORTUNITY_VIEWS.map((v) => ({ key: v, href: viewHref(v), label: VIEW_LABELS[v], badge: tabBadges[v] }))}
+      />
 
       {view === "for-you" && (
         <section aria-labelledby="for-you-heading" className="flex flex-col gap-3">
@@ -215,8 +201,28 @@ export default function OpportunitiesView({
         </section>
       )}
 
-      {view === "goals" && (
-        <section aria-labelledby="goals-heading" className="flex flex-col gap-3">
+    </div>
+  );
+}
+
+/** Your Goals — the Business's Opportunity goals (the existing
+ * business_opportunity_goals data and status actions). Rendered on the Growth
+ * hub's Goals destination. */
+export function GoalsSection({
+  basePath,
+  businessId,
+  goals,
+  canManage,
+  manageNote,
+}: {
+  basePath: string;
+  businessId: string;
+  goals: { available: boolean; goals: BusinessGoal[] } | null;
+  canManage: boolean;
+  manageNote: string | null;
+}) {
+  return (
+    <section aria-labelledby="goals-heading" className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <SectionHeading
               id="goals-heading"
@@ -253,8 +259,6 @@ export default function OpportunitiesView({
             </ul>
           )}
         </section>
-      )}
-    </div>
   );
 }
 

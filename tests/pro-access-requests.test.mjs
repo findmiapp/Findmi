@@ -356,6 +356,6 @@ test("the requester-decision notification never includes the admin's internal no
 test("static guard: no existing Upgrade/Checkout surface was touched by this pass", () => {
   const upgradePage = readFileSync("src/app/(public)/upgrade/pro/page.tsx", "utf8");
   assert.doesNotMatch(upgradePage, /pro-request|pro_access_request|requestProAccess/i, "the existing /upgrade/pro page must not yet reference the new request workflow");
-  const businessPage = readFileSync("src/app/(public)/account/business/[id]/page.tsx", "utf8");
+  const businessPage = readFileSync("src/app/(public)/account/business/[id]/(manager)/page.tsx", "utf8");
   assert.doesNotMatch(businessPage, /pro-request|requestProAccess/i, "the existing Business Manager (UpgradeLockedTab/Plan & Status) must not yet link to the new workflow -- that's a later, separate pass");
 });

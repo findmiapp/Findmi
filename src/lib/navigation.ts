@@ -38,7 +38,6 @@ export const NAV_ICON_KEYS = [
   "home",
   "cart",
   "moments",
-  "findmi",
 ] as const;
 export type NavIconKey = (typeof NAV_ICON_KEYS)[number];
 
@@ -87,13 +86,10 @@ function toResolvedLeaf(item: NavItem): Omit<ResolvedNavItem, "children"> | null
   const href = resolveHref(item);
   // /moments always shows the canonical photo glyph: "target" means
   // Performance/Analytics elsewhere and was stored on this row by mistake.
-  // Findmi Here (/find) likewise shows the Findmi mark, not a map pin.
   const icon: NavIconKey | null =
     href === "/moments" && (item.icon_key === "target" || !item.icon_key)
       ? "moments"
-      : href === "/find" && (item.icon_key === "pin" || !item.icon_key)
-        ? "findmi"
-        : NAV_ICON_KEYS.includes(item.icon_key as NavIconKey)
+      : NAV_ICON_KEYS.includes(item.icon_key as NavIconKey)
         ? (item.icon_key as NavIconKey)
         : null;
   return {

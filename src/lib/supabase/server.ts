@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { cache } from "react";
 import { cookies } from "next/headers";
 
 /**
@@ -44,3 +45,21 @@ export async function getServerSupabase() {
     }
   );
 }
+
+/**
+ * The signed-in user for THIS request, validated once.
+ *
+ * `supabase.auth.getUser()` is a network round trip to Supabase Auth, and a
+ * single Business Manager request used to make it several times (the page,
+ * `requireBusinessMember`, the shell loader). React's per-request `cache()`
+ * collapses those to one. The memo is scoped to one server render/action —
+ * never shared across requests or users — so it carries none of the
+ * cross-request leak risk `getServerSupabase()` above warns about.
+ */
+export const getCurrentUser = cache(async () => {
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});

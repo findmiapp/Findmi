@@ -60,7 +60,7 @@ const isText = (f) => !(f.type && NON_TEXT.test(f.type));
 const byName = (path, name, kind) => field(path, (f) => isText(f) && f.name === name && (!kind || f.kind === kind), name);
 
 const NEW_BIZ = "src/app/(public)/account/business/new/page.tsx";
-const BIZ = "src/app/(public)/account/business/[id]/page.tsx";
+const BIZ = "src/app/(public)/account/business/[id]/(manager)/page.tsx";
 const PRODUCT = "src/app/(public)/account/business/[id]/ProductFieldsForm.tsx";
 
 // ── The helper ────────────────────────────────────────────────────────────

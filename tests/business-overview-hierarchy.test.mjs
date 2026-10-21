@@ -31,7 +31,7 @@ const CA = await import("../src/app/(public)/account/business/[id]/v2/createActi
 const B = "src/app/(public)/account/business/[id]";
 const read = (p) => readFileSync(p, "utf8");
 const HOME = read(`${B}/v2/BusinessHome.tsx`);
-const PAGE = read(`${B}/page.tsx`);
+const PAGE = read(`${B}/(manager)/page.tsx`);
 const ADD = read(`${B}/v2/AddToPresence.tsx`);
 const ATTENTION_BAR = read(`${B}/v2/NeedsAttentionBar.tsx`);
 const GROWTH_VIEW = read(`${B}/v2/GrowthView.tsx`);
@@ -286,15 +286,15 @@ test("Schedule: Happening Now (only when live) then Coming Up; useful empty stat
 
 test("Growth (Home mini-dashboard + Growth tab): existing data only, never Pro-gated, no fabricated metrics", () => {
   assert.match(HOME, /<GrowthPanel basePath=\{basePath\} summary=\{growth\} \/>/);
-  const opp = GROWTH_VIEW.slice(GROWTH_VIEW.indexOf("const ranked"));
   assert.doesNotMatch(GROWTH_VIEW, /\bpro\b/);
-  assert.match(opp, /\]\.slice\(0, 3\);/, "at most three existing recommendations");
-  assert.match(GROWTH_VIEW, /ranked\.length === 1 \? \(/);
-  assert.match(GROWTH_VIEW, /ranked\.length > 1 \? \(\s*<ul className=\{`mt-3 \$\{RAIL_CLASS\}`\}>/, "several real ones → a short horizontal collection");
-  assert.match(GROWTH_VIEW, /Explore Opportunities/);
-  assert.match(GROWTH_VIEW, /Add A Goal/);
-  assert.match(GROWTH_VIEW, /<BusinessOpportunityCard item=\{ranked\[0\]\.view\}/);
-  assert.match(PAGE, /<GrowthView\s/);
+  const panel = read("src/app/(public)/account/business/[id]/v2/GrowthPanel.tsx");
+  assert.doesNotMatch(panel, /\bpro\b/);
+  assert.match(panel, /GROWTH_DESTINATIONS/, "Home exposes all three destinations from the shared definition");
+  assert.match(panel, /growthDestinationStatus\(/, "real counts only");
+  assert.match(GROWTH_VIEW, /<GoalsSection /);
+  assert.match(GROWTH_VIEW, /eligibleGrowthIdeas\(ideas, summary\.hasSignal\)/);
+  assert.match(PAGE, /<GrowthGoalsView\s/);
+  assert.match(PAGE, /<GrowthIdeasView\s/);
 });
 
 test("Performance: existing metrics + Free/Pro gating; all-zero explains itself instead of four zeros", () => {

@@ -31,7 +31,7 @@ const read = (p) => readFileSync(p, "utf8");
 const PAGE = read("src/app/(public)/join/brand/page.tsx");
 const NEW_PAGE = read("src/app/(public)/account/business/new/page.tsx");
 const ACTIONS = read("src/app/(public)/account/business/actions.ts");
-const MANAGER = read("src/app/(public)/account/business/[id]/page.tsx");
+const MANAGER = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
 const CREATE = ACTIONS.slice(ACTIONS.indexOf("export async function createMemberBusiness"), ACTIONS.indexOf("\n}\n", ACTIONS.indexOf("export async function createMemberBusiness")));
 const params = (href) => new URL(href, "https://findmi.app").searchParams;
 const pathOf = (href) => new URL(href, "https://findmi.app").pathname;

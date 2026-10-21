@@ -1,154 +1,186 @@
 import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
-import BusinessOpportunityCard from "@/components/opportunities/BusinessOpportunityCard";
-import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
 import type { BusinessOpportunityItem } from "@/lib/opportunity-listings";
 import type { BusinessIdea } from "@/lib/brand-audit";
-import { summarizeGrowth, eligibleGrowthIdeas, GROWTH_SETUP_COPY } from "@/lib/growth";
-import type { AuditSummary } from "@/lib/brand-audit-domain";
+import type { BusinessGoal } from "@/lib/opportunity-goals";
+import { auditActionLabel, type AuditSummary } from "@/lib/brand-audit-domain";
+import { summarizeGrowth, eligibleGrowthIdeas, unansweredIdeaCount, GROWTH_PROFILE_SECTIONS, GROWTH_SETUP_COPY, type GrowthDestination } from "@/lib/growth";
 import type { ActionResult } from "../brand-audit/actions";
-import { Chip } from "../../../owner-ui";
-import { SparkGlyph } from "./BusinessAppShell";
-import GrowthPanel from "./GrowthPanel";
+import GrowthNav from "./GrowthNav";
 import IdeasForYourBrand from "./IdeasForYourBrand";
-
-const RAIL_CLASS =
-  "-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:scroll-px-0 lg:px-0 [&::-webkit-scrollbar]:hidden";
+import { GoalsSection } from "./OpportunitiesView";
 
 /** Derive the one Growth summary from the data the page already loads —
- * shared by Home (compact panel) and the Growth tab so the two can never
- * disagree. */
+ * shared by Home (mini-dashboard), the hub navigation badges and the Growth
+ * views, so they can never disagree. */
 export function growthSummaryFor({
   audit,
   activeGoalCount,
   opportunityItems,
+  ideas = [],
 }: {
   audit: AuditSummary | null;
   activeGoalCount: number;
   opportunityItems: BusinessOpportunityItem[];
+  ideas?: BusinessIdea[];
 }) {
+  const hasSignal = (audit?.goalCount ?? 0) + activeGoalCount > 0;
+  const shown = eligibleGrowthIdeas(ideas, hasSignal);
   return summarizeGrowth({
     audit,
     activeGoalCount,
     matchesAwaitingResponse: opportunityItems.filter((i) => i.view.group === "for_you").length,
     matchesInProgress: opportunityItems.filter((i) => i.view.group === "confirmed" || i.view.group === "interested").length,
+    ideasForYou: shown.length,
+    ideasNew: unansweredIdeaCount(shown),
   });
 }
 
-/** Growth — "How can Findmi help us grow": goals, preferences, matched
- * Opportunities and Ideas on ONE compact surface. Everything is reused:
- * Growth Setup (/brand-audit), Opportunity goals/Explore/Matches
- * (?tab=opportunities views) and the Ideas rail. Ideas are progressively
- * personalized (lib/growth.ts) — with no goal signal this is a setup state,
- * not a stock list of universal ideas. */
-export default function GrowthView({
+/** Badges for the hub navigation (real counts; zero is omitted). */
+export function growthBadges(summary: ReturnType<typeof growthSummaryFor>): Partial<Record<GrowthDestination, number>> {
+  return { opportunities: summary.matchesAwaitingResponse, ideas: summary.ideasNew };
+}
+
+function Header({ basePath, summary }: { basePath: string; summary: ReturnType<typeof growthSummaryFor> }) {
+  return (
+    <>
+      <header>
+        <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
+        <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>
+      </header>
+      <GrowthNav basePath={basePath} active="goals" badges={growthBadges(summary)} />
+    </>
+  );
+}
+
+/** Goals — the Growth Profile (what Findmi knows about what you want) and
+ * your Opportunity goals, on one page. The Profile is a compact checklist,
+ * not a stack of empty report cards: each Setup section is one row that
+ * either shows what's set or invites you to add it. Everything links into
+ * the existing Growth Setup flow (/brand-audit) and goal wizard. */
+export function GrowthGoalsView({
   basePath,
+  businessId,
   audit,
-  activeGoalCount,
-  opportunityItems,
+  summary,
+  goals,
+  canManage,
+  manageNote,
+  notice,
+}: {
+  basePath: string;
+  businessId: string;
+  audit: AuditSummary | null;
+  summary: ReturnType<typeof growthSummaryFor>;
+  goals: { available: boolean; goals: BusinessGoal[] } | null;
+  canManage: boolean;
+  manageNote: string | null;
+  notice: string | null;
+}) {
+  const setupHref = `${basePath}/brand-audit`;
+  const answered = GROWTH_PROFILE_SECTIONS.filter((s) => summary.sections[s.key]).length;
+  const cta = audit ? auditActionLabel(audit) : GROWTH_SETUP_COPY.cta;
+  return (
+    <div className="flex flex-col gap-6 lg:max-w-3xl">
+      <Header basePath={basePath} summary={summary} />
+      {notice && <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">{notice}</p>}
+
+      <section aria-labelledby="growth-profile">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="growth-profile" className="font-display text-section-title font-bold text-primary">
+            Growth Profile
+          </h2>
+          <span className="text-metadata font-semibold text-muted">
+            {answered}/{GROWTH_PROFILE_SECTIONS.length} Complete
+          </span>
+        </div>
+        <p className="mt-0.5 text-metadata text-muted">The more Findmi knows, the better your Opportunity matches and Ideas get.</p>
+        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-black/[0.06]" aria-hidden="true">
+          <span className="block h-full rounded-full bg-findmi" style={{ width: `${(answered / GROWTH_PROFILE_SECTIONS.length) * 100}%` }} />
+        </div>
+        <ul className="mt-1 divide-y divide-black/[0.06]">
+          {GROWTH_PROFILE_SECTIONS.map((s) => {
+            const done = summary.sections[s.key];
+            return (
+              <li key={s.key}>
+                <Link href={`${setupHref}?step=${s.step}`} className="flex min-h-[48px] items-center gap-3 py-2.5">
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${done ? "bg-findmi text-white" : "border border-black/20 text-transparent"}`}
+                  >
+                    ✓
+                  </span>
+                  <span className="min-w-0 flex-1 text-card-title font-semibold text-primary">{s.label}</span>
+                  <span className={`shrink-0 text-metadata font-semibold ${done ? "text-muted" : "text-accent"}`}>{done ? "Edit" : "Add"}</span>
+                  <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <Link href={setupHref} className="mt-3 inline-flex h-10 items-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600">
+          {cta}
+        </Link>
+      </section>
+
+      <GoalsSection basePath={basePath} businessId={businessId} goals={goals} canManage={canManage} manageNote={manageNote} />
+    </div>
+  );
+}
+
+/** Ideas — Findmi's Opportunity Ideas for this Business (the existing ideas
+ * infrastructure). Generic "All Brands" ideas only appear once the Business
+ * has told Findmi what it wants; ideas Findmi chose for this Business always
+ * appear. */
+export function GrowthIdeasView({
+  basePath,
+  summary,
   ideas,
   canRespondToIdeas,
   respondToIdea,
 }: {
   basePath: string;
-  audit: AuditSummary | null;
-  activeGoalCount: number;
-  opportunityItems: BusinessOpportunityItem[];
+  summary: ReturnType<typeof growthSummaryFor>;
   ideas: BusinessIdea[];
   canRespondToIdeas: boolean;
   respondToIdea: (ideaId: string, response: string, note?: string | null) => Promise<ActionResult>;
 }) {
-  const summary = growthSummaryFor({ audit, activeGoalCount, opportunityItems });
-  const shownIdeas = eligibleGrowthIdeas(ideas, summary.hasSignal);
-  const awaiting = opportunityItems.filter((i) => i.view.group === "for_you");
-  const ranked = [
-    ...awaiting,
-    ...opportunityItems.filter((i) => i.view.group === "confirmed"),
-    ...opportunityItems.filter((i) => i.view.group === "interested"),
-  ].slice(0, 3);
-
+  const shown = eligibleGrowthIdeas(ideas, summary.hasSignal);
   return (
-    <div className="flex flex-col gap-7 lg:max-w-3xl">
+    <div className="flex flex-col gap-6 lg:max-w-3xl">
       <header>
         <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
-        <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>
+        <p className="mt-1 text-body text-muted">Ideas for reaching your goals, from Findmi.</p>
       </header>
-
-      <GrowthPanel basePath={basePath} summary={summary} titleId="growth-overview" heading={false} />
-
-      {/* Opportunity Matches — existing recommendations, else the two
-          ways in (Explore / goals). */}
-      <section aria-labelledby="growth-matches">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="growth-matches" className="flex items-center gap-2 font-display text-section-title font-bold text-primary">
-            Opportunity Matches
-            {awaiting.length > 0 && <Chip tone="aqua">{awaiting.length} Needs Response</Chip>}
-          </h2>
-          <Link href={`${basePath}?tab=opportunities`} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
-            View All
-            <ChevronIcon direction="right" className="h-3 w-3" />
-          </Link>
-        </div>
-        {ranked.length === 1 ? (
-          <div className="mt-3 sm:max-w-md">
-            <BusinessOpportunityCard item={ranked[0].view} place={ranked[0].place} href={`${basePath}/opportunities/${ranked[0].view.recipientId}`} compact commercialOptions={ranked[0].options} />
-          </div>
-        ) : ranked.length > 1 ? (
-          <ul className={`mt-3 ${RAIL_CLASS}`}>
-            {ranked.map((top) => (
-              <li key={top.view.recipientId} className="w-[min(18rem,80vw)] shrink-0 snap-start">
-                <BusinessOpportunityCard item={top.view} place={top.place} href={`${basePath}/opportunities/${top.view.recipientId}`} compact commercialOptions={top.options} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
-            <li>
-              <Link href={`${basePath}?tab=opportunities&view=explore`} className="flex items-center gap-3 py-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center text-findmi-700">
-                  <SparkGlyph className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-card-title font-semibold text-primary">Explore Opportunities</span>
-                  <span className="block text-metadata text-muted">Activations, pop-ups, sampling, vending and more.</span>
-                </span>
-                <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
-              </Link>
-            </li>
-            <li>
-              <Link href={`${basePath}/opportunities/goals/new`} className="flex items-center gap-3 py-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center text-findmi-700">
-                  <GoalGlyph className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-card-title font-semibold text-primary">Add A Goal</span>
-                  <span className="block text-metadata text-muted">So our team can recommend the right Opportunities.</span>
-                </span>
-                <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
-              </Link>
-            </li>
-          </ul>
-        )}
-      </section>
-
-      {/* Ideas — only once there is signal (or Findmi picked one for this
-          Business). Without it, the setup state above is the whole story. */}
-      {shownIdeas.length > 0 ? (
-        <IdeasForYourBrand ideas={shownIdeas} canRespond={canRespondToIdeas} respond={respondToIdea} />
-      ) : (
-        !summary.hasSignal && (
-          <section aria-labelledby="growth-ideas">
-            <h2 id="growth-ideas" className="font-display text-section-title font-bold text-primary">
-              Ideas For Your Brand
-            </h2>
-            <p className="mt-1 text-body text-muted">
-              {GROWTH_SETUP_COPY.body}{" "}
-              <Link href={`${basePath}/brand-audit`} className="font-semibold text-accent hover:underline">
-                {GROWTH_SETUP_COPY.cta}
+      <GrowthNav basePath={basePath} active="ideas" badges={growthBadges(summary)} />
+      {shown.length > 0 ? (
+        <>
+          <IdeasForYourBrand ideas={shown} layout="grid" canRespond={canRespondToIdeas} respond={respondToIdea} />
+          {summary.progress < 100 && (
+            <p className="text-metadata text-muted">
+              Completing your Growth Profile helps Findmi suggest Ideas that fit your Business.{" "}
+              <Link href={`${basePath}?tab=growth`} className="font-semibold text-accent hover:underline">
+                {GROWTH_SETUP_COPY.improve}
               </Link>
             </p>
-          </section>
-        )
+          )}
+        </>
+      ) : (
+        <section aria-labelledby="growth-ideas-empty" className="rounded-2xl bg-black/[0.03] px-4 py-4">
+          <h2 id="growth-ideas-empty" className="text-card-title font-bold text-primary">
+            {summary.hasSignal ? "No Ideas Right Now" : "Ideas Get Better With Your Goals"}
+          </h2>
+          <p className="mt-1 text-body text-muted">
+            {summary.hasSignal
+              ? "Findmi adds Ideas as your Growth Profile and activity grow. Check back soon."
+              : "Completing your Growth Profile helps Findmi suggest Ideas that fit your Business. Ideas Findmi picks just for you show up here as soon as they exist."}
+          </p>
+          {!summary.hasSignal && (
+            <Link href={`${basePath}?tab=growth`} className="mt-3 inline-flex h-10 items-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600">
+              {GROWTH_SETUP_COPY.cta}
+            </Link>
+          )}
+        </section>
       )}
     </div>
   );

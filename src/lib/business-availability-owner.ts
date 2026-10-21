@@ -267,17 +267,17 @@ export async function reviewAvailability(admin: SupabaseClient, availabilityId: 
 export async function searchAvailabilityLocations(
   admin: SupabaseClient,
   query: string
-): Promise<{ id: string; name: string; city: string | null; state: string | null }[]> {
+): Promise<{ id: string; name: string; address: string | null; city: string | null; state: string | null }[]> {
   const q = query.trim().replace(/[%,()]/g, " ").slice(0, 60);
   if (q.length < 2) return [];
   const { data } = await admin
     .from("locations")
-    .select("id, name, city, state")
+    .select("id, name, address, city, state")
     .eq("is_demo", false)
     .is("archived_at", null)
     .is("trashed_at", null)
-    .or(`name.ilike.%${q}%,city.ilike.%${q}%`)
+    .or(`name.ilike.%${q}%,city.ilike.%${q}%,address.ilike.%${q}%`)
     .order("name")
     .limit(20);
-  return (data ?? []) as { id: string; name: string; city: string | null; state: string | null }[];
+  return (data ?? []) as { id: string; name: string; address: string | null; city: string | null; state: string | null }[];
 }

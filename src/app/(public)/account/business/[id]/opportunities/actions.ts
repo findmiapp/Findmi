@@ -87,13 +87,13 @@ export async function submitGoal(businessId: string, goalId: string | null, _pre
   revalidatePath(`/account/business/${businessId}`);
   redirect(
     goalId
-      ? `/account/business/${businessId}?tab=opportunities&view=goals&goal=saved`
+      ? `/account/business/${businessId}?tab=growth&goal=saved`
       : `/account/business/${businessId}/opportunities/goals/new?created=${result.goalId}`
   );
 }
 
 export async function changeGoalStatus(businessId: string, goalId: string, next: string) {
-  const back = `/account/business/${businessId}?tab=opportunities&view=goals`;
+  const back = `/account/business/${businessId}?tab=growth`;
   if (!isGoalStatus(next)) redirect(`${back}&error=${encodeURIComponent("That change isn't available.")}`);
   let result: Awaited<ReturnType<typeof setBusinessGoalStatus>>;
   try {

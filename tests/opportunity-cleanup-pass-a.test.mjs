@@ -16,7 +16,10 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
 
 const B = "src/app/(public)/account/business/[id]";
 const VIEW = read(`${B}/v2/OpportunitiesView.tsx`);
-const HOME = read(`${B}/v2/GrowthView.tsx`); // Opportunity Matches moved from Home into Growth
+const HOME = read(`${B}/v2/GrowthView.tsx`); // Growth hub views (Opportunity cards live in OpportunitiesView)
+const GROWTH = read("src/lib/growth.ts");
+const GROWTH_VIEW = read(`${B}/v2/GrowthView.tsx`);
+const GROWTH_NAV = read(`${B}/v2/GrowthNav.tsx`);
 const GOALS_NEW = read(`${B}/opportunities/goals/new/page.tsx`);
 const WIZARD = read(`${B}/opportunities/goals/GoalWizard.tsx`);
 const BIZ_ACTIONS = read(`${B}/opportunities/actions.ts`);
@@ -164,11 +167,11 @@ test("response notifications (interested/not_interested) notify Admin only, scop
 });
 
 // ---------------------------------------------------------------- 10. "New" -> truthful wording
-test("Home's Opportunities badge no longer says 'New' for an offered-and-unanswered item, and the count logic is unchanged", () => {
-  assert.equal(/\d? ?New<\/Chip>|\} New<\/Chip>/.test(HOME), false);
-  assert.match(HOME, /Needs Response<\/Chip>/);
-  // Same underlying filter (offered + open), just renamed from newOnes.
-  assert.match(HOME, /awaiting = opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)/);
+test("Growth's Opportunities status says 'Needs Response' (never 'New') for an offered-and-unanswered item; the count logic is unchanged", () => {
+  assert.match(GROWTH, /Needs Response/);
+  assert.equal(/\bNew Opportunit/.test(GROWTH + GROWTH_NAV), false);
+  // Same underlying filter (offered + open).
+  assert.match(GROWTH_VIEW, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length/);
 });
 
 // ---------------------------------------------------------------- 11. authorization unchanged

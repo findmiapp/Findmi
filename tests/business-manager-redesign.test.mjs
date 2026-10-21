@@ -10,6 +10,8 @@ import { registerHooks } from "node:module";
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "server-only") return { url: "data:text/javascript,export{}", shortCircuit: true };
+    if (specifier === "react") return { url: "data:text/javascript,export const cache=(f)=>f;export default {cache}", shortCircuit: true };
+    if (specifier === "next/headers") return { url: "data:text/javascript,export const cookies=()=>{};export const headers=()=>{}", shortCircuit: true };
     if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
     try {
       return next(specifier, context);
@@ -27,12 +29,13 @@ const PUBLIC_NAV = await import("../src/lib/navigation.ts");
 
 const B = "src/app/(public)/account/business/[id]";
 const read = (p) => readFileSync(p, "utf8");
-const PAGE = read(`${B}/page.tsx`);
+const PAGE = read(`${B}/(manager)/page.tsx`);
 
 // ── Navigation ────────────────────────────────────────────────────────────
-test("mobile bottom nav: Home · Findmi Here · Moments · Performance · More; Products and Growth stay reachable", () => {
+test("mobile bottom nav: Home · Moments · Findmi Here (center) · Performance · More; Products and Growth stay reachable", () => {
   const mobile = NAV.BUSINESS_NAV.filter((n) => !n.desktopOnly).map((n) => n.label);
-  assert.deepEqual(mobile, ["Home", "Findmi Here", "Moments", "Performance", "More"]);
+  assert.deepEqual(mobile, ["Home", "Moments", "Findmi Here", "Performance", "More"]);
+  assert.equal(mobile[2], "Findmi Here", "the center slot");
   const desktop = NAV.BUSINESS_NAV.map((n) => n.label);
   assert.ok(desktop.includes("Products") && desktop.includes("Growth"), "the desktop rail keeps both");
   const more = read(`${B}/v2/MoreMenu.tsx`);
@@ -45,7 +48,8 @@ test("mobile bottom nav: Home · Findmi Here · Moments · Performance · More; 
 test("shell: Opportunities lives under Growth; QR under Performance; Moments has its own section", () => {
   const shell = read(`${B}/v2/BusinessAppShell.tsx`);
   assert.match(shell, /growth|opportunities/);
-  const fn = shell.slice(shell.indexOf("export function sectionForTab"));
+  const nav = read(`${B}/v2/business-nav.ts`);
+  const fn = nav.slice(nav.indexOf("export function sectionForTab"));
   assert.match(fn, /moments/);
   assert.match(fn, /qr/);
   for (const p of ["opportunities/[recipientId]", "opportunities/explore/[listingId]", "opportunities/goals/new"]) {
@@ -53,12 +57,17 @@ test("shell: Opportunities lives under Growth; QR under Performance; Moments has
   }
 });
 
-test("Findmi Here uses the Findmi mark, not a map pin — in the Business nav and in the public nav", () => {
-  const icons = read("src/components/NavIcon.tsx");
-  assert.match(icons, /case "findmi":/);
-  assert.match(read(`${B}/v2/BusinessAppShell.tsx`), /presence: <NavIcon name="findmi"/);
-  assert.match(read("src/lib/navigation.ts"), /href === "\/find" && \(item\.icon_key === "pin" \|\| !item\.icon_key\)/);
-  assert.ok(PUBLIC_NAV.NAV_ICON_KEYS.includes("findmi"));
+test("nav icons come from the existing in-house icon set: Home house, Moments photo, Findmi Here map pin, Performance bar chart, More grid", () => {
+  const shell = read(`${B}/v2/BusinessAppShell.tsx`);
+  assert.match(shell, /home: <NavIcon name="home"/);
+  assert.match(shell, /moments: <NavIcon name="moments"/);
+  assert.match(shell, /presence: <NavIcon name="pin"/, "Findmi Here is a standard map pin");
+  assert.match(shell, /performance: <ChartGlyph/, "Performance is a plain bar chart");
+  assert.match(shell, /more: <MoreGlyph/);
+  assert.doesNotMatch(shell, /name="findmi"|name="target"/, "no brand-mark / radar glyphs in the Business nav");
+  assert.doesNotMatch(read("src/components/NavIcon.tsx"), /case "findmi":/, "the brand-mark glyph is gone");
+  assert.doesNotMatch(read("src/lib/navigation.ts"), /"findmi"/);
+  assert.doesNotMatch(read("package.json"), /lucide|heroicons|react-icons|phosphor|fontawesome/i, "no icon library introduced");
 });
 
 // ── Growth ────────────────────────────────────────────────────────────────
@@ -78,17 +87,73 @@ test("Growth: with no signal it is a setup state; All-Brands ideas are not shown
   assert.equal(G.summarizeGrowth({ audit: null, activeGoalCount: 2, matchesAwaitingResponse: 0, matchesInProgress: 0 }).hasSignal, true);
 });
 
-test("Growth: every number is a real count; setup copy explains value rather than demanding completion", () => {
-  const s = G.summarizeGrowth({ audit: audit({ status: "in_progress", goalCount: 2, challengeCount: 1 }), activeGoalCount: 1, matchesAwaitingResponse: 2, matchesInProgress: 3 });
-  assert.deepEqual([s.goalCount, s.preferencesAnswered, s.preferencesTotal, s.matchesAwaitingResponse, s.matchesInProgress], [3, 2, 5, 2, 3]);
-  assert.match(G.GROWTH_SETUP_COPY.body, /Set your goals and preferences so Findmi can surface more relevant opportunities/);
-  assert.doesNotMatch(read("src/lib/growth.ts"), /Residential Sampling|Workplace Activation/, "no hard-coded universal ideas");
+test("Growth mini-dashboard: Goals · Opportunities · Ideas as direct links with real counts; nothing is gated behind Goals", () => {
+  const base = { audit: audit(), activeGoalCount: 0, matchesAwaitingResponse: 0, matchesInProgress: 0 };
+  const none = G.summarizeGrowth(base);
+  const st = (sum, d) => G.growthDestinationStatus(sum, d);
+  assert.deepEqual(st(none, "goals"), { value: "Get Started", sub: "Set Your Goals" });
+  assert.equal(st(none, "opportunities").value, "Browse");
+  assert.equal(st(none, "ideas").value, "Personalize");
+  // Opportunities stay reachable and show their own status with NO goals.
+  const awaiting = G.summarizeGrowth({ ...base, matchesAwaitingResponse: 2, matchesInProgress: 1 });
+  assert.deepEqual(st(awaiting, "opportunities"), { value: "2 Needs Response", sub: "Opportunities", highlight: true });
+  assert.equal(awaiting.hasSignal, false);
+  const withGoals = G.summarizeGrowth({ ...base, audit: audit({ status: "in_progress", goalCount: 2 }), activeGoalCount: 1, ideasForYou: 4, ideasNew: 3 });
+  assert.equal(st(withGoals, "goals").value, "3 Set");
+  assert.deepEqual(st(withGoals, "ideas"), { value: "4 For You", sub: "3 New" });
+  // Findmi-targeted Ideas show without goals
+  const targeted = G.summarizeGrowth({ ...base, ideasForYou: 1, ideasNew: 1 });
+  assert.equal(st(targeted, "ideas").value, "1 For You");
+  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "opportunities", "ideas"]);
+  assert.equal(G.growthHref("/b", "goals"), "/b?tab=growth");
+  assert.equal(G.growthHref("/b", "opportunities"), "/b?tab=opportunities");
+  assert.equal(G.growthHref("/b", "ideas"), "/b?tab=growth&view=ideas");
   const panel = read(`${B}/v2/GrowthPanel.tsx`);
-  assert.match(panel, /Your Goals/);
-  assert.match(panel, /Opportunities/);
-  assert.match(panel, /Preferences/);
-  assert.match(panel, /GROWTH_SETUP_COPY\.improve/);
+  assert.match(panel, /GROWTH_DESTINATIONS\.map/);
   assert.doesNotMatch(panel, /Math\.random|mock|demo/i);
+  assert.doesNotMatch(read("src/lib/growth.ts"), /Residential Sampling|Workplace Activation/, "no hard-coded universal ideas");
+});
+
+test("Growth hub: persistent Goals · Opportunities · Ideas navigation on every Growth page — no dead ends", () => {
+  const nav = read(`${B}/v2/GrowthNav.tsx`);
+  assert.match(nav, /GROWTH_DESTINATIONS\.map/);
+  assert.match(nav, /<OptimisticTabs/, "the highlight moves on tap");
+  assert.match(read(`${B}/v2/OptimisticTabs.tsx`), /"aria-current": isActive \? \("page" as const\) : undefined/);
+  assert.match(PAGE, /<GrowthNav basePath=\{basePath\} active="opportunities"/, "Opportunities view");
+  const views = read(`${B}/v2/GrowthView.tsx`);
+  assert.equal((views.match(/<GrowthNav /g) ?? []).length, 2, "Goals + Ideas headers");
+  assert.match(read(`${B}/opportunities/goals/shared.tsx`), /<GrowthNav basePath=\{basePath\} active="goals"/, "goal wizard + Growth Setup frame");
+  for (const f of ["brand-audit/page.tsx", "opportunities/goals/new/page.tsx", "opportunities/goals/[goalId]/edit/page.tsx"]) {
+    assert.match(read(`${B}/${f}`), /<GoalFrame basePath=\{shell\.basePath\}>/, f);
+  }
+  assert.match(read(`${B}/brand-audit/page.tsx`), /homeHref=\{`\$\{shell\.basePath\}\?tab=growth`\}/, "Setup exits to Growth");
+  // The old Your Goals sub-view and the goal wizard's return target land on Growth → Goals.
+  assert.match(PAGE, /tab === "opportunities" && rawSearchParams.view === "goals"[\s\S]{0,160}tab=growth/);
+  assert.match(read(`${B}/opportunities/actions.ts`), /\?tab=growth&goal=saved/);
+});
+
+test("Growth Goals: the Growth Profile is a compact checklist (no empty report cards), linking into the existing Setup steps", () => {
+  const views = read(`${B}/v2/GrowthView.tsx`);
+  assert.match(views, /GROWTH_PROFILE_SECTIONS\.map/);
+  assert.match(views, /<GoalsSection /);
+  assert.match(views, /\? "Edit" : "Add"/);
+  const sections = G.GROWTH_PROFILE_SECTIONS.map((x) => x.label);
+  assert.deepEqual(sections, ["Goals", "Current Challenges", "Target Audience", "Markets", "Activation Environments"]);
+  const flow = read(`${B}/brand-audit/BrandAuditFlow.tsx`);
+  assert.doesNotMatch(flow, /Not answered yet/);
+  assert.match(flow, /Not Added Yet/);
+  const admin = read("src/components/admin/BusinessIntelligencePanel.tsx");
+  assert.doesNotMatch(admin, /Not answered yet/);
+  assert.match(admin, /Not provided yet:/, "missing sections collapse into one compact line");
+});
+
+test("Ideas: existing ideas infrastructure; generic ideas gated on signal, Findmi-targeted ideas always shown; explains how to improve", () => {
+  const views = read(`${B}/v2/GrowthView.tsx`);
+  assert.match(views, /eligibleGrowthIdeas\(ideas, summary\.hasSignal\)/);
+  assert.match(views, /<IdeasForYourBrand ideas=\{shown\} layout="grid"/);
+  assert.match(views, /Ideas Get Better With Your Goals/);
+  assert.match(views, /Completing your Growth Profile helps Findmi suggest Ideas/);
+  assert.doesNotMatch(read("src/lib/brand-audit.ts"), /create table/i);
 });
 
 test("Home no longer shows the Brand Audit card; the audit becomes Growth Setup (route and data unchanged)", () => {
@@ -96,7 +161,8 @@ test("Home no longer shows the Brand Audit card; the audit becomes Growth Setup 
   assert.doesNotMatch(home, /Brand Audit/);
   assert.match(read(`${B}/brand-audit/page.tsx`), /Growth Setup/);
   assert.ok(readdirSync(`${B}/brand-audit`).includes("page.tsx"), "/brand-audit still exists");
-  assert.match(PAGE, /<GrowthView\s/);
+  assert.match(PAGE, /<GrowthGoalsView\s/);
+  assert.match(PAGE, /<GrowthIdeasView\s/);
   assert.match(PAGE, /getIdeasForBusiness\(id\)/);
 });
 
@@ -185,8 +251,8 @@ test("availability: owner submissions are pending/business-sourced, scoped to th
   assert.match(actions, /requireBusinessMember\(businessId\)/);
   assert.match(actions, /membership\.viaAdmin \|\| isManagingRole\(membership\.role\)/);
   const view = read(`${B}/v2/AvailableAtView.tsx`);
-  for (const w of ["Where", "How are you there?", "What?", "When?", "Pending Review"]) assert.ok(view.includes(w) || read("src/lib/business-availability-domain.ts").includes(w), w);
-  assert.match(read(`${B}/v2/PresenceViews.tsx`), /key: "find-us", label: "Find Us At"/);
+  for (const w of ["Where", "How are you there?", "Products", "When?", "Pending Review"]) assert.ok(view.includes(w) || read("src/lib/business-availability-domain.ts").includes(w), w);
+  assert.match(read(`${B}/v2/PresenceViews.tsx`), /key: "find-us", label: "Find Us Here"/);
   assert.match(read("src/app/admin/(protected)/businesses/availability-actions.ts"), /adminReviewFindUsAt/);
 });
 
@@ -318,4 +384,25 @@ test("QR integrity wiring: occurrence must belong to the Event AND be an allowed
   const q = read("src/app/q/[code]/route.ts");
   assert.match(q, /event_occurrence_id: row\.event_occurrence_id/, "qr_scan keeps event + occurrence attribution");
   assert.match(q, /subjectType: "event_occurrence"/);
+});
+
+test("Moments: connected-Moments model — filters are pure, reads use existing relationships, no special-casing, no display-control writes", async () => {
+  const M = await import("../src/lib/business-moments.ts");
+  const rows = [
+    { byUs: true, relations: ["us"] },
+    { byUs: false, relations: ["tagged"] },
+    { byUs: false, relations: ["event"] },
+    { byUs: false, relations: ["location", "tagged"] },
+  ];
+  assert.deepEqual(M.countMoments(rows), { all: 4, us: 1, connected: 3, events: 1, locations: 1 });
+  assert.equal(M.filterMoments(rows, "all").length, 4);
+  assert.equal(M.filterMoments(rows, "connected").length, 3);
+  assert.equal(M.filterMoments(rows, "us").length, 1);
+  assert.equal(M.isMomentFilter("events"), true);
+  assert.equal(M.isMomentFilter("nope"), false);
+  const src = read("src/lib/business-moments.ts");
+  for (const t of ["journal_entry_connections", "event_businesses", "host_business_id", "business_locations", "author_business_id"]) assert.ok(src.includes(t), t);
+  assert.match(src, /visibility === "public" && .*status === "published"|"public".*"published"/s, "connected Moments follow the public + published rule");
+  assert.doesNotMatch(src, /lavazza/i, "no per-brand special-casing");
+  assert.doesNotMatch(src, /\.(insert|update|delete|upsert)\(/, "the manager list never writes to another author's Moment");
 });

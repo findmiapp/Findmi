@@ -94,7 +94,7 @@ test("Short Description is not on Brand Review; About is the single description 
   assert.match(PAGE, /about: fromDraft \? \(fromDraft\.about \?\? fromDraft\.sd \?\? ""\)/);
   assert.match(CREATE, /const shortDescription = brandOnboarding \? null : \(str\(formData, "short_description"\)/);
   // compatibility: the column, normal creation and Business Manager keep it
-  const manager = readFileSync("src/app/(public)/account/business/[id]/page.tsx", "utf8");
+  const manager = readFileSync("src/app/(public)/account/business/[id]/(manager)/page.tsx", "utf8");
   assert.match(manager, /name="short_description"/);
   assert.match(manager, /!\(business\.short_description \|\| business\.description\)/, "a Brand with About isn't flagged incomplete");
 });

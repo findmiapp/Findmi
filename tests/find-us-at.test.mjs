@@ -234,7 +234,7 @@ test("placement, Admin wiring, RLS migration, no map", () => {
   const adminPage = read("src/app/admin/(protected)/businesses/[id]/page.tsx");
   assert.doesNotMatch(adminPage, /\{ key: "find-us-at", label: "Find Us At" \}/, "no longer a separate top-level tab");
   assert.match(adminPage, /"find-us-at": "locations"/, "old ?tab=find-us-at links land on Locations");
-  assert.match(adminPage, /tab === "locations" && \(\s*<div className="mt-5[^"]*">\s*<p className="text-sm font-semibold text-ink">Find Us At<\/p>/, "Find Us At is the second section inside Locations");
+  assert.match(adminPage, /tab === "locations" && \(\s*<div className="mt-5[^"]*">\s*<p className="text-sm font-semibold text-ink">Find Us Here<\/p>/, "Find Us Here is the second section inside Locations");
   assert.match(adminPage, /<form action=\{adminConnectFindUsAt\.bind\(null, id\)\}/);
   assert.match(adminPage, /entity="locations"/, "existing searchable Location picker");
   assert.match(read("src/app/admin/(protected)/businesses/availability-actions.ts"), /const admin = await requireAdminSupabase\(\);/, "Admin only");
