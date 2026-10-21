@@ -37,6 +37,12 @@ const EXCLUDED_EVENT_SLUGS = new Set([
   "jcymap-2026-celebration-art-exhibition-documentary-premiere",
   "cat-stick-easel-moon-closing-reception",
 ]);
+/** Covers whose official source's share image is branding, not a photo
+ * (Battello's logo, the Downtown SID icon, the Hudson County seal, Nimbus
+ * Dance's logo). Stored by the first run, then cleared on review; never
+ * re-fetched from these sources. */
+const EXCLUDED_PLACE_COVER_SLUGS = new Set(["battello-jersey-city", "newark-avenue-pedestrian-plaza", "lincoln-park-jersey-city"]);
+const EXCLUDED_BUSINESS_COVER_SLUGS = new Set(["nimbus-dance"]);
 /** Rocky Horror's source is the LSC After Dark series page: its image is
  * accepted only when the resolved image itself is clearly Rocky Horror's. */
 const SPECIFIC_IMAGE_REQUIRED: Record<string, RegExp> = {
@@ -134,6 +140,7 @@ async function main() {
 
   for (const l of locations) {
     if (l.cover_image_url) log({ table: "locations", name: l.name, column: "cover_image_url", status: "skipped", detail: "already has media" });
+    else if (EXCLUDED_PLACE_COVER_SLUGS.has(l.slug)) log({ table: "locations", name: l.name, column: "cover_image_url", status: "unresolved", detail: "excluded: source image is branding, not a photo" });
     else if (!l.website_url) log({ table: "locations", name: l.name, column: "cover_image_url", status: "unresolved", detail: "no official source on record" });
     else await fill(db, "locations", "location", l, "cover_image_url", "cover", l.website_url, null);
   }
@@ -145,6 +152,7 @@ async function main() {
   }
   for (const b of businesses) {
     if (b.cover_image_url) log({ table: "businesses", name: b.name, column: "cover_image_url", status: "skipped", detail: "already has media" });
+    else if (EXCLUDED_BUSINESS_COVER_SLUGS.has(b.slug)) log({ table: "businesses", name: b.name, column: "cover_image_url", status: "unresolved", detail: "excluded: source image is branding, not a photo" });
     else if (!b.website_url) log({ table: "businesses", name: b.name, column: "cover_image_url", status: "unresolved", detail: "no official source on record" });
     else await fill(db, "businesses", "business", b, "cover_image_url", "cover", b.website_url, null);
 
