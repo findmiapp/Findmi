@@ -168,7 +168,7 @@ export default function QrIntelligentCreator({
             View Details
           </Link>
         </div>
-        <Link href={`/account/business/${businessId}/qr`} className={`${primaryButtonClass("md")} mt-4 w-full`}>
+        <Link href={`/account/business/${businessId}?tab=qr`} className={`${primaryButtonClass("md")} mt-4 w-full`}>
           Done
         </Link>
       </div>

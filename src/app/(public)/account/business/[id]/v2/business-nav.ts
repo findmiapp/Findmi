@@ -37,7 +37,6 @@ export const BUSINESS_MORE_TABS = {
   inquiries: { label: "Inquiry Settings", description: "How customers can contact you" },
   orders: { label: "Orders", description: "Marketplace orders to fulfill" },
   settings: { label: "Plan & Settings", description: "Findmi Pro, areas and business settings" },
-  referral: { label: "Referral Program", description: undefined as string | undefined },
 } as const;
 
 /** Old tab key -> new canonical destination. A visit to any of these keys

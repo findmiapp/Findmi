@@ -3,16 +3,13 @@ import { CheckboxField, NumberField, TextField, TextareaField } from "@/componen
 import ImageField from "@/components/admin/ImageField";
 import { getAdminSiteSections } from "@/lib/admin/site-queries";
 import {
-  DEFAULT_DISCOVERY_TOPICS,
-  getDiscoveryTopicsRaw,
-  HOMEPAGE_ORDERABLE_KEYS,
   HOMEPAGE_SECTIONS,
   resolveHeroImageSlots,
   resolveSection,
   resolveWeatherConfig,
   type SectionDefaults,
 } from "@/lib/site-sections";
-import { saveSiteSection, saveDiscoveryTopics, saveWeatherConfig, moveSectionDown, moveSectionUp } from "./actions";
+import { saveSiteSection, saveWeatherConfig } from "./actions";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
@@ -29,19 +26,17 @@ export default async function HomepageSiteEditorPage({
     .filter(([, def]) => def.orderable === false)
     .map(([key]) => key);
 
-  // Featured Brands, Shop Local, and the Business Showcase are no longer
-  // rendered from site_sections — the public homepage now builds those as
-  // Homepage Rows instead (see the link above), so editing these three
-  // keys here would silently do nothing. Excluded rather than left as a
-  // dead control; no data is deleted, the site_sections rows just stop
-  // being read for these keys (page.tsx no longer calls resolveSection on
-  // them either).
-  const rowDrivenKeys = new Set(["business_doorway", "shop_findmi", "featured_brands"]);
-  const orderedKeys = [...HOMEPAGE_ORDERABLE_KEYS]
-    .filter((key) => !rowDrivenKeys.has(key))
-    .sort(
-      (a, b) => resolveSection(overrides, a, HOMEPAGE_SECTIONS[a]).order - resolveSection(overrides, b, HOMEPAGE_SECTIONS[b]).order
-    );
+  // The public homepage reads exactly these fixed sections: Hero (pinned
+  // above), Featured Events and Closing CTA. Every other site_sections
+  // card (Business Acquisition Line, Brand Spotlight, Shop Findmi, Findmi
+  // Here, Featured Brands, Curated Category Feeds, Explore By Category,
+  // Brands On The Move, Findmi For Business, One Profile, Popular
+  // Locations) and the Discovery Topics chip row have no public reader —
+  // the rest of the homepage is composed from Homepage Rows and Topics &
+  // Lanes. Those controls are left out of this editor; their stored
+  // rows, keys and save actions are untouched. The homepage no longer
+  // orders these sections, so there are no Move controls either.
+  const liveSectionKeys = ["featured_events", "closing_cta"];
 
   return (
     <div>
@@ -87,24 +82,10 @@ export default async function HomepageSiteEditorPage({
         <WeatherCard overrides={overrides} />
       </div>
 
-      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">
-        Discovery Topics — shortcut row after Search
-      </p>
+      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">Other Homepage Sections</p>
       <div className="mt-2 flex flex-col gap-3">
-        <DiscoveryTopicsCard overrides={overrides} />
-      </div>
-
-      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">Homepage Sections — In Order</p>
-      <div className="mt-2 flex flex-col gap-3">
-        {orderedKeys.map((key, i) => (
-          <SectionCard
-            key={key}
-            sectionKey={key}
-            def={HOMEPAGE_SECTIONS[key]}
-            overrides={overrides}
-            canMoveUp={i > 0}
-            canMoveDown={i < orderedKeys.length - 1}
-          />
+        {liveSectionKeys.map((key) => (
+          <SectionCard key={key} sectionKey={key} def={HOMEPAGE_SECTIONS[key]} overrides={overrides} />
         ))}
       </div>
     </div>
@@ -112,7 +93,6 @@ export default async function HomepageSiteEditorPage({
 }
 
 function savedSectionLabel(saved: string): string {
-  if (saved === "discovery_topics") return "Discovery Topics";
   if (saved === "weather") return "Weather / Local Context";
   return HOMEPAGE_SECTIONS[saved]?.label ?? saved;
 }
@@ -137,52 +117,6 @@ function WeatherCard({ overrides }: { overrides: Awaited<ReturnType<typeof getAd
           hint="A city name Findmi can look up, e.g. &quot;Staten Island, NY&quot;."
         />
         <CheckboxField label="Show weather" name="weather_show" defaultChecked={config.show} />
-        <button
-          type="submit"
-          className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
-        >
-          Save
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function DiscoveryTopicsCard({ overrides }: { overrides: Awaited<ReturnType<typeof getAdminSiteSections>> }) {
-  const topics = getDiscoveryTopicsRaw(overrides);
-
-  return (
-    <div className="rounded-2xl border border-black/10 bg-white p-4">
-      <p className="font-display text-sm font-semibold tracking-tight text-ink">Discovery Topics</p>
-      <p className="mt-1 text-xs text-ink/45">
-        The compact chip row between Search and Upcoming Events. Each topic is a plain link — not a
-        cross-content filter. Leave a Destination blank to hide that topic rather than link somewhere broken.
-      </p>
-
-      <form action={saveDiscoveryTopics} className="mt-3 flex flex-col gap-3">
-        {topics.map((topic, i) => {
-          const n = i + 1;
-          const def = DEFAULT_DISCOVERY_TOPICS[i];
-          return (
-            <div key={n} className="rounded-xl border border-black/5 bg-black/[0.015] p-3">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">Topic {n}</p>
-              <div className="grid gap-3 sm:grid-cols-[2fr_3fr_1fr]">
-                <TextField label="Label" name={`topic_${n}_label`} defaultValue={topic.label} placeholder={def.label} />
-                <TextField
-                  label="Destination"
-                  name={`topic_${n}_url`}
-                  defaultValue={topic.url}
-                  placeholder={def.url || "/businesses?category=…"}
-                  hint="Internal path (/…) or https://"
-                />
-                <NumberField label="Order" name={`topic_${n}_order`} defaultValue={topic.order} step="1" />
-              </div>
-              <div className="mt-2">
-                <CheckboxField label="Visible" name={`topic_${n}_visible`} defaultChecked={topic.visible} />
-              </div>
-            </div>
-          );
-        })}
         <button
           type="submit"
           className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
@@ -243,48 +177,19 @@ function SectionCard({
   sectionKey,
   def,
   overrides,
-  canMoveUp,
-  canMoveDown,
 }: {
   sectionKey: string;
   def: SectionDefaults;
   overrides: Awaited<ReturnType<typeof getAdminSiteSections>>;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
 }) {
   const resolved = resolveSection(overrides, sectionKey, def);
   const row = overrides.get(sectionKey);
   const action = saveSiteSection.bind(null, sectionKey);
-  const showMoveControls = canMoveUp !== undefined;
 
   return (
     <div className="rounded-2xl border border-black/10 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="font-display text-sm font-semibold tracking-tight text-ink">{def.label}</p>
-        {showMoveControls && (
-          <div className="flex shrink-0 gap-1.5">
-            <form action={moveSectionUp.bind(null, sectionKey)}>
-              <button
-                type="submit"
-                disabled={!canMoveUp}
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:bg-black/[0.03] disabled:opacity-30"
-                aria-label="Move up"
-              >
-                ↑
-              </button>
-            </form>
-            <form action={moveSectionDown.bind(null, sectionKey)}>
-              <button
-                type="submit"
-                disabled={!canMoveDown}
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:bg-black/[0.03] disabled:opacity-30"
-                aria-label="Move down"
-              >
-                ↓
-              </button>
-            </form>
-          </div>
-        )}
       </div>
 
       {def.fields.length === 0 ? (

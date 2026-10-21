@@ -226,7 +226,7 @@ export async function createIntelligentQrCampaign(input: CreateIntelligentQrInpu
       .select("id")
       .single();
     if (!error && inserted) {
-      revalidatePath(`/account/business/${input.businessId}/qr`);
+      revalidatePath(`/account/business/${input.businessId}`);
       return { ok: true, campaign: await buildCreatedCampaign(name, code, inserted.id, destination.destinationPath) };
     }
     if (error && error.code !== "23505") return { ok: false, error: "Could not create this QR code. Please try again." };
@@ -287,7 +287,7 @@ export async function updateQrCampaign(input: UpdateQrCampaignInput): Promise<Qr
   if (error) return { ok: false, error: "Could not save changes. Please try again." };
 
   revalidatePath(`/account/qr/${input.campaignId}`);
-  if (row.business_id) revalidatePath(`/account/business/${row.business_id}/qr`);
+  if (row.business_id) revalidatePath(`/account/business/${row.business_id}`);
   return { ok: true };
 }
 
@@ -327,7 +327,7 @@ export async function setQrCampaignLifecycle(campaignId: string, targetStatus: Q
   if (error) return { ok: false, error: "Could not update status. Please try again." };
 
   revalidatePath(`/account/qr/${campaignId}`);
-  if (row.business_id) revalidatePath(`/account/business/${row.business_id}/qr`);
+  if (row.business_id) revalidatePath(`/account/business/${row.business_id}`);
   return { ok: true };
 }
 
@@ -370,7 +370,7 @@ export async function duplicateQrCampaign(campaignId: string): Promise<QrCreateR
       .select("id")
       .single();
     if (!error && inserted) {
-      if (row.business_id) revalidatePath(`/account/business/${row.business_id}/qr`);
+      if (row.business_id) revalidatePath(`/account/business/${row.business_id}`);
       return { ok: true, campaign: await buildCreatedCampaign(name, code, inserted.id, row.destination_path) };
     }
     if (error && error.code !== "23505") return { ok: false, error: "Could not duplicate this QR code. Please try again." };

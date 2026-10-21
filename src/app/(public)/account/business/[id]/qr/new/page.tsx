@@ -24,18 +24,18 @@ export default async function NewBusinessQrCampaignPage({ params }: { params: Pr
   }
 
   const admin = getAdminSupabase();
-  if (!admin) redirect(errorRedirectUrl(`/account/business/${id}/qr`, "Server isn't configured."));
+  if (!admin) redirect(errorRedirectUrl(`/account/business/${id}?tab=qr`, "Server isn't configured."));
 
   const [{ data: business }, options] = await Promise.all([
     admin.from("businesses").select("name, slug").eq("id", id).maybeSingle(),
     getBusinessQrCreatorOptions(admin, id),
   ]);
 
-  if (!business) redirect(errorRedirectUrl(`/account/business/${id}/qr`, "Business not found."));
+  if (!business) redirect(errorRedirectUrl(`/account/business/${id}?tab=qr`, "Business not found."));
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
-      <Link href={`/account/business/${id}/qr`} className="flex w-fit items-center gap-1 text-metadata font-semibold text-muted hover:text-secondary">
+      <Link href={`/account/business/${id}?tab=qr`} className="flex w-fit items-center gap-1 text-metadata font-semibold text-muted hover:text-secondary">
         <ChevronIcon direction="left" className="h-3 w-3" />
         Back
       </Link>

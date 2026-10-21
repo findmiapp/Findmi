@@ -11,7 +11,6 @@ import {
 import type { BusinessFollowerSummary } from "@/lib/business-followers";
 import SupabaseImage from "@/components/SupabaseImage";
 import { Panel, RowList, Row, Stat, SectionEyebrow, PerformanceMetric, ShareBar, RankedPerformanceRow, secondaryButtonClass } from "../../owner-ui";
-import QrCampaignCreator from "./QrCampaignCreator";
 
 // Performance Command Center pass — Analytics stays presentational-only
 // here: every number still comes pre-aggregated from
@@ -132,10 +131,6 @@ export default function PerformanceTab({
   businessName,
   businessSlug,
   followerSummary,
-  qrEligibleAppearances,
-  qrEligibleProducts,
-  qrEligibleEvents,
-  qrEligibleLocations,
 }: {
   data: OwnerPerformanceData;
   basePath: string;
@@ -158,14 +153,10 @@ export default function PerformanceTab({
    * (already fetched unconditionally by page.tsx for the Where I'll Be/
    * Products tabs), reduced to {id, name} for the QR creator's target
    * picker. No new query added here or in page.tsx. */
-  qrEligibleAppearances: { id: string; name: string }[];
-  qrEligibleProducts: { id: string; name: string }[];
   /** QR Campaigns V1 — this owner's OWN events/locations (event_members/
    * location_members — independent of this Business's own membership),
    * offered as additional central-creation destinations. Already fetched
    * unconditionally by page.tsx; no new query added here. */
-  qrEligibleEvents: { id: string; name: string }[];
-  qrEligibleLocations: { id: string; name: string }[];
 }) {
   const nonZeroTrendPoints = data.trend.points.filter((p) => p.value > 0);
 
@@ -571,16 +562,9 @@ export default function PerformanceTab({
                     </div>
                   )}
                   <div className="mt-3 border-t border-black/[0.05] pt-3">
-                    <QrCampaignCreator
-                      centralOptions={{
-                        businessId,
-                        businessName,
-                        appearances: qrEligibleAppearances,
-                        products: qrEligibleProducts,
-                        events: qrEligibleEvents,
-                        locations: qrEligibleLocations,
-                      }}
-                    />
+                    <Link href={`${basePath}?tab=qr`} className={secondaryButtonClass("sm")}>
+                      Manage QR Campaigns
+                    </Link>
                   </div>
                 </>
               ) : (
@@ -588,16 +572,9 @@ export default function PerformanceTab({
                   <p className="text-body text-muted">
                     Connect your real-world presence to Findmi and see what happens after the scan.
                   </p>
-                  <QrCampaignCreator
-                    centralOptions={{
-                      businessId,
-                      businessName,
-                      appearances: qrEligibleAppearances,
-                      products: qrEligibleProducts,
-                      events: qrEligibleEvents,
-                      locations: qrEligibleLocations,
-                    }}
-                  />
+                  <Link href={`${basePath}?tab=qr`} className={secondaryButtonClass("sm")}>
+                    Manage QR Campaigns
+                    </Link>
                 </div>
               )}
             </Panel>

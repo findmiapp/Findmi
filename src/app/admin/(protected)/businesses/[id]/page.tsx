@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getAdminBusinessById, getAdminProducts, getAllCategories } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
 import {
@@ -106,11 +106,9 @@ const ADMIN_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "intelligence", label: "Intelligence" },
   { key: "profile", label: "Profile" },
-  { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
   { key: "appearances", label: "Appearances" },
   { key: "locations", label: "Locations" },
-  { key: "find-us-at", label: "Find Us At" },
   { key: "categories", label: "Categories" },
   { key: "ownership", label: "Ownership" },
   { key: "plan", label: "Plan" },
@@ -119,6 +117,11 @@ const ADMIN_TABS: TabNavItem[] = [
   { key: "internal", label: "Internal" },
 ];
 const ADMIN_TAB_KEYS = new Set(ADMIN_TABS.map((t) => t.key));
+
+// Former top-level tabs that now live inside another tab (Gallery is a
+// section of Profile; Find Us At is a section of Locations). Old links,
+// bookmarks and action redirects keep working: they land on the new tab.
+const LEGACY_ADMIN_TABS: Record<string, string> = { gallery: "profile", "find-us-at": "locations" };
 
 export default async function EditBusinessPage({
   params,
@@ -129,6 +132,11 @@ export default async function EditBusinessPage({
 }) {
   const { id } = await params;
   const { tab: tabParam, error, saved, member_updated, note_saved } = await searchParams;
+  if (tabParam && LEGACY_ADMIN_TABS[tabParam]) {
+    const q = new URLSearchParams({ tab: LEGACY_ADMIN_TABS[tabParam] });
+    for (const [k, v] of Object.entries({ error, saved, member_updated, note_saved })) if (v) q.set(k, v);
+    redirect(`/admin/businesses/${id}?${q.toString()}`);
+  }
   const tab = tabParam && ADMIN_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   const [result, categories, membership, accessByEntity, products, accessOverview] = await Promise.all([
@@ -177,9 +185,10 @@ export default async function EditBusinessPage({
   const businessLocations =
     tab === "locations" && marketsAdmin ? await getLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
   // Find Us At V1 — third-party Locations where this Business is available
-  // (business_location_availability), only fetched for its tab.
+  // (business_location_availability), only fetched for the Locations tab
+  // (its second section).
   const availabilityLocations =
-    tab === "find-us-at" && marketsAdmin ? await getAvailabilityLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
+    tab === "locations" && marketsAdmin ? await getAvailabilityLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
@@ -563,7 +572,9 @@ export default async function EditBusinessPage({
         )}
 
         {/* ── Gallery ──────────────────────────────────────────────── */}
-        {tab === "gallery" && (
+        {tab === "profile" && (
+          <section aria-label="Gallery" className="mt-8 flex flex-col gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">Gallery</h2>
           <form action={galleryAction} className="flex flex-col gap-5">
             <div className="rounded-2xl border border-black/10 p-4">
               <GalleryField
@@ -575,6 +586,7 @@ export default async function EditBusinessPage({
             </div>
             <SubmitBar cancelHref="/admin/businesses" saveLabel="Save Gallery" />
           </form>
+          </section>
         )}
 
         {/* ── Products ─────────────────────────────────────────────── */}
@@ -738,12 +750,12 @@ export default async function EditBusinessPage({
             Never Our Locations (refused if this Business operates the place)
             and never inferred from Events/Appearances. Remove deletes only
             the connection. */}
-        {tab === "find-us-at" && (
-          <div className="rounded-2xl border border-black/10 bg-white p-4">
+        {tab === "locations" && (
+          <div className="mt-5 rounded-2xl border border-black/10 bg-white p-4">
             <p className="text-sm font-semibold text-ink">Find Us At</p>
             <p className="mt-1 text-xs text-ink/45">
               Third-party places where this business is normally available — stocked, sold, served or carried. Not places
-              it operates (those are Our Locations) and not one-off events or pop-ups.
+              it operates (those are Our Locations above) and not one-off events or pop-ups.
             </p>
             {availabilityLocations.items.length > 0 ? (
               <ul className="mt-3 flex flex-col gap-2">

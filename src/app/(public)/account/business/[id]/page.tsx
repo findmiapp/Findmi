@@ -101,7 +101,9 @@ import {
   isOwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
 import PerformanceTab from "./PerformanceTab";
-import QrCampaignCreator, { QrCampaignContextualPanel } from "./QrCampaignCreator";
+import { QrCampaignContextualPanel } from "./QrCampaignCreator";
+import QrCampaignGroups from "./QrCampaignGroups";
+import { getBusinessQrCampaigns } from "@/lib/qr-manager";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -137,33 +139,6 @@ function toPickedLocation(loc: {
     state: loc.state,
     address: loc.address ?? null,
   };
-}
-
-/** Launch Stability pass — QR Appearance Label Disambiguation (P2). Bare
- * a.title alone (the previous label at every QR-picker call site below)
- * renders every recurring appearance — e.g. several "A Cup of Love" dates
- * at the same or different venues — as identical, indistinguishable
- * <option> text, unusable for national/recurring activations (see the QR
- * audit). Every field read here is already fetched by the same
- * appearances query every caller already reads from — presentation-only,
- * no new query. Date is always included (mandatory). Venue/city is
- * appended only while the whole label stays reasonably short for a native
- * <select>, which can't wrap or truncate its own option text — falls back
- * to "Title — Date · City" (dropping venue name/state) once the fuller
- * form would run long. */
-function buildAppearanceQrLabel(a: {
-  title: string;
-  start_at: string;
-  venue_name: string | null;
-  city: string | null;
-  state: string | null;
-}): string {
-  const date = formatDateShort(a.start_at);
-  const full = [a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-  const withFull = `${a.title} — ${date}${full ? ` · ${full}` : ""}`;
-  if (withFull.length <= 60) return withFull;
-  const short = a.city ?? a.venue_name;
-  return `${a.title} — ${date}${short ? ` · ${short}` : ""}`;
 }
 
 export const metadata: Metadata = {
@@ -531,47 +506,6 @@ export default async function ManageBusinessPage({
       qrCampaignsByProductId.set(c.product_id, list);
     }
   }
-  // First-Class QR Campaigns tab — the flat list of every campaign this
-  // Business actually owns (its own qr_campaigns.business_id — Business/
-  // Appearance/Product destinations only; Event/Location campaigns have
-  // no business_id at all, since that ownership is independent of this
-  // Business — see qr-actions.ts). Destination labels are resolved later,
-  // once `appearances`/`products` are populated below, rather than
-  // duplicating another lookup query here.
-  const businessQrCampaignRows = (qrCampaignRows ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    appearanceId: c.appearance_id,
-    productId: c.product_id,
-    isActive: c.is_active,
-    scans: scansByQrCampaignId.get(c.id) ?? 0,
-  }));
-
-  // QR Campaigns V1 — the CURRENT USER's own Events/Locations (their real
-  // event_members/location_members rows — independent of this Business's
-  // own membership, see lib/permissions.ts), offered as additional
-  // central-creation destinations on the QR Campaigns panel. Same simple
-  // "my own memberships" query account/page.tsx's dashboard already uses.
-  const [{ data: ownedEventRows }, { data: ownedLocationRows }] = user
-    ? await Promise.all([
-        supabase.from("event_members").select("event_id, events(name)").eq("user_id", user.id),
-        supabase.from("location_members").select("location_id, locations(name)").eq("user_id", user.id),
-      ])
-    : [{ data: null }, { data: null }];
-  type OwnedEventRow = { event_id: string; events: { name: string } | { name: string }[] | null };
-  type OwnedLocationRow = { location_id: string; locations: { name: string } | { name: string }[] | null };
-  const qrEligibleEvents = ((ownedEventRows ?? []) as OwnedEventRow[])
-    .map((r) => {
-      const e = Array.isArray(r.events) ? r.events[0] : r.events;
-      return e ? { id: r.event_id, name: e.name } : null;
-    })
-    .filter((e): e is { id: string; name: string } => Boolean(e));
-  const qrEligibleLocations = ((ownedLocationRows ?? []) as OwnedLocationRow[])
-    .map((r) => {
-      const l = Array.isArray(r.locations) ? r.locations[0] : r.locations;
-      return l ? { id: r.location_id, name: l.name } : null;
-    })
-    .filter((l): l is { id: string; name: string } => Boolean(l));
   const linksAction = updateBusinessLinks.bind(null, id);
   const galleryAction = updateBusinessGallery.bind(null, id);
 
@@ -1489,18 +1423,8 @@ export default async function ManageBusinessPage({
   scheduleLoadMoreParams.set("tab", "findmi-here");
   scheduleLoadMoreParams.set("schedule_limit", String(scheduleLimitUsed + SCHEDULE_PAGE_SIZE));
   const scheduleLoadMoreHref = `${basePath}?${scheduleLoadMoreParams.toString()}`;
-  // First-Class QR Campaigns tab — resolves each campaign's destination
-  // label now that `appearances`/`products` are populated, reusing the
-  // exact same title/name fields the existing qrEligibleAppearances/
-  // qrEligibleProducts lookups already read.
-  const businessQrCampaigns = businessQrCampaignRows.map((c) => {
-    const destinationLabel = c.appearanceId
-      ? (appearances.find((a) => a.id === c.appearanceId)?.title ?? "Appearance")
-      : c.productId
-        ? (products.find((p) => p.id === c.productId)?.name ?? "Product")
-        : business.name;
-    return { ...c, destinationLabel };
-  });
+  // QR tab — every campaign this Business owns, grouped by lifecycle.
+  const businessQrCampaigns = activeTab === "qr" && admin ? await getBusinessQrCampaigns(admin, id) : [];
 
   // /account V2 Home — the performance snapshot reads these already-
   // computed values (no new analytics definition).
@@ -1679,10 +1603,6 @@ export default async function ManageBusinessPage({
               businessName={business.name}
               businessSlug={business.slug ?? null}
               followerSummary={followerSummary}
-              qrEligibleAppearances={appearances.map((a) => ({ id: a.id, name: buildAppearanceQrLabel(a) }))}
-              qrEligibleProducts={products.map((p) => ({ id: p.id, name: p.name }))}
-              qrEligibleEvents={qrEligibleEvents}
-              qrEligibleLocations={qrEligibleLocations}
             />
           ) : (
             <UpgradeLockedTab
@@ -1694,86 +1614,33 @@ export default async function ManageBusinessPage({
           ))}
 
         {/* ── QR Campaigns ─────────────────────────────────────────── */}
-        {/* First-Class QR Campaigns — a direct Business Manager
-            destination, not a Performance subsection: creation/management
-            is a distinct job from measuring performance. Reuses the exact
-            same central QrCampaignCreator (centralOptions mode) the old
-            Performance QR panel already used, and the exact same
-            /account/qr/[id] detail route every reopen path already links
-            to — no parallel QR system, no new analytics. Free-tier
-            reachable, unlike Performance itself (see qr-actions.ts's own
-            doc comment on why QR creation is never plan-gated). Only
-            Business/Appearance/Product campaigns are listed here — this
-            Business's own qr_campaigns.business_id. Event/Location
-            campaigns have no business_id at all (that ownership is
-            independent — event_members/location_members, not
-            business_members — see lib/permissions.ts), so an existing
-            Event/Location campaign stays reachable from that Event's/
-            Location's own manager page, same as before this pass. */}
+        {/* The one Business Manager QR destination: creation (+ New QR →
+            the V2 creator at /qr/new) and every campaign this Business
+            owns (qr_campaigns.business_id), grouped by lifecycle. Detail
+            lives at the unchanged /account/qr/[id]. Free-tier reachable
+            (see qr-actions.ts on why QR creation is never plan-gated).
+            Event/Location campaigns have no business_id (that ownership
+            is independent — see lib/permissions.ts), so they stay
+            reachable from that Event's/Location's own manager page. The
+            old /qr Campaign Manager URL redirects here. */}
         {activeTab === "qr" && (
           <div className="flex flex-col gap-4 lg:max-w-2xl">
-            <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">QR Campaigns</h1>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-body text-muted">
-                {/* Legacy "Appearance" Copy Pass (#20) — "appearances" is
-                    internal Admin/DB ontology, not a term a business owner
-                    uses; rewritten to the contextual language Findmi Here
-                    already established (where you show up) + events and
-                    locations. No change to the QR campaign model itself —
-                    a campaign can still target a business, product,
-                    Appearance, event, or location row exactly as before. */}
-                Create and manage trackable QR codes for your business, products, where you show up, events and locations.
-              </p>
-              {/* QR Campaigns V2 Pass 2 — the polished Campaign Manager
-                  (lifecycle, independent destination, Intelligent Creator)
-                  lives at its own dedicated route rather than being inlined
-                  into this already very large page. Everything below this
-                  link is untouched and stays fully functional as a quick-
-                  create/quick-list surface. */}
-              <Link href={`/account/business/${id}/qr`} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent">
-                Open Campaign Manager
-                <ChevronIcon direction="right" className="h-3 w-3" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">QR Campaigns</h1>
+                <p className="mt-1 text-body text-muted">
+                  Create and manage trackable QR codes for your business, products, where you show up, events and locations.
+                </p>
+              </div>
+              {/* The one creator (QR Campaigns V2, step-by-step with
+                  placement and destination). Lifecycle and detail live on
+                  the unchanged /account/qr/[id] pages. */}
+              <Link href={`${basePath}/qr/new`} className={`shrink-0 ${primaryButtonClass}`}>
+                + New QR
               </Link>
             </div>
 
-            <QrCampaignCreator
-              centralOptions={{
-                businessId: id,
-                businessName: business.name,
-                appearances: appearances.map((a) => ({ id: a.id, name: buildAppearanceQrLabel(a) })),
-                products: products.map((p) => ({ id: p.id, name: p.name })),
-                events: qrEligibleEvents,
-                locations: qrEligibleLocations,
-              }}
-            />
-
-            <div>
-              <SectionEyebrow>Existing Campaigns</SectionEyebrow>
-              {businessQrCampaigns.length === 0 ? (
-                <div className="mt-2 rounded-lg border border-dashed border-black/10 px-4 py-3">
-                  <p className="text-metadata text-subtle">No QR campaigns yet — create one above.</p>
-                </div>
-              ) : (
-                <div className="mt-2 flex flex-col divide-y divide-black/[0.05] rounded-lg border border-black/[0.06] bg-white">
-                  {businessQrCampaigns.map((c) => (
-                    <Link
-                      key={c.id}
-                      href={`/account/qr/${c.id}`}
-                      className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-black/[0.015]"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-card-title font-semibold text-primary">{c.name}</p>
-                        <p className="mt-0.5 truncate text-metadata text-subtle">
-                          {c.destinationLabel}
-                          {!c.isActive && <span className="ml-1.5 font-semibold text-subtle">· Inactive</span>}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-right text-microcopy text-muted">{c.scans.toLocaleString()} scans</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
+            <QrCampaignGroups campaigns={businessQrCampaigns} newHref={`${basePath}/qr/new`} />
           </div>
         )}
 
@@ -3223,7 +3090,7 @@ export default async function ManageBusinessPage({
 
         {/* ── /account V2 — More (secondary destinations) ───────────── */}
         {activeTab === "more" && (
-          <MoreMenu basePath={basePath} businessSlug={business.slug} ordersRelevant={ordersRelevant} showReferral={Boolean(referralPartner)} />
+          <MoreMenu basePath={basePath} businessSlug={business.slug} ordersRelevant={ordersRelevant} />
         )}
 
         {/* Referral now renders inside Settings (?tab=settings) —

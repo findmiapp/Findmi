@@ -373,7 +373,7 @@ export async function saveBusinessProfile(id: string, formData: FormData) {
 /** Gallery tab — same "current config, not economic history" wholesale
  * replace saveBusiness already used for business_images. */
 export async function saveBusinessGallery(id: string, formData: FormData) {
-  const editPath = `/admin/businesses/${id}?tab=gallery`;
+  const editPath = `/admin/businesses/${id}?tab=profile`;
   const supabase = await requireAdminSupabase();
 
   const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);

@@ -12,22 +12,27 @@ import { BUSINESS_MORE_TABS as T } from "./business-nav";
  * destinations are listed (each is an existing ?tab= view or /account
  * route) — nothing here is new functionality. */
 
-type MoreLink = { href: string; label: string; description?: string; icon: ReactNode };
+type MoreLink = {
+  href: string;
+  label: string;
+  description?: string;
+  icon: ReactNode;
+  /** Hidden at lg+, where the desktop rail already lists this destination. */
+  desktopHidden?: boolean;
+};
 
 export default function MoreMenu({
   basePath,
   businessSlug,
   ordersRelevant,
-  showReferral,
 }: {
   basePath: string;
   businessSlug: string | null;
   ordersRelevant: boolean;
-  showReferral: boolean;
 }) {
   const yourBusiness: MoreLink[] = [
     { href: `${basePath}?tab=profile`, label: T.profile.label, description: T.profile.description, icon: <NavIcon name="storefront" className="h-5 w-5" /> },
-    { href: `${basePath}?tab=performance`, label: T.performance.label, description: T.performance.description, icon: <NavIcon name="target" className="h-5 w-5" /> },
+    { href: `${basePath}?tab=performance`, label: T.performance.label, description: T.performance.description, icon: <NavIcon name="target" className="h-5 w-5" />, desktopHidden: true },
     ...(businessSlug
       ? [{ href: `/business/${businessSlug}`, label: "View Public Page", icon: <NavIcon name="compass" className="h-5 w-5" /> }]
       : []),
@@ -57,7 +62,6 @@ export default function MoreMenu({
   // Business-scoped one, so it belongs here too. No route/data change.
   const businessPlan: MoreLink[] = [
     { href: `${basePath}?tab=settings`, label: T.settings.label, description: T.settings.description, icon: <GearGlyph className="h-5 w-5" /> },
-    ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: T.referral.label, icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
   ];
   // Personal destinations (Saved, Following, Purchases, Profile & Sign Out)
   // live in the personal account shell — one clear entry, not five links.
@@ -92,7 +96,7 @@ function MoreGroup({ title, links }: { title: string; links: MoreLink[] }) {
       <h2 className="px-1 text-label font-bold uppercase text-subtle">{title}</h2>
       <ul className="mt-2 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
         {links.map((l) => (
-          <li key={l.href}>
+          <li key={l.href} className={l.desktopHidden ? "lg:hidden" : undefined}>
             <Link
               href={l.href}
               className="flex min-h-[56px] items-center gap-3 px-4 py-3 transition hover:bg-black/[0.02] focus-visible:bg-black/[0.03] focus-visible:outline-none"

@@ -12,7 +12,7 @@ import { connectBusinessLocationAvailability, removeBusinessLocationAvailability
  * deletes only the availability row. Never inferred from Events/Appearances. */
 
 function tabPath(businessId: string): string {
-  return `/admin/businesses/${businessId}?tab=find-us-at`;
+  return `/admin/businesses/${businessId}?tab=locations`;
 }
 
 async function done(businessId: string, params: Record<string, string>): Promise<never> {
