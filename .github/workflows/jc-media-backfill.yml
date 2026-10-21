@@ -1,0 +1,41 @@
+name: Jersey City media backfill (one-off)
+
+# Runs ONLY when started by hand (Actions → this workflow → Run workflow,
+# type RUN). The push trigger exists solely so GitHub registers this
+# workflow on its non-default branch; the job is skipped for any event
+# other than a manual dispatch with confirm = RUN. Nothing here builds or
+# deploys the app — it runs one script against the shared database.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type RUN to fill empty Jersey City media fields"
+        required: true
+  push:
+    branches: [media-enrichment-preview]
+    paths: [".github/workflows/jc-media-backfill.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jc-media-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'RUN'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Fill empty Jersey City media (existing pipeline, empty fields only)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node --experimental-strip-types --no-warnings scripts/jc-media-backfill/run.mjs

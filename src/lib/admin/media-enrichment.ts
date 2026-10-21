@@ -206,9 +206,10 @@ export async function resolveSourceImage(
   return firstError ?? { ok: false, error: "The page's image couldn't be used.", sourcePageUrl: pageUrl };
 }
 
-/** Best-effort provenance sidecar next to the stored original
+/** Best-effort provenance sidecar next to the stored original (exported for
+ * the one-off Jersey City backfill script)
  * (<path>.provenance.json in findmi-media). Never fails the row. */
-async function writeProvenance(admin: SupabaseClient, storedUrl: string, p: MediaProvenance & { entityType: string; entityId: string; column: string }): Promise<void> {
+export async function writeProvenance(admin: SupabaseClient, storedUrl: string, p: MediaProvenance & { entityType: string; entityId: string; column: string }): Promise<void> {
   try {
     const i = storedUrl.indexOf(PUBLIC_SEGMENT);
     if (i === -1) return;
