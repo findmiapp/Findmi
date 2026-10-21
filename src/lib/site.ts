@@ -45,6 +45,8 @@ export interface SiteConfig {
   /** Words before a BrandHeading accent ("Findmi Moments"), per accent,
    * with a fallback. */
   headingPrefix: { default: string; byAccent?: Record<string, string> };
+  /** Directory page headings (/businesses, /locations). */
+  labels: { businesses: string; locations: string };
   /** A fixed homepage weather/local-context location for a
    * geographically locked site (geocoded `city`, shown as `label`). Null =
    * the founder-configured city from site_sections (Findmi). */
@@ -121,6 +123,7 @@ const FINDMI: SiteConfig = {
   homeSectionsKey: "homepage",
   homeSectionDefaults: {},
   headingPrefix: { default: "Findmi" },
+  labels: { businesses: "Businesses", locations: "Locations" },
   weather: null,
   features: { accounts: true, business: true, commerce: true, moments: true, bulletins: true, indexable: true },
   accountsOrigin: null,
@@ -174,6 +177,7 @@ const JC: SiteConfig = {
   discoveryPageSlug: "jerseycity-guide",
   homeSectionsKey: "jc_homepage",
   headingPrefix: { default: "Jersey City", byAccent: { Here: "Who You'll Find" } },
+  labels: { businesses: "Brands", locations: "Places" },
   weather: { city: "Jersey City", label: "Jersey City, NJ" },
   homeSectionDefaults: {
     hero: {

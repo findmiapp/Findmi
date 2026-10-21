@@ -2,8 +2,16 @@ import Link from "next/link";
 import Logo from "./Logo";
 import { getSite } from "@/lib/site";
 
-export default function Footer() {
-  const { footer } = getSite();
+/** `hiddenHrefs` — site destinations not offered right now (e.g. a
+ * geo-locked site's Moments before it has any); Findmi passes none. */
+export default function Footer({ hiddenHrefs = [] }: { hiddenHrefs?: string[] }) {
+  const site = getSite();
+  const show = (l: { href: string }) => !hiddenHrefs.includes(l.href);
+  const footer = {
+    ...site.footer,
+    columns: site.footer.columns.map((c) => ({ ...c, links: c.links.filter(show) })),
+    mobileLinks: site.footer.mobileLinks.filter(show),
+  };
   return (
     <footer className="mt-16 border-t border-black/5 bg-white pb-[calc(2rem+env(safe-area-inset-bottom))] pt-8 md:pb-10 md:pt-10">
       <div className="mx-auto max-w-6xl px-6">

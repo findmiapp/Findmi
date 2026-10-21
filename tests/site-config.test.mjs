@@ -123,3 +123,27 @@ test("listing pages confine their geo params; detail pages check entity scope; a
   const layout = read("src/app/(public)/layout.tsx");
   assert.ok(layout.indexOf("if (!site.features.accounts)") < layout.indexOf("await isAdminSession()"), "no admin/session lookup before the non-account branch returns");
 });
+
+test("JC launch pass: site-aware homepage events, JC homepage rows, labels, Moments nav", async () => {
+  const data = read("src/lib/data.ts");
+  assert.match(data, /requireShowOnHomepage: !getSite\(\)\.scope,/, "Findmi keeps its show_on_homepage curation; a geo-locked site doesn't need it");
+  const home = read("src/app/(public)/page.tsx");
+  assert.match(home, /const siteRows = site\.scope \? await getSiteHomepageRows\(/, "JC rows never run on Findmi");
+  for (const title of ["Places To Explore", "Explore By Neighborhood", "Brands & Businesses"]) assert.ok(home.includes(`title="${title}"`), title);
+  for (const guard of ["siteRows.places.length > 0", "siteRows.neighborhoods.length > 0", "siteRows.brands.length > 0"]) assert.ok(home.includes(guard), `${guard} — no empty section`);
+  assert.match(home, /\{!site\.scope && momentsSection\}/);
+  assert.match(home, /\{site\.scope && momentsSection\}/);
+  assert.match(home, /momentFeed\.cards\.length > 0 \? \(/, "Moments only when real public Moments exist");
+  assert.match(home, /neighborhoods: neighborhoodAreas\.filter\(\(a\) => \(placeCounts\.get\(a\.id\) \?\? 0\) > 0\)/, "only neighborhoods with Places");
+  const findmi = await siteFor(undefined);
+  const jc = await siteFor("jc");
+  assert.deepEqual(findmi.labels, { businesses: "Businesses", locations: "Locations" });
+  assert.deepEqual(jc.labels, { businesses: "Brands", locations: "Places" });
+  assert.match(read("src/app/(public)/businesses/page.tsx"), /\{getSite\(\)\.labels\.businesses\}<\/h1>/);
+  assert.match(read("src/app/(public)/locations/page.tsx"), /\{getSite\(\)\.labels\.locations\}<\/h1>/);
+  const layout = read("src/app/(public)/layout.tsx");
+  assert.match(layout, /const hiddenHrefs = site\.features\.moments && \(await getSiteMomentIds\(\)\)\?\.length === 0 \? \["\/moments"\] : \[\];/);
+  assert.match(layout, /<Footer hiddenHrefs=\{hiddenHrefs\} \/>/);
+  // Findmi's own (accounts) branch is unchanged: plain Footer, no Moments filtering.
+  assert.equal((layout.match(/<Footer \/>/g) ?? []).length, 1);
+});

@@ -350,6 +350,10 @@ export interface MarketArea {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  /** Area hierarchy columns (present on every row read with select("*")). */
+  parent_area_id?: string | null;
+  level?: "area" | "neighborhood";
+  image_url?: string | null;
 }
 
 // Consumer Area Picker + Market Requests V1, extended by V2 (canonical

@@ -11,7 +11,7 @@ import { scopeGeoParams } from "@/lib/site-scope";
 import { getSite } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Locations",
+  title: getSite().labels.locations,
   description: `Discover places on ${getSite().name} and see what's happening there.`,
 };
 export const revalidate = 60;
@@ -86,7 +86,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Locations</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{getSite().labels.locations}</h1>
       {/* Locations Discovery V4, item 1 — the old subtitle ("Recurring
           markets and venues — see who's showing up next.") described an
           earlier, narrower version of the Location model (Locations now

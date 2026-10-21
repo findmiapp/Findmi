@@ -10,6 +10,7 @@ import { filterNavItemsForAudience, getVisibleNavItems, publicDiscoveryNav } fro
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 import { getAccountContexts } from "@/lib/accountContext";
 import { getSite } from "@/lib/site";
+import { getSiteMomentIds } from "@/lib/site-scope";
 
 // Nav rarely changes — cache it site-wide for a minute rather than
 // querying nav_items on every single page request (same revalidate
@@ -22,14 +23,18 @@ export default async function PublicLayout({ children }: { children: React.React
   // businesses; its headers then show discovery only.
   const site = getSite();
   if (!site.features.accounts) {
-    const siteNav = publicDiscoveryNav(site.nav ?? (await getVisibleNavItems()));
+    // The top-level Moments destination appears only once the site has
+    // public Moments in its scope (it does so automatically). Moments
+    // modules on Place/Brand/Event pages and + Add Moment are unaffected.
+    const hiddenHrefs = site.features.moments && (await getSiteMomentIds())?.length === 0 ? ["/moments"] : [];
+    const siteNav = publicDiscoveryNav((site.nav ?? (await getVisibleNavItems())).filter((n) => !hiddenHrefs.includes(n.href ?? "")));
     return (
       <SiteChrome
         adminToolbar={null}
         adminToolbarStatic={null}
         mobileHeader={<MobileHeader navItems={siteNav} authenticated={false} isAdmin={false} businesses={[]} />}
         navDesktop={<NavDesktop navItems={siteNav} authenticated={false} isAdmin={false} businesses={[]} />}
-        footer={<Footer />}
+        footer={<Footer hiddenHrefs={hiddenHrefs} />}
       >
         <BusinessesProvider businesses={[]}>{children}</BusinessesProvider>
       </SiteChrome>

@@ -12,6 +12,9 @@ import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import FeaturedLocationCard from "@/components/discover/FeaturedLocationCard";
+import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
+import BusinessDiscoveryCard from "@/components/discover/BusinessDiscoveryCard";
+import { TileRail, TopicTile } from "@/components/discovery/DiscoveryLanes";
 import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
 import NavIcon from "@/components/NavIcon";
 import BrandHeading from "@/components/BrandHeading";
@@ -28,6 +31,9 @@ import {
   getMarketAreaLabel,
   getUpcomingAppearanceSummaries,
   getUpcomingEvents,
+  getLocations,
+  getAreaPlaceCounts,
+  getNextAppearanceHints,
 } from "@/lib/data";
 import { getPublishedHomepageBulletins } from "@/lib/homepage-bulletins";
 import { findPrimaryBusinessesRowId, getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
@@ -124,6 +130,12 @@ export default async function HomePage({
 
   const nextEvents = await attachEventCategories(nextRaw);
 
+  // JerseyCity.guide homepage composition (geo-locked sites only): Places
+  // To Explore, Explore By Neighborhood and Brands & Businesses — shared
+  // scoped queries and cards, each row rendered only when it has content.
+  // Findmi's homepage never runs these.
+  const siteRows = site.scope ? await getSiteHomepageRows(marketSlug, areaSlug, featuredLocations, markets) : null;
+
   // Homepage Appearance Eligibility pass — resolved BEFORE resolvedRows so
   // the one row it identifies can require a qualifying current/upcoming
   // Appearance at the data layer (see resolveHomepageRowItems), not as a
@@ -204,6 +216,32 @@ export default async function HomePage({
   const weatherContext = weatherConfig.show
     ? await (site.weather ? getWeatherContext(site.weather.city, site.weather.label) : getWeatherContext(weatherConfig.city))
     : null;
+
+  // Moments — real people's public Moments; never a fake/empty showcase.
+  const momentsSection =
+    momentFeed.cards.length > 0 ? (
+        <section className="py-6" aria-labelledby="home-moments-heading">
+          <div className="mb-3 px-4 sm:px-6">
+            <BrandHeading
+              id="home-moments-heading"
+              accent="Moments"
+              size="home"
+              trailing={
+                <Link
+                  href="/moments"
+                  className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+                >
+                  See All
+                </Link>
+              }
+            />
+            <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>
+          </div>
+          <div className="px-4 sm:px-6">
+            <MomentsDiscovery cards={momentFeed.cards} layout="carousel" />
+          </div>
+        </section>
+    ) : null;
 
   return (
     <div>
@@ -512,29 +550,7 @@ export default async function HomePage({
           section's own py-6 is identical to Featured Locations' Section
           py-6 default below, so the gap reads the same regardless of
           which of the two comes first. */}
-      {momentFeed.cards.length > 0 && (
-        <section className="py-6" aria-labelledby="home-moments-heading">
-          <div className="mb-3 px-4 sm:px-6">
-            <BrandHeading
-              id="home-moments-heading"
-              accent="Moments"
-              size="home"
-              trailing={
-                <Link
-                  href="/moments"
-                  className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
-                >
-                  See All
-                </Link>
-              }
-            />
-            <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>
-          </div>
-          <div className="px-4 sm:px-6">
-            <MomentsDiscovery cards={momentFeed.cards} layout="carousel" />
-          </div>
-        </section>
-      )}
+      {!site.scope && momentsSection}
 
       {/* Horizontal Location Carousel pass — FEATURED LOCATIONS. Same data
           path as before (getFeaturedLocations/lib/data.ts — still filters
@@ -564,6 +580,75 @@ export default async function HomePage({
           </div>
         </Section>
       )}
+
+      {siteRows && siteRows.places.length > 0 && (
+        <Section
+          title="Places To Explore"
+          subtitle="Venues, parks and local favorites across the city."
+          viewAllHref="/locations"
+          titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
+          subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
+        >
+          <HorizontalScroller>
+            {siteRows.places.map((location, i) => (
+              <div key={location.id} className="w-[80vw] max-w-[300px] shrink-0 sm:w-72">
+                <LocationDiscoveryCard
+                  location={location}
+                  variant="compact"
+                  analyticsContext={{ pageType: "home", placement: "homepage_places_to_explore", position: i + 1 }}
+                />
+              </div>
+            ))}
+          </HorizontalScroller>
+        </Section>
+      )}
+
+      {siteRows && siteRows.neighborhoods.length > 0 && (
+        <Section
+          title="Explore By Neighborhood"
+          subtitle="Find what's around you, block by block."
+          titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
+          subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
+        >
+          <div className="px-4 sm:px-6">
+            <TileRail>
+              {siteRows.neighborhoods.map((a) => (
+                <div key={a.id} className="w-[40%] shrink-0 snap-start sm:w-auto">
+                  <TopicTile
+                    topic={{ name: a.display_name || a.name, image_url: a.image_url ?? null, description: null }}
+                    href={`/locations?market=${encodeURIComponent(siteRows.marketSlug)}&area=${encodeURIComponent(a.slug)}`}
+                  />
+                </div>
+              ))}
+            </TileRail>
+          </div>
+        </Section>
+      )}
+
+      {siteRows && siteRows.brands.length > 0 && (
+        <Section
+          title="Brands & Businesses"
+          subtitle="Local makers, cafés and businesses worth knowing."
+          viewAllHref="/businesses"
+          titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
+          subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
+        >
+          <HorizontalScroller>
+            {siteRows.brands.map((b, i) => (
+              <div key={b.id} className="w-[42vw] max-w-[170px] shrink-0 sm:w-44">
+                <BusinessDiscoveryCard
+                  business={b}
+                  variant="rail"
+                  nextAppearance={siteRows.brandHints.get(b.id)}
+                  analyticsContext={{ pageType: "home", placement: "homepage_brands_businesses", position: i + 1 }}
+                />
+              </div>
+            ))}
+          </HorizontalScroller>
+        </Section>
+      )}
+
+      {site.scope && momentsSection}
 
       {/* Discovery Lanes Placement & Density Refinement pass — EXPLORE
           MORE: every visible Lane except the Admin-designated "primary"
@@ -886,4 +971,35 @@ function JournalGlyph({ className }: { className?: string }) {
       </g>
     </svg>
   );
+}
+
+/** JerseyCity.guide homepage rows — all scoped by the site's own
+ * market/area (and any selected neighborhood), all existing shared queries. */
+async function getSiteHomepageRows(
+  marketSlug: string | undefined,
+  areaSlug: string | undefined,
+  featuredLocations: { id: string }[],
+  markets: Awaited<ReturnType<typeof getConsumerVisibleMarketsWithAreas>>
+) {
+  const market = markets.find((m) => m.slug === marketSlug) ?? markets[0];
+  const neighborhoodAreas = (market?.areas ?? []).filter((a) => a.level === "neighborhood" && a.consumer_visible);
+  const [places, brands, placeCounts] = await Promise.all([
+    getLocations({ marketSlug, areaSlug, limit: 40 }),
+    searchBusinesses({ marketSlug, areaSlug, sort: "recommended", limit: 12 }),
+    getAreaPlaceCounts(neighborhoodAreas.map((a) => a.id)),
+  ]);
+  const featured = new Set(featuredLocations.map((l) => l.id));
+  const brandHints = await getNextAppearanceHints(brands.map((b) => b.id));
+  return {
+    marketSlug: market?.slug ?? "",
+    // Places not already in Featured Locations, photographed ones first.
+    places: places
+      .filter((l) => !featured.has(l.id))
+      .sort((a, b) => Number(Boolean(b.cover_image_url)) - Number(Boolean(a.cover_image_url)))
+      .slice(0, 10),
+    // Only neighborhoods that actually have Places.
+    neighborhoods: neighborhoodAreas.filter((a) => (placeCounts.get(a.id) ?? 0) > 0),
+    brands,
+    brandHints,
+  };
 }

@@ -24,7 +24,7 @@ const MARKERS = [
   ["Primary Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="primary" />'],
   ["What's Happening", "{upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}"],
   ["Brands We Love", "isBrandsRow\n        />"],
-  ["Findmi Moments", 'aria-labelledby="home-moments-heading"'],
+  ["Findmi Moments", "{!site.scope && momentsSection}"],
   ["Featured Locations", 'title="Featured Locations"'],
   ["Explore More Discovery", '<DiscoveryLanes market={marketSlug} area={areaSlug} placement="explore_more" />'],
   ["Business Showcase", "<BusinessShowcaseCarousel />"],
@@ -71,7 +71,10 @@ test("Brands We Love and the remaining founder rows render exactly once each, fr
 test("every section's own conditional guard is preserved exactly as before the reorder (bulletins/brandsRowIndex/moments/featuredLocations/closingSec) — only position changed", () => {
   assert.match(PAGE, /\{bulletins\.length > 0 && \(/);
   assert.match(PAGE, /\{brandsRowIndex !== -1 && \(/);
-  assert.match(PAGE, /\{momentFeed\.cards\.length > 0 && \(/);
+  // The Moments element keeps its own guard; Findmi places it here, a
+  // geo-locked site (JerseyCity.guide) after its own homepage rows.
+  assert.match(PAGE, /momentFeed\.cards\.length > 0 \? \(\n\s*<section className="py-6" aria-labelledby="home-moments-heading">/);
+  assert.match(PAGE, /\{!site\.scope && momentsSection\}/);
   assert.match(PAGE, /\{featuredLocations\.length > 0 && \(/);
   // Plus the site's business-acquisition switch (lib/site.ts; always on for Findmi).
   assert.match(PAGE, /\{site\.features\.business && closingSec\.visible && \(/);

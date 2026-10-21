@@ -30,7 +30,7 @@ import { getSite } from "@/lib/site";
 import { isCanonicalGeoScopeEmpty } from "@/lib/geo/entity-geo-core";
 
 export const metadata: Metadata = {
-  title: "Businesses",
+  title: getSite().labels.businesses,
   description: `Search and browse businesses and vendors on ${getSite().name}.`,
 };
 export const revalidate = 60;
@@ -252,7 +252,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     <div className="py-5 sm:py-10">
       <SearchFilterAnalytics pageType="businesses" filterParams={["category", "market", "area"]} />
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Businesses</h1>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{getSite().labels.businesses}</h1>
         {/* Businesses Discovery V4, item 1 — this line added little a
             consumer couldn't already infer from the page title + search
             field, and was previously the single biggest contributor

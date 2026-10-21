@@ -2360,7 +2360,11 @@ export async function getUpcomingEvents(
   const rows = await getEffectiveUpcomingEvents(bounds, {
     marketSlug,
     areaSlug: marketSlug ? areaSlug : undefined,
-    requireShowOnHomepage: true,
+    // Findmi's founder-curated show_on_homepage flag. A geo-locked site
+    // (lib/site.ts — JerseyCity.guide) shows every live event in its scope
+    // instead: the flag lives on shared records and curates Findmi's own
+    // homepage, so it can't be repurposed per site.
+    requireShowOnHomepage: !getSite().scope,
   });
   return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
@@ -4426,6 +4430,17 @@ export interface LocationsDiscoveryOptions {
    * server-side before `.limit()`, additive alongside marketSlug/areaSlug
    * and the free-text `q`. */
   canonicalGeo?: CanonicalGeoScope | null;
+}
+
+/** Public Places per Area id (same is_demo rule as getLocations) — lets a
+ * caller show only Areas that actually have Places. */
+export async function getAreaPlaceCounts(areaIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  const supabase = getSupabase();
+  if (!supabase || areaIds.length === 0) return counts;
+  const { data } = await supabase.from("locations").select("market_area_id").eq("is_demo", false).in("market_area_id", areaIds);
+  for (const row of (data ?? []) as { market_area_id: string }[]) counts.set(row.market_area_id, (counts.get(row.market_area_id) ?? 0) + 1);
+  return counts;
 }
 
 export async function getLocations(options: LocationsDiscoveryOptions = {}): Promise<LocationWithCategory[]> {
