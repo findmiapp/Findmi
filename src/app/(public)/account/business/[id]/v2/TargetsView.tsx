@@ -102,8 +102,9 @@ function PlaceThumb({ imageUrl }: { imageUrl: string | null }) {
 function NextActionLine({ item }: { item: Pick<BusinessPlacementItem, "nextAction" | "nextActionAt"> }) {
   if (!item.nextAction && !item.nextActionAt) return null;
   return (
-    <span className="mt-0.5 block text-metadata text-secondary">
-      Next: {[item.nextAction, item.nextActionAt ? formatPlacementDate(item.nextActionAt) : null].filter(Boolean).join(" · ")}
+    <span className="mt-0.5 line-clamp-2 text-metadata text-secondary">
+      {/* Date first, so a long action can never clip it. */}
+      Next: {[item.nextActionAt ? formatPlacementDate(item.nextActionAt) : null, item.nextAction].filter(Boolean).join(" · ")}
     </span>
   );
 }
@@ -252,7 +253,7 @@ function TargetList({
             autoComplete="off"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your Targets by name, city or address"
+            placeholder="Search your Targets"
             aria-label="Search your Targets"
             className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20"
           />
@@ -365,7 +366,7 @@ function TargetDetail({
 
   return (
     <div className="flex flex-col gap-5 lg:max-w-3xl">
-      <Link href={back} scroll={false} className="inline-flex w-fit items-center gap-1 text-metadata font-semibold text-accent hover:underline">
+      <Link href={back} scroll={false} className="-my-2 inline-flex min-h-10 w-fit items-center gap-1 text-metadata font-semibold text-accent hover:underline">
         <span aria-hidden="true">←</span> All Targets
       </Link>
 
@@ -421,7 +422,7 @@ function TargetDetail({
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
             <label className="block">
               <span className="mb-1 block text-metadata font-semibold text-secondary">Next Action</span>
-              <input type="text" autoCapitalize="sentences" value={nextAction} maxLength={PLACEMENT_LIMITS.nextAction} onChange={(e) => { setNextAction(e.target.value); setSaved(false); }} placeholder="e.g. Drop off samples" className={inputClass} />
+              <textarea autoCapitalize="sentences" rows={2} value={nextAction} maxLength={PLACEMENT_LIMITS.nextAction} onChange={(e) => { setNextAction(e.target.value.replace(/\s*\n\s*/g, " ")); setSaved(false); }} placeholder="e.g. Drop off samples" className={`${inputClass} resize-none`} />
             </label>
             <label className="block">
               <span className="mb-1 block text-metadata font-semibold text-secondary">Next Action Date</span>
