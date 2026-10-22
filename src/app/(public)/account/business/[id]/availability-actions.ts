@@ -12,6 +12,8 @@ import {
   type OwnerAvailabilityResult,
 } from "@/lib/business-availability-owner";
 import type { AvailabilityRequestInput } from "@/lib/business-availability-domain";
+import { createProductSet, deleteProductSet, updateProductSet, type ProductSetResult } from "@/lib/business-product-sets";
+import type { ProductSetInput } from "@/lib/business-product-sets-domain";
 
 /** Owner mutations for Findmi Here → Where To Find Us. Each re-verifies the
  * caller against THIS Business server-side (never trusts the id as sent);
@@ -90,5 +92,38 @@ export async function removeAvailabilityAction(businessId: string, availabilityI
   const locationSlug = await locationSlugFor(businessId, availabilityId);
   const result = await removeOwnerAvailability(admin, businessId, availabilityId);
   if (result.ok) await revalidatePublic(businessId, locationSlug);
+  return result;
+}
+
+/** Product Sets — the owner's saved, named groups of their own Products. Same
+ * authorization as the entries they fill in; a Set only ever pre-fills the
+ * selection, so nothing public changes when one is saved or deleted. */
+export async function createProductSetAction(businessId: string, input: ProductSetInput): Promise<ProductSetResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await createProductSet(admin, businessId, input);
+  if (result.ok) revalidatePath(`/account/business/${businessId}`);
+  return result;
+}
+
+export async function updateProductSetAction(businessId: string, setId: string, input: ProductSetInput): Promise<ProductSetResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await updateProductSet(admin, businessId, setId, input);
+  if (result.ok) revalidatePath(`/account/business/${businessId}`);
+  return result;
+}
+
+export async function deleteProductSetAction(businessId: string, setId: string): Promise<ProductSetResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await deleteProductSet(admin, businessId, setId);
+  if (result.ok) revalidatePath(`/account/business/${businessId}`);
   return result;
 }

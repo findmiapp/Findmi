@@ -7,16 +7,28 @@ import NavIcon from "@/components/NavIcon";
 import {
   AVAILABILITY_NOTE_MAX,
   AVAILABILITY_RELATIONSHIPS,
+  AVAILABILITY_RELATIONSHIP_HINTS,
   AVAILABILITY_RELATIONSHIP_LABELS,
   AVAILABILITY_SOURCE_LABELS,
   AVAILABILITY_STATUS_LABELS,
+  availabilityRelationshipsPhrase,
   availabilityTiming,
   availabilityWhenLabel,
+  normalizeAvailabilityRelationships,
   type AvailabilityRelationship,
   type AvailabilityTiming,
 } from "@/lib/business-availability-domain";
+import { applyProductSet, isProductSetFullySelected, type ProductSet } from "@/lib/business-product-sets-domain";
 import type { OwnerAvailabilityItem } from "@/lib/business-availability-owner";
-import { removeAvailabilityAction, requestAvailabilityAction, searchLocationsForAvailability, updateAvailabilityAction } from "../availability-actions";
+import {
+  createProductSetAction,
+  deleteProductSetAction,
+  removeAvailabilityAction,
+  requestAvailabilityAction,
+  searchLocationsForAvailability,
+  updateAvailabilityAction,
+  updateProductSetAction,
+} from "../availability-actions";
 import { Chip } from "../../../owner-ui";
 
 type Place = { id: string; name: string; address?: string | null; city: string | null; state: string | null };
@@ -26,8 +38,8 @@ const STATUS_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as c
 /** Findmi Here → Find Us Here: where people can find this Business's
  * products and services OUTSIDE its own Locations and dated Events — a
  * retailer that stocks it, a café that serves it, a venue that features it.
- * Each entry says WHERE (a canonical Location), HOW (stocked / sold /
- * served / featured / sampled), WHAT (which Products — none = the Brand),
+ * Each entry says WHERE (a canonical Location), HOW (any combination of
+ * stocked / sold / served / featured / sampled — one place, one entry), WHAT (which Products — none = the Brand),
  * WHEN (ongoing, a date range, or until a date), and carries a STATUS
  * (Pending Review → Live) and SOURCE (added by the Business / verified by
  * Findmi). Only Live, in-effect entries show on the public profile. */
@@ -36,6 +48,8 @@ export default function AvailableAtView({
   available,
   items,
   products,
+  productSets,
+  productSetsAvailable,
   canEdit,
 }: {
   businessId: string;
@@ -43,6 +57,10 @@ export default function AvailableAtView({
   available: boolean;
   items: OwnerAvailabilityItem[];
   products: { id: string; name: string }[];
+  /** The Business's saved Product Sets (template layer for the chooser). */
+  productSets: ProductSet[];
+  /** false before the Product Sets migration is applied. */
+  productSetsAvailable: boolean;
   canEdit: boolean;
 }) {
   const [adding, setAdding] = useState(false);
@@ -59,19 +77,29 @@ export default function AvailableAtView({
 
   return (
     <div className="flex flex-col gap-5 lg:max-w-3xl">
-      <div className="flex items-start justify-between gap-3">
+      <div>
         <p className="min-w-0 text-body text-muted">Where people can find your products and services beyond your own locations — a retailer, café or venue that carries you.</p>
-        {canEdit && available && !adding && !editingId && (
+      </div>
+      {canEdit && available && !adding && !editingId && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Add Locations">
           <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
             Add A Place
           </button>
-        )}
-      </div>
+          <Link href={`/account/business/${businessId}/import-locations`} className="flex h-10 shrink-0 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40">
+            Import Locations
+          </Link>
+          {/* Honest about what exists: a locator Sync needs a real connector. */}
+          <span aria-disabled="true" className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-dashed border-black/15 px-4 text-button font-semibold text-subtle">
+            Sync Existing Locator
+            <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-bold uppercase text-muted">Coming Soon</span>
+          </span>
+        </div>
+      )}
 
       {!available && <p className="text-body text-muted">This isn&rsquo;t available yet. Please check back soon.</p>}
       {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
 
-      {adding && <PlaceForm businessId={businessId} products={products} onDone={() => setAdding(false)} />}
+      {adding && <PlaceForm businessId={businessId} products={products} productSets={productSets} productSetsAvailable={productSetsAvailable} onDone={() => setAdding(false)} />}
 
       {available && items.length === 0 && !adding && (
         <p className="text-body text-muted">Nothing here yet. Add a retailer, café or venue where people can find you.</p>
@@ -82,7 +110,7 @@ export default function AvailableAtView({
           {items.map((i) =>
             editingId === i.id ? (
               <li key={i.id} className="py-3">
-                <PlaceForm businessId={businessId} products={products} initial={i} onDone={() => setEditingId(null)} />
+                <PlaceForm businessId={businessId} products={products} productSets={productSets} productSetsAvailable={productSetsAvailable} initial={i} onDone={() => setEditingId(null)} />
               </li>
             ) : (
             <li key={i.id} className="flex items-start gap-3 py-3">
@@ -98,7 +126,7 @@ export default function AvailableAtView({
                 </span>
                 <span className="block truncate text-metadata text-muted">{[i.city, i.state].filter(Boolean).join(", ")}</span>
                 <span className="mt-0.5 block text-metadata text-secondary">
-                  {AVAILABILITY_RELATIONSHIP_LABELS[i.relationship]} · {availabilityWhenLabel(i.startsOn, i.endsOn)}
+                  {availabilityRelationshipsPhrase(i.relationships)} · {availabilityWhenLabel(i.startsOn, i.endsOn)}
                 </span>
                 <span className="block text-metadata text-muted">
                   {i.products.length > 0 ? i.products.map((p) => p.name).join(", ") : "Your Brand"}
@@ -140,11 +168,15 @@ export default function AvailableAtView({
 function PlaceForm({
   businessId,
   products,
+  productSets,
+  productSetsAvailable,
   initial,
   onDone,
 }: {
   businessId: string;
   products: { id: string; name: string }[];
+  productSets: ProductSet[];
+  productSetsAvailable: boolean;
   initial?: OwnerAvailabilityItem;
   onDone: () => void;
 }) {
@@ -152,7 +184,7 @@ function PlaceForm({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Place[]>([]);
   const [place, setPlace] = useState<Place | null>(initial ? { id: initial.locationId, name: initial.locationName, city: initial.city, state: initial.state } : null);
-  const [relationship, setRelationship] = useState<AvailabilityRelationship>(initial?.relationship ?? "stocked");
+  const [relationships, setRelationships] = useState<AvailabilityRelationship[]>(initial?.relationships ?? ["stocked"]);
   const [productIds, setProductIds] = useState<string[]>(initial?.products.map((p) => p.id) ?? []);
   const [timing, setTiming] = useState<AvailabilityTiming>(initial ? availabilityTiming(initial.startsOn, initial.endsOn) : "ongoing");
   const [startsOn, setStartsOn] = useState(initial?.startsOn ?? "");
@@ -179,8 +211,9 @@ function PlaceForm({
     startTransition(async () => {
       setError(null);
       if (!place) return setError("Choose where to find you.");
+      if (relationships.length === 0) return setError("Choose at least one way you’re there.");
       const fields = {
-        relationship,
+        relationships,
         productIds,
         timing,
         startsOn: timing === "date_range" ? startsOn : null,
@@ -194,6 +227,8 @@ function PlaceForm({
       onDone();
     });
 
+  const toggleRelationship = (r: AvailabilityRelationship) =>
+    setRelationships((prev) => normalizeAvailabilityRelationships(prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
   const toggleProduct = (id: string) => setProductIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   const inputClass = "w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20";
 
@@ -232,14 +267,30 @@ function PlaceForm({
       </div>
 
       <div>
-        <p className="text-metadata font-semibold text-secondary">How are you there?</p>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {AVAILABILITY_RELATIONSHIPS.map((r) => (
-            <button key={r} type="button" aria-pressed={relationship === r} onClick={() => setRelationship(r)} className={`h-9 rounded-full px-3.5 text-metadata font-semibold transition ${relationship === r ? "bg-findmi-50 text-findmi-700 ring-1 ring-findmi/40" : "bg-black/[0.04] text-muted hover:text-primary"}`}>
-              {AVAILABILITY_RELATIONSHIP_LABELS[r]}
-            </button>
-          ))}
+        <p id="avail-how" className="text-metadata font-semibold text-secondary">How are you there? <span className="font-normal text-muted">(Choose All That Apply)</span></p>
+        <div role="group" aria-labelledby="avail-how" className="mt-1.5 flex flex-wrap gap-1.5">
+          {AVAILABILITY_RELATIONSHIPS.map((r) => {
+            const on = relationships.includes(r);
+            return (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={on}
+                title={AVAILABILITY_RELATIONSHIP_HINTS[r]}
+                onClick={() => toggleRelationship(r)}
+                className={`flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`}
+              >
+                <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${on ? "bg-white/25" : "border border-black/20 text-transparent"}`}>
+                  ✓
+                </span>
+                {AVAILABILITY_RELATIONSHIP_LABELS[r]}
+              </button>
+            );
+          })}
         </div>
+        <p className="mt-1 text-microcopy text-subtle">
+          {relationships.length === 0 ? "Pick at least one." : relationships.map((r) => AVAILABILITY_RELATIONSHIP_HINTS[r]).join(" · ")}
+        </p>
       </div>
 
       <div>
@@ -255,6 +306,9 @@ function PlaceForm({
           )}
         </div>
         <p className="text-microcopy text-subtle">Leave empty if this is your Brand generally.</p>
+        {(productSetsAvailable || productSets.length > 0) && products.length > 0 && (
+          <ProductSetsBar businessId={businessId} products={products} sets={productSets} selected={productIds} onChange={setProductIds} />
+        )}
         {products.length === 0 ? (
           <p className="mt-1 text-metadata text-muted">Add products to your catalog to be specific.</p>
         ) : (
@@ -321,6 +375,134 @@ function PlaceForm({
           {pending ? "Saving…" : editing ? "Save & Resubmit" : "Submit For Review"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Product Sets inside the Products chooser: apply a saved set (fills the
+ * selection — adjust it freely for this one place), save the current
+ * selection as a set, and manage saved sets. A set never changes what is
+ * public by itself; the entry still saves the actual Products. */
+export function ProductSetsBar({
+  businessId,
+  products,
+  sets: initialSets,
+  selected,
+  onChange,
+}: {
+  businessId: string;
+  products: { id: string; name: string }[];
+  sets: ProductSet[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [sets, setSets] = useState(initialSets);
+  const [saving, setSaving] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const known = new Set(products.map((p) => p.id));
+
+  const saveCurrent = () =>
+    startTransition(async () => {
+      setError(null);
+      const result = await createProductSetAction(businessId, { name, productIds: selected });
+      if (!result.ok) return setError(result.error);
+      setSets((prev) => [...prev, { id: result.id ?? name, name: name.trim(), productIds: [...selected] }].sort((a, b) => a.name.localeCompare(b.name)));
+      setName("");
+      setSaving(false);
+    });
+  const replaceWithSelection = (set: ProductSet) =>
+    startTransition(async () => {
+      setError(null);
+      const result = await updateProductSetAction(businessId, set.id, { name: set.name, productIds: selected });
+      if (!result.ok) return setError(result.error);
+      setSets((prev) => prev.map((s) => (s.id === set.id ? { ...s, productIds: [...selected] } : s)));
+    });
+  const remove = (set: ProductSet) =>
+    startTransition(async () => {
+      setError(null);
+      const result = await deleteProductSetAction(businessId, set.id);
+      if (!result.ok) return setError(result.error);
+      setSets((prev) => prev.filter((s) => s.id !== set.id));
+    });
+
+  return (
+    <div className="mt-2 rounded-xl bg-black/[0.03] p-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-metadata font-semibold text-secondary">Product Sets</p>
+        <span className="flex items-center gap-3 text-metadata">
+          {selected.length > 0 && !saving && (
+            <button type="button" onClick={() => setSaving(true)} className="font-semibold text-accent hover:underline">
+              Save Selection As Set
+            </button>
+          )}
+          {sets.length > 0 && (
+            <button type="button" aria-expanded={managing} onClick={() => setManaging((m) => !m)} className="font-semibold text-muted hover:text-primary">
+              {managing ? "Done" : "Manage"}
+            </button>
+          )}
+        </span>
+      </div>
+      {sets.length === 0 && !saving && <p className="mt-0.5 text-microcopy text-subtle">Save a group of Products once and apply it to any place.</p>}
+      {sets.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {sets.map((set) => {
+            const live = set.productIds.filter((id) => known.has(id));
+            const on = isProductSetFullySelected(selected, { productIds: live });
+            return (
+              <button
+                key={set.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onChange(applyProductSet(selected, { productIds: live }))}
+                className={`h-8 max-w-full truncate rounded-full px-3 text-metadata font-semibold transition ${on ? "bg-findmi-50 text-findmi-700 ring-1 ring-findmi/40" : "bg-white text-muted ring-1 ring-black/10 hover:text-primary"}`}
+              >
+                {set.name} · {live.length}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {saving && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="text"
+            autoCapitalize="words"
+            maxLength={60}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name this set, e.g. Core Assortment"
+            aria-label="Product Set name"
+            className="min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none"
+          />
+          <button type="button" disabled={pending || !name.trim()} onClick={saveCurrent} className="h-9 rounded-full bg-findmi px-4 text-button font-bold text-white disabled:opacity-50">
+            Save
+          </button>
+          <button type="button" onClick={() => { setSaving(false); setName(""); }} className="h-9 px-2 text-metadata font-semibold text-muted">
+            Cancel
+          </button>
+        </div>
+      )}
+      {managing && (
+        <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
+          {sets.map((set) => (
+            <li key={set.id} className="flex items-center justify-between gap-3 py-1.5">
+              <span className="min-w-0 truncate text-metadata text-secondary">{set.name} · {set.productIds.length}</span>
+              <span className="flex shrink-0 items-center gap-3 text-metadata font-semibold">
+                <button type="button" disabled={pending || selected.length === 0} onClick={() => replaceWithSelection(set)} className="text-accent hover:underline disabled:opacity-40">
+                  Update To Selection
+                </button>
+                <button type="button" disabled={pending} onClick={() => remove(set)} className="text-muted hover:text-red-700 disabled:opacity-40">
+                  Delete
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p role="alert" className="mt-2 text-metadata font-semibold text-red-700">{error}</p>}
     </div>
   );
 }

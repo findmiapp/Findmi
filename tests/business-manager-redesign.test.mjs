@@ -62,7 +62,7 @@ test("nav icons come from the existing in-house icon set: Home house, Moments ph
   assert.match(shell, /home: <NavIcon name="home"/);
   assert.match(shell, /moments: <NavIcon name="moments"/);
   assert.match(shell, /presence: <NavIcon name="pin"/, "Findmi Here is a standard map pin");
-  assert.match(shell, /performance: <ChartGlyph/, "Performance is a plain bar chart");
+  assert.match(shell, /performance: <InsightsGlyph/, "Performance is the rounded insights tile (not a radar, flower or stock chart)");
   assert.match(shell, /more: <MoreGlyph/);
   assert.doesNotMatch(shell, /name="findmi"|name="target"/, "no brand-mark / radar glyphs in the Business nav");
   assert.doesNotMatch(read("src/components/NavIcon.tsx"), /case "findmi":/, "the brand-mark glyph is gone");
@@ -312,7 +312,7 @@ test("public Find Us At / Brands Available Here: Live + in-effect only, compact 
   assert.match(lib, /products!inner\(id, name, slug, is_active\)/);
   assert.match(lib, /eq\("products\.is_active", true\)/);
   const detail = read("src/components/AvailabilityDetail.tsx");
-  assert.match(detail, /AVAILABILITY_RELATIONSHIP_LABELS\[detail\.relationship\]/);
+  assert.match(detail, /availabilityRelationshipsPhrase\(detail\.relationships\)/);
   assert.match(detail, /availabilityWhenLabel/);
   assert.match(detail, /<details/, "progressive disclosure for more than two products");
   assert.match(detail, /if \(isDefault\) return null;/, "an entry with no extra detail looks exactly as before");
@@ -355,7 +355,7 @@ test("availability migration (audited): live-only public policies, integrity tri
   assert.doesNotMatch(sql, /grant (insert|update|delete|all)[^;]*\b(anon|authenticated)\b/i, "writes stay service-role only");
   assert.doesNotMatch(sql, /\bdrop\s+(table|column)\b|\bdelete\s+from\b|\btruncate\b/i);
   const ls = readdirSync("supabase/migrations").sort();
-  assert.equal(ls.at(-1), "20261026000000_business_availability_details.sql", "ordered after every existing migration");
+  assert.equal(ls.at(-1), "20261101000100_entity_moment_display.sql", "ordered after every existing migration");
 });
 
 test("QR occurrence authority: all-dates participation → every date; selected dates → only approved ones; Appearance-only → its date", () => {

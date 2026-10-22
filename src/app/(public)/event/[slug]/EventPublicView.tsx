@@ -6,6 +6,8 @@ import Image from "@/components/SupabaseImage";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";
+import SectionAnchorNav from "@/components/SectionAnchorNav";
+import { buildSectionAnchors } from "@/lib/section-anchors";
 import { EndedStatus, FactsBand, WhenFact, WhereFact } from "@/components/event/KeyFacts";
 import { HIDDEN_LOCATION_COPY, isLocationHidden, rsvpActionLabel } from "@/lib/event-attendance";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
@@ -932,6 +934,22 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // Top sequence (phones): Hero → Essentials (WHEN | WHERE) → Actions →
   // Bulletin → Upcoming Dates → What's Happening → … Spacing, not rules.
   // Desktop keeps Essentials + Actions in the sticky right rail.
+  // Contextual navigation: one chip per section that actually rendered above
+  // (each section variable is null when it has no content), in page order.
+  // Moments counts only when there are public Moments to see (the section
+  // itself always renders for "+ Add Moment").
+  const sectionAnchors = buildSectionAnchors([
+    { id: "dates", label: "Dates", present: Boolean(datesSection) },
+    { id: "moments", label: "Moments", present: journal.entries.length > 0 },
+    { id: "overview", label: "What’s Happening", present: Boolean(overviewSection) },
+    { id: "lineup", label: "Findmi Here", present: hasOccurrences ? Object.values(rostersByOccurrence).some((r) => r.length > 0) : businesses.length > 0 },
+    { id: "media", label: "Gallery", present: Boolean(mediaSection) },
+    { id: "location", label: "Location", present: Boolean(locationFeatureSection) },
+    { id: "hosted-by", label: "Hosted By", present: Boolean(hostedBySection) },
+    { id: "place", label: "The Place", present: Boolean(placeSection) },
+    { id: "products", label: "Products", present: Boolean(productsSection) },
+    { id: "details", label: "Details", present: Boolean(detailsSection) },
+  ]);
   const body = (
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
       <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
@@ -954,7 +972,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           {overviewSection}
           {lineupSection}
           {mediaSection}
-          {locationFeatureSection}
+          {locationFeatureSection && <div id="location" className="scroll-mt-24">{locationFeatureSection}</div>}
           {hostedBySection}
           {placeSection}
           {productsSection}
@@ -1011,6 +1029,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
           genuine occurrence rows are selectable (never the synthesized
           whole-event range — see the Final Event Experience Polish note in
           git history). */}
+      <SectionAnchorNav items={sectionAnchors} />
+
       {hasOccurrences ? <EventOccurrenceProvider occurrences={datedOccurrences}>{body}</EventOccurrenceProvider> : body}
     </div>
   );

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingAvailabilityTable, ALREADY_OUR_LOCATION_ERROR } from "./business-location-availability";
 import {
+  normalizeAvailabilityRelationships,
   validateAvailabilityRequest,
   type AvailabilityRelationship,
   type AvailabilityRequestInput,
@@ -26,7 +27,8 @@ export interface OwnerAvailabilityItem {
   city: string | null;
   state: string | null;
   imageUrl: string | null;
-  relationship: AvailabilityRelationship;
+  /** Every way the Business is there at this one place (at least one). */
+  relationships: AvailabilityRelationship[];
   status: AvailabilityStatus;
   source: AvailabilitySource;
   startsOn: string | null;
@@ -35,8 +37,17 @@ export interface OwnerAvailabilityItem {
   products: { id: string; name: string }[];
 }
 
-const COLUMNS =
-  "id, location_id, relationship, status, source, starts_on, ends_on, note, created_at, locations!inner(id, name, slug, city, state, logo_url, cover_image_url)";
+/** `multi` adds the relationships array (migration 20261101…); reads fall back
+ * to the single legacy `relationship` while that migration is pending. */
+const columns = (multi: boolean) =>
+  `id, location_id, relationship, ${multi ? "relationships, " : ""}status, source, starts_on, ends_on, note, created_at, locations!inner(id, name, slug, city, state, logo_url, cover_image_url)`;
+
+const isMissingColumn = (error: { code?: string } | null | undefined) => Boolean(error && error.code === "42703");
+
+/** The stored shape of an entry's relationships: the array, plus the single
+ * legacy column mirrored from its first value so older readers still work. */
+const relationshipFields = (relationships: AvailabilityRelationship[]) => ({ relationships, relationship: relationships[0] });
+const MULTI_UNAVAILABLE = "Choosing more than one isn’t available yet. Pick one for now.";
 
 /** A missing detail column (migration pending) reads like a missing table. */
 function detailsUnavailable(error: { code?: string; message?: string } | null | undefined): boolean {
@@ -48,11 +59,10 @@ export async function getOwnerAvailability(
   admin: SupabaseClient,
   businessId: string
 ): Promise<{ available: boolean; items: OwnerAvailabilityItem[] }> {
-  const { data, error } = await admin
-    .from("business_location_availability")
-    .select(COLUMNS)
-    .eq("business_id", businessId)
-    .order("created_at", { ascending: false });
+  const read = (multi: boolean) =>
+    admin.from("business_location_availability").select(columns(multi)).eq("business_id", businessId).order("created_at", { ascending: false });
+  let { data, error } = await read(true);
+  if (isMissingColumn(error)) ({ data, error } = await read(false));
   if (error) {
     if (!detailsUnavailable(error)) console.error("getOwnerAvailability failed:", error.message);
     return { available: false, items: [] };
@@ -62,6 +72,7 @@ export async function getOwnerAvailability(
     id: string;
     location_id: string;
     relationship: AvailabilityRelationship;
+    relationships?: AvailabilityRelationship[] | null;
     status: AvailabilityStatus;
     source: AvailabilitySource;
     starts_on: string | null;
@@ -93,7 +104,7 @@ export async function getOwnerAvailability(
       city: loc.city,
       state: loc.state,
       imageUrl: loc.cover_image_url ?? loc.logo_url,
-      relationship: r.relationship,
+      relationships: normalizeAvailabilityRelationships(r.relationships && r.relationships.length > 0 ? r.relationships : [r.relationship]),
       status: r.status,
       source: r.source,
       startsOn: r.starts_on,
@@ -129,20 +140,13 @@ export async function requestOwnerAvailability(admin: SupabaseClient, businessId
     if (((owned ?? []) as unknown[]).length !== v.productIds.length) return { ok: false, error: "One of those products isn't part of your catalog." };
   }
 
-  const { data: inserted, error } = await admin
-    .from("business_location_availability")
-    .insert({
-      business_id: businessId,
-      location_id: v.locationId,
-      relationship: v.relationship,
-      status: "pending",
-      source: "business",
-      starts_on: v.startsOn,
-      ends_on: v.endsOn,
-      note: v.note,
-    })
-    .select("id")
-    .single();
+  const base = { business_id: businessId, location_id: v.locationId, status: "pending", source: "business", starts_on: v.startsOn, ends_on: v.endsOn, note: v.note };
+  let { data: inserted, error } = await admin.from("business_location_availability").insert({ ...base, ...relationshipFields(v.relationships) }).select("id").single();
+  if (isMissingColumn(error)) {
+    // Multi-relationship migration pending: a single relationship still saves.
+    if (v.relationships.length > 1) return { ok: false, error: MULTI_UNAVAILABLE };
+    ({ data: inserted, error } = await admin.from("business_location_availability").insert({ ...base, relationship: v.relationships[0] }).select("id").single());
+  }
   if (error || !inserted) {
     if (error?.code === "23505") return { ok: false, error: "You’re already connected to that location." };
     if (error && detailsUnavailable(error)) return { ok: false, error: "Where To Find Us isn't available yet. Please try again soon." };
@@ -179,14 +183,17 @@ export async function updateOwnerAvailability(
   availabilityId: string,
   input: Omit<AvailabilityRequestInput, "locationId">
 ): Promise<OwnerAvailabilityResult & { changed?: boolean }> {
-  const { data: existing, error: readError } = await admin
-    .from("business_location_availability")
-    .select("id, location_id, relationship, starts_on, ends_on, note")
-    .eq("id", availabilityId)
-    .eq("business_id", businessId)
-    .maybeSingle();
+  const readRow = (multi: boolean) =>
+    admin
+      .from("business_location_availability")
+      .select(`id, location_id, relationship, ${multi ? "relationships, " : ""}starts_on, ends_on, note`)
+      .eq("id", availabilityId)
+      .eq("business_id", businessId)
+      .maybeSingle();
+  let { data: existing, error: readError } = await readRow(true);
+  if (isMissingColumn(readError)) ({ data: existing, error: readError } = await readRow(false));
   if (readError) return { ok: false, error: detailsUnavailable(readError) ? "Where To Find Us isn't available yet. Please try again soon." : "Couldn't load that entry." };
-  const row = existing as { id: string; location_id: string; relationship: string; starts_on: string | null; ends_on: string | null; note: string | null } | null;
+  const row = existing as unknown as { id: string; location_id: string; relationship: string; relationships?: string[] | null; starts_on: string | null; ends_on: string | null; note: string | null } | null;
   if (!row) return { ok: false, error: "That entry wasn't found." };
 
   const checked = validateAvailabilityRequest({ ...input, locationId: row.location_id });
@@ -196,8 +203,10 @@ export async function updateOwnerAvailability(
   const { data: linkRows } = await admin.from("business_location_availability_products").select("product_id").eq("availability_id", availabilityId);
   const currentProducts = ((linkRows ?? []) as { product_id: string }[]).map((r) => r.product_id).sort();
   const nextProducts = [...v.productIds].sort();
+  const currentRelationships = normalizeAvailabilityRelationships(row.relationships && row.relationships.length > 0 ? row.relationships : [row.relationship]);
   const unchanged =
-    row.relationship === v.relationship &&
+    currentRelationships.length === v.relationships.length &&
+    currentRelationships.every((r, i) => r === v.relationships[i]) &&
     row.starts_on === v.startsOn &&
     row.ends_on === v.endsOn &&
     (row.note ?? null) === v.note &&
@@ -212,11 +221,17 @@ export async function updateOwnerAvailability(
 
   // Row first, straight to pending: if anything after this fails the entry is
   // already in its safe (non-public) state.
-  const { error: updateError } = await admin
-    .from("business_location_availability")
-    .update({ relationship: v.relationship, starts_on: v.startsOn, ends_on: v.endsOn, note: v.note, status: "pending", source: "business" })
-    .eq("id", availabilityId)
-    .eq("business_id", businessId);
+  const write = (fields: Record<string, unknown>) =>
+    admin
+      .from("business_location_availability")
+      .update({ ...fields, starts_on: v.startsOn, ends_on: v.endsOn, note: v.note, status: "pending", source: "business" })
+      .eq("id", availabilityId)
+      .eq("business_id", businessId);
+  let { error: updateError } = await write(relationshipFields(v.relationships));
+  if (isMissingColumn(updateError)) {
+    if (v.relationships.length > 1) return { ok: false, error: MULTI_UNAVAILABLE };
+    ({ error: updateError } = await write({ relationship: v.relationships[0] }));
+  }
   if (updateError) return { ok: false, error: "Couldn't save that. Please try again." };
 
   const { error: clearError } = await admin.from("business_location_availability_products").delete().eq("availability_id", availabilityId);

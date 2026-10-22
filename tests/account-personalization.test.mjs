@@ -391,5 +391,5 @@ test("icons: one shared storefront; a dedicated Moments icon; target keeps its A
   assert.match(icon, /case "moments":/);
   assert.match(icon, /case "target":/, "target still exists for Performance / Analytics");
   assert.match(read("src/lib/navigation.ts"), /label: "Moments", href: "\/moments", external: false, icon: "moments"/);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/BusinessAppShell.tsx"), /ChartGlyph/, "Performance uses the plain bar-chart glyph");
+  assert.match(read("src/app/(public)/account/business/[id]/v2/BusinessAppShell.tsx"), /InsightsGlyph/, "Performance uses the rounded insights-tile glyph");
 });

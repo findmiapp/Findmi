@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeLocationHours } from "./locationHours";
 import type { LocationHours } from "./types";
-import { isAvailabilityInEffect, isAvailabilityRelationship, type AvailabilityRelationship } from "./business-availability-domain";
+import { isAvailabilityInEffect, normalizeAvailabilityRelationships, type AvailabilityRelationship } from "./business-availability-domain";
 
 /** Find Us At — business_location_availability (see the migration
  * 20261015000000_business_location_availability.sql).
@@ -30,7 +30,8 @@ export const AVAILABILITY_PAGE_SIZE = 50;
  * detail columns. Absent before that migration is applied (and for rows
  * Findmi entered with no detail: stocked, Brand-wide, ongoing). */
 export interface AvailabilityDetail {
-  relationship: AvailabilityRelationship;
+  /** One place, one entry: every way the Business is there (at least one). */
+  relationships: AvailabilityRelationship[];
   startsOn: string | null;
   endsOn: string | null;
   note: string | null;
@@ -117,7 +118,7 @@ function one<T>(embed: T | T[] | null): T | null {
   return Array.isArray(embed) ? (embed[0] ?? null) : embed;
 }
 
-type DetailRow = { id: string; relationship?: string | null; starts_on?: string | null; ends_on?: string | null; note?: string | null };
+type DetailRow = { id: string; relationship?: string | null; relationships?: string[] | null; starts_on?: string | null; ends_on?: string | null; note?: string | null };
 
 /** Live, active Products for a set of availability rows — one batched read,
  * under the caller's own RLS (anon sees only products of LIVE entries and
@@ -140,9 +141,20 @@ async function loadProducts(client: SupabaseClient, ids: string[]): Promise<Map<
 }
 
 function toDetail(row: DetailRow, products: Map<string, AvailabilityDetail["products"]>): AvailabilityDetail | undefined {
-  if (!isAvailabilityRelationship(row.relationship)) return undefined;
-  return { relationship: row.relationship, startsOn: row.starts_on ?? null, endsOn: row.ends_on ?? null, note: row.note ?? null, products: products.get(row.id) ?? [] };
+  // `relationships` once the multi-relationship migration exists; the single
+  // legacy `relationship` before it (and as the mirrored first value after).
+  const relationships = normalizeAvailabilityRelationships(Array.isArray(row.relationships) && row.relationships.length > 0 ? row.relationships : [row.relationship]);
+  if (relationships.length === 0) return undefined;
+  return { relationships, startsOn: row.starts_on ?? null, endsOn: row.ends_on ?? null, note: row.note ?? null, products: products.get(row.id) ?? [] };
 }
+
+/** How much of the detail schema the database has: 2 = the multi-relationship
+ * column (migration 20261101…), 1 = the Where To Find Us detail columns
+ * (20261026…), 0 = neither. Reads try the richest shape and step down, so the
+ * app keeps working in whichever state the migrations are in. */
+type DetailLevel = 0 | 1 | 2;
+const detailColumns = (level: DetailLevel) =>
+  level === 2 ? "id, relationship, relationships, starts_on, ends_on, note, " : level === 1 ? "id, relationship, starts_on, ends_on, note, " : "";
 
 /** PostgREST `in` list for uuids (ids come from our own rows). */
 const inList = (ids: string[]) => `(${ids.join(",")})`;
@@ -172,10 +184,11 @@ export async function getAvailabilityLocationsForBusiness(
 ): Promise<Page<AvailabilityLocationItem>> {
   if (!client) return { items: [], hasMore: false };
   const operated = await operatedLocationIds(client, businessId);
-  const build = (details: boolean) => {
+  const build = (level: DetailLevel) => {
+    const details = level > 0;
     let query = client
       .from("business_location_availability")
-      .select(`${details ? "id, relationship, starts_on, ends_on, note, " : ""}created_at, locations!inner(${LOCATION_FIELDS})`)
+      .select(`${detailColumns(level)}created_at, locations!inner(${LOCATION_FIELDS})`)
       .eq("business_id", businessId);
     if (operated.length > 0) query = query.not("location_id", "in", inList(operated));
     if (publicOnly) {
@@ -184,8 +197,9 @@ export async function getAvailabilityLocationsForBusiness(
     }
     return query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + limit);
   };
-  let { data, error } = await build(true);
-  if (publicOnly && isMissingDetailColumn(error)) ({ data, error } = await build(false));
+  let { data, error } = await build(2);
+  if (isMissingDetailColumn(error)) ({ data, error } = await build(1));
+  if (publicOnly && isMissingDetailColumn(error)) ({ data, error } = await build(0));
   if (error) {
     if (!isMissingAvailabilityTable(error)) console.error("getAvailabilityLocationsForBusiness failed:", error.message);
     return { items: [], hasMore: false };
@@ -231,10 +245,11 @@ export async function getAvailableBrandsForLocation(
 ): Promise<Page<AvailableBrandItem>> {
   if (!client) return { items: [], hasMore: false };
   const operators = await operatorBusinessIds(client, locationId);
-  const build = (details: boolean) => {
+  const build = (level: DetailLevel) => {
+    const details = level > 0;
     let query = client
       .from("business_location_availability")
-      .select(`${details ? "id, relationship, starts_on, ends_on, note, " : ""}created_at, businesses!inner(id, name, slug, logo_url, is_demo, publication_status)`)
+      .select(`${detailColumns(level)}created_at, businesses!inner(id, name, slug, logo_url, is_demo, publication_status)`)
       .eq("location_id", locationId);
     if (operators.length > 0) query = query.not("business_id", "in", inList(operators));
     if (publicOnly) {
@@ -243,8 +258,9 @@ export async function getAvailableBrandsForLocation(
     }
     return query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + limit);
   };
-  let { data, error } = await build(true);
-  if (publicOnly && isMissingDetailColumn(error)) ({ data, error } = await build(false));
+  let { data, error } = await build(2);
+  if (isMissingDetailColumn(error)) ({ data, error } = await build(1));
+  if (publicOnly && isMissingDetailColumn(error)) ({ data, error } = await build(0));
   if (error) {
     if (!isMissingAvailabilityTable(error)) console.error("getAvailableBrandsForLocation failed:", error.message);
     return { items: [], hasMore: false };

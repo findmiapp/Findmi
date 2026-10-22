@@ -1,3 +1,4 @@
+import { getHiddenMomentIds } from "./entity-moment-display";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { hasMomentAuthorship, resolveMomentAuthors, authorColumn } from "./moment-authorship";
 import { resolveSignedUrls } from "./journal";
@@ -52,6 +53,12 @@ export interface BusinessMoment {
   mine: boolean;
   /** Appears in the Moments section of this Business's PUBLIC profile. */
   onProfile: boolean;
+  /** Could appear there: tagged to this Business, public and published. Only
+   * such a Moment has a profile display choice to make. */
+  profileEligible: boolean;
+  /** This Business has chosen to hide it from its profile (a display
+   * preference — see lib/entity-moment-display.ts; the Moment is untouched). */
+  profileHidden: boolean;
 }
 
 export interface BusinessMomentsResult {
@@ -96,7 +103,10 @@ export function filterMoments<T extends Pick<BusinessMoment, "byUs" | "relations
   return moments;
 }
 
-export async function getBusinessMoments(businessId: string, options?: { limit?: number; viewerUserId?: string | null }): Promise<BusinessMomentsResult> {
+export async function getBusinessMoments(
+  businessId: string,
+  options?: { limit?: number; viewerUserId?: string | null; /** Also read this Business's profile display preferences (the Moments view). */ withDisplay?: boolean }
+): Promise<BusinessMomentsResult> {
   const empty: BusinessMomentsResult = { moments: [], counts: countMoments([]) };
   const admin = getAdminSupabase();
   if (!admin || !UUID_RE.test(businessId)) return empty;
@@ -114,13 +124,15 @@ export async function getBusinessMoments(businessId: string, options?: { limit?:
   // entries ride along here: they need no relation lookup, so there is no
   // reason to read them after the others.
   const noRows = Promise.resolve({ data: null });
-  const [taggedRes, approvedEvents, hostedEvents, ourLocations, ownRes] = await Promise.all([
+  const [taggedRes, approvedEvents, hostedEvents, ourLocations, ownRes, hiddenIds] = await Promise.all([
     admin.from("journal_entry_connections").select("journal_entry_id").eq("business_id", businessId).limit(POOL),
     admin.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved").limit(200),
     admin.from("events").select("id").eq("host_business_id", businessId).limit(100),
     admin.from("business_locations").select("location_id").eq("business_id", businessId).limit(100),
     authorship ? admin.from("journal_entries").select(cols).eq("author_business_id", businessId).order("entry_date", { ascending: false }).limit(POOL) : noRows,
+    options?.withDisplay ? getHiddenMomentIds(admin, "business", businessId) : Promise.resolve([] as string[]),
   ]);
+  const hidden = new Set(hiddenIds);
   for (const r of (taggedRes.data ?? []) as { journal_entry_id: string }[]) add(r.journal_entry_id, "tagged");
 
   const eventIds = uuids([...((approvedEvents.data ?? []) as { event_id: string }[]).map((r) => r.event_id), ...((hostedEvents.data ?? []) as { id: string }[]).map((r) => r.id)]);
@@ -197,8 +209,10 @@ export async function getBusinessMoments(businessId: string, options?: { limit?:
       byUs: rel.includes("us"),
       mine: viewer !== null && r.user_id === viewer,
       // Exactly the public Business page's rule: a connection to this
-      // Business, public and published.
-      onProfile: rel.includes("tagged") && r.visibility === "public" && r.status === "published",
+      // Business, public and published — unless this Business hid it.
+      onProfile: rel.includes("tagged") && r.visibility === "public" && r.status === "published" && !hidden.has(r.id),
+      profileEligible: rel.includes("tagged") && r.visibility === "public" && r.status === "published",
+      profileHidden: hidden.has(r.id),
     };
   });
   return { moments, counts: countMoments(moments) };

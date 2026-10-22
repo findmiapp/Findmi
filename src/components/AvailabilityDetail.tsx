@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { AvailabilityDetail } from "@/lib/business-location-availability";
-import { AVAILABILITY_RELATIONSHIP_LABELS, availabilityWhenLabel } from "@/lib/business-availability-domain";
+import { availabilityRelationshipsPhrase, availabilityWhenLabel } from "@/lib/business-availability-domain";
 
-/** The compact "what can I find here" line shown under a Find Us At card
+/** The compact "what can I find here" line shown under a Find Us Here card
  * (Business page) and a Brands Available Here entry (Location page): HOW
- * ("Served Here"), WHEN only when it isn't ongoing ("Until Dec 31, 2026"),
+ * ("Served Here", or "Served, Sold & Stocked Here" when several apply — one place, one line), WHEN only when it isn't ongoing ("Until Dec 31, 2026"),
  * and WHAT — the first products inline, the rest behind a native
  * <details> disclosure. An entry with no detail beyond the default (stocked,
  * Brand-wide, ongoing) renders nothing, so existing connections look exactly
@@ -15,14 +15,14 @@ const INLINE_PRODUCTS = 2;
 export default function AvailabilityDetailLine({ detail, className = "" }: { detail?: AvailabilityDetail; className?: string }) {
   if (!detail) return null;
   const ongoing = !detail.startsOn && !detail.endsOn;
-  const isDefault = detail.relationship === "stocked" && ongoing && detail.products.length === 0 && !detail.note;
+  const isDefault = detail.relationships.length === 1 && detail.relationships[0] === "stocked" && ongoing && detail.products.length === 0 && !detail.note;
   if (isDefault) return null;
   const shown = detail.products.slice(0, INLINE_PRODUCTS);
   const more = detail.products.slice(INLINE_PRODUCTS);
   return (
     <div className={`text-xs text-ink/60 ${className}`}>
       <p className="flex flex-wrap items-center gap-x-1.5">
-        <span className="font-semibold text-findmi-700">{AVAILABILITY_RELATIONSHIP_LABELS[detail.relationship]}</span>
+        <span className="font-semibold text-findmi-700">{availabilityRelationshipsPhrase(detail.relationships)}</span>
         {!ongoing && <span>· {availabilityWhenLabel(detail.startsOn, detail.endsOn)}</span>}
       </p>
       {detail.products.length > 0 && (

@@ -52,7 +52,7 @@ export default function BusinessShopSection({
   }, [filter, products]);
 
   return (
-    <section className="mt-8">
+    <section id="shop" className="mt-8 scroll-mt-24">
       <h2 className="font-display text-lg font-bold tracking-tight text-ink">Shop {businessName}</h2>
 
       {showFilter && (

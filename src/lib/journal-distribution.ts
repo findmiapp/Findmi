@@ -22,6 +22,7 @@
 // in the private journal-media bucket: exactly ONE cover per card is
 // signed, server-side, via the existing batched resolveSignedUrls.
 import { getSupabase } from "./supabase";
+import { getHiddenMomentIds, notInList } from "./entity-moment-display";
 import { resolveSignedUrls } from "./journal";
 import { authorColumn, hasMomentAuthorship, resolveMomentAuthors } from "./moment-authorship";
 
@@ -97,10 +98,16 @@ export async function getPublicJournalCollection({
   // Event rollup: the event's own dates, so an entry tagged to a single
   // occurrence also belongs to its parent Event's collection.
   let occurrenceIds: string[] = [];
+  // Entity-owned display preferences: Moments THIS profile has chosen not to
+  // show (a preference of the displaying entity — the Moment itself is untouched
+  // and stays on every other profile and on its own page). Read alongside the
+  // Event date lookup; fails open, so no preferences = everything shown.
+  const hiddenPromise = subjectType === "business" || subjectType === "location" || subjectType === "event" ? getHiddenMomentIds(supabase, subjectType, subjectId) : Promise.resolve([] as string[]);
   if (subjectType === "event") {
     const { data: occ } = await supabase.from("event_occurrences").select("id").eq("event_id", subjectId);
     occurrenceIds = (occ ?? []).map((o) => o.id as string).filter((id) => UUID_RE.test(id));
   }
+  const hiddenIds = await hiddenPromise;
 
   const viaConnection = subjectType !== "location" && subjectType !== "author";
   const columns =
@@ -133,6 +140,8 @@ export async function getPublicJournalCollection({
   } else {
     query = query.eq(`journal_entry_connections.${subjectType}_id`, subjectId);
   }
+
+  if (hiddenIds.length > 0) query = query.not("id", "in", notInList(hiddenIds));
 
   const after = parseCursor(cursor);
   if (after) {

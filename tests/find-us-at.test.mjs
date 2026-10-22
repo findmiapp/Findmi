@@ -273,12 +273,12 @@ test("public detail: relationship, products, dates come through for Live in-effe
   const page = await A.getAvailabilityLocationsForBusiness(s, "brand-x", { publicOnly: true });
   assert.deepEqual(page.items.map((i) => i.locationId), ["eataly-flatiron"], "only the Live, in-effect entry");
   const d = page.items[0].detail;
-  assert.equal(d.relationship, "served");
+  assert.deepEqual(d.relationships, ["served"]);
   assert.equal(d.endsOn, day(20));
   assert.equal(d.note, "Counter");
   assert.deepEqual(d.products.map((p) => p.name), ["Espresso", "Lungo"], "inactive products never named");
   const brands = await A.getAvailableBrandsForLocation(s, "eataly-flatiron", { publicOnly: true });
-  assert.equal(brands.items[0].detail.relationship, "served");
+  assert.deepEqual(brands.items[0].detail.relationships, ["served"]);
   assert.deepEqual((await A.getAvailableBrandsForLocation(s, "whole-foods-bowery", { publicOnly: true })).items, [], "Pending not public from the Location side either");
   assert.deepEqual((await A.getAvailableBrandsForLocation(s, "hudson-yards", { publicOnly: true })).items, [], "Declined neither");
   assert.ok(today);

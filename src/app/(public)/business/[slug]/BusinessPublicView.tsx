@@ -29,6 +29,8 @@ import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import BrandHeading from "@/components/BrandHeading";
 import OurLocations from "@/components/OurLocations";
+import SectionAnchorNav from "@/components/SectionAnchorNav";
+import { buildSectionAnchors } from "@/lib/section-anchors";
 import FindUsAt from "@/components/FindUsAt";
 import { FIND_US_AT_PUBLIC_LIMIT, getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
 import { getLocationsForBusiness } from "@/lib/business-locations";
@@ -371,6 +373,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // heading instead.
   const allOwnersOrFounders =
     people.length > 0 && people.every((p) => /owner|founder/i.test(p.role ?? ""));
+  const sectionAnchors = buildSectionAnchors([
+    { id: "findmi-here", label: "Findmi Here", present: scheduleAppearances.length > 0 },
+    { id: "our-locations", label: "Our Locations", present: ourLocations.items.length > 0 },
+    { id: "find-us-at", label: "Find Us Here", present: findUsAt.items.length > 0 },
+    { id: "shop", label: "Shop", present: products.length > 0 },
+    { id: "gallery", label: "Gallery", present: galleryImages.length > 1 },
+    { id: "moments", label: "Moments", present: journal.entries.length > 0 },
+    { id: "about", label: "About", present: Boolean(business.description) },
+    { id: "people", label: "People", present: people.length > 0 },
+  ]);
   const peopleHeading = allOwnersOrFounders ? "Meet the Owners" : `Meet the People Behind ${business.name}`;
 
   // Unify Site-Wide Communications pass — Inquire no longer resolves to
@@ -766,6 +778,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         </div>
       )}
 
+      {/* Contextual navigation — chips only for the sections that actually
+          render below (lib/section-anchors.ts); omitted on a short profile. */}
+      <SectionAnchorNav items={sectionAnchors} />
+
       <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-10">
         {/* Right rail on desktop: primary action + Follow/Save, and (desktop
             only) the details/contact block — written first in the DOM so
@@ -946,7 +962,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               a real gallery for Free and Pro alike; existing upload/
               validation rules (unchanged) still decide what's in it. */}
           {galleryImages.length > 1 && (
-            <section className="mt-8">
+            <section id="gallery" className="mt-8 scroll-mt-24">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
               <div className="mt-4">
                 <ImageGalleryStrip images={galleryImages} alt={business.name} />
@@ -964,7 +980,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               second CTA when there are no Moments yet. The PERSON who
               creates it is always the author — this link never makes the
               Business the author of anything. */}
-          <section className="mt-8">
+          <section id="moments" className="mt-8 scroll-mt-24">
             {/* Same "Findmi Moments" BrandHeading + context line as the
                 Event/Location pages; the name wraps in the left column and
                 never runs under + Add Moment. */}
@@ -997,7 +1013,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               row rather than a conditionally-run query, so no plan check
               is needed here at all now — it renders whenever set. */}
           {business.description && (
-            <section className="mt-8">
+            <section id="about" className="mt-8 scroll-mt-24">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">About {business.name}</h2>
               <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
             </section>
@@ -1012,7 +1028,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               plan gate here is display-entitlement-only, exactly as
               intended. */}
           {people.length > 0 && (
-            <section className="mt-8">
+            <section id="people" className="mt-8 scroll-mt-24">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">{peopleHeading}</h2>
               {people.length === 1 ? (
                 // Narrower on small screens — PersonCard's photo card

@@ -4,7 +4,7 @@ import type { BusinessOpportunityItem } from "@/lib/opportunity-listings";
 import type { BusinessIdea } from "@/lib/brand-audit";
 import type { BusinessGoal } from "@/lib/opportunity-goals";
 import { auditActionLabel, type AuditSummary } from "@/lib/brand-audit-domain";
-import { summarizeGrowth, eligibleGrowthIdeas, unansweredIdeaCount, GROWTH_PROFILE_SECTIONS, GROWTH_SETUP_COPY, type GrowthDestination } from "@/lib/growth";
+import { summarizeGrowth, eligibleGrowthIdeas, unansweredIdeaCount, GROWTH_PROFILE_SECTIONS, GROWTH_SETUP_COPY, growthProfileSummary, type GrowthDestination, type GrowthProfileAnswers } from "@/lib/growth";
 import type { ActionResult } from "../brand-audit/actions";
 import GrowthNav from "./GrowthNav";
 import IdeasForYourBrand from "./IdeasForYourBrand";
@@ -62,6 +62,7 @@ export function GrowthGoalsView({
   basePath,
   businessId,
   audit,
+  profile,
   summary,
   goals,
   canManage,
@@ -71,6 +72,8 @@ export function GrowthGoalsView({
   basePath: string;
   businessId: string;
   audit: AuditSummary | null;
+  /** What the Business actually answered (compact line per section). */
+  profile: GrowthProfileAnswers | null;
   summary: ReturnType<typeof growthSummaryFor>;
   goals: { available: boolean; goals: BusinessGoal[] } | null;
   canManage: boolean;
@@ -79,7 +82,7 @@ export function GrowthGoalsView({
 }) {
   const setupHref = `${basePath}/brand-audit`;
   const answered = GROWTH_PROFILE_SECTIONS.filter((s) => summary.sections[s.key]).length;
-  const cta = audit ? auditActionLabel(audit) : GROWTH_SETUP_COPY.cta;
+  const cta = !canManage ? "Review Growth Setup" : audit ? auditActionLabel(audit) : GROWTH_SETUP_COPY.cta;
   return (
     <div className="flex flex-col gap-6 lg:max-w-3xl">
       <Header basePath={basePath} summary={summary} />
@@ -101,6 +104,7 @@ export function GrowthGoalsView({
         <ul className="mt-1 divide-y divide-black/[0.06]">
           {GROWTH_PROFILE_SECTIONS.map((s) => {
             const done = summary.sections[s.key];
+            const answers = growthProfileSummary(profile, s.key);
             return (
               <li key={s.key}>
                 <Link href={`${setupHref}?step=${s.step}`} className="flex min-h-[48px] items-center gap-3 py-2.5">
@@ -110,8 +114,15 @@ export function GrowthGoalsView({
                   >
                     ✓
                   </span>
-                  <span className="min-w-0 flex-1 text-card-title font-semibold text-primary">{s.label}</span>
-                  <span className={`shrink-0 text-metadata font-semibold ${done ? "text-muted" : "text-accent"}`}>{done ? "Edit" : "Add"}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-card-title font-semibold text-primary">{s.label}</span>
+                    {answers ? (
+                      <span className="mt-0.5 block truncate text-metadata text-muted">{answers}</span>
+                    ) : (
+                      !canManage && <span className="mt-0.5 block text-metadata text-subtle">Not Added Yet</span>
+                    )}
+                  </span>
+                  <span className={`shrink-0 text-metadata font-semibold ${done ? "text-muted" : "text-accent"}`}>{!canManage ? "Review" : done ? "Edit" : "Add"}</span>
                   <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
                 </Link>
               </li>

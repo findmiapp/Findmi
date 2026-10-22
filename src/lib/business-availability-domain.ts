@@ -8,6 +8,23 @@ export type AvailabilityRelationship = (typeof AVAILABILITY_RELATIONSHIPS)[numbe
 export const isAvailabilityRelationship = (v: unknown): v is AvailabilityRelationship =>
   typeof v === "string" && (AVAILABILITY_RELATIONSHIPS as readonly string[]).includes(v);
 
+/** What each relationship means in the real world — the five stay distinct
+ * (a place can stock a Brand's bottles on a shelf, sell them at a counter,
+ * serve them as a drink, feature them in a display and hand out samples —
+ * and any combination can be true at once):
+ *   stocked  — on the shelf / in inventory
+ *   sold     — you can buy it there
+ *   served   — prepared and served on site (café, bar, restaurant)
+ *   featured — promoted or displayed (an endcap, a menu feature)
+ *   sampled  — tastings and demos */
+export const AVAILABILITY_RELATIONSHIP_HINTS: Record<AvailabilityRelationship, string> = {
+  stocked: "On the shelf",
+  sold: "You can buy it here",
+  served: "Prepared and served here",
+  featured: "Promoted or displayed here",
+  sampled: "Tastings and demos",
+};
+
 /** Owner-facing wording: how the Business is there. */
 export const AVAILABILITY_RELATIONSHIP_LABELS: Record<AvailabilityRelationship, string> = {
   stocked: "Stocked Here",
@@ -16,6 +33,24 @@ export const AVAILABILITY_RELATIONSHIP_LABELS: Record<AvailabilityRelationship, 
   featured: "Featured Here",
   sampled: "Sampled Here",
 };
+
+/** Canonical order for a set of relationships (the order of the list above),
+ * duplicates and anything unknown removed. */
+export function normalizeAvailabilityRelationships(values: readonly unknown[]): AvailabilityRelationship[] {
+  const set = new Set(values.filter(isAvailabilityRelationship));
+  return AVAILABILITY_RELATIONSHIPS.filter((r) => set.has(r));
+}
+
+/** "Served Here" for one; "Served, Sold & Stocked Here" for several — one
+ * phrase for one place, never one card per relationship. */
+export function availabilityRelationshipsPhrase(relationships: readonly AvailabilityRelationship[]): string {
+  const rels = normalizeAvailabilityRelationships(relationships);
+  if (rels.length === 0) return "";
+  const word = (r: AvailabilityRelationship) => AVAILABILITY_RELATIONSHIP_LABELS[r].replace(/ Here$/, "");
+  if (rels.length === 1) return AVAILABILITY_RELATIONSHIP_LABELS[rels[0]];
+  const words = rels.map(word);
+  return `${words.slice(0, -1).join(", ")} & ${words[words.length - 1]} Here`;
+}
 
 export const AVAILABILITY_STATUSES = ["pending", "live", "declined"] as const;
 export type AvailabilityStatus = (typeof AVAILABILITY_STATUSES)[number];
@@ -66,7 +101,10 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface AvailabilityRequestInput {
   locationId: string;
-  relationship: string;
+  /** One or more of the five. (`relationship`, the single legacy value, is
+   * still accepted when `relationships` is absent.) */
+  relationships?: readonly string[];
+  relationship?: string;
   productIds: string[];
   timing: string;
   startsOn: string | null;
@@ -79,7 +117,8 @@ export type AvailabilityRequestResult =
       ok: true;
       value: {
         locationId: string;
-        relationship: AvailabilityRelationship;
+        /** Canonical order, at least one. */
+        relationships: AvailabilityRelationship[];
         productIds: string[];
         startsOn: string | null;
         endsOn: string | null;
@@ -92,7 +131,10 @@ export type AvailabilityRequestResult =
  * re-verified against the database in the write path. */
 export function validateAvailabilityRequest(input: AvailabilityRequestInput): AvailabilityRequestResult {
   if (!input.locationId) return { ok: false, error: "Choose where to find you." };
-  if (!isAvailabilityRelationship(input.relationship)) return { ok: false, error: "Choose how you’re there." };
+  const requested = input.relationships ?? (input.relationship !== undefined ? [input.relationship] : []);
+  if (requested.some((r) => !isAvailabilityRelationship(r))) return { ok: false, error: "Choose how you’re there." };
+  const relationships = normalizeAvailabilityRelationships(requested);
+  if (relationships.length === 0) return { ok: false, error: "Choose at least one way you’re there." };
   const productIds = [...new Set(input.productIds.filter(Boolean))];
   if (productIds.length > AVAILABILITY_PRODUCT_MAX) return { ok: false, error: `Choose up to ${AVAILABILITY_PRODUCT_MAX} products.` };
 
@@ -110,5 +152,5 @@ export function validateAvailabilityRequest(input: AvailabilityRequestInput): Av
     return { ok: false, error: "Choose when this applies." };
   }
   const note = input.note?.trim().slice(0, AVAILABILITY_NOTE_MAX) || null;
-  return { ok: true, value: { locationId: input.locationId, relationship: input.relationship, productIds, startsOn, endsOn, note } };
+  return { ok: true, value: { locationId: input.locationId, relationships, productIds, startsOn, endsOn, note } };
 }

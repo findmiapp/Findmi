@@ -29,7 +29,7 @@ const NAV_ICONS: Record<BusinessSection, ReactNode> = {
   moments: <NavIcon name="moments" className="h-[22px] w-[22px]" />,
   products: <NavIcon name="tag" className="h-[22px] w-[22px]" />,
   growth: <SparkGlyph className="h-[22px] w-[22px]" />,
-  performance: <ChartGlyph className="h-[22px] w-[22px]" />,
+  performance: <InsightsGlyph className="h-[22px] w-[22px]" />,
   more: <MoreGlyph className="h-[22px] w-[22px]" />,
 };
 
@@ -166,15 +166,17 @@ export function SparkGlyph({ className }: { className?: string }) {
   );
 }
 
-/** Performance — a plain bar chart (analytics / reports). Same 24px /
- * 1.8-stroke family as NavIcon. */
-export function ChartGlyph({ className }: { className?: string }) {
+/** Performance / Insights — a rounded tile (the same rounded-square language
+ * as the QR and More glyphs) holding three rising bars. Reads as an app's
+ * "insights" tile rather than stock chart art, a radar or a flower. Same
+ * 24px / 1.8-stroke family as NavIcon. */
+export function InsightsGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M4.5 20h15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <rect x="5.5" y="11" width="3.4" height="6.5" rx="1" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="10.3" y="6" width="3.4" height="11.5" rx="1" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="15.1" y="9" width="3.4" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="7.3" y="12.2" width="2.4" height="4.3" rx="0.9" fill="currentColor" />
+      <rect x="10.8" y="9.2" width="2.4" height="7.3" rx="0.9" fill="currentColor" />
+      <rect x="14.3" y="6.9" width="2.4" height="9.6" rx="0.9" fill="currentColor" />
     </svg>
   );
 }

@@ -41,6 +41,7 @@ import GrowthNav from "../v2/GrowthNav";
 import MomentsView from "../v2/MomentsView";
 import AvailableAtView from "../v2/AvailableAtView";
 import { getOwnerAvailability } from "@/lib/business-availability-owner";
+import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
 import { getBusinessGoals } from "@/lib/opportunity-goals";
@@ -1244,6 +1245,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     recommendedOpportunities,
     growthData,
     ownerAvailability,
+    productSetsData,
     businessMoments,
     exploreData,
     pastAppearances,
@@ -1293,9 +1295,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     // Findmi Here → Find Us Here (owner view; every status). Fails safe to
     // { available: false } until the details migration is applied.
     whenP(onFindUs, () => getOwnerAvailability(admin, id), { available: false, items: [] } as Awaited<ReturnType<typeof getOwnerAvailability>>),
+    // Product Sets feed the Find Us Here Products chooser (template layer).
+    whenP(onFindUs, () => getProductSets(admin, id), { available: false, sets: [] } as Awaited<ReturnType<typeof getProductSets>>),
     whenP(
       activeTab === "moments" || onHome,
-      () => getBusinessMoments(id, activeTab === "moments" ? { viewerUserId: user?.id ?? null } : { limit: 6, viewerUserId: user?.id ?? null }),
+      () => getBusinessMoments(id, activeTab === "moments" ? { viewerUserId: user?.id ?? null, withDisplay: true } : { limit: 6, viewerUserId: user?.id ?? null }),
       emptyMoments as Awaited<ReturnType<typeof getBusinessMoments>>
     ),
     whenP(activeTab === "opportunities" && opportunityView === "explore", () => getExploreItems(id, exploreFilters), null as Awaited<ReturnType<typeof getExploreItems>> | null),
@@ -1652,6 +1656,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             basePath={basePath}
             businessId={id}
             audit={brandAudit?.available ? brandAudit.summary : null}
+            profile={brandAudit?.available ? brandAudit : null}
             summary={growthSummary}
             goals={growthGoals}
             canManage={canManageOpportunityGoals}
@@ -1670,7 +1675,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         )}
 
         {/* ── Moments ──────────────────────────────────────────────── */}
-        {activeTab === "moments" && <MomentsView basePath={basePath} businessId={id} data={businessMoments} filter={momentFilter} canPost={isManagingRole(membershipRole) || isAdminElevated} />}
+        {activeTab === "moments" && <MomentsView basePath={basePath} businessId={id} data={businessMoments} filter={momentFilter} canPost={isManagingRole(membershipRole) || isAdminElevated} canManageDisplay={isManagingRole(membershipRole) || isAdminElevated} />}
 
         {/* ── Performance ──────────────────────────────────────────── */}
         {/* Free/Pro Entitlement Realignment pass — Analytics (including
@@ -2293,6 +2298,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             available={ownerAvailability.available}
             items={ownerAvailability.items}
             products={products.map((p) => ({ id: p.id, name: p.name }))}
+            productSets={productSetsData.sets}
+            productSetsAvailable={productSetsData.available}
             canEdit={isManagingRole(membershipRole) || isAdminElevated}
           />
         )}

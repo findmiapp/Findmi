@@ -43,6 +43,8 @@ import { getSupabase } from "@/lib/supabase";
 import { getOperatorsForLocation } from "@/lib/business-locations";
 import { getAvailableBrandsForLocation } from "@/lib/business-location-availability";
 import AvailabilityDetailLine from "@/components/AvailabilityDetail";
+import SectionAnchorNav from "@/components/SectionAnchorNav";
+import { buildSectionAnchors } from "@/lib/section-anchors";
 
 /** Brands Available Here shown on a Location page (bounded). */
 const BRANDS_AVAILABLE_HERE_LIMIT = 12;
@@ -201,6 +203,14 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const followButton = (
     <LocationFollowButton locationId={location.id} locationSlug={location.slug} locationName={location.name} size="action" tone="accent" />
   );
+
+  const sectionAnchors = buildSectionAnchors([
+    { id: "happening", label: "Happening", present: happenings.length > 0 },
+    { id: "moments", label: "Moments", present: journal.entries.length > 0 },
+    { id: "about", label: "Operated By", present: operators.items.length > 0 },
+    { id: "brands-available-here", label: "Brands Here", present: availableBrands.items.length > 0 },
+    { id: "photos", label: "Photos", present: galleryImages.length > 1 },
+  ]);
 
   return (
     <div className="relative mx-auto max-w-4xl px-0 pb-10 sm:px-6">
@@ -412,20 +422,12 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* Location Final Micro-cleanup — the "Events" anchor pointed at the
-            Featured card directly above it and read as an orphan label, so
-            it's gone; the nav (and its divider) only renders when it has a
-            real section further down to jump to. */}
-        {galleryImages.length > 1 && (
-          <nav className="mt-5 flex items-center gap-5 overflow-x-auto border-b border-black/5 pb-2.5 text-sm font-semibold text-ink/50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {galleryImages.length > 1 && (
-              <a href="#photos" className="shrink-0 transition hover:text-ink">
-                Photos
-              </a>
-            )}
-          </nav>
-        )}
       </div>
+
+      {/* Contextual navigation — replaces the lone "Photos" anchor: one chip per
+          section that actually renders below (lib/section-anchors.ts), and
+          omitted when the page is short. */}
+      <SectionAnchorNav items={sectionAnchors} containerClassName="px-4 sm:px-0" />
 
       {/* What's Happening Here collection (Location + Event Moment
           Continuity pass) — replaces the old "Coming Up Here" remainder-
@@ -440,7 +442,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           Renders nothing when there's nothing upcoming — there is no public
           empty-state copy on this page; the section simply collapses. */}
       {happenings.length > 0 && (
-        <section className="mt-6 px-4 sm:px-0">
+        <section id="happening" className="mt-6 scroll-mt-24 px-4 sm:px-0">
           <LocationHappeningCollection happenings={happenings} />
         </section>
       )}
@@ -465,7 +467,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           action; uses the exact Location row's REAL id (never manual
           location text, never a Market/Area inference) via the existing
           validated /my-world/journal/new?location=<id> contextual route. */}
-      <section className="mt-5 px-4 sm:px-0">
+      <section id="moments" className="mt-5 scroll-mt-24 px-4 sm:px-0">
         {/* Same "Findmi Moments" BrandHeading as the Event page, with "at
             {name}" beneath it in the LEFT column only — the column ends
             before + Add Moment (top-right), so a long name wraps within it

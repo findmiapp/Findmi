@@ -1,4 +1,4 @@
-import { auditMissingSections, auditProgress, auditSectionsAnswered, AUDIT_SECTIONS, type AuditSection, type AuditSummary } from "./brand-audit-domain";
+import { auditOptionLabel, auditMissingSections, auditProgress, auditSectionsAnswered, AUDIT_SECTIONS, type AuditSection, type AuditSummary } from "./brand-audit-domain";
 
 /** Growth — the Business Manager's one place for "how can Findmi help us
  * grow". Pure derivations over data the page already loads (Growth Setup
@@ -132,4 +132,43 @@ export function growthDestinationStatus(summary: GrowthSummary, destination: Gro
   }
   if (summary.ideasForYou > 0) return { value: `${summary.ideasForYou} For You`, sub: summary.ideasNew > 0 ? `${summary.ideasNew} New` : "Reviewed" };
   return summary.hasSignal ? { value: "None Yet", sub: "Check Back Soon" } : { value: "Personalize", sub: "Add Your Goals" };
+}
+
+/** The answers behind the Growth Profile checklist, as the page already has
+ * them (`getBrandAudit`). Structural so tests and the view don't need the
+ * server module. */
+export interface GrowthProfileAnswers {
+  goals: { key: string }[];
+  challenges: { key: string }[];
+  audiences: { key: string }[];
+  ages: { key: string }[];
+  priorities: { key: string }[];
+  marketScope: { key: string }[];
+  environments: { key: string }[];
+  geo: { label: string }[];
+}
+
+const joinLabels = (labels: string[], shown = 3): string | null => {
+  const unique = [...new Set(labels.filter(Boolean))];
+  if (unique.length === 0) return null;
+  return unique.length > shown ? `${unique.slice(0, shown).join(", ")} +${unique.length - shown} More` : unique.join(", ");
+};
+
+/** One compact line of what the Business actually answered for a Growth
+ * Profile section ("Brand Awareness, Trial +2 More"), or null when nothing is
+ * saved. Real answers only — never placeholder copy. */
+export function growthProfileSummary(profile: GrowthProfileAnswers | null, section: AuditSection): string | null {
+  if (!profile) return null;
+  switch (section) {
+    case "goals":
+      return joinLabels(profile.goals.map((a) => auditOptionLabel("goal", a.key)));
+    case "challenges":
+      return joinLabels(profile.challenges.map((a) => auditOptionLabel("challenge", a.key)));
+    case "audience":
+      return joinLabels([...profile.audiences.map((a) => auditOptionLabel("audience", a.key)), ...profile.ages.map((a) => auditOptionLabel("age_range", a.key))]);
+    case "markets":
+      return joinLabels([...profile.marketScope.map((a) => auditOptionLabel("market_scope", a.key)), ...profile.geo.map((g) => g.label)]);
+    case "environments":
+      return joinLabels(profile.environments.map((a) => auditOptionLabel("environment", a.key)));
+  }
 }

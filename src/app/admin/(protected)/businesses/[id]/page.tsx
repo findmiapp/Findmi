@@ -19,7 +19,7 @@ import {
 } from "../location-actions";
 import { adminConnectFindUsAt, adminRemoveFindUsAt, adminReviewFindUsAt } from "../availability-actions";
 import { getOwnerAvailability } from "@/lib/business-availability-owner";
-import { AVAILABILITY_RELATIONSHIP_LABELS, availabilityWhenLabel } from "@/lib/business-availability-domain";
+import { availabilityRelationshipsPhrase, availabilityWhenLabel } from "@/lib/business-availability-domain";
 import { getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
 import BusinessIntelligencePanel from "@/components/admin/BusinessIntelligencePanel";
@@ -775,7 +775,7 @@ export default async function EditBusinessPage({
                           {p.locationName}
                         </Link>
                         <p className="text-xs text-ink/55">
-                          {AVAILABILITY_RELATIONSHIP_LABELS[p.relationship]} · {availabilityWhenLabel(p.startsOn, p.endsOn)} ·{" "}
+                          {availabilityRelationshipsPhrase(p.relationships)} · {availabilityWhenLabel(p.startsOn, p.endsOn)} ·{" "}
                           {p.products.length > 0 ? p.products.map((x) => x.name).join(", ") : "Brand"}
                         </p>
                       </div>

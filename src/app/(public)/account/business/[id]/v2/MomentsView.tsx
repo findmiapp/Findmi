@@ -14,6 +14,7 @@ import {
   type MomentFilter,
 } from "@/lib/business-moments";
 import { Chip } from "../../../owner-ui";
+import MomentProfileControl from "./MomentProfileControl";
 
 const momentDate = (iso: string) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -36,7 +37,7 @@ function connectionLabel(m: BusinessMoment): string | null {
   return null;
 }
 
-function MomentTile({ moment: m, compact = false }: { moment: BusinessMoment; compact?: boolean }) {
+function MomentTile({ moment: m, compact = false, businessId, canManageDisplay = false }: { moment: BusinessMoment; compact?: boolean; businessId?: string; canManageDisplay?: boolean }) {
   const canOpen = m.status === "published" || m.byUs || m.mine;
   const inner = (
     <>
@@ -67,12 +68,25 @@ function MomentTile({ moment: m, compact = false }: { moment: BusinessMoment; co
       )}
     </>
   );
-  return canOpen ? (
+  const tile = canOpen ? (
     <Link href={momentHref(m)} className="group block focus-visible:outline-none">
       {inner}
     </Link>
   ) : (
     <div className="group block">{inner}</div>
+  );
+  // Profile display: only a Moment that can appear on this Business's public
+  // profile has a choice to make, and only a manager can make it.
+  if (compact || !businessId || !m.profileEligible) return tile;
+  return (
+    <div>
+      {tile}
+      {canManageDisplay ? (
+        <MomentProfileControl businessId={businessId} entryId={m.id} initialHidden={m.profileHidden} />
+      ) : (
+        <p className="mt-1 text-microcopy text-subtle">{m.profileHidden ? "Hidden from your profile" : "On your profile"}</p>
+      )}
+    </div>
   );
 }
 
@@ -88,12 +102,15 @@ export default function MomentsView({
   data,
   filter,
   canPost,
+  canManageDisplay = false,
 }: {
   basePath: string;
   businessId: string;
   data: BusinessMomentsResult;
   filter: MomentFilter;
   canPost: boolean;
+  /** Owner/manager (or elevated Admin): may show/hide Moments on the profile. */
+  canManageDisplay?: boolean;
 }) {
   const moments = filterMoments(data.moments, filter);
   const href = (f: MomentFilter) => (f === "all" ? `${basePath}?tab=moments` : `${basePath}?tab=moments&show=${f}`);
@@ -145,7 +162,7 @@ export default function MomentsView({
         <ul className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
           {moments.map((m) => (
             <li key={m.id} className="min-w-0">
-              <MomentTile moment={m} />
+              <MomentTile moment={m} businessId={businessId} canManageDisplay={canManageDisplay} />
             </li>
           ))}
         </ul>
