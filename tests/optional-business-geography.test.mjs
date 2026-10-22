@@ -98,7 +98,7 @@ test("creation authorization, duplicate protection and the A2 redirect remain", 
   // doc comment), not an unconditional top-of-function redirect.
   assert.match(CREATE, /if \(!user\) \{\s*const params = new URLSearchParams\(\);/);
   assert.match(CREATE, /if \(!authorized\) \{\s*fail\("Please confirm you're authorized to create and manage this business\."\);/);
-  assert.match(CREATE, /const \[duplicate\] = await findBusinessMatches\(admin, \{/);
+  assert.match(CREATE, /const matches = await findBusinessMatches\(admin, \{/);
   assert.match(CREATE, /redirect\(`\/account\?created=\$\{businessId\}`\);/);
 });
 

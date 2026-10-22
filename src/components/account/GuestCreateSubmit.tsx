@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, useFormStatus } from "react-dom";
 
 /**
  * Guest-First Creation pass — the submit control for a native creation
@@ -66,13 +66,7 @@ export default function GuestCreateSubmit({
     (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit();
   }, [authed, resume, formId]);
 
-  if (authed) {
-    return (
-      <button type="submit" className={className}>
-        {label}
-      </button>
-    );
-  }
+  if (authed) return <AuthedSubmit label={label} className={className} />;
 
   function openSheet(e: React.MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
@@ -100,6 +94,38 @@ export default function GuestCreateSubmit({
         <GuestCreateSheet title={title} body={body} onClose={() => setShowSheet(false)} draftNext={draftNext} />
       )}
     </>
+  );
+}
+
+/** The signed-in submit: one submission per tap. Disabled while the create
+ * action is in flight (useFormStatus), plus a ref guard for a second tap
+ * that lands before that re-render — a double tap must never start a
+ * second create. Re-enabled when the action settles (e.g. an error
+ * round-trip back to this form). */
+function AuthedSubmit({ label, className }: { label: string; className: string }) {
+  const { pending } = useFormStatus();
+  const submitted = useRef(false);
+  useEffect(() => {
+    if (!pending) submitted.current = false;
+  }, [pending]);
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      onClick={(e) => {
+        if (submitted.current) {
+          e.preventDefault();
+          return;
+        }
+        // Only a submit the browser will actually send counts (an invalid
+        // required field blocks it and must leave the button usable).
+        if (e.currentTarget.form?.checkValidity()) submitted.current = true;
+      }}
+      className={`${className} disabled:opacity-60`}
+    >
+      {pending ? "Adding…" : label}
+    </button>
   );
 }
 

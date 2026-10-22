@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 /** Final Brand Build V1 UX cleanup — the Review Your Brand Logo / Cover
  * Image field. Always rendered, whether or not the Build found an image:
@@ -18,7 +18,13 @@ import { useId, useRef, useState } from "react";
  * chosen file always wins over the found image. The local preview is a
  * data: URL (the CSP allows data:, not blob:). Same picker hardening as
  * MemberImageField: a real <button> opens an sr-only (never display:none)
- * file input. */
+ * file input.
+ *
+ * The preview always follows the file actually IN the input — including one
+ * the browser restored into it without a change event (Android Chrome
+ * reloads a tab whose renderer was killed behind the photo picker and
+ * restores its form state), which would otherwise be submitted while the
+ * field still says "No logo". */
 export default function BrandImageInput({
   role,
   label,
@@ -36,7 +42,7 @@ export default function BrandImageInput({
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [chosen, setChosen] = useState<{ name: string; preview: string | null } | null>(null);
+  const [chosen, setChosen] = useState<{ name: string; preview: string | null; failed?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const noun = role === "logo" ? "Logo" : "Cover Image";
 
@@ -50,11 +56,11 @@ export default function BrandImageInput({
     setError(null);
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+  function showFiles(input: HTMLInputElement) {
+    const files = input.files;
     if (!files || files.length === 0) return;
     if (files.length > 1) {
-      e.target.value = "";
+      input.value = "";
       setChosen(null);
       setError("Please choose a single image.");
       return;
@@ -63,7 +69,7 @@ export default function BrandImageInput({
     // Same 5MB cap the server enforces (imageUploadValidation.ts) — caught
     // here so the owner isn't sent back to an error after submitting.
     if (file.size > 5 * 1024 * 1024) {
-      e.target.value = "";
+      input.value = "";
       setChosen(null);
       setError("That image is over 5MB. Please choose a smaller one.");
       return;
@@ -71,12 +77,30 @@ export default function BrandImageInput({
     setError(null);
     setChosen({ name: file.name, preview: null });
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : null;
-      setChosen((current) => (current && current.name === file.name ? { name: file.name, preview: result } : current));
-    };
+    const settle = (preview: string | null) =>
+      setChosen((current) => (current && current.name === file.name ? { name: file.name, preview, failed: preview === null } : current));
+    reader.onload = () => settle(typeof reader.result === "string" ? reader.result : null);
+    // An unreadable preview never leaves the field stuck on "Preview…".
+    reader.onerror = () => settle(null);
     reader.readAsDataURL(file);
   }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    showFiles(e.target);
+  }
+
+  // A file the browser put back into the input (form-state restore, or a
+  // back/forward visit) fires no change event — pick it up here.
+  useEffect(() => {
+    const sync = () => {
+      const input = inputRef.current;
+      if (input?.files?.length) showFiles(input);
+    };
+    sync();
+    window.addEventListener("pageshow", sync);
+    return () => window.removeEventListener("pageshow", sync);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const preview = chosen ? chosen.preview : foundPreview;
   const source = chosen ? "Your upload" : foundPreview ? "From your website" : role === "logo" ? "No logo found" : "No cover image found";
@@ -91,7 +115,7 @@ export default function BrandImageInput({
     // eslint-disable-next-line @next/next/no-img-element -- local/data preview only
     <img src={preview} alt={chosen ? `Your ${noun.toLowerCase()}` : `${noun} found on your website`} className={role === "logo" ? "h-full w-full object-contain" : "h-full w-full object-cover"} />
   ) : (
-    <span className="px-2 text-center text-label text-subtle">{chosen ? "Preview…" : `No ${noun.toLowerCase()}`}</span>
+    <span className="px-2 text-center text-label text-subtle">{chosen ? (chosen.failed ? `${noun} Added` : "Preview…") : `No ${noun.toLowerCase()}`}</span>
   );
   const empty = !preview && !chosen;
 

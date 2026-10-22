@@ -307,5 +307,5 @@ test("17. Review keeps the Instagram field editable/removable; creation re-valid
   const review = read("src/app/(public)/account/business/new/page.tsx");
   assert.match(review, /instagramUrl: fromDraft \? \(fromDraft\.ig \? `https:\/\/www\.instagram\.com\/\$\{fromDraft\.ig\}` : ""\)/);
   assert.match(review, /name="instagram_url"\s+defaultValue=\{values\.instagramUrl\}/);
-  assert.match(read("src/app/(public)/account/business/actions.ts"), /const \[duplicate\] = await findBusinessMatches\(admin, \{/);
+  assert.match(read("src/app/(public)/account/business/actions.ts"), /const matches = await findBusinessMatches\(admin, \{/);
 });

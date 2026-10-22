@@ -292,7 +292,7 @@ test("query safety: commas, parentheses, %, _, quotes, apostrophes, dots, backsl
 // ── Regression: createMemberBusiness wiring ───────────────────────────────
 test("regression: createMemberBusiness uses the shared matcher, still blocks before create, and never reveals non-public matches", () => {
   const actions = readFileSync("src/app/(public)/account/business/actions.ts", "utf8");
-  assert.match(actions, /import \{ findBusinessMatches \} from "@\/lib\/business-matching";/);
+  assert.match(actions, /import \{ findBusinessMatches, ownedBusinessMatch \} from "@\/lib\/business-matching";/);
   assert.doesNotMatch(actions, /findLikelyDuplicateBusiness|normalizeUrlForMatch/, "old full-table matcher removed");
   const fn = actions.slice(actions.indexOf("export async function createMemberBusiness"));
   const check = fn.indexOf("await findBusinessMatches(admin");

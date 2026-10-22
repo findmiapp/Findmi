@@ -342,6 +342,17 @@ export function rankBusinessMatches(
   return matches.slice(0, limit);
 }
 
+/** The strongest match this user already belongs to, or null. A match the
+ * signed-in creator already owns is their own Business — most often the one
+ * an earlier submit of the same form just created (a double tap, or a
+ * resubmit after the transition looked like a failure) — so creation lands
+ * on it instead of making a second one or telling its owner to contact
+ * Findmi. `matches` keeps findBusinessMatches' order. */
+export function ownedBusinessMatch<M extends Pick<BusinessMatch, "id">>(matches: readonly M[], ownedBusinessIds: Iterable<string>): M | null {
+  const owned = new Set(ownedBusinessIds);
+  return matches.find((m) => owned.has(m.id)) ?? null;
+}
+
 /** "Does this Business already exist on Findmi?" — ranked candidates
  * (strongest first, at most BUSINESS_MATCH_RESULT_LIMIT), each with its
  * match reasons and whether it is public. Demo rows are never candidates;

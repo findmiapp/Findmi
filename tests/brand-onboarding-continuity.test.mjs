@@ -155,5 +155,5 @@ test("Build still requires sign-in, re-validates the source, keeps rate limits a
   assert.match(analysis, /if \(deps\.isRateLimited\(input\.userId, input\.ip\)\) return finish\(manual\("limited"\), "rate_limited"\);/);
   for (const f of [ACTION, analysis]) assert.doesNotMatch(code(f), /create_owned_business|createMemberBusiness|\.insert\(/);
   // Creation (with its server-side duplicate protection) only happens on the Review submit.
-  assert.match(CREATE, /const \[duplicate\] = await findBusinessMatches\(admin, \{/);
+  assert.match(CREATE, /const matches = await findBusinessMatches\(admin, \{/);
 });

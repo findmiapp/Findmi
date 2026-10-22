@@ -22,7 +22,7 @@ import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptio
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
-import { findBusinessMatches } from "@/lib/business-matching";
+import { findBusinessMatches, ownedBusinessMatch } from "@/lib/business-matching";
 import { BRAND_SOURCE, SHORT_DESCRIPTION_MAX_LENGTH, parseBrandSource } from "@/lib/brand-candidate";
 import { clearBrandDraftCookie, readBrandDraft } from "@/lib/brand-draft";
 import { clearStagedBrandImages, fetchVerifiedBrandImage, loadStagedBrandImage, storeBrandImage, type BrandImageRole } from "@/lib/brand-images";
@@ -1384,13 +1384,28 @@ export async function createMemberBusiness(formData: FormData) {
   // flow (name + link, as before); a non-public one (pending review,
   // draft, paused, rejected, archived, trashed) still blocks creation but
   // its name/slug are never revealed to the visitor.
-  const [duplicate] = await findBusinessMatches(admin, {
+  const matches = await findBusinessMatches(admin, {
     name: name!,
     city,
     state,
     websiteUrl,
     instagramUrl,
   });
+  // A match this user already belongs to is their own Business (see
+  // ownedBusinessMatch) — land on it; never create a second one.
+  if (matches.length > 0) {
+    const { data: memberships } = await admin
+      .from("business_members")
+      .select("business_id")
+      .eq("user_id", user.id)
+      .in(
+        "business_id",
+        matches.map((m) => m.id)
+      );
+    const owned = ownedBusinessMatch(matches, ((memberships ?? []) as { business_id: string }[]).map((m) => m.business_id));
+    if (owned) redirect(`/account?created=${owned.id}`);
+  }
+  const [duplicate] = matches;
   if (duplicate) {
     redirect(
       duplicate.isPublic
