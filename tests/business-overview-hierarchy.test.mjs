@@ -44,17 +44,18 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → section rail → Needs Attention → Happening Now → Coming Up → Quick Create → Moments → Growth → Performance → Public Profile", () => {
+test("Home hierarchy: Status → section rail → Needs Attention → Next → Happening Now → Coming Up → Moments → Growth → Performance → Quick Create → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
     "<HomeSectionNav items={navItems} />",
     "<NeedsAttentionBar items={attention} />",
+    "<NextSection basePath={basePath} items={next} expanded={nextExpanded} />",
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
-    'aria-labelledby="quick-create"',
     "<MomentsStrip",
     "<GrowthPanel",
     'aria-labelledby="performance-snapshot"',
+    'aria-labelledby="quick-create"',
     'aria-labelledby="findmi-link"',
   ].map(at);
   for (let i = 1; i < order.length; i++) assert.ok(order[i - 1] < order[i], `marker #${i} out of order (${order.join(", ")})`);
@@ -149,7 +150,7 @@ test("participating vs organizing: Where I'll Be = taking part in someone else's
 });
 
 test("Quick Create: a few high-value actions from the shared definitions; View All opens the existing + sheet", () => {
-  const create = HOME.slice(at('aria-labelledby="quick-create"'), at("<MomentsStrip"));
+  const create = HOME.slice(at('aria-labelledby="quick-create"'), at('aria-labelledby="findmi-link"'));
   assert.match(HOME, /const quick = \[create\.where, create\.event, create\.product, create\.qr\];/);
   assert.match(create, /\{quick\.map\(\(action\) => \(/);
   assert.doesNotMatch(create, /snap-mandatory|orderedCreateActions/, "no carousel any more");
@@ -274,14 +275,14 @@ test("every attention item has a title (what), a message (why) and an action", (
   assert.match(PAGE, /pendingInvitationNames=\{pendingInvitations\.filter\(\(o\) => o\.status === "pending"\)\.map\(\(o\) => o\.eventName\)\}/);
 });
 
-test("Schedule: Happening Now (only when live) then Coming Up; useful empty state with the two presence actions", () => {
+test("Schedule: Happening Now (only when live) then Coming Up; a compact empty state that never repeats Quick Create", () => {
   assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\}/);
   assert.match(PAGE, /liveActivities=\{homeActivities\.live\}/);
   assert.match(PAGE, /const homeActivities = buildHomeComingUp\(\s*dashboardAppearances,\s*hostedUpcoming\.map\(/);
-  const sched = HOME.slice(at('id="home-schedule"'), at('id="home-create"'));
+  const sched = HOME.slice(at('id="home-schedule"'), at("<MomentsStrip"));
   assert.ok(sched.indexOf("<LiveCard") < sched.indexOf("<UpcomingRow"));
-  assert.match(sched, /Tell people where you&rsquo;ll be or host an Event\./);
-  assert.match(sched, /\{\[create\.where, create\.event\]\.map\(\(a\) => \(/);
+  assert.match(sched, /<p className="mt-2 text-body text-muted">\{liveNow\.length > 0 \? "Nothing else scheduled yet\." : "Nothing scheduled yet\."\}<\/p>/);
+  assert.doesNotMatch(sched, /create\.where|create\.event|CreateActionIcon/, "Where I'll Be / Host An Event live in Quick Create only");
 });
 
 test("Growth (Home mini-dashboard + Growth tab): existing data only, never Pro-gated, no fabricated metrics", () => {

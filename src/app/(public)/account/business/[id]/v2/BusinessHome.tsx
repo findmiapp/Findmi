@@ -6,6 +6,7 @@ import FindmiUrlCard from "@/components/FindmiUrlCard";
 import type { HomeActivity, NeedsAttentionItem } from "@/lib/business-dashboard";
 import type { BusinessMoment } from "@/lib/business-moments";
 import type { GrowthSummary } from "@/lib/growth";
+import { NEXT_INITIAL_LIMIT, type NextItem } from "@/lib/business-next";
 import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { businessCreateActions } from "./createActions";
@@ -28,20 +29,20 @@ const APP_TIMEZONE = "America/New_York";
  * Business Manager redesign — locked top-to-bottom hierarchy, each block
  * answering one question:
  *   A. Business status          — publication status + View Public Profile
- *   B. Sticky Home section rail — Overview · Schedule · Quick Create ·
- *                                 Growth · Performance (in-page anchors)
- *   C. Needs Attention          — WHAT NEEDS MY ATTENTION: a compact,
- *                                 collapsed status bar; absent at zero
- *   D. Happening Now            — conditional; live Appearances + hosted Events
- *   E. Coming Up                — WHAT'S HAPPENING: image-forward rows, one
+ *   B. Sticky Home section rail — Overview · Schedule · Growth ·
+ *                                 Performance · Create (in-page anchors)
+ *   C. Needs Attention          — a compact, collapsed status bar; absent at zero
+ *   D. Next                     — WHAT DO I DO NEXT: up to three things this
+ *                                 Business can act on (lib/business-next.ts)
+ *   E. Happening Now            — conditional; live Appearances + hosted Events
+ *   F. Coming Up                — WHAT'S HAPPENING: image-forward rows, one
  *                                 per Event (multi-date summarized), See All
- *   F. Quick Create             — WHAT ARE WE CREATING: a few high-value
- *                                 actions + the existing full "+" sheet
  *   G. Recent Moments           — conditional; latest Moments, See All
  *   H. Growth                   — HOW CAN FINDMI HELP US GROW: the compact
  *                                 mini-dashboard / setup state
  *   I. Performance              — HOW IS IT PERFORMING (existing metrics)
- *   J. Public Profile           — the Findmi link as a utility row
+ *   J. Quick Create             — a few high-value actions + the full "+" sheet
+ *   K. Public Profile           — the Findmi link as a utility row
  * Sections never reorder; conditional ones simply disappear. */
 
 export interface HomeMetric {
@@ -73,6 +74,8 @@ export default function BusinessHome({
   liveActivities,
   comingUp,
   needsAttention,
+  next,
+  nextExpanded = false,
   metrics,
   metricsRangeLabel,
   pendingInvitationCount,
@@ -93,6 +96,10 @@ export default function BusinessHome({
   /** Next few not-yet-live items, chronological, one per Event / standalone Appearance. */
   comingUp: HomeActivity[];
   needsAttention: NeedsAttentionItem[];
+  /** Next — already ordered (lib/business-next.ts buildBusinessNext). */
+  next: NextItem[];
+  /** `?next=all`: every Next item instead of the first three. */
+  nextExpanded?: boolean;
   metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
   metricsRangeLabel: string | null;
   pendingInvitationCount: number;
@@ -137,9 +144,9 @@ export default function BusinessHome({
   const navItems: HomeSectionNavItem[] = [
     { id: "overview", label: "Overview" },
     { id: "home-schedule", label: "Schedule" },
-    { id: "home-create", label: "Create" },
     { id: "home-growth", label: "Growth" },
     ...(metrics ? [{ id: "home-performance", label: "Performance" }] : []),
+    { id: "home-create", label: "Create" },
   ];
   // Quick Create — the four highest-value actions; everything else (a
   // Location, the rest) lives in the existing full sheet via View All.
@@ -167,7 +174,10 @@ export default function BusinessHome({
       {/* C. Needs Attention — compact, collapsed; renders nothing at zero. */}
       <NeedsAttentionBar items={attention} />
 
-      {/* D + E. Schedule — Happening Now (only when live), then Coming Up. */}
+      {/* D. Next — what this Business can act on now. */}
+      <NextSection basePath={basePath} items={next} expanded={nextExpanded} />
+
+      {/* E + F. Schedule — Happening Now (only when live), then Coming Up. */}
       <div id="home-schedule" className={`flex flex-col gap-7 ${SECTION_CLASS}`}>
         {liveNow.length > 0 && (
           <section aria-labelledby="happening-now">
@@ -197,53 +207,11 @@ export default function BusinessHome({
               ))}
             </ul>
           ) : (
-            <div className="mt-2">
-              <p className="text-body text-muted">
-                {liveNow.length > 0 ? "Nothing else scheduled yet." : "Nothing scheduled yet."} Tell people where you&rsquo;ll be or host an Event.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {[create.where, create.event].map((a) => (
-                  <Link
-                    key={a.key}
-                    href={a.href}
-                    className="flex h-10 items-center gap-2 rounded-full border border-black/[0.08] bg-white pl-2.5 pr-4 text-button font-semibold text-primary transition hover:border-findmi/40"
-                  >
-                    <span className="text-findmi-700">
-                      <CreateActionIcon icon={a.icon} className="h-[18px] w-[18px]" />
-                    </span>
-                    {a.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
+            // Compact: Quick Create below already offers Where I'll Be / Host An Event.
+            <p className="mt-2 text-body text-muted">{liveNow.length > 0 ? "Nothing else scheduled yet." : "Nothing scheduled yet."}</p>
           )}
         </section>
       </div>
-
-      {/* F. Quick Create — a few high-value actions, then the full sheet. */}
-      <section id="home-create" aria-labelledby="quick-create" className={SECTION_CLASS}>
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="quick-create" className="font-display text-section-title font-bold text-primary">
-            Quick Create
-          </h2>
-          <AddToPresence basePath={basePath} businessId={businessId} variant="link" label="View All" />
-        </div>
-        <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {quick.map((action) => (
-            <li key={action.key} className="min-w-0">
-              <Link
-                href={action.href}
-                className="flex h-12 items-center gap-2 rounded-2xl border border-black/[0.08] bg-white px-3 text-button font-semibold text-primary transition hover:border-findmi/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
-              >
-                <span className="shrink-0 text-findmi-700">
-                  <CreateActionIcon icon={action.icon} className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 truncate">{quickLabel(action.key, action.label)}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
 
       {/* G. Recent Moments — only when this Business has posted some. */}
       <MomentsStrip basePath={basePath} moments={recentMoments} />
@@ -276,7 +244,32 @@ export default function BusinessHome({
         </section>
       )}
 
-      {/* J. Public Profile — a utility row, not an operational section. */}
+      {/* J. Quick Create — a few high-value actions, then the full sheet. */}
+      <section id="home-create" aria-labelledby="quick-create" className={SECTION_CLASS}>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="quick-create" className="font-display text-section-title font-bold text-primary">
+            Quick Create
+          </h2>
+          <AddToPresence basePath={basePath} businessId={businessId} variant="link" label="View All" />
+        </div>
+        <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {quick.map((action) => (
+            <li key={action.key} className="min-w-0">
+              <Link
+                href={action.href}
+                className="flex h-12 items-center gap-2 rounded-2xl border border-black/[0.08] bg-white px-3 text-button font-semibold text-primary transition hover:border-findmi/40 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+              >
+                <span className="shrink-0 text-findmi-700">
+                  <CreateActionIcon icon={action.icon} className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 truncate">{quickLabel(action.key, action.label)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* K. Public Profile — a utility row, not an operational section. */}
       <section aria-labelledby="findmi-link" className="border-t border-black/[0.06] pt-4">
         <h2 id="findmi-link" className="text-label font-bold uppercase text-subtle">
           Public Profile Link
@@ -286,6 +279,62 @@ export default function BusinessHome({
         </div>
       </section>
     </div>
+  );
+}
+
+const NEXT_META_TONE: Record<NonNullable<NextItem["due"]>, string> = {
+  overdue: "font-semibold text-amber-700",
+  today: "font-semibold text-findmi-700",
+  soon: "text-muted",
+  later: "text-muted",
+};
+
+/** Next — a derived read (a Target's own next step, an Opportunity waiting on
+ * this Business), never a task list: nothing to check off here; each row
+ * opens the record that owns it. First three, then See All (URL state). */
+function NextSection({ basePath, items, expanded }: { basePath: string; items: NextItem[]; expanded: boolean }) {
+  const more = items.length > NEXT_INITIAL_LIMIT;
+  const shown = expanded ? items : items.slice(0, NEXT_INITIAL_LIMIT);
+  return (
+    <section id="home-next" aria-labelledby="home-next-title" className={SECTION_CLASS}>
+      {more ? (
+        <SectionTitle
+          id="home-next-title"
+          title="Next"
+          href={expanded ? `${basePath}#home-next` : `${basePath}?next=all#home-next`}
+          linkLabel={expanded ? "Show Less" : `See All ${items.length}`}
+        />
+      ) : (
+        <h2 id="home-next-title" className="font-display text-section-title font-bold text-primary">
+          Next
+        </h2>
+      )}
+      {shown.length > 0 ? (
+        <ul className="mt-2.5 flex flex-col gap-2">
+          {shown.map((item) => (
+            <li key={item.key}>
+              <Link
+                href={item.href}
+                className="block rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+              >
+                <span className="block truncate text-card-title font-semibold text-primary">{item.title}</span>
+                <span className={`line-clamp-2 block break-words text-metadata ${item.due ? NEXT_META_TONE[item.due] : "text-muted"}`}>{item.meta}</span>
+                {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
+                <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
+                  {item.actionLabel}
+                  <ChevronIcon direction="right" className="h-3 w-3" />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-2">
+          <p className="text-body font-semibold text-primary">You&rsquo;re All Caught Up</p>
+          <p className="text-metadata text-muted">Nothing needs your attention right now.</p>
+        </div>
+      )}
+    </section>
   );
 }
 

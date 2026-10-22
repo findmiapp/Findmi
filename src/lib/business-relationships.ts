@@ -460,21 +460,6 @@ export async function getRelationshipWorkspace(admin: SupabaseClient, businessId
   };
 }
 
-/** Targets with a Next Action due today or earlier (not Passed) — Needs Attention. */
-export async function getDueNextActions(admin: SupabaseClient, businessId: string, today = followUpToday()): Promise<{ count: number; first: { locationId: string; name: string; nextAction: string | null; overdue: boolean } | null }> {
-  const { data, count, error } = await admin
-    .from("business_location_placements")
-    .select("location_id, next_action, next_action_at, locations!inner(name)", { count: "exact" })
-    .eq("business_id", businessId)
-    .neq("status", "passed")
-    .lte("next_action_at", today)
-    .order("next_action_at")
-    .limit(1);
-  if (error || !data || data.length === 0) return { count: 0, first: null };
-  const r = data[0] as unknown as { location_id: string; next_action: string | null; next_action_at: string; locations: { name: string } | { name: string }[] | null };
-  return { count: count ?? 1, first: { locationId: r.location_id, name: one(r.locations)?.name ?? "A Target", nextAction: r.next_action, overdue: r.next_action_at < today } };
-}
-
 /** Growth's contextual geography links ("Growing In: Jersey City →"): the
  * priority Markets / Areas the Business declared, resolved to the By Market
  * lens. Two small reads; no counts. */

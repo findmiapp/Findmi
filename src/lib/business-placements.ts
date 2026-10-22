@@ -19,6 +19,7 @@ import {
   type PlacementActor,
 } from "./business-placements-domain";
 import { safeAuthorName } from "./moment-author";
+import { NEXT_PLACEMENT_READ_LIMIT, type NextPlacementInput } from "./business-next";
 
 /** Placement Targets — server reads/writes over business_location_placements.
  * Service-role client only; EVERY function here performs NO authorization of its
@@ -137,6 +138,29 @@ export async function getPlacementCounts(admin: SupabaseClient, businessId: stri
   counts.all = results[0].count ?? 0;
   PLACEMENT_STATUSES.forEach((s, i) => (counts[s] = results[i + 1].count ?? 0));
   return { available: true, ...counts };
+}
+
+/** Business Home → Next: this Business's open Targets (not Passed) that carry
+ * a next step, soonest dated first. One bounded read — no Activity, no
+ * internal notes, no other Business's rows. lib/business-next.ts orders them. */
+export async function getNextPlacementActions(admin: SupabaseClient, businessId: string, limit = NEXT_PLACEMENT_READ_LIMIT): Promise<NextPlacementInput[]> {
+  const { data, error } = await admin
+    .from("business_location_placements")
+    .select("location_id, status, next_action, next_action_at, locations!inner(name)")
+    .eq("business_id", businessId)
+    .neq("status", "passed")
+    .or("next_action.not.is.null,next_action_at.not.is.null")
+    .order("next_action_at", { ascending: true, nullsFirst: false })
+    .order("id")
+    .limit(limit);
+  if (error || !data) return [];
+  return (data as unknown as { location_id: string; status: PlacementStatus; next_action: string | null; next_action_at: string | null; locations: { name: string } | { name: string }[] | null }[]).map((r) => ({
+    locationId: r.location_id,
+    locationName: (Array.isArray(r.locations) ? r.locations[0] : r.locations)?.name ?? "A Target",
+    status: r.status,
+    nextAction: r.next_action,
+    nextActionAt: r.next_action_at,
+  }));
 }
 
 /** Growth's one-line Targets status: how many Targets exist and how many are
