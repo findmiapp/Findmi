@@ -31,6 +31,9 @@ export interface GrowthInput {
   ideasForYou?: number;
   /** …of which the Business hasn't answered yet. */
   ideasNew?: number;
+  /** Placement Targets: all, and those still being pursued (not Passed). */
+  targetsTotal?: number;
+  targetsPursuing?: number;
 }
 
 export type GrowthSetupState = "not_started" | "in_progress" | "ready";
@@ -50,6 +53,8 @@ export interface GrowthSummary {
   matchesInProgress: number;
   ideasForYou: number;
   ideasNew: number;
+  targetsTotal: number;
+  targetsPursuing: number;
   /** Growth Setup sections answered, by section (Profile checklist). */
   sections: Record<AuditSection, boolean>;
 }
@@ -72,6 +77,8 @@ export function summarizeGrowth(input: GrowthInput): GrowthSummary {
     matchesInProgress: input.matchesInProgress,
     ideasForYou: input.ideasForYou ?? 0,
     ideasNew: input.ideasNew ?? 0,
+    targetsTotal: input.targetsTotal ?? 0,
+    targetsPursuing: input.targetsPursuing ?? 0,
     sections: audit ? auditSectionsAnswered(audit) : { goals: false, challenges: false, audience: false, markets: false, environments: false },
   };
 }
@@ -94,15 +101,18 @@ export const GROWTH_SETUP_COPY = {
   improve: "Improve My Matches",
 } as const;
 
-/** The three Growth destinations, in order. One definition: the hub
- * navigation, Home's mini-dashboard and the tests all read it. */
-export const GROWTH_DESTINATIONS = ["goals", "opportunities", "ideas"] as const;
+/** The Growth destinations, in order. One definition: the hub navigation,
+ * Home's mini-dashboard and the tests all read it. Targets are the SAME
+ * Placement records as Findmi Here → Find Us Here → Targets — two doors, one
+ * pipeline. */
+export const GROWTH_DESTINATIONS = ["goals", "targets", "opportunities", "ideas"] as const;
 export type GrowthDestination = (typeof GROWTH_DESTINATIONS)[number];
-export const GROWTH_DESTINATION_LABELS: Record<GrowthDestination, string> = { goals: "Goals", opportunities: "Opportunities", ideas: "Ideas" };
+export const GROWTH_DESTINATION_LABELS: Record<GrowthDestination, string> = { goals: "Goals", targets: "Targets", opportunities: "Opportunities", ideas: "Ideas" };
 
 export function growthHref(basePath: string, destination: GrowthDestination): string {
   if (destination === "opportunities") return `${basePath}?tab=opportunities`;
   if (destination === "ideas") return `${basePath}?tab=growth&view=ideas`;
+  if (destination === "targets") return `${basePath}?tab=growth&view=targets`;
   return `${basePath}?tab=growth`;
 }
 
@@ -125,6 +135,10 @@ export function growthDestinationStatus(summary: GrowthSummary, destination: Gro
       ? { value: `${summary.goalCount} Set`, sub: `Profile ${summary.preferencesAnswered}/${summary.preferencesTotal}` }
       : { value: "Get Started", sub: "Set Your Goals" };
   }
+  if (destination === "targets") {
+    if (summary.targetsPursuing > 0) return { value: `${summary.targetsPursuing} Pursuing`, sub: "Targets" };
+    return summary.targetsTotal > 0 ? { value: "None Active", sub: "Reopen Or Add" } : { value: "Add Targets", sub: "Where To Grow" };
+  }
   if (destination === "opportunities") {
     if (summary.matchesAwaitingResponse > 0) return { value: `${summary.matchesAwaitingResponse} Needs Response`, sub: "Opportunities", highlight: true };
     const n = summary.matchesAwaitingResponse + summary.matchesInProgress;
@@ -136,11 +150,12 @@ export function growthDestinationStatus(summary: GrowthSummary, destination: Gro
 
 /** The one sentence that says how Goals, Ideas and Opportunities fit together — shown on
  * every Growth page so the three read as one workflow, not three unrelated tabs. */
-export const GROWTH_WORKFLOW_INTRO = "Tell Findmi what you want. Findmi suggests Ideas that may help, and shares an Opportunity when a real one fits.";
+export const GROWTH_WORKFLOW_INTRO = "Tell Findmi what you want and which places you’re pursuing. Findmi suggests Ideas that may help, and shares an Opportunity when a real one fits.";
 
 /** The role each destination plays, in the order a Business moves through them. */
 export const GROWTH_WORKFLOW_ROLES: { key: GrowthDestination; role: string }[] = [
   { key: "goals", role: "What You Want" },
+  { key: "targets", role: "What You’re Pursuing" },
   { key: "ideas", role: "What May Help" },
   { key: "opportunities", role: "What’s Available" },
 ];

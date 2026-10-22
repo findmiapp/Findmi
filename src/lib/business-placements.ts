@@ -4,14 +4,21 @@ import type { SelectedLocationDetail } from "@/components/account/EventLocationF
 import {
   PLACEMENT_PAGE_SIZE,
   PLACEMENT_STATUSES,
+  PLACEMENT_ACTIVITY_PAGE_SIZE,
+  activityCursor,
   placementChanges,
+  validateActivityNote,
   validateInternalNotes,
   validatePlacementUpdate,
   type PlacementFilter,
   type PlacementSource,
   type PlacementStatus,
   type PlacementUpdateInput,
+  type ActivityCursor,
+  type PlacementActivityType,
+  type PlacementActor,
 } from "./business-placements-domain";
+import { safeAuthorName } from "./moment-author";
 
 /** Placement Targets — server reads/writes over business_location_placements.
  * Service-role client only; EVERY function here performs NO authorization of its
@@ -132,6 +139,16 @@ export async function getPlacementCounts(admin: SupabaseClient, businessId: stri
   return { available: true, ...counts };
 }
 
+/** Growth's one-line Targets status: how many Targets exist and how many are
+ * still being pursued (not Passed). Two head counts — never a row read. */
+export async function getPlacementPursuit(admin: SupabaseClient, businessId: string): Promise<{ total: number; pursuing: number }> {
+  const base = () => admin.from("business_location_placements").select("id", { count: "exact", head: true }).eq("business_id", businessId);
+  const [all, passed] = await Promise.all([base(), base().eq("status", "passed")]);
+  if (all.error || passed.error) return { total: 0, pursuing: 0 };
+  const total = all.count ?? 0;
+  return { total, pursuing: Math.max(0, total - (passed.count ?? 0)) };
+}
+
 /** One page of this Business's Targets, filtered and searched in the database.
  * Soonest Next Action first (undated last), then most recently changed. */
 export async function getBusinessPlacementsPage(admin: SupabaseClient, businessId: string, filter: PlacementFilter, page: number): Promise<BusinessPlacementsPage> {
@@ -209,14 +226,18 @@ export async function addBusinessPlacement(
   return { ok: true, id: row.id, existing: false, status: row.status };
 }
 
-/** A Business edit: status, Notes, Next Action and its date — nothing else.
- * Reopening a Passed target is this same call with status 'target'. The
- * database keeps status_changed_at in step with status. */
+/** A Business edit: status, Summary / Context (`notes`), Next Action and its
+ * date — nothing else. Reopening a Passed target is this same call with status
+ * 'target'. When the status changes, the actor rides along in the SAME update
+ * (status_actor / status_actor_user_id) and the database trigger records the
+ * status_change Activity, keeps status_changed_at in step and clears the actor
+ * columns — so status and its Activity can never disagree. */
 export async function updateBusinessPlacement(
   admin: SupabaseClient,
   businessId: string,
   placementId: string,
-  input: PlacementUpdateInput
+  input: PlacementUpdateInput,
+  by: { actor: PlacementActor; userId: string | null }
 ): Promise<PlacementResult & { changed?: boolean }> {
   if (!UUID.test(placementId)) return { ok: false, error: "That Target wasn’t found." };
   const checked = validatePlacementUpdate(input);
@@ -232,7 +253,12 @@ export async function updateBusinessPlacement(
   if (!current) return { ok: false, error: "That Target wasn’t found." };
   const patch = placementChanges(current, checked.value);
   if (Object.keys(patch).length === 0) return { ok: true, changed: false };
-  const { error: updateError } = await admin.from("business_location_placements").update(patch).eq("id", placementId).eq("business_id", businessId);
+  const write = "status" in patch ? { ...patch, status_actor: by.actor, status_actor_user_id: by.userId } : patch;
+  let { error: updateError } = await admin.from("business_location_placements").update(write).eq("id", placementId).eq("business_id", businessId);
+  // Before the Activity migration the actor columns don't exist yet: save the change without them.
+  if (updateError && write !== patch && (updateError.code === "42703" || updateError.code === "PGRST204")) {
+    ({ error: updateError } = await admin.from("business_location_placements").update(patch).eq("id", placementId).eq("business_id", businessId));
+  }
   if (updateError) {
     console.error("updateBusinessPlacement failed:", updateError.message);
     return { ok: false, error: "Couldn’t save that. Please try again." };
@@ -282,5 +308,111 @@ export async function adminSetPlacementInternalNotes(admin: SupabaseClient, busi
     .select("id");
   if (error) return { ok: false, error: "Couldn’t save that. Please try again." };
   if (((data ?? []) as unknown[]).length === 0) return { ok: false, error: "That Target wasn’t found." };
+  return { ok: true };
+}
+
+// ── Activity ──────────────────────────────────────────────────────────────
+// Append-only history of one Placement. Read only for an OPENED Target (never by
+// the list), one bounded page at a time, scoped through the Placement to THIS
+// Business. Authors resolve to profile display names in one batched read — never
+// an email or a user id leaves this module.
+
+export interface PlacementActivityItem {
+  id: string;
+  type: PlacementActivityType;
+  /** The note text (notes only). */
+  body: string | null;
+  /** Status change: from → to (status_change only). */
+  from: PlacementStatus | null;
+  to: PlacementStatus | null;
+  /** "Findmi", a member's display name, "Team Member" when the member has no
+   * usable name, or null when the change came from no identifiable person. */
+  author: string | null;
+  createdAt: string;
+}
+
+export interface PlacementActivityPage {
+  available: boolean;
+  items: PlacementActivityItem[];
+  /** Pass back as the cursor to load the next (older) page; null at the end. */
+  nextCursor: string | null;
+}
+
+const ACTIVITY_COLUMNS = "id, activity_type, body, metadata, actor, created_by_user_id, created_at, business_location_placements!inner(business_id)";
+
+type RawActivity = { id: string; activity_type: PlacementActivityType; body: string | null; metadata: { from?: string; to?: string } | null; actor: PlacementActor | null; created_by_user_id: string | null; created_at: string };
+
+const isStatus = (v: unknown): v is PlacementStatus => typeof v === "string" && (PLACEMENT_STATUSES as readonly string[]).includes(v);
+
+export async function getPlacementActivityPage(admin: SupabaseClient, businessId: string, placementId: string, before: ActivityCursor | null): Promise<PlacementActivityPage> {
+  const size = PLACEMENT_ACTIVITY_PAGE_SIZE;
+  if (!UUID.test(placementId)) return { available: true, items: [], nextCursor: null };
+  let query = admin
+    .from("business_location_placement_activities")
+    .select(ACTIVITY_COLUMNS)
+    .eq("placement_id", placementId)
+    .eq("business_location_placements.business_id", businessId);
+  // Keyset: strictly older than the cursor — (created_at, id) < (at, id). Values are quoted for or().
+  if (before) query = query.or(`created_at.lt."${before.at}",and(created_at.eq."${before.at}",id.lt.${before.id})`);
+  const { data, error } = await query.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(size + 1);
+  if (error) {
+    if (!isMissingActivityTable(error)) console.error("getPlacementActivityPage failed:", error.message);
+    return { available: false, items: [], nextCursor: null };
+  }
+  const rows = (data ?? []) as unknown as RawActivity[];
+  const page = rows.slice(0, size);
+  const names = await resolveActivityAuthors(admin, page.map((r) => r.created_by_user_id));
+  const items = page.map((r): PlacementActivityItem => ({
+    id: r.id,
+    type: r.activity_type,
+    body: r.activity_type === "note" ? r.body : null,
+    from: r.activity_type === "status_change" && isStatus(r.metadata?.from) ? r.metadata!.from : null,
+    to: r.activity_type === "status_change" && isStatus(r.metadata?.to) ? r.metadata!.to : null,
+    author: r.actor === "findmi" ? "Findmi" : r.created_by_user_id ? names.get(r.created_by_user_id) ?? "Team Member" : r.actor === "business" ? "Team Member" : null,
+    createdAt: r.created_at,
+  }));
+  return { available: true, items, nextCursor: rows.length > size ? activityCursor(items[items.length - 1]) : null };
+}
+
+export function isMissingActivityTable(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === "42P01" || error.code === "PGRST205" || error.code === "PGRST200" || /business_location_placement_activities/.test(error.message ?? "");
+}
+
+/** Display names only (one batched read; an email-like name is never shown). */
+async function resolveActivityAuthors(admin: SupabaseClient, userIds: (string | null)[]): Promise<Map<string, string>> {
+  const ids = [...new Set(userIds.filter((id): id is string => Boolean(id)))];
+  const map = new Map<string, string>();
+  if (ids.length === 0) return map;
+  const { data } = await admin.from("profiles").select("id, display_name").in("id", ids);
+  for (const row of (data ?? []) as { id: string; display_name: string | null }[]) {
+    const name = safeAuthorName(row.display_name);
+    if (name) map.set(row.id, name);
+  }
+  return map;
+}
+
+/** Add Note: a NEW Activity row — never replaces an earlier one. The Placement
+ * must be this Business's own. */
+export async function addPlacementNote(
+  admin: SupabaseClient,
+  businessId: string,
+  placementId: string,
+  body: unknown,
+  by: { actor: PlacementActor; userId: string | null }
+): Promise<PlacementResult> {
+  if (!UUID.test(placementId)) return { ok: false, error: "That Target wasn’t found." };
+  const checked = validateActivityNote(body);
+  if (!checked.ok) return checked;
+  const { data: own } = await admin.from("business_location_placements").select("id").eq("id", placementId).eq("business_id", businessId).maybeSingle();
+  if (!own) return { ok: false, error: "That Target wasn’t found." };
+  const { error } = await admin
+    .from("business_location_placement_activities")
+    .insert({ placement_id: placementId, activity_type: "note", body: checked.value, actor: by.actor, created_by_user_id: by.userId });
+  if (error) {
+    if (isMissingActivityTable(error)) return { ok: false, error: "Activity isn’t available yet. Please try again soon." };
+    console.error("addPlacementNote failed:", error.message);
+    return { ok: false, error: "Couldn’t add that note. Please try again." };
+  }
   return { ok: true };
 }

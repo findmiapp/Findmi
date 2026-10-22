@@ -8,12 +8,15 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
-import { canEditPlacements, type PlacementStatus, type PlacementUpdateInput } from "@/lib/business-placements-domain";
+import { canEditPlacements, parseActivityCursor, placementActor, type PlacementStatus, type PlacementUpdateInput } from "@/lib/business-placements-domain";
 import {
   addBusinessPlacement,
+  addPlacementNote,
   adminSetPlacementInternalNotes,
+  getPlacementActivityPage,
   searchTargetLocations,
   updateBusinessPlacement,
+  type PlacementActivityPage,
   type PlacementResult,
 } from "@/lib/business-placements";
 
@@ -34,6 +37,22 @@ async function authorizeWrite(businessId: string): Promise<{ ok: true; viaAdmin:
   } catch {
     return { ok: false, error: "You don't have access to this business." };
   }
+}
+
+/** Any member of THIS Business (staff included) or a founder Admin session — Activity is readable by the whole team. */
+async function authorizeRead(businessId: string): Promise<boolean> {
+  try {
+    await requireBusinessMember(businessId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Who the database should record as having acted (Findmi for a Manage-As Admin session). */
+async function actingAs(viaAdmin: boolean) {
+  const user = viaAdmin ? null : await getCurrentUser().catch(() => null);
+  return placementActor(viaAdmin, user?.id ?? null);
 }
 
 const refresh = (businessId: string) => revalidatePath(`/account/business/${businessId}`);
@@ -81,12 +100,19 @@ export async function updateTargetAction(businessId: string, placementId: string
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
   // Only the four Business fields are forwarded — whatever else arrives is dropped here.
-  const result = await updateBusinessPlacement(admin, businessId, placementId, {
-    status: input?.status,
-    notes: input?.notes,
-    nextAction: input?.nextAction,
-    nextActionAt: input?.nextActionAt,
-  });
+  // A status change records its own Activity in the database (with this actor).
+  const result = await updateBusinessPlacement(
+    admin,
+    businessId,
+    placementId,
+    {
+      status: input?.status,
+      notes: input?.notes,
+      nextAction: input?.nextAction,
+      nextActionAt: input?.nextActionAt,
+    },
+    await actingAs(auth.viaAdmin)
+  );
   if (result.ok && result.changed) refresh(businessId);
   return result;
 }
@@ -100,4 +126,23 @@ export async function saveTargetInternalNotesAction(businessId: string, placemen
   const result = await adminSetPlacementInternalNotes(admin, businessId, placementId, notes);
   if (result.ok) refresh(businessId);
   return result;
+}
+
+/** Add Note: appends a NEW Activity entry (owner, manager or founder Admin). */
+export async function addTargetNoteAction(businessId: string, placementId: string, body: string): Promise<PlacementResult> {
+  const auth = await authorizeWrite(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await addPlacementNote(admin, businessId, placementId, body, await actingAs(auth.viaAdmin));
+  if (result.ok) refresh(businessId);
+  return result;
+}
+
+/** "Load More" — the next (older) page of an opened Target's Activity. */
+export async function loadTargetActivityAction(businessId: string, placementId: string, before: string): Promise<PlacementActivityPage> {
+  const admin = getAdminSupabase();
+  const cursor = parseActivityCursor(before);
+  if (!admin || !cursor || !(await authorizeRead(businessId))) return { available: false, items: [], nextCursor: null };
+  return getPlacementActivityPage(admin, businessId, placementId, cursor);
 }

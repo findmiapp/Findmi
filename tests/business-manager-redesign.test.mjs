@@ -104,7 +104,8 @@ test("Growth mini-dashboard: Goals · Opportunities · Ideas as direct links wit
   // Findmi-targeted Ideas show without goals
   const targeted = G.summarizeGrowth({ ...base, ideasForYou: 1, ideasNew: 1 });
   assert.equal(st(targeted, "ideas").value, "1 For You");
-  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "opportunities", "ideas"]);
+  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "targets", "opportunities", "ideas"]); // Targets added in Pass 2 Block A closeout
+  assert.equal(G.growthHref("/b", "targets"), "/b?tab=growth&view=targets");
   assert.equal(G.growthHref("/b", "goals"), "/b?tab=growth");
   assert.equal(G.growthHref("/b", "opportunities"), "/b?tab=opportunities");
   assert.equal(G.growthHref("/b", "ideas"), "/b?tab=growth&view=ideas");
@@ -358,7 +359,7 @@ test("availability migration (audited): live-only public policies, integrity tri
   assert.doesNotMatch(sql, /grant (insert|update|delete|all)[^;]*\b(anon|authenticated)\b/i, "writes stay service-role only");
   assert.doesNotMatch(sql, /\bdrop\s+(table|column)\b|\bdelete\s+from\b|\btruncate\b/i);
   const ls = readdirSync("supabase/migrations").sort();
-  assert.equal(ls.at(-1), "20261102010000_growth_goal_increase_distribution.sql", "ordered after every existing migration");
+  assert.equal(ls.at(-1), "20261103000000_business_location_placement_activities.sql", "ordered after every existing migration");
 });
 
 test("QR occurrence authority: all-dates participation → every date; selected dates → only approved ones; Appearance-only → its date", () => {

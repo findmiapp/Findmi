@@ -36,7 +36,7 @@ import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/li
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
 import { getBrandAudit, getIdeasForBusiness } from "@/lib/brand-audit";
 import { getBusinessMoments, isMomentFilter } from "@/lib/business-moments";
-import { GrowthGoalsView, GrowthIdeasView, growthBadges, growthSummaryFor } from "../v2/GrowthView";
+import { GrowthGoalsView, GrowthIdeasView, GrowthTargetsHeader, growthBadges, growthSummaryFor } from "../v2/GrowthView";
 import GrowthNav from "../v2/GrowthNav";
 import MomentsView from "../v2/MomentsView";
 import AvailableAtView from "../v2/AvailableAtView";
@@ -44,7 +44,7 @@ import { FindUsViewSwitch, MarketDetailView, MarketOverview } from "../v2/Market
 import { getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
 import { parseAvailabilityFilter } from "@/lib/business-availability-bulk-domain";
 import { canEditPlacements, parsePlacementFilter } from "@/lib/business-placements-domain";
-import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage } from "@/lib/business-placements";
+import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage, getPlacementActivityPage, getPlacementPursuit } from "@/lib/business-placements";
 import { isAdminSession } from "@/lib/admin/auth";
 import TargetsView from "../v2/TargetsView";
 import { getBusinessMarketDetail, getBusinessMarketOverview } from "@/lib/business-market-footprint";
@@ -465,8 +465,12 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const onFindUsMarkets = onFindUs && rawSearchParams.fv === "markets";
   const onFindUsTargets = onFindUs && rawSearchParams.fv === "targets";
   const onFindUsPlaces = onFindUs && !onFindUsMarkets && !onFindUsTargets;
+  // Targets have two doors — Findmi Here → Find Us Here → Targets and Growth →
+  // Targets — onto ONE set of Placement records, one view and one set of actions.
+  const onGrowthTargets = activeTab === "growth" && viewParam === "targets";
+  const onTargets = onFindUsTargets || onGrowthTargets;
   const targetsFilter = parsePlacementFilter({ q: rawSearchParams.tq, status: rawSearchParams.ts });
-  const openTargetId = onFindUsTargets && typeof rawSearchParams.pt === "string" ? rawSearchParams.pt : "";
+  const openTargetId = onTargets && typeof rawSearchParams.pt === "string" ? rawSearchParams.pt : "";
   const marketKey = onFindUsMarkets && typeof rawSearchParams.fm === "string" ? rawSearchParams.fm.replace(/[^a-z0-9-]/gi, "").slice(0, 60) : "";
   const findUsFilter = parseAvailabilityFilter({ q: rawSearchParams.fq, status: rawSearchParams.fs, relationship: rawSearchParams.fr, imported: rawSearchParams.fi });
   const onLocations = onFindmiHere && presenceView === "locations";
@@ -608,7 +612,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     timing: isExploreTiming(rawSearchParams.timing) ? rawSearchParams.timing : null,
     participationCost: isParticipationCostFilter(rawSearchParams.participationCost) ? rawSearchParams.participationCost : null,
   };
-  const growthView = activeTab === "growth" && viewParam === "ideas" ? "ideas" : "goals";
+  const growthView = activeTab === "growth" && viewParam === "ideas" ? "ideas" : onGrowthTargets ? "targets" : "goals";
   const canManageOpportunityGoals = canManageGoals((membershipRole ?? "staff") as GoalRole, isAdminElevated);
   const goalManageNote = canManageOpportunityGoals
     ? null
@@ -1225,21 +1229,27 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   };
   const growthTrio = () => Promise.all([getBrandAudit(id), getIdeasForBusiness(id), getBusinessGoals(id)]);
   const schedulePromise = whenP(needsSchedule || needsHosted, loadSchedule, undefined);
-  // Find Us Here → Targets — private Placement pipeline (lib/business-placements.ts).
+  // Targets — private Placement pipeline (lib/business-placements.ts).
   // Business reads never select internal_notes; those are read only for a
-  // founder Admin session, and only for the open Target.
+  // founder Admin session, and only for the open Target. Activity is read only
+  // for the open Target (first page) — never for the list.
   const targetsPromise = whenP(
-    onFindUsTargets,
+    onTargets,
     async () => {
       const open = openTargetId ? await getBusinessPlacement(admin, id, openTargetId) : null;
       // A missing / not-this-Business Target falls back to the list.
       const list = open ? null : await getBusinessPlacementsPage(admin, id, targetsFilter, Number(rawSearchParams.tp) || 1);
       const findmiAdmin = Boolean(open) && (isAdminElevated || (await isAdminSession()));
-      const internalNotes = open && findmiAdmin ? await adminGetPlacementInternalNotes(admin, id, open.id) : null;
-      return { list, open, findmiAdmin, internalNotes };
+      const [internalNotes, activity] = await Promise.all([
+        open && findmiAdmin ? adminGetPlacementInternalNotes(admin, id, open.id) : null,
+        open ? getPlacementActivityPage(admin, id, open.id, null) : null,
+      ]);
+      return { list, open, findmiAdmin, internalNotes, activity };
     },
     null
   );
+  // Growth's one-line Targets status (two head counts).
+  const targetsPursuitPromise = whenP(needsGrowth, () => getPlacementPursuit(admin, id), { total: 0, pursuing: 0 });
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
   const galleryPromise = rowsWhen(onProfile || onHome, () =>
     admin.from("business_images").select("url").eq("business_id", id).order("display_order", { ascending: true, nullsFirst: false })
@@ -1362,7 +1372,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
-  const targetsData = await targetsPromise;
+  const [targetsData, targetsPursuit] = await Promise.all([targetsPromise, targetsPursuitPromise]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1373,8 +1383,28 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         activeGoalCount: growthGoals.goals.filter((g) => g.status === "active").length,
         opportunityItems: [...recommendedOpportunities.active, ...recommendedOpportunities.past],
         ideas: opportunityIdeas.ideas,
+        targets: targetsPursuit,
       })
     : null;
+  // One Targets view for both doors (Find Us Here and Growth): same records, same actions.
+  const targetsView = targetsData ? (
+    <TargetsView
+      businessId={id}
+      available={targetsData.list ? targetsData.list.available : Boolean(targetsData.open)}
+      items={targetsData.list?.items ?? []}
+      total={targetsData.list?.total ?? 0}
+      page={targetsData.list?.page ?? 1}
+      pageSize={targetsData.list?.pageSize ?? 25}
+      counts={targetsData.list?.counts ?? { all: 0, target: 0, in_conversation: 0, placement_pending: 0, active: 0, passed: 0 }}
+      filter={targetsFilter}
+      canEdit={canEditPlacements(membershipRole, isAdminElevated)}
+      open={targetsData.open}
+      openMissing={Boolean(openTargetId) && !targetsData.open}
+      isFindmiAdmin={targetsData.findmiAdmin}
+      internalNotes={targetsData.internalNotes}
+      activity={targetsData.activity}
+    />
+  ) : null;
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
     : null;
@@ -1712,6 +1742,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             manageNote={goalManageNote}
             notice={goalNotice}
           />
+        )}
+        {activeTab === "growth" && growthSummary && growthView === "targets" && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 lg:max-w-3xl">
+              <GrowthTargetsHeader basePath={basePath} summary={growthSummary} />
+            </div>
+            {targetsView}
+          </div>
         )}
         {activeTab === "growth" && growthSummary && growthView === "ideas" && (
           <GrowthIdeasView
@@ -2348,23 +2386,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         )}
         {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && !marketKey && <MarketOverview basePath={`/account/business/${id}`} data={marketOverview} />}
         {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && marketKey && marketDetail && <MarketDetailView basePath={`/account/business/${id}`} detail={marketDetail} marketKey={marketKey} />}
-        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsTargets && targetsData && (
-          <TargetsView
-            businessId={id}
-            available={targetsData.list ? targetsData.list.available : Boolean(targetsData.open)}
-            items={targetsData.list?.items ?? []}
-            total={targetsData.list?.total ?? 0}
-            page={targetsData.list?.page ?? 1}
-            pageSize={targetsData.list?.pageSize ?? 25}
-            counts={targetsData.list?.counts ?? { all: 0, target: 0, in_conversation: 0, placement_pending: 0, active: 0, passed: 0 }}
-            filter={targetsFilter}
-            canEdit={canEditPlacements(membershipRole, isAdminElevated)}
-            open={targetsData.open}
-            openMissing={Boolean(openTargetId) && !targetsData.open}
-            isFindmiAdmin={targetsData.findmiAdmin}
-            internalNotes={targetsData.internalNotes}
-          />
-        )}
+        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsTargets && targetsView}
         {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsPlaces && (
           <AvailableAtView
             businessId={id}

@@ -264,13 +264,13 @@ test("every nav chip id exists as a section id in the page source (no chip point
 test("Growth reads as one workflow with real statuses on every Growth page", () => {
   const s = GROWTH.summarizeGrowth({ audit: null, activeGoalCount: 0, matchesAwaitingResponse: 0, matchesInProgress: 0 });
   const steps = GROWTH.growthWorkflowSteps(s);
-  assert.deepEqual(steps.map((x) => [x.key, x.role]), [["goals", "What You Want"], ["ideas", "What May Help"], ["opportunities", "What’s Available"]]);
+  assert.deepEqual(steps.map((x) => [x.key, x.role]), [["goals", "What You Want"], ["targets", "What You’re Pursuing"] /* Pass 2 Block A closeout */, ["ideas", "What May Help"], ["opportunities", "What’s Available"]]);
   assert.match(steps[0].status, /Get Started/);
   const live = GROWTH.summarizeGrowth({ audit: null, activeGoalCount: 2, matchesAwaitingResponse: 3, matchesInProgress: 1, ideasForYou: 4, ideasNew: 2 });
   const lines = GROWTH.growthWorkflowSteps(live);
   assert.match(lines[0].status, /2 Set/);
-  assert.match(lines[1].status, /4 For You · 2 New/);
-  assert.equal(lines[2].highlight, true);
+  assert.match(lines[2].status, /4 For You · 2 New/);
+  assert.equal(lines[3].highlight, true);
   for (const f of ["src/app/(public)/account/business/[id]/v2/GrowthView.tsx", "src/app/(public)/account/business/[id]/(manager)/page.tsx"]) assert.match(read(f), /summary=\{(summary|growthSummary)\}/);
 });
 

@@ -149,3 +149,56 @@ export function placementChanges(
 export function formatPlacementDate(date: string): string {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
+
+// ---------------------------------------------------------------- activity
+
+/** A Placement's Activity: an append-only history — notes the team adds, and an
+ * automatic entry whenever the status actually changes (written by the database
+ * trigger, so every write path records it). Separate from Summary / Context
+ * (the mutable `notes` column) and from Findmi's internal notes. */
+export const PLACEMENT_ACTIVITY_TYPES = ["note", "status_change"] as const;
+export type PlacementActivityType = (typeof PLACEMENT_ACTIVITY_TYPES)[number];
+
+export const PLACEMENT_ACTORS = ["business", "findmi"] as const;
+export type PlacementActor = (typeof PLACEMENT_ACTORS)[number];
+
+export const PLACEMENT_ACTIVITY_NOTE_MAX = 2000;
+export const PLACEMENT_ACTIVITY_PAGE_SIZE = 25;
+
+export const PLACEMENT_SUMMARY_LABEL = "Summary / Context";
+export const PLACEMENT_SUMMARY_HINT = "Lasting context about this place — who’s who, how you were introduced. Edit it any time; dated updates go in Activity.";
+
+export function validateActivityNote(v: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  const t = text(v);
+  if (!t) return { ok: false, error: "Write a note first." };
+  if (t.length > PLACEMENT_ACTIVITY_NOTE_MAX) return { ok: false, error: `Notes can be up to ${PLACEMENT_ACTIVITY_NOTE_MAX.toLocaleString()} characters.` };
+  return { ok: true, value: t };
+}
+
+/** Who is acting: a founder Admin session (Manage-As) is "Findmi"; anyone else
+ * acting through Business membership is a member of the Business. */
+export function placementActor(viaAdmin: boolean | undefined, userId: string | null): { actor: PlacementActor; userId: string | null } {
+  return viaAdmin ? { actor: "findmi", userId: null } : { actor: "business", userId };
+}
+
+/** The keyset cursor for "Load More": "<created_at>|<id>" of the last item
+ * shown. created_at is kept exactly as the database returned it (microseconds —
+ * a JS Date would drop them), and id breaks ties, so rows that share a
+ * timestamp are never skipped or repeated. */
+export interface ActivityCursor {
+  at: string;
+  id: string;
+}
+
+export function activityCursor(item: { createdAt: string; id: string }): string {
+  return `${item.createdAt}|${item.id}`;
+}
+
+export function parseActivityCursor(v: unknown): ActivityCursor | null {
+  if (typeof v !== "string" || v.length > 80) return null;
+  const [at, id, extra] = v.split("|");
+  if (extra !== undefined || !at || !id) return null;
+  if (!/^\d{4}-\d{2}-\d{2}[T ][\d:.]+(Z|[+-]\d{2}(:?\d{2})?)?$/.test(at) || Number.isNaN(Date.parse(at))) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  return { at, id };
+}

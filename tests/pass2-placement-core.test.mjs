@@ -39,6 +39,8 @@ const LOC_NEW = "55555555-5555-4555-8555-555555555555";
 const P_A1 = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
 const P_A2 = "a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2";
 const P_B1 = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1";
+const USER_1 = "99999999-9999-4999-8999-999999999999";
+const MEMBER = { actor: "business", userId: USER_1 };
 
 function seed() {
   const loc = (id, name, extra = {}) => ({ id, name, slug: name.toLowerCase().replace(/\W+/g, "-"), address: "1 Main St", city: "Jersey City", state: "NJ", postal_code: "07302", logo_url: null, cover_image_url: null, is_demo: false, archived_at: null, trashed_at: null, ...extra });
@@ -195,7 +197,7 @@ test("one Business can never open another Business's Target", async () => {
   const db = fakeDb(seed());
   assert.equal(await L.getBusinessPlacement(db, BIZ_A, P_B1), null);
   assert.equal(await L.getBusinessPlacement(db, BIZ_A, "not-a-uuid"), null);
-  const res = await L.updateBusinessPlacement(db, BIZ_A, P_B1, { status: "active" });
+  const res = await L.updateBusinessPlacement(db, BIZ_A, P_B1, { status: "active" }, MEMBER);
   assert.equal(res.ok, false);
   assert.equal(seed().business_location_placements.find((r) => r.id === P_B1).status, "target");
 });
@@ -271,10 +273,11 @@ test("one of the Business's own Locations, an archived place or a bad id cannot 
 test("an edit writes only the changed Business fields; reopening Passed is status → target on the same row", async () => {
   const t = seed();
   const db = fakeDb(t);
-  const res = await L.updateBusinessPlacement(db, BIZ_A, P_A2, { status: "target", notes: null, nextAction: null, nextActionAt: null, internal_notes: "hack", internalNotes: "hack" });
+  const res = await L.updateBusinessPlacement(db, BIZ_A, P_A2, { status: "target", notes: null, nextAction: null, nextActionAt: null, internal_notes: "hack", internalNotes: "hack" }, MEMBER);
   assert.deepEqual(res, { ok: true, changed: true });
   const upd = db.calls.find((c) => c.op === "update");
-  assert.deepEqual(upd.payload, { status: "target" });
+  // A status change carries its actor in the SAME update (the trigger records Activity and clears it).
+  assert.deepEqual(upd.payload, { status: "target", status_actor: "business", status_actor_user_id: USER_1 });
   assert.ok(upd.filters.includes(`eq business_id=${BIZ_A}`));
   const row = t.business_location_placements.find((r) => r.id === P_A2);
   assert.equal(row.status, "target");
@@ -284,7 +287,7 @@ test("an edit writes only the changed Business fields; reopening Passed is statu
 
 test("a save that changes nothing is a no-op", async () => {
   const db = fakeDb(seed());
-  const res = await L.updateBusinessPlacement(db, BIZ_A, P_A1, { status: "in_conversation", notes: "Met the owner", nextAction: "Drop samples", nextActionAt: "2026-10-30" });
+  const res = await L.updateBusinessPlacement(db, BIZ_A, P_A1, { status: "in_conversation", notes: "Met the owner", nextAction: "Drop samples", nextActionAt: "2026-10-30" }, MEMBER);
   assert.deepEqual(res, { ok: true, changed: false });
   assert.equal(db.calls.filter((c) => c.op === "update").length, 0);
 });
@@ -343,7 +346,7 @@ test("Add Target's create action reuses the shared inline-place workflow behind 
   assert.doesNotMatch(src, /from\("locations"\)\.insert/, "never a separate place insert");
   assert.match(src, /canEditPlacements\(membership\.role, membership\.viaAdmin\)/);
   // Only the four Business fields reach the update.
-  assert.match(src, /updateBusinessPlacement\(admin, businessId, placementId, \{\s*status: input\?\.status,\s*notes: input\?\.notes,\s*nextAction: input\?\.nextAction,\s*nextActionAt: input\?\.nextActionAt,\s*\}\)/);
+  assert.match(src, /updateBusinessPlacement\(\s*admin,\s*businessId,\s*placementId,\s*\{\s*status: input\?\.status,\s*notes: input\?\.notes,\s*nextAction: input\?\.nextAction,\s*nextActionAt: input\?\.nextActionAt,\s*\},\s*await actingAs\(auth\.viaAdmin\)\s*\)/);
   // Internal notes require a founder Admin session, never membership.
   assert.match(src, /export async function saveTargetInternalNotesAction[\s\S]*?if \(!\(await isAdminSession\(\)\)\) return/);
   const picker = read("src/components/places/PlaceFindOrCreate.tsx");
@@ -353,7 +356,7 @@ test("Add Target's create action reuses the shared inline-place workflow behind 
 test("the Manager page reads internal notes only for a founder Admin session and only for the open Target", () => {
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
   assert.match(page, /const findmiAdmin = Boolean\(open\) && \(isAdminElevated \|\| \(await isAdminSession\(\)\)\);/);
-  assert.match(page, /const internalNotes = open && findmiAdmin \? await adminGetPlacementInternalNotes\(admin, id, open\.id\) : null;/);
+  assert.match(page, /open && findmiAdmin \? adminGetPlacementInternalNotes\(admin, id, open\.id\) : null,/);
   assert.match(page, /canEdit=\{canEditPlacements\(membershipRole, isAdminElevated\)\}/);
   const view = read("src/app/(public)/account/business/[id]/v2/TargetsView.tsx");
   assert.match(view, /\{isFindmiAdmin && <InternalNotes /);

@@ -18,11 +18,14 @@ export function growthSummaryFor({
   activeGoalCount,
   opportunityItems,
   ideas = [],
+  targets = { total: 0, pursuing: 0 },
 }: {
   audit: AuditSummary | null;
   activeGoalCount: number;
   opportunityItems: BusinessOpportunityItem[];
   ideas?: BusinessIdea[];
+  /** Placement Targets (lib/business-placements.ts getPlacementPursuit). */
+  targets?: { total: number; pursuing: number };
 }) {
   const hasSignal = (audit?.goalCount ?? 0) + activeGoalCount > 0;
   const shown = eligibleGrowthIdeas(ideas, hasSignal);
@@ -33,6 +36,8 @@ export function growthSummaryFor({
     matchesInProgress: opportunityItems.filter((i) => i.view.group === "confirmed" || i.view.group === "interested").length,
     ideasForYou: shown.length,
     ideasNew: unansweredIdeaCount(shown),
+    targetsTotal: targets.total,
+    targetsPursuing: targets.pursuing,
   });
 }
 
@@ -41,16 +46,23 @@ export function growthBadges(summary: ReturnType<typeof growthSummaryFor>): Part
   return { opportunities: summary.matchesAwaitingResponse, ideas: summary.ideasNew };
 }
 
-function Header({ basePath, summary }: { basePath: string; summary: ReturnType<typeof growthSummaryFor> }) {
+function Header({ basePath, summary, active = "goals" }: { basePath: string; summary: ReturnType<typeof growthSummaryFor>; active?: GrowthDestination }) {
   return (
     <>
       <header>
         <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
         <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>
       </header>
-      <GrowthNav basePath={basePath} active="goals" badges={growthBadges(summary)} summary={summary} />
+      <GrowthNav basePath={basePath} active={active} badges={growthBadges(summary)} summary={summary} />
     </>
   );
+}
+
+/** Growth → Targets — the same Growth header and navigation above the SAME
+ * Targets experience Findmi Here → Find Us Here → Targets shows (the page
+ * renders <TargetsView> under it): one set of Placement records, two doors. */
+export function GrowthTargetsHeader({ basePath, summary }: { basePath: string; summary: ReturnType<typeof growthSummaryFor> }) {
+  return <Header basePath={basePath} summary={summary} active="targets" />;
 }
 
 /** Goals — the Growth Profile (what Findmi knows about what you want) and

@@ -9,7 +9,10 @@ import PlaceFindOrCreate, { NotPublicBadge } from "@/components/places/PlaceFind
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
 import {
   PLACEMENT_LIMITS,
+  PLACEMENT_ACTIVITY_NOTE_MAX,
   PLACEMENT_PRIVACY_NOTE,
+  PLACEMENT_SUMMARY_HINT,
+  PLACEMENT_SUMMARY_LABEL,
   PLACEMENT_STATUSES,
   PLACEMENT_STATUS_HINTS,
   PLACEMENT_STATUS_LABELS,
@@ -19,8 +22,16 @@ import {
   type PlacementFilter,
   type PlacementStatus,
 } from "@/lib/business-placements-domain";
-import type { BusinessPlacementItem, PlacementCounts } from "@/lib/business-placements";
-import { addTargetAction, createTargetPlaceAction, saveTargetInternalNotesAction, searchTargetLocationsAction, updateTargetAction } from "../placement-actions";
+import type { BusinessPlacementItem, PlacementActivityItem, PlacementActivityPage, PlacementCounts } from "@/lib/business-placements";
+import {
+  addTargetAction,
+  addTargetNoteAction,
+  createTargetPlaceAction,
+  loadTargetActivityAction,
+  saveTargetInternalNotesAction,
+  searchTargetLocationsAction,
+  updateTargetAction,
+} from "../placement-actions";
 import { Chip } from "../../../owner-ui";
 
 /** Findmi Here → Find Us Here → Targets: the places this Business is privately
@@ -123,6 +134,7 @@ export default function TargetsView({
   openMissing,
   isFindmiAdmin,
   internalNotes,
+  activity,
 }: {
   businessId: string;
   /** false until the placements migration is applied. */
@@ -142,11 +154,13 @@ export default function TargetsView({
   isFindmiAdmin: boolean;
   /** Findmi-only notes for the open Target; only ever passed for isFindmiAdmin. */
   internalNotes: string | null;
+  /** The open Target's first Activity page (never loaded for the list). */
+  activity: PlacementActivityPage | null;
 }) {
   return (
     <BusinessIdContext.Provider value={businessId}>
       {open ? (
-        <TargetDetail key={open.id} businessId={businessId} item={open} canEdit={canEdit} isFindmiAdmin={isFindmiAdmin} internalNotes={internalNotes} />
+        <TargetDetail key={open.id} businessId={businessId} item={open} canEdit={canEdit} isFindmiAdmin={isFindmiAdmin} internalNotes={internalNotes} activity={activity} />
       ) : (
         <TargetList businessId={businessId} available={available} items={items} total={total} page={page} pageSize={pageSize} counts={counts} filter={filter} canEdit={canEdit} openMissing={openMissing} />
       )}
@@ -333,12 +347,14 @@ function TargetDetail({
   canEdit,
   isFindmiAdmin,
   internalNotes,
+  activity,
 }: {
   businessId: string;
   item: BusinessPlacementItem;
   canEdit: boolean;
   isFindmiAdmin: boolean;
   internalNotes: string | null;
+  activity: PlacementActivityPage | null;
 }) {
   const { href, refresh } = useTargetNav();
   const [status, setStatus] = useState<PlacementStatus>(item.status);
@@ -431,9 +447,9 @@ function TargetDetail({
           </div>
 
           <label className="block">
-            <span className="mb-1 block text-metadata font-semibold text-secondary">Notes</span>
-            <textarea autoCapitalize="sentences" value={notes} maxLength={PLACEMENT_LIMITS.notes} rows={5} onChange={(e) => { setNotes(e.target.value); setSaved(false); }} placeholder="Who you spoke with, what they need, what was agreed" className={inputClass} />
-            <span className="mt-1 block text-microcopy text-subtle">Visible to your team and Findmi only.</span>
+            <span className="mb-1 block text-metadata font-semibold text-secondary">{PLACEMENT_SUMMARY_LABEL}</span>
+            <textarea autoCapitalize="sentences" value={notes} maxLength={PLACEMENT_LIMITS.notes} rows={4} onChange={(e) => { setNotes(e.target.value); setSaved(false); }} placeholder="e.g. Independent café. Sarah is the owner. Introduced through Derek." className={inputClass} />
+            <span className="mt-1 block text-microcopy text-subtle">{PLACEMENT_SUMMARY_HINT}</span>
           </label>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -450,14 +466,16 @@ function TargetDetail({
             <dd className="text-primary">{[item.nextAction, item.nextActionAt ? formatPlacementDate(item.nextActionAt) : null].filter(Boolean).join(" · ") || "None"}</dd>
           </div>
           <div>
-            <dt className="text-metadata font-semibold text-secondary">Notes</dt>
+            <dt className="text-metadata font-semibold text-secondary">{PLACEMENT_SUMMARY_LABEL}</dt>
             <dd className="whitespace-pre-line text-primary">{item.notes || "None"}</dd>
           </div>
           <p className="text-microcopy text-subtle">Only owners and managers can change Targets.</p>
         </dl>
       )}
 
-      <p className="text-microcopy text-subtle">Find Us Here is managed separately under Places. Changing a Target never changes what&rsquo;s public.</p>
+      <ActivityFeed businessId={businessId} placementId={item.id} canAdd={canEdit} initial={activity} />
+
+      <p className="text-microcopy text-subtle">Find Us Here is managed separately. Changing a Target never changes what&rsquo;s public.</p>
 
       {isFindmiAdmin && <InternalNotes businessId={businessId} placementId={item.id} initial={internalNotes} />}
     </div>
@@ -494,5 +512,123 @@ function InternalNotes({ businessId, placementId, initial }: { businessId: strin
         {saved && !dirty && <span role="status" className="text-metadata font-semibold text-findmi-700">Saved</span>}
       </div>
     </div>
+  );
+}
+
+/** Date + time in the viewer's own time zone ("Oct 22, 10:34 AM"). Rendered on
+ * the server first, so the text may differ by time zone — the browser's wins. */
+function When({ iso }: { iso: string }) {
+  const d = new Date(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const label = d.toLocaleString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), hour: "numeric", minute: "2-digit" });
+  return (
+    <time dateTime={iso} suppressHydrationWarning className="text-microcopy text-subtle">
+      {label}
+    </time>
+  );
+}
+
+function ActivityEntry({ entry }: { entry: PlacementActivityItem }) {
+  if (entry.type === "status_change") {
+    return (
+      <li className="relative pl-5">
+        <span aria-hidden="true" className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-findmi bg-white" />
+        <p className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-metadata font-semibold text-primary">Status Changed</span>
+          <When iso={entry.createdAt} />
+        </p>
+        <p className="mt-0.5 text-metadata text-secondary">
+          {entry.from ? PLACEMENT_STATUS_LABELS[entry.from] : "—"} <span aria-label="to">→</span> {entry.to ? PLACEMENT_STATUS_LABELS[entry.to] : "—"}
+          {entry.author ? <span className="text-muted"> · {entry.author}</span> : null}
+        </p>
+      </li>
+    );
+  }
+  return (
+    <li className="relative pl-5">
+      <span aria-hidden="true" className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-findmi" />
+      <p className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-metadata font-semibold text-primary">{entry.author ?? "Note"}</span>
+        <When iso={entry.createdAt} />
+      </p>
+      <p className="mt-0.5 whitespace-pre-line break-words text-body text-primary">{entry.body}</p>
+    </li>
+  );
+}
+
+/** ACTIVITY — newest first: the team's dated notes and every status change.
+ * Append-only: there is no edit or delete; a mistake is fixed with a new note.
+ * The first page comes with the opened Target; older pages load on demand. */
+function ActivityFeed({ businessId, placementId, canAdd, initial }: { businessId: string; placementId: string; canAdd: boolean; initial: PlacementActivityPage | null }) {
+  const { refresh } = useTargetNav();
+  const [older, setOlder] = useState<PlacementActivityItem[]>([]);
+  const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [adding, startAdding] = useTransition();
+  const [loading, startLoading] = useTransition();
+
+  // A refresh (after a save or a new note) brings a new first page: start over from it.
+  useEffect(() => {
+    setOlder([]);
+    setCursor(initial?.nextCursor ?? null);
+  }, [initial]);
+
+  const first = initial?.items ?? [];
+  const seen = new Set(first.map((e) => e.id));
+  const entries = [...first, ...older.filter((e) => !seen.has(e.id))];
+
+  const addNote = () =>
+    startAdding(async () => {
+      setError(null);
+      const result = await addTargetNoteAction(businessId, placementId, draft);
+      if (!result.ok) return setError(result.error);
+      setDraft("");
+      refresh();
+    });
+
+  const loadMore = () =>
+    startLoading(async () => {
+      if (!cursor) return;
+      const next = await loadTargetActivityAction(businessId, placementId, cursor);
+      if (!next.available) return setError("Couldn’t load more activity. Please try again.");
+      setOlder((prev) => [...prev, ...next.items]);
+      setCursor(next.nextCursor);
+    });
+
+  return (
+    <section aria-labelledby="target-activity" className="flex flex-col gap-3">
+      <h3 id="target-activity" className="font-display text-card-title font-bold text-primary">Activity</h3>
+      {initial && !initial.available && <p className="text-metadata text-muted">Activity isn&rsquo;t available yet. Please check back soon.</p>}
+      {canAdd && initial?.available !== false && (
+        <div className="flex flex-col gap-2">
+          <label htmlFor="target-add-note" className="sr-only">Add Note</label>
+          <textarea
+            id="target-add-note"
+            autoCapitalize="sentences"
+            rows={3}
+            value={draft}
+            maxLength={PLACEMENT_ACTIVITY_NOTE_MAX}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="What happened? e.g. Called the GM — send samples Friday."
+            className={inputClass}
+          />
+          <div className="flex items-center gap-3">
+            <button type="button" disabled={adding || !draft.trim()} onClick={addNote} className="flex h-10 shrink-0 items-center whitespace-nowrap rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600 disabled:opacity-50">
+              {adding ? "Adding…" : "Add Note"}
+            </button>
+            <span className="text-microcopy text-subtle">Notes are kept in order and can&rsquo;t be edited.</span>
+          </div>
+        </div>
+      )}
+      {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
+      {initial?.available !== false && entries.length === 0 && <p className="text-metadata text-muted">No activity yet. Notes and status changes will appear here.</p>}
+      {entries.length > 0 && <ol className="flex flex-col gap-4 border-l border-black/[0.08] pl-0 [&>li]:-ml-[5px]">{entries.map((e) => <ActivityEntry key={e.id} entry={e} />)}</ol>}
+      {cursor && (
+        <button type="button" disabled={loading} onClick={loadMore} className="flex h-10 w-fit items-center rounded-full border border-black/10 bg-white px-4 text-metadata font-semibold text-primary disabled:opacity-50">
+          {loading ? "Loading…" : "Load More"}
+        </button>
+      )}
+    </section>
   );
 }

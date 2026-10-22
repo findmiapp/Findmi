@@ -2,7 +2,7 @@ import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 import { GROWTH_DESTINATIONS, GROWTH_DESTINATION_LABELS, GROWTH_SETUP_COPY, growthDestinationStatus, growthHref, type GrowthSummary } from "@/lib/growth";
 
-/** Home's Growth mini-dashboard — the three Growth destinations (Goals,
+/** Home's Growth mini-dashboard — the Growth destinations (Goals, Targets,
  * Opportunities, Ideas) as direct links, each with a real count or status.
  * No destination is gated behind another: Opportunities targeting this
  * Business and Findmi-picked Ideas are reachable before any Goal exists.
@@ -20,7 +20,7 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
         </Link>
       </div>
 
-      <ul className="mt-2.5 grid grid-cols-3 gap-1.5">
+      <ul className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         {GROWTH_DESTINATIONS.map((d) => {
           const status = growthDestinationStatus(summary, d);
           return (
