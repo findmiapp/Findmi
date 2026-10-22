@@ -66,18 +66,23 @@ function PlaceRow({ place }: { place: SelectedLocationDetail }) {
 export default function PlaceFindOrCreate({
   onSelect,
   createAction = createInlinePlace,
+  useResults = usePlaceResults,
   placeholder = "Search places — name, street or city",
   autoFocus = false,
 }: {
   onSelect: (place: SelectedLocationDetail) => void;
   createAction?: (formData: FormData) => Promise<CreateInlineLocationResult>;
+  /** Optional search source with the same LINKABLE scope (e.g. one read through
+   * a Business-authorized action so a founder Admin session works too). Must be
+   * stable for the component's lifetime. Every existing caller omits it. */
+  useResults?: (query: string) => { results: SelectedLocationDetail[]; loading: boolean };
   placeholder?: string;
   autoFocus?: boolean;
 }) {
   return (
     <FindOrCreatePicker<SelectedLocationDetail>
       placeholder={placeholder}
-      useResults={usePlaceResults}
+      useResults={useResults}
       getKey={(p) => p.id}
       renderItem={(p) => <PlaceRow place={p} />}
       isExactMatch={(p, q) => normalizeName(p.name) === normalizeName(q)}

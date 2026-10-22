@@ -370,7 +370,9 @@ test("migration: additive, server-only (RLS on, no client grants or policies), v
     assert.match(body, new RegExp(`alter table public\\.${t} enable row level security;`));
   }
   const list = (keys) => keys.map((k) => `'${k}'`).join(",");
-  assert.ok(body.includes(`kind = 'goal' and option_key in (${list(D.AUDIT_GOALS)})`));
+  // The goal list was last widened (increase_distribution) by its own later migration.
+  const goalsSql = readFileSync("supabase/migrations/20261102010000_growth_goal_increase_distribution.sql", "utf8");
+  assert.ok(goalsSql.includes(`kind = 'goal' and option_key in (${list(D.AUDIT_GOALS)})`));
   assert.ok(body.includes(`kind = 'challenge' and option_key in (${list(D.AUDIT_CHALLENGES)})`));
   assert.ok(body.includes(`idea_type in (${list(D.IDEA_TYPES)})`));
   assert.ok(body.includes(`response in ('interested', 'maybe', 'not_for_us')`));
@@ -417,7 +419,7 @@ test("Goal / Challenge list: one stacked column, checkbox left, bold Title Case 
   for (const o of [...Object.values(D.AUDIT_GOAL_OPTIONS), ...Object.values(D.AUDIT_CHALLENGE_OPTIONS)]) {
     assert.match(o.label, /^([A-Z][\w/'-]*|&)( ([A-Z][\w/'-]*|&))*$/, `${o.label} is Title Case`);
   }
-  assert.ok(D.AUDIT_GOALS.length >= 8 && D.AUDIT_GOALS.length <= 12 && D.AUDIT_CHALLENGES.length >= 8 && D.AUDIT_CHALLENGES.length <= 12);
+  assert.ok(D.AUDIT_GOALS.length >= 8 && D.AUDIT_GOALS.length <= 13 && D.AUDIT_CHALLENGES.length >= 8 && D.AUDIT_CHALLENGES.length <= 12);
 });
 
 test("Ideas For Your Brand renders the eligible Ideas as a swipe rail, answered ones with their response", async () => {

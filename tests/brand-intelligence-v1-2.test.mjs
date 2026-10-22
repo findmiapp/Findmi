@@ -369,8 +369,11 @@ test("migration: additive, server-only, provenance, mirrors every option list", 
   assert.match(sql, /add column if not exists source text not null default 'declared'/);
   assert.match(sql, /alter table public\.brand_audit_markets enable row level security;\s*revoke all on public\.brand_audit_markets from anon, authenticated;/);
   const list = (keys) => keys.map((k) => `'${k}'`).join(",");
+  // Goals were later widened (increase_distribution) by their own migration, which restates every list.
+  const goalsSql = readFileSync("supabase/migrations/20261102010000_growth_goal_increase_distribution.sql", "utf8");
   for (const [kind, keys] of Object.entries(D.AUDIT_KEYS)) {
-    assert.ok(sql.includes(`kind = '${kind}' and option_key in (${list(keys)})`), kind);
+    assert.ok((kind === "goal" ? goalsSql : sql).includes(`kind = '${kind}' and option_key in (${list(keys)})`), kind);
+    assert.ok(goalsSql.includes(`kind = '${kind}' and option_key in (${list(keys)})`), `${kind} (latest)`);
   }
   assert.match(sql, /check \(kind in \('goal', 'challenge', 'audience', 'age_range', 'audience_priority', 'market_scope', 'environment'\)\)/);
   for (const n of D.NYC_NEIGHBORHOODS) assert.match(n.key, /^[a-z0-9]+(-[a-z0-9]+)*$/, "curated keys satisfy the place_key CHECK");

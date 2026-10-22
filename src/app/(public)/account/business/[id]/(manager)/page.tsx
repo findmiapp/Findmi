@@ -43,6 +43,10 @@ import AvailableAtView from "../v2/AvailableAtView";
 import { FindUsViewSwitch, MarketDetailView, MarketOverview } from "../v2/MarketFootprintView";
 import { getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
 import { parseAvailabilityFilter } from "@/lib/business-availability-bulk-domain";
+import { canEditPlacements, parsePlacementFilter } from "@/lib/business-placements-domain";
+import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage } from "@/lib/business-placements";
+import { isAdminSession } from "@/lib/admin/auth";
+import TargetsView from "../v2/TargetsView";
 import { getBusinessMarketDetail, getBusinessMarketOverview } from "@/lib/business-market-footprint";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
@@ -308,6 +312,11 @@ type ManagerSearchParams = {
     /** Find Us Here → By Market: view switch and the selected Market's slug. */
     fv?: string;
     fm?: string;
+    /** Find Us Here → Targets: search, status, page, and the open Target. */
+    tq?: string;
+    ts?: string;
+    tp?: string;
+    pt?: string;
 };
 
 export default async function ManageBusinessPage({
@@ -454,7 +463,10 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const onPast = onFindmiHere && presenceView === "past";
   const onFindUs = onFindmiHere && presenceView === "find-us";
   const onFindUsMarkets = onFindUs && rawSearchParams.fv === "markets";
-  const onFindUsPlaces = onFindUs && !onFindUsMarkets;
+  const onFindUsTargets = onFindUs && rawSearchParams.fv === "targets";
+  const onFindUsPlaces = onFindUs && !onFindUsMarkets && !onFindUsTargets;
+  const targetsFilter = parsePlacementFilter({ q: rawSearchParams.tq, status: rawSearchParams.ts });
+  const openTargetId = onFindUsTargets && typeof rawSearchParams.pt === "string" ? rawSearchParams.pt : "";
   const marketKey = onFindUsMarkets && typeof rawSearchParams.fm === "string" ? rawSearchParams.fm.replace(/[^a-z0-9-]/gi, "").slice(0, 60) : "";
   const findUsFilter = parseAvailabilityFilter({ q: rawSearchParams.fq, status: rawSearchParams.fs, relationship: rawSearchParams.fr, imported: rawSearchParams.fi });
   const onLocations = onFindmiHere && presenceView === "locations";
@@ -1213,6 +1225,21 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   };
   const growthTrio = () => Promise.all([getBrandAudit(id), getIdeasForBusiness(id), getBusinessGoals(id)]);
   const schedulePromise = whenP(needsSchedule || needsHosted, loadSchedule, undefined);
+  // Find Us Here → Targets — private Placement pipeline (lib/business-placements.ts).
+  // Business reads never select internal_notes; those are read only for a
+  // founder Admin session, and only for the open Target.
+  const targetsPromise = whenP(
+    onFindUsTargets,
+    async () => {
+      const open = openTargetId ? await getBusinessPlacement(admin, id, openTargetId) : null;
+      // A missing / not-this-Business Target falls back to the list.
+      const list = open ? null : await getBusinessPlacementsPage(admin, id, targetsFilter, Number(rawSearchParams.tp) || 1);
+      const findmiAdmin = Boolean(open) && (isAdminElevated || (await isAdminSession()));
+      const internalNotes = open && findmiAdmin ? await adminGetPlacementInternalNotes(admin, id, open.id) : null;
+      return { list, open, findmiAdmin, internalNotes };
+    },
+    null
+  );
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
   const galleryPromise = rowsWhen(onProfile || onHome, () =>
     admin.from("business_images").select("url").eq("business_id", id).order("display_order", { ascending: true, nullsFirst: false })
@@ -1335,6 +1362,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
+  const targetsData = await targetsPromise;
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -2315,11 +2343,28 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         )}
         {activeTab === "findmi-here" && presenceView === "find-us" && (
           <div className="mb-4">
-            <FindUsViewSwitch basePath={`/account/business/${id}`} active={onFindUsMarkets ? "markets" : "places"} />
+            <FindUsViewSwitch basePath={`/account/business/${id}`} active={onFindUsMarkets ? "markets" : onFindUsTargets ? "targets" : "places"} />
           </div>
         )}
         {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && !marketKey && <MarketOverview basePath={`/account/business/${id}`} data={marketOverview} />}
         {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && marketKey && marketDetail && <MarketDetailView basePath={`/account/business/${id}`} detail={marketDetail} marketKey={marketKey} />}
+        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsTargets && targetsData && (
+          <TargetsView
+            businessId={id}
+            available={targetsData.list ? targetsData.list.available : Boolean(targetsData.open)}
+            items={targetsData.list?.items ?? []}
+            total={targetsData.list?.total ?? 0}
+            page={targetsData.list?.page ?? 1}
+            pageSize={targetsData.list?.pageSize ?? 25}
+            counts={targetsData.list?.counts ?? { all: 0, target: 0, in_conversation: 0, placement_pending: 0, active: 0, passed: 0 }}
+            filter={targetsFilter}
+            canEdit={canEditPlacements(membershipRole, isAdminElevated)}
+            open={targetsData.open}
+            openMissing={Boolean(openTargetId) && !targetsData.open}
+            isFindmiAdmin={targetsData.findmiAdmin}
+            internalNotes={targetsData.internalNotes}
+          />
+        )}
         {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsPlaces && (
           <AvailableAtView
             businessId={id}

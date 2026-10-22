@@ -293,6 +293,7 @@ test("Findmi Here view tabs fit a phone without clipping; Moments filters wrap",
 // ── No schema in this pass ─────────────────────────────────────────────────
 
 test("Pass 1 proposes no migration: the newest migration is still the Pass 0 moment-display one", () => {
-  const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
+  // Pass 2 migrations (20261102…) come later; none landed between Pass 0 and Pass 2.
+  const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql") && f < "20261102").sort();
   assert.equal(files.at(-1), "20261101000100_entity_moment_display.sql");
 });

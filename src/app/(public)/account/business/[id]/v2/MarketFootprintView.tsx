@@ -12,10 +12,10 @@ import { Chip } from "../../../owner-ui";
 
 const STATUS_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as const;
 
-/** Segmented switch between the place list and the Market view. Plain links, so Back /
- * Forward and shared URLs keep the same view. */
-export function FindUsViewSwitch({ basePath, active }: { basePath: string; active: "places" | "markets" }) {
-  const item = (key: "places" | "markets", label: string, href: string) => (
+/** Segmented switch between the place list, the Market view and the private Targets
+ * pipeline. Plain links, so Back / Forward and shared URLs keep the same view. */
+export function FindUsViewSwitch({ basePath, active }: { basePath: string; active: "places" | "markets" | "targets" }) {
+  const item = (key: "places" | "markets" | "targets", label: string, href: string) => (
     <Link
       key={key}
       href={href}
@@ -26,9 +26,10 @@ export function FindUsViewSwitch({ basePath, active }: { basePath: string; activ
     </Link>
   );
   return (
-    <nav aria-label="Find Us Here views" className="flex w-full max-w-xs gap-1 rounded-full bg-black/[0.05] p-1">
+    <nav aria-label="Find Us Here views" className="flex w-full max-w-sm gap-1 rounded-full bg-black/[0.05] p-1">
       {item("places", "Places", `${basePath}?tab=findmi-here&view=find-us`)}
       {item("markets", "By Market", `${basePath}?tab=findmi-here&view=find-us&fv=markets`)}
+      {item("targets", "Targets", `${basePath}?tab=findmi-here&view=find-us&fv=targets`)}
     </nav>
   );
 }

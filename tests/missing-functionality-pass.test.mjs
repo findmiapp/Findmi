@@ -272,6 +272,6 @@ test("new tables are service-role only; the display table is public-read only", 
 });
 
 test("the two newest migrations are the only ones this pass added", () => {
-  const names = readdirSync("supabase/migrations").filter((f) => f >= "20261101");
+  const names = readdirSync("supabase/migrations").filter((f) => f >= "20261101" && f < "20261102"); // later passes add their own
   assert.deepEqual(names.sort(), MIGRATIONS.map((m) => m.split("/").pop()).sort());
 });
