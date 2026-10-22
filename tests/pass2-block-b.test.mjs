@@ -343,3 +343,55 @@ test("Needs Attention: Target next steps due, and Opportunities awaiting a respo
   assert.equal(many.find((i) => i.id === "targets-due").title, "3 Follow-Ups Due");
   assert.match(many.find((i) => i.id === "targets-due").actionHref, /view=targets/);
 });
+
+// ── Follow-up "today" is the app calendar day, not UTC ─────────────────────
+
+function dueDb(rows) {
+  const seen = {};
+  const q = {
+    select: () => q,
+    eq: () => q,
+    neq: () => q,
+    lte: (c, v) => ((seen.lte = v), q),
+    order: () => q,
+    limit: () => {
+      const hit = rows.filter((r) => r.next_action_at <= seen.lte).sort((a, b) => a.next_action_at.localeCompare(b.next_action_at));
+      return Promise.resolve({ data: hit.slice(0, 1), count: hit.length, error: null });
+    },
+  };
+  return { seen, from: () => q };
+}
+const dueRow = (d) => ({ location_id: "l1", next_action: "Send samples", next_action_at: d, locations: { name: "Cafe" } });
+
+test("follow-up day: UTC past midnight is still the previous day in the app calendar (EDT and EST)", () => {
+  // 10:30 PM Oct 21 in New York (EDT, UTC-4) is already Oct 22 in UTC.
+  assert.equal(R.followUpToday(new Date("2026-10-22T02:30:00Z")), "2026-10-21");
+  assert.equal(R.followUpToday(new Date("2026-10-22T04:00:00Z")), "2026-10-22", "midnight New York");
+  // 11:30 PM Dec 1 in New York (EST, UTC-5).
+  assert.equal(R.followUpToday(new Date("2026-12-02T04:30:00Z")), "2026-12-01");
+  assert.equal(R.followUpToday(new Date("2026-12-02T05:00:00Z")), "2026-12-02");
+});
+
+test("a Next Action dated Oct 22 is not due on the evening of Oct 21, is due on Oct 22, overdue on Oct 23", async () => {
+  const at = async (iso) => {
+    const db = dueDb([dueRow("2026-10-22")]);
+    const r = await R.getDueNextActions(db, BIZ, R.followUpToday(new Date(iso)));
+    return { r, lte: db.seen.lte };
+  };
+  const eve = await at("2026-10-22T02:30:00Z"); // Oct 21, 10:30 PM New York
+  assert.equal(eve.lte, "2026-10-21");
+  assert.deepEqual(eve.r, { count: 0, first: null }, "not due early because UTC crossed midnight");
+  const day = await at("2026-10-22T15:00:00Z");
+  assert.equal(day.r.count, 1);
+  assert.equal(day.r.first.overdue, false, "due today");
+  const lateNight = await at("2026-10-23T03:30:00Z"); // still Oct 22, 11:30 PM New York
+  assert.equal(lateNight.r.first.overdue, false, "still 'due today' until the app day ends");
+  const next = await at("2026-10-23T12:00:00Z");
+  assert.equal(next.r.first.overdue, true);
+});
+
+test("getDueNextActions defaults to the app calendar day", () => {
+  const src = read("src/lib/business-relationships.ts");
+  assert.match(src, /export async function getDueNextActions\(admin: SupabaseClient, businessId: string, today = followUpToday\(\)\)/);
+  assert.match(src, /export const followUpToday = \(now: Date = new Date\(\)\) => todayIn\(undefined, now\);/);
+});

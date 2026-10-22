@@ -4,6 +4,7 @@ import { normalizeAvailabilityRelationships, type AvailabilityRelationship, type
 import { getOwnerAvailabilityForLocation, type OwnerAvailabilityItem } from "./business-availability-owner";
 import { getBusinessPlacementByLocation, type BusinessPlacementItem } from "./business-placements";
 import type { PlacementStatus } from "./business-placements-domain";
+import { todayIn } from "./event-time";
 import { locationInScope, readGeographyCatalog, scopeFromCatalog, scopeLocationFilter, type GeographyScope } from "./geography-scope";
 import { getGrowthContext, getOpportunityCandidates, selectRelevantOpportunities, type RelevantOpportunity } from "./relevant-opportunities";
 import type { RelevanceScope } from "./relevant-opportunities-domain";
@@ -36,6 +37,12 @@ export const GEOGRAPHY_LIST_LIMIT = 50;
 
 /** The date Find Us Here uses to decide "in date" (same as the public read). */
 export const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** The calendar day a Target's date-only Next Action is judged against. No
+ * Business or Location stores a timezone, so this is Findmi's app calendar
+ * (APP_TIMEZONE, the same day Events and Here Now use) — a step dated Oct 22
+ * is due on Oct 22 there, not early when UTC crosses midnight. */
+export const followUpToday = (now: Date = new Date()) => todayIn(undefined, now);
 
 export function isInDate(startsOn: string | null, endsOn: string | null, today: string): boolean {
   return (!startsOn || startsOn <= today) && (!endsOn || endsOn >= today);
@@ -454,7 +461,7 @@ export async function getRelationshipWorkspace(admin: SupabaseClient, businessId
 }
 
 /** Targets with a Next Action due today or earlier (not Passed) — Needs Attention. */
-export async function getDueNextActions(admin: SupabaseClient, businessId: string, today = todayIso()): Promise<{ count: number; first: { locationId: string; name: string; nextAction: string | null; overdue: boolean } | null }> {
+export async function getDueNextActions(admin: SupabaseClient, businessId: string, today = followUpToday()): Promise<{ count: number; first: { locationId: string; name: string; nextAction: string | null; overdue: boolean } | null }> {
   const { data, count, error } = await admin
     .from("business_location_placements")
     .select("location_id, next_action, next_action_at, locations!inner(name)", { count: "exact" })
