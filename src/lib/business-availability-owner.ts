@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingAvailabilityTable, ALREADY_OUR_LOCATION_ERROR } from "./business-location-availability";
+import { AVAILABILITY_LIST_PAGE_SIZE, type AvailabilityFilter } from "./business-availability-bulk-domain";
 import {
   normalizeAvailabilityRelationships,
+  statusAfterOwnerEdit,
   validateAvailabilityRequest,
   type AvailabilityRelationship,
   type AvailabilityRequestInput,
@@ -35,12 +37,16 @@ export interface OwnerAvailabilityItem {
   endsOn: string | null;
   note: string | null;
   products: { id: string; name: string }[];
+  /** The Location itself is unlisted (is_demo) or archived/trashed — set by the
+   * paged reader so Findmi admin can see which entries aren't public places yet. */
+  locationUnlisted?: boolean;
+  locationArchived?: boolean;
 }
 
 /** `multi` adds the relationships array (migration 20261101…); reads fall back
  * to the single legacy `relationship` while that migration is pending. */
 const columns = (multi: boolean) =>
-  `id, location_id, relationship, ${multi ? "relationships, " : ""}status, source, starts_on, ends_on, note, created_at, locations!inner(id, name, slug, city, state, logo_url, cover_image_url)`;
+  `id, location_id, relationship, ${multi ? "relationships, " : ""}status, source, starts_on, ends_on, note, created_at, locations!inner(id, name, slug, city, state, logo_url, cover_image_url, is_demo, archived_at, trashed_at)`;
 
 const isMissingColumn = (error: { code?: string } | null | undefined) => Boolean(error && error.code === "42703");
 
@@ -55,39 +61,119 @@ function detailsUnavailable(error: { code?: string; message?: string } | null | 
   return isMissingAvailabilityTable(error) || error.code === "42703" || /column .* does not exist/.test(error.message ?? "");
 }
 
-export async function getOwnerAvailability(
-  admin: SupabaseClient,
-  businessId: string
-): Promise<{ available: boolean; items: OwnerAvailabilityItem[] }> {
-  const read = (multi: boolean) =>
-    admin.from("business_location_availability").select(columns(multi)).eq("business_id", businessId).order("created_at", { ascending: false });
-  let { data, error } = await read(true);
-  if (isMissingColumn(error)) ({ data, error } = await read(false));
-  if (error) {
-    if (!detailsUnavailable(error)) console.error("getOwnerAvailability failed:", error.message);
-    return { available: false, items: [] };
-  }
-  type Loc = { id: string; name: string; slug: string; city: string | null; state: string | null; logo_url: string | null; cover_image_url: string | null };
-  type Row = {
-    id: string;
-    location_id: string;
-    relationship: AvailabilityRelationship;
-    relationships?: AvailabilityRelationship[] | null;
-    status: AvailabilityStatus;
-    source: AvailabilitySource;
-    starts_on: string | null;
-    ends_on: string | null;
-    note: string | null;
-    locations: Loc | Loc[] | null;
+export interface AvailabilityCounts { all: number; live: number; pending: number; declined: number; imported: number }
+
+/** Exact whole-footprint counts, each a `count` over the database (never the length
+ * of a fetched list, which the API caps at 1,000 rows). */
+export async function getOwnerAvailabilityCounts(admin: SupabaseClient, businessId: string): Promise<AvailabilityCounts & { available: boolean }> {
+  const head = (status?: string) => {
+    let q = admin.from("business_location_availability").select("id", { count: "exact", head: true }).eq("business_id", businessId);
+    if (status) q = q.eq("status", status);
+    return q;
   };
-  const rows = (data ?? []) as unknown as Row[];
-  const ids = rows.map((r) => r.id);
-  const { data: links } = ids.length
-    ? await admin.from("business_location_availability_products").select("availability_id, product_id, products(id, name)").in("availability_id", ids)
-    : { data: [] as unknown[] };
-  type Link = { availability_id: string; products: { id: string; name: string } | { id: string; name: string }[] | null };
+  const [all, live, pending, declined, imported] = await Promise.all([
+    head(),
+    head("live"),
+    head("pending"),
+    head("declined"),
+    admin.from("business_location_availability").select("id", { count: "exact", head: true }).eq("business_id", businessId).not("external_id", "is", null),
+  ]);
+  const available = !all.error;
+  return { available, all: all.count ?? 0, live: live.count ?? 0, pending: pending.count ?? 0, declined: declined.count ?? 0, imported: imported.error ? 0 : imported.count ?? 0 };
+}
+
+export interface OwnerAvailabilityPage {
+  available: boolean;
+  items: OwnerAvailabilityItem[];
+  /** Entries matching the current filter (all pages). */
+  total: number;
+  page: number;
+  pageSize: number;
+  /** Whole-footprint totals for the filter chips (independent of the filter). */
+  counts: { all: number; live: number; pending: number; declined: number; imported: number };
+}
+
+const EMPTY_PAGE: OwnerAvailabilityPage = { available: false, items: [], total: 0, page: 1, pageSize: AVAILABILITY_LIST_PAGE_SIZE, counts: { all: 0, live: 0, pending: 0, declined: 0, imported: 0 } };
+
+/** Narrows an availability query to a filter. `multi` = the relationships
+ * array exists (migration applied); before it, the legacy single column. */
+export function applyAvailabilityFilter(query: any, filter: AvailabilityFilter, multi: boolean) {
+  let q = query;
+  if (filter.status) q = q.eq("status", filter.status);
+  if (filter.relationship) q = multi ? q.contains("relationships", [filter.relationship]) : q.eq("relationship", filter.relationship);
+  if (filter.imported) q = q.not("external_id", "is", null);
+  if (filter.q) q = q.or(`name.ilike.%${filter.q}%,city.ilike.%${filter.q}%,address.ilike.%${filter.q}%`, { referencedTable: "locations" });
+  return q;
+}
+
+/** One page of a Business's footprint, filtered and searched in the database.
+ * (The unpaged read this replaces silently stopped at the API's 1,000-row
+ * cap, which a large brand reaches.) Products are read for the page's own ids
+ * only. Before the details migration it fails safe to `available: false`. */
+export async function getOwnerAvailabilityPage(
+  admin: SupabaseClient,
+  businessId: string,
+  filter: AvailabilityFilter,
+  page: number
+): Promise<OwnerAvailabilityPage> {
+  const size = AVAILABILITY_LIST_PAGE_SIZE;
+  const pageNo = Math.max(1, Math.floor(page) || 1);
+  const from = (pageNo - 1) * size;
+  const read = (multi: boolean) =>
+    applyAvailabilityFilter(
+      admin.from("business_location_availability").select(columns(multi), { count: "exact" }).eq("business_id", businessId),
+      filter,
+      multi
+    )
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, from + size - 1);
+  let multi = true;
+  let { data, error, count } = await read(true);
+  if (isMissingColumn(error)) {
+    multi = false;
+    ({ data, error, count } = await read(false));
+  }
+  if (error) {
+    if (!detailsUnavailable(error)) console.error("getOwnerAvailabilityPage failed:", error.message);
+    return EMPTY_PAGE;
+  }
+  const [counts, links] = await Promise.all([
+    getOwnerAvailabilityCounts(admin, businessId),
+    (async () => {
+      const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+      return ids.length ? admin.from("business_location_availability_products").select("availability_id, product_id, products(id, name)").in("availability_id", ids) : { data: [] as unknown[] };
+    })(),
+  ]);
+  const items = rowsToItems((data ?? []) as unknown as RawRow[], (links.data ?? []) as RawLink[]);
+  return {
+    available: true,
+    items,
+    total: count ?? items.length,
+    page: pageNo,
+    pageSize: size,
+    counts: { all: counts.all, live: counts.live, pending: counts.pending, declined: counts.declined, imported: counts.imported },
+  };
+}
+
+type RawLoc = { id: string; name: string; slug: string; city: string | null; state: string | null; logo_url: string | null; cover_image_url: string | null; is_demo?: boolean | null; archived_at?: string | null; trashed_at?: string | null };
+type RawRow = {
+  id: string;
+  location_id: string;
+  relationship: AvailabilityRelationship;
+  relationships?: AvailabilityRelationship[] | null;
+  status: AvailabilityStatus;
+  source: AvailabilitySource;
+  starts_on: string | null;
+  ends_on: string | null;
+  note: string | null;
+  locations: RawLoc | RawLoc[] | null;
+};
+type RawLink = { availability_id: string; products: { id: string; name: string } | { id: string; name: string }[] | null };
+
+function rowsToItems(rows: RawRow[], links: RawLink[]): OwnerAvailabilityItem[] {
   const byRow = new Map<string, { id: string; name: string }[]>();
-  for (const l of (links ?? []) as Link[]) {
+  for (const l of links) {
     const p = Array.isArray(l.products) ? l.products[0] : l.products;
     if (!p) continue;
     byRow.set(l.availability_id, [...(byRow.get(l.availability_id) ?? []), p]);
@@ -111,9 +197,11 @@ export async function getOwnerAvailability(
       endsOn: r.ends_on,
       note: r.note,
       products: byRow.get(r.id) ?? [],
+      locationUnlisted: Boolean(loc.is_demo),
+      locationArchived: Boolean(loc.archived_at || loc.trashed_at),
     });
   }
-  return { available: true, items };
+  return items;
 }
 
 export type OwnerAvailabilityResult = { ok: true } | { ok: false; error: string };
@@ -171,29 +259,31 @@ export async function requestOwnerAvailability(admin: SupabaseClient, businessId
  * note). The place itself never changes — to move to a different place, remove
  * the entry and add the new one.
  *
- * Review semantics: ANY actual change returns the entry to Pending Review
- * (and marks it owner-authored), including one Findmi had approved or added —
- * owner-edited content is never left Findmi-verified without a fresh review.
- * While it is pending it does not show publicly; the owner sees that
- * plainly. A save that changes nothing is a no-op and leaves the status alone.
- * A declined entry that is edited is thereby resubmitted. */
+ * Review semantics (lib/business-availability-domain.ts statusAfterOwnerEdit — the
+ * same rule bulk edits and re-imports use): an edit that does not change what the
+ * entry publicly CLAIMS leaves its status exactly as it was — a Live entry stays
+ * Live through product, product-set and date changes, and through narrowing its
+ * relationships. An edit that ADDS a claim (a relationship it wasn't approved for, or
+ * new note text) returns a Live or Declined entry to Pending Review and marks it
+ * owner-authored. A Pending entry stays Pending. A save that changes nothing is a
+ * no-op. */
 export async function updateOwnerAvailability(
   admin: SupabaseClient,
   businessId: string,
   availabilityId: string,
   input: Omit<AvailabilityRequestInput, "locationId">
-): Promise<OwnerAvailabilityResult & { changed?: boolean }> {
+): Promise<OwnerAvailabilityResult & { changed?: boolean; returnedToReview?: boolean }> {
   const readRow = (multi: boolean) =>
     admin
       .from("business_location_availability")
-      .select(`id, location_id, relationship, ${multi ? "relationships, " : ""}starts_on, ends_on, note`)
+      .select(`id, location_id, relationship, ${multi ? "relationships, " : ""}status, starts_on, ends_on, note`)
       .eq("id", availabilityId)
       .eq("business_id", businessId)
       .maybeSingle();
   let { data: existing, error: readError } = await readRow(true);
   if (isMissingColumn(readError)) ({ data: existing, error: readError } = await readRow(false));
   if (readError) return { ok: false, error: detailsUnavailable(readError) ? "Where To Find Us isn't available yet. Please try again soon." : "Couldn't load that entry." };
-  const row = existing as unknown as { id: string; location_id: string; relationship: string; relationships?: string[] | null; starts_on: string | null; ends_on: string | null; note: string | null } | null;
+  const row = existing as unknown as { id: string; location_id: string; relationship: string; relationships?: string[] | null; status: AvailabilityStatus; starts_on: string | null; ends_on: string | null; note: string | null } | null;
   if (!row) return { ok: false, error: "That entry wasn't found." };
 
   const checked = validateAvailabilityRequest({ ...input, locationId: row.location_id });
@@ -219,12 +309,15 @@ export async function updateOwnerAvailability(
     if (((owned ?? []) as unknown[]).length !== nextProducts.length) return { ok: false, error: "One of those products isn't part of your catalog." };
   }
 
-  // Row first, straight to pending: if anything after this fails the entry is
-  // already in its safe (non-public) state.
+  // The one review rule: only an edit that adds a public claim goes back to review.
+  const nextStatus = statusAfterOwnerEdit(row.status, { relationshipsBefore: currentRelationships, relationshipsAfter: v.relationships, noteBefore: row.note, noteAfter: v.note });
+  const returnedToReview = row.status === "live" && nextStatus === "pending";
+  // Row first: an edit that adds a claim is already Pending (non-public) before
+  // anything after this can fail; one that doesn't add a claim was already approved.
   const write = (fields: Record<string, unknown>) =>
     admin
       .from("business_location_availability")
-      .update({ ...fields, starts_on: v.startsOn, ends_on: v.endsOn, note: v.note, status: "pending", source: "business" })
+      .update({ ...fields, starts_on: v.startsOn, ends_on: v.endsOn, note: v.note, ...(nextStatus !== row.status ? { status: nextStatus } : {}), ...(nextStatus === "pending" ? { source: "business" } : {}) })
       .eq("id", availabilityId)
       .eq("business_id", businessId);
   let { error: updateError } = await write(relationshipFields(v.relationships));
@@ -248,7 +341,7 @@ export async function updateOwnerAvailability(
       return { ok: false, error: "Couldn't save those products. Please try again." };
     }
   }
-  return { ok: true, changed: true };
+  return { ok: true, changed: true, returnedToReview };
 }
 
 /** Owner removes (or withdraws) ONE of their own entries — scoped by
@@ -275,6 +368,47 @@ export async function reviewAvailability(admin: SupabaseClient, availabilityId: 
   if (error) return { ok: false, error: "Couldn't update that entry." };
   if (((data ?? []) as unknown[]).length === 0) return { ok: false, error: "That entry wasn't found." };
   return { ok: true };
+}
+
+/** Findmi reviews EVERY entry this Business has pending, in one statement — for an
+ * import that submitted hundreds. Entries for a Location the Business operates (Our
+ * Locations) can't be approved (the database refuses it), so they are left pending
+ * and counted. Nothing outside this Business's pending entries is touched. */
+export async function reviewAllPendingAvailability(
+  admin: SupabaseClient,
+  businessId: string,
+  status: "live" | "declined"
+): Promise<{ ok: true; changed: number; left: number } | { ok: false; error: string }> {
+  // Pending entries for a place the Business operates (Our Locations) can't be approved
+  // (the database refuses it), so they're found first — by checking the operated places
+  // in small chunks against the pending set, never a URL-sized list — and left alone.
+  let blocked: string[] = [];
+  if (status === "live") {
+    const operated: string[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin.from("business_locations").select("location_id").eq("business_id", businessId).order("location_id").range(from, from + 999);
+      if (error) return { ok: false, error: "Couldn't review those entries." };
+      const rows = (data ?? []) as { location_id: string }[];
+      operated.push(...rows.map((r) => r.location_id));
+      if (rows.length < 1000) break;
+    }
+    for (let i = 0; i < operated.length; i += 150) {
+      const { data } = await admin.from("business_location_availability").select("id").eq("business_id", businessId).eq("status", "pending").in("location_id", operated.slice(i, i + 150));
+      blocked.push(...((data ?? []) as { id: string }[]).map((r) => r.id));
+    }
+    if (blocked.length > 200) return { ok: false, error: "Too many pending entries are for places this Business operates. Remove those first." };
+  }
+  const pendingCount = () => admin.from("business_location_availability").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("status", "pending");
+  const { count: before } = await pendingCount();
+  // ONE set-based statement over the complete pending set. `count` is asked of the
+  // database; rows are never returned, so nothing is capped at the API's 1,000-row limit.
+  let q = admin.from("business_location_availability").update({ status, updated_at: new Date().toISOString() }, { count: "exact" }).eq("business_id", businessId).eq("status", "pending");
+  if (blocked.length > 0) q = q.not("id", "in", `(${blocked.join(",")})`);
+  const { error, count: changed } = await q;
+  if (error) return { ok: false, error: "Couldn't review those entries." };
+  const { count } = await pendingCount();
+  // The statement's own count when the API reports it; otherwise the difference in the exact pending counts.
+  return { ok: true, changed: changed ?? Math.max(0, (before ?? 0) - (count ?? 0)), left: count ?? 0 };
 }
 
 /** ≤20 canonical, published, non-archived Locations matching `query`, for

@@ -1,4 +1,4 @@
-import { classifyLocationMatches, locationIdentityIssue } from "@/lib/location-import/resolve";
+import { classifyLocationMatches, locationIdentityIssue, similarLocationNames } from "@/lib/location-import/resolve";
 import type { ExistingLocation, LocationEvidence } from "@/lib/location-import/types";
 import { normalizeStreetAddress } from "@/lib/locationCreation";
 import type { ImportRowData } from "./fields";
@@ -70,8 +70,31 @@ export function findFileDuplicates(rows: readonly ImportRowData[]): Map<number, 
  *  - Several/uncertain → `possible` (the Business chooses; never guessed).
  *  - Specific enough and not on Findmi → `new`.
  *  - Vague/missing → `invalid` with the reason. */
-export function classifyImportRow(row: ImportRowData, rowNumber: number, ctx: { known: KnownSourceEntry | null; candidates: readonly ExistingLocation[] }): RowMatch {
+export const SOURCE_CHANGED_PROBLEM = "Details changed since the last import. Keep the current Location, or choose a different one.";
+
+/** Does this row describe a different place than the Location its source id
+ * is tied to? (Both a differing street and a clearly different name count; a
+ * missing side never does — absence is not a change.) */
+export function sourceDetailsChanged(row: Pick<ImportRowData, "name" | "address">, current: { name: string | null; address: string | null } | null): boolean {
+  if (!current) return false;
+  if (row.address && current.address && normalizeStreetAddress(row.address) !== normalizeStreetAddress(current.address)) return true;
+  if (row.name && current.name && !similarLocationNames(row.name, current.name)) return true;
+  return false;
+}
+
+export function classifyImportRow(
+  row: ImportRowData,
+  rowNumber: number,
+  ctx: { known: KnownSourceEntry | null; candidates: readonly ExistingLocation[]; knownLocation?: { name: string | null; address: string | null } | null }
+): RowMatch {
   if (ctx.known) {
+    if (sourceDetailsChanged(row, ctx.knownLocation ?? null)) {
+      // The source id is tied to a Location, but the file now describes a
+      // different place (a move, a rename, a re-used id). Never decided silently:
+      // the Business keeps the current Location (default) or picks another.
+      const others = ctx.candidates.map((c) => c.id).filter((id) => id !== ctx.known?.locationId);
+      return { status: "possible", matchedLocationId: ctx.known.locationId, candidateLocationIds: [ctx.known.locationId, ...others].slice(0, 8), problem: SOURCE_CHANGED_PROBLEM, repeat: true };
+    }
     return { status: "existing", matchedLocationId: ctx.known.locationId, candidateLocationIds: [], problem: null, repeat: true };
   }
   const evidence = evidenceFor(row, rowNumber);
@@ -110,6 +133,8 @@ export function effectiveAction(
     case "possible":
       if (row.decision === "use_match" && row.chosen_location_id && row.candidate_location_ids.includes(row.chosen_location_id)) return { kind: "link", locationId: row.chosen_location_id };
       if (row.decision === "create_new") return { kind: "create" };
+      // A changed repeat row (its source id is already tied to a Location) defaults to keeping that Location.
+      if (!row.decision && row.matched_location_id && row.candidate_location_ids.includes(row.matched_location_id)) return { kind: "link", locationId: row.matched_location_id };
       return { kind: "unresolved", reason: "Choose the matching Location, create a new one, or skip" };
     case "new":
       return { kind: "create" };

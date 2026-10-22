@@ -34,6 +34,7 @@ import {
   type LocationHappening,
 } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
+import { isLocationDiscoverable } from "@/lib/location-eligibility";
 import { hasAnyHours } from "@/lib/locationHours";
 import { LocationHoursStatus } from "@/components/LocationHours";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
@@ -116,6 +117,11 @@ export async function generateLocationMetadata(slug: string): Promise<Metadata> 
     description: `See what's happening at ${location.name} on Findmi.`,
     alternates: { canonical: canonicalUrl },
     openGraph: location.cover_image_url ? { images: [location.cover_image_url] } : undefined,
+    // A Location without both Logo and Cover Image is not part of consumer discovery
+    // (lib/location-eligibility.ts). Its direct URL keeps working — shared links and
+    // QR codes never break — but it is kept out of search engines (and the sitemap)
+    // until it is complete.
+    ...(isLocationDiscoverable(location) ? {} : { robots: { index: false, follow: true } }),
   };
 }
 
@@ -206,6 +212,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
 
   const sectionAnchors = buildSectionAnchors([
     { id: "happening", label: "Happening", present: happenings.length > 0 },
+    { id: "within", label: "Within Here", present: withinHappenings.length > 0 },
     { id: "moments", label: "Moments", present: journal.entries.length > 0 },
     { id: "about", label: "Operated By", present: operators.items.length > 0 },
     { id: "brands-available-here", label: "Brands Here", present: availableBrands.items.length > 0 },
@@ -300,26 +307,32 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           <div className="min-w-0 flex-1 pt-2 sm:pt-3">
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
 
-            {/* Physical Presence Pass 2 — where this place physically sits
-                (nearest parent first), e.g. "Madison Square Park · Flatiron,
-                New York". Context, not navigation chrome: quiet text, each
-                parent linking to its own page. Absent for a flat Location. */}
-            {placeContext && (
+            {/* Hero geography — two distinct lines, never joined by a dot:
+                1. the area / neighborhood / parent-place descriptor, only when
+                   one legitimately exists (nearest parent first, each parent
+                   linking to its own page when it is a discoverable Location);
+                2. "City, State ZIP" from the Location's OWN address data — never
+                   a Market display label such as "Manhattan, New York City".
+                No descriptor → no blank line, just the address line. */}
+            {placeContext && placeContext.ancestors.length > 0 && (
               <p className="mt-1 text-sm leading-snug text-ink/55">
                 {placeContext.ancestors.map((a, i) => (
                   <span key={a.id}>
                     {i > 0 && <span aria-hidden="true"> · </span>}
-                    <Link href={`/location/${a.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
-                      {a.name}
-                    </Link>
+                    {a.linkable ? (
+                      <Link href={`/location/${a.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
+                        {a.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-ink/70">{a.name}</span>
+                    )}
                   </span>
                 ))}
-                {placeContext.geography && (
-                  <>
-                    <span aria-hidden="true"> · </span>
-                    {placeContext.geography}
-                  </>
-                )}
+              </p>
+            )}
+            {cityStateZip(location.city, location.state, location.postal_code) && (
+              <p className={`${placeContext && placeContext.ancestors.length > 0 ? "" : "mt-1 "}text-sm leading-snug text-ink/55`} data-testid="location-hero-address">
+                {cityStateZip(location.city, location.state, location.postal_code)}
               </p>
             )}
 
@@ -453,7 +466,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           happens at this place itself; every item names and links its
           exact place ("at Eataly Chiosco"). Renders nothing when empty. */}
       {withinHappenings.length > 0 && (
-        <section className="mt-6 px-4 sm:px-0">
+        <section id="within" className="mt-6 scroll-mt-24 px-4 sm:px-0">
           <LocationHappeningCollection happenings={withinHappenings} heading={`Within ${location.name}`} />
         </section>
       )}

@@ -322,18 +322,21 @@ test("public Find Us At / Brands Available Here: Live + in-effect only, compact 
   assert.doesNotMatch((detail + read("src/components/FindUsAt.tsx")).replace(/\/\*[\s\S]*?\*\//g, ""), /status|pending|declined/i, "public components never see review state");
 });
 
-test("owner edit: any real change returns the entry to Pending Review; no-op saves don't; the place can't move", () => {
+test("owner edit: only an edit that ADDS a public claim returns the entry to Pending Review; no-op saves don't; the place can't move", () => {
   const owner = read("src/lib/business-availability-owner.ts");
   const fn = owner.slice(owner.indexOf("export async function updateOwnerAvailability"), owner.indexOf("export async function removeOwnerAvailability"));
   assert.match(fn, /if \(unchanged\) return \{ ok: true, changed: false \};/);
-  assert.match(fn, /status: "pending", source: "business"/);
+  assert.match(fn, /statusAfterOwnerEdit\(row\.status/, "the one shared review rule decides the status");
+  assert.match(fn, /nextStatus === "pending" \? \{ source: "business" \}/);
   assert.match(fn, /\.eq\("id", availabilityId\)\s*\.eq\("business_id", businessId\)/, "scoped to this Business");
   assert.doesNotMatch(fn, /\.update\(\{[^}]*location_id/, "location is never updated");
   assert.match(fn, /Restore the previous links/);
   const view = read(`${B}/v2/AvailableAtView.tsx`);
   assert.match(view, /function PlaceForm/);
   assert.match(view, /updateAvailabilityAction\(businessId, initial\.id, fields\)/);
-  assert.match(view, /Saving changes sends this back to Findmi for review/);
+  assert.match(view, /statusAfterOwnerEdit\(initial\.status/, "the form previews the same rule the server applies");
+  assert.match(view, /Findmi reviews this again/);
+  assert.match(view, /This stays live/);
   assert.match(read(`${B}/availability-actions.ts`), /updateAvailabilityAction/);
 });
 

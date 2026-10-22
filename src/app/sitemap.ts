@@ -1,3 +1,4 @@
+import { applyLocationDiscoveryFilter } from "@/lib/location-eligibility";
 import type { MetadataRoute } from "next";
 import { getSupabase } from "@/lib/supabase";
 
@@ -36,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [{ data: businesses }, { data: events }, { data: locations }] = await Promise.all([
     supabase.from("businesses").select("slug, updated_at").eq("is_demo", false).eq("publication_status", "live"),
     supabase.from("events").select("slug").eq("is_demo", false),
-    supabase.from("locations").select("slug").eq("is_demo", false),
+    applyLocationDiscoveryFilter(supabase.from("locations").select("slug")),
   ]);
 
   const businessRoutes: MetadataRoute.Sitemap = (businesses ?? []).map((b) => ({
@@ -48,7 +49,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     url: `${siteUrl}/event/${e.slug}`,
   }));
 
-  const locationRoutes: MetadataRoute.Sitemap = (locations ?? []).map((l) => ({
+  const locationRoutes: MetadataRoute.Sitemap = ((locations ?? []) as { slug: string }[]).map((l) => ({
     url: `${siteUrl}/location/${l.slug}`,
   }));
 

@@ -55,7 +55,7 @@ test("Admin Business detail: Locations workspace holds Our Locations and Find Us
   const a = page.indexOf('<p className="text-sm font-semibold text-ink">Our Locations</p>');
   const b = page.indexOf('<p className="text-sm font-semibold text-ink">Find Us Here</p>');
   assert.ok(a > 0 && b > a, "Our Locations first, then Find Us Here");
-  assert.match(page, /tab === "locations" && marketsAdmin \? await getAvailabilityLocationsForBusiness/, "availability data loads with the Locations tab");
+  assert.match(page, /tab === "locations" && marketsAdmin \? await getOwnerAvailabilityCounts/, "availability counts load with the Locations tab (the list itself is paged server-side)");
   assert.match(page, /adminConnectFindUsAt/);
   assert.match(page, /adminDisconnectFindUsAt|adminRemoveFindUsAt|FindUsAt/);
   assert.match(read(`${A}/businesses/availability-actions.ts`), /\?tab=locations/);

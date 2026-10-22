@@ -3,10 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createImportedLocation, defaultLocationImportDeps, type LocationImportDeps } from "@/lib/location-import/server";
 import { findLikelyDuplicateLocations } from "@/lib/locationCreation";
 import { isMissingAvailabilityTable, ALREADY_OUR_LOCATION_ERROR } from "@/lib/business-location-availability";
-import { normalizeAvailabilityRelationships, AVAILABILITY_PRODUCT_MAX, type AvailabilityRelationship } from "@/lib/business-availability-domain";
+import { normalizeAvailabilityRelationships, statusAfterOwnerEdit, AVAILABILITY_PRODUCT_MAX, type AvailabilityRelationship, type AvailabilityStatus } from "@/lib/business-availability-domain";
 import type { ExistingLocation } from "@/lib/location-import/types";
 import { cleanMapping, missingRequiredMapping, rowFromCells, type ColumnMapping, type ImportRowData } from "./fields";
-import { classifyImportRow, effectiveAction, findFileDuplicates, preMatchProblem, type KnownSourceEntry, type MatchStatus, type RowDecision } from "./match";
+import { classifyImportRow, effectiveAction, findFileDuplicates, preMatchProblem, sourceDetailsChanged, type KnownSourceEntry, type MatchStatus, type RowDecision } from "./match";
 import { LOCATOR_SOURCES, type LocatorSourceId } from "./source";
 
 /** Locator Import — the server half: stage → match → review → import.
@@ -170,18 +170,28 @@ export async function matchBatch(admin: SupabaseClient, businessId: string, batc
   const { data: operatedRows } = await admin.from("business_locations").select("location_id").eq("business_id", businessId);
   const operated = new Set(((operatedRows ?? []) as { location_id: string }[]).map((r) => r.location_id));
 
+  // The Location each known source id is tied to, to notice a changed address/name.
+  const knownLocations = new Map<string, { name: string | null; address: string | null }>();
+  const knownLocationIds = [...new Set([...known.values()].map((k) => k.locationId))];
+  if (knownLocationIds.length > 0) {
+    const { data: locs } = await admin.from("locations").select("id, name, address").in("id", knownLocationIds);
+    for (const l of (locs ?? []) as { id: string; name: string | null; address: string | null }[]) knownLocations.set(l.id, { name: l.name, address: l.address });
+  }
+
   let repeat = 0;
   await mapLimit(rows, 5, async (row) => {
     const entry = row.external_id ? known.get(row.external_id) ?? null : null;
+    const knownLocation = entry ? knownLocations.get(entry.locationId) ?? null : null;
     let candidates: ExistingLocation[] = [];
-    if (!entry) {
+    // A repeat row is looked up in the database only when the file now describes a different place.
+    if (!entry || sourceDetailsChanged(row.data, knownLocation)) {
       try {
         candidates = await findLikelyDuplicateLocations(admin, { name: row.data.name ?? "", address: row.data.address, city: row.data.city, state: row.data.state, postal_code: row.data.postalCode });
       } catch {
         candidates = [];
       }
     }
-    let match = classifyImportRow(row.data, row.row_number, { known: entry, candidates });
+    let match = classifyImportRow(row.data, row.row_number, { known: entry, candidates, knownLocation });
     if (match.status === "existing" && match.matchedLocationId && operated.has(match.matchedLocationId)) {
       match = { ...match, status: "invalid", problem: ALREADY_OUR_LOCATION_ERROR, matchedLocationId: null };
     }
@@ -360,34 +370,54 @@ async function linkAvailability(
   row: { external_id: string | null },
   locationId: string,
   relationships: AvailabilityRelationship[],
-  productIds: readonly string[]
-): Promise<{ ok: true; updated: boolean; id: string } | { ok: false; error: string }> {
+  productIds: readonly string[],
+  /** The row itself named its relationships (not the batch default). */
+  explicitRelationships = false
+): Promise<{ ok: true; updated: boolean; id: string; note: string | null } | { ok: false; error: string }> {
   const { data: ours } = await admin.from("business_locations").select("id").eq("business_id", businessId).eq("location_id", locationId).maybeSingle();
   if (ours) return { ok: false, error: ALREADY_OUR_LOCATION_ERROR };
   const { data: loc } = await admin.from("locations").select("id, trashed_at").eq("id", locationId).maybeSingle();
   if (!loc || (loc as { trashed_at: string | null }).trashed_at) return { ok: false, error: "That Location doesn't exist on Findmi." };
 
   // Same source id first, else the same Location.
-  type ExistingEntry = { id: string; relationships: string[] | null; relationship: string; external_id: string | null };
+  type ExistingEntry = { id: string; location_id: string; relationships: string[] | null; relationship: string; external_id: string | null; status: AvailabilityStatus };
   let existing = null as ExistingEntry | null;
+  let byIdentity = false;
+  let note: string | null = null;
   if (row.external_id) {
     const { data } = await admin
       .from("business_location_availability")
-      .select("id, relationships, relationship, external_id")
+      .select("id, location_id, relationships, relationship, external_id, status")
       .eq("business_id", businessId)
       .eq("external_source", batch.source)
       .eq("external_id", row.external_id)
       .maybeSingle();
     existing = (data as ExistingEntry | null) ?? null;
+    byIdentity = Boolean(existing);
+    if (existing && existing.location_id !== locationId) {
+      // The Business chose a different Location for this source id. An entry's
+      // place can't change, so the old entry is KEPT (never deleted) and simply
+      // released from the source id, which then follows the chosen Location.
+      const { error } = await admin.from("business_location_availability").update({ external_source: null, external_id: null }).eq("id", existing.id).eq("business_id", businessId);
+      if (error) return { ok: false, error: "Couldn't move this source id to the new place." };
+      note = "Source id moved to this place; the previous place was kept without its source link.";
+      existing = null;
+      byIdentity = false;
+    }
   }
   if (!existing) {
     const { data } = await admin
       .from("business_location_availability")
-      .select("id, relationships, relationship, external_id")
+      .select("id, location_id, relationships, relationship, external_id, status")
       .eq("business_id", businessId)
       .eq("location_id", locationId)
       .maybeSingle();
     existing = (data as ExistingEntry | null) ?? null;
+  }
+
+  // A place already tied to a DIFFERENT source id is never silently re-tied.
+  if (existing && existing.external_id && row.external_id && existing.external_id !== row.external_id) {
+    return { ok: false, error: `That place is already linked to source id ${existing.external_id}.` };
   }
 
   const identity = row.external_id ? { external_source: batch.source, external_id: row.external_id, import_batch_id: batch.id } : { import_batch_id: batch.id };
@@ -395,11 +425,22 @@ async function linkAvailability(
   let updated = false;
   if (existing) {
     const current = normalizeAvailabilityRelationships(existing.relationships && existing.relationships.length > 0 ? existing.relationships : [existing.relationship]);
-    const merged = normalizeAvailabilityRelationships([...current, ...relationships]);
-    const changed = merged.length !== current.length;
-    // A repeat import adds what's new; it never removes how the Business is there.
-    const patch: Record<string, unknown> = { ...identity, location_id: locationId };
-    if (changed) Object.assign(patch, { relationships: merged, relationship: merged[0], status: "pending", source: "business" });
+    // The file is the source of truth for an entry it owns AND explicitly describes
+    // (relationship column): that entry's relationships become what the file says. In
+    // every other case an import only adds — it never removes how the Business is there.
+    const next = byIdentity && explicitRelationships ? normalizeAvailabilityRelationships(relationships) : normalizeAvailabilityRelationships([...current, ...relationships]);
+    const merged = next.length > 0 ? next : current;
+    const changed = merged.length !== current.length || merged.some((r, i) => r !== current[i]);
+    const patch: Record<string, unknown> = { ...identity };
+    // The one review rule (business-availability-domain.ts): a file that ADDS a way the
+    // Business is there is a new claim → Pending Review; one that only narrows, or only
+    // adds products, leaves the entry exactly as approved.
+    if (changed) {
+      Object.assign(patch, { relationships: merged, relationship: merged[0] });
+      if (statusAfterOwnerEdit(existing.status, { relationshipsBefore: current, relationshipsAfter: merged }) === "pending" && existing.status !== "pending") {
+        Object.assign(patch, { status: "pending", source: "business" });
+      }
+    }
     const { error } = await admin.from("business_location_availability").update(patch).eq("id", existing.id).eq("business_id", businessId);
     if (error) return { ok: false, error: error.code === "23505" ? "Another entry already uses this source id." : "Couldn't update that entry." };
     availabilityId = existing.id;
@@ -422,10 +463,10 @@ async function linkAvailability(
     if (add.length > 0 && haveIds.size + add.length <= AVAILABILITY_PRODUCT_MAX) {
       const { error } = await admin.from("business_location_availability_products").insert(add.map((product_id) => ({ availability_id: availabilityId, product_id })));
       if (error) return { ok: false, error: "Saved the place, but couldn't attach the products." };
-      if (updated) await admin.from("business_location_availability").update({ status: "pending", source: "business" }).eq("id", availabilityId);
+      // Adding products to an entry is ordinary upkeep — its status is not touched.
     }
   }
-  return { ok: true, updated, id: availabilityId };
+  return { ok: true, updated, id: availabilityId, note };
 }
 
 /** Import one chunk of reviewed rows. Call until `done`. */
@@ -511,12 +552,13 @@ export async function commitBatch(
     } else {
       locationId = action.locationId;
     }
-    const linked = await linkAvailability(admin, businessId, batch, row, locationId, relationships, productIds);
+    const explicit = Boolean(row.data.relationships && row.data.relationships.length > 0);
+    const linked = await linkAvailability(admin, businessId, batch, row, locationId, relationships, productIds, explicit);
     if (!linked.ok) {
       await settle("failed", linked.error, wasCreated ? { chosen_location_id: locationId } : {});
       continue;
     }
-    await settle(wasCreated ? "created" : linked.updated ? "updated" : "linked", null, { availability_id: linked.id, chosen_location_id: locationId });
+    await settle(wasCreated ? "created" : linked.updated ? "updated" : "linked", linked.note, { availability_id: linked.id, chosen_location_id: locationId });
   }
 
   const { count: left } = await admin.from("location_import_rows").select("id", { count: "exact", head: true }).eq("batch_id", batchId).is("outcome", null);
@@ -528,6 +570,14 @@ export async function commitBatch(
     await admin.from("location_import_batches").update({ status: "completed", completed_at: new Date().toISOString(), counts: { ...before, ...summary } }).eq("id", batchId);
   }
   return { ok: true, remaining, done: remaining === 0, summary };
+}
+
+/** An unfinished import's state, so the owner can pick it back up. */
+export async function getResumableImport(admin: SupabaseClient, businessId: string, batchId: string): Promise<{ batchId: string; status: string; counts: ImportCounts } | null> {
+  const owned = await ownedBatch(admin, businessId, batchId);
+  if (!owned.batch) return null;
+  if (owned.batch.status === "completed" || owned.batch.status === "cancelled") return null;
+  return { batchId, status: owned.batch.status, counts: await countsFor(admin, batchId) };
 }
 
 export async function cancelImport(admin: SupabaseClient, businessId: string, batchId: string): Promise<ImportResult> {

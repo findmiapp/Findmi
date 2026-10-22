@@ -11,16 +11,16 @@ import {
 } from "@/lib/admin/membership-queries";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import { RelationField } from "@/components/admin/RelationPicker";
-import { getLocationsForBusiness } from "@/lib/business-locations";
+import { BUSINESS_LOCATIONS_PAGE_SIZE, getLocationsForBusiness } from "@/lib/business-locations";
 import {
   adminConnectBusinessLocation,
   adminRemoveBusinessLocation,
   adminSetPrimaryBusinessLocation,
 } from "../location-actions";
-import { adminConnectFindUsAt, adminRemoveFindUsAt, adminReviewFindUsAt } from "../availability-actions";
-import { getOwnerAvailability } from "@/lib/business-availability-owner";
-import { availabilityRelationshipsPhrase, availabilityWhenLabel } from "@/lib/business-availability-domain";
-import { getAvailabilityLocationsForBusiness } from "@/lib/business-location-availability";
+import { adminConnectFindUsAt, adminRemoveFindUsAt, adminReviewAllFindUsAt, adminReviewFindUsAt } from "../availability-actions";
+import { getOwnerAvailabilityCounts, getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
+import { parseAvailabilityFilter, type AvailabilityFilter } from "@/lib/business-availability-bulk-domain";
+import { availabilityRelationshipsPhrase, availabilityWhenLabel, AVAILABILITY_STATUS_LABELS } from "@/lib/business-availability-domain";
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
 import BusinessIntelligencePanel from "@/components/admin/BusinessIntelligencePanel";
 import { getAdminBusinessIntelligence } from "@/lib/brand-audit";
@@ -130,10 +130,10 @@ export default async function EditBusinessPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; error?: string; saved?: string; member_updated?: string; note_saved?: string }>;
+  searchParams: Promise<{ tab?: string; error?: string; saved?: string; member_updated?: string; note_saved?: string; fus?: string; fq?: string; fp?: string; olp?: string; reviewed?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, error, saved, member_updated, note_saved } = await searchParams;
+  const { tab: tabParam, error, saved, member_updated, note_saved, fus, fq, fp, olp, reviewed } = await searchParams;
   if (tabParam && LEGACY_ADMIN_TABS[tabParam]) {
     const q = new URLSearchParams({ tab: LEGACY_ADMIN_TABS[tabParam] });
     for (const [k, v] of Object.entries({ error, saved, member_updated, note_saved })) if (v) q.set(k, v);
@@ -184,18 +184,38 @@ export default async function EditBusinessPage({
   // /account V2 Pass 2 — connected Locations (business_locations), only
   // fetched for the Locations tab. Bounded page; fails safe to empty if
   // the migration isn't applied yet.
-  const businessLocations =
-    tab === "locations" && marketsAdmin ? await getLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
+  // Our Locations can be thousands for a chain: an exact count plus a paged list, so the
+  // page never implies the first screenful is everything.
+  const operatedPage = Math.max(1, Math.floor(Number(olp)) || 1);
+  const [businessLocations, operatedTotal] =
+    tab === "locations" && marketsAdmin
+      ? await Promise.all([
+          getLocationsForBusiness(marketsAdmin, id, { offset: (operatedPage - 1) * BUSINESS_LOCATIONS_PAGE_SIZE }),
+          marketsAdmin.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", id).then((r: { count: number | null }) => r.count ?? 0),
+        ])
+      : [{ items: [], hasMore: false }, 0];
   // Find Us At V1 — third-party Locations where this Business is available
   // (business_location_availability), only fetched for the Locations tab
   // (its second section).
-  const availabilityLocations =
-    tab === "locations" && marketsAdmin ? await getAvailabilityLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
-  // Where To Find Us — owner-submitted entries awaiting review (fails safe
-  // to none until the details migration is applied).
-  const ownerAvailabilityAll = tab === "locations" && marketsAdmin ? (await getOwnerAvailability(marketsAdmin, id)).items : [];
-  const pendingAvailability = ownerAvailabilityAll.filter((i) => i.status === "pending");
-  const availabilityStatusByLocation = new Map(ownerAvailabilityAll.map((i) => [i.locationId, i.status]));
+  // Where To Find Us — the WHOLE footprint, never a fetched-and-sliced list: totals are
+  // exact database counts, and the list is a server-side filtered, searched and paged
+  // read (the API caps any single read at 1,000 rows). Defaults to Awaiting Review when
+  // there is any, since that is what the founder is here to do.
+  const availabilityCounts = tab === "locations" && marketsAdmin ? await getOwnerAvailabilityCounts(marketsAdmin, id) : null;
+  const availabilityFilter: AvailabilityFilter = parseAvailabilityFilter({ q: fq, status: fus === undefined ? (availabilityCounts && availabilityCounts.pending > 0 ? "pending" : "") : fus });
+  const availabilityPage =
+    tab === "locations" && marketsAdmin && availabilityCounts?.available
+      ? await getOwnerAvailabilityPage(marketsAdmin, id, availabilityFilter, Number(fp) || 1)
+      : null;
+  const availabilityHref = (over: { fus?: string; fq?: string; fp?: number }) => {
+    const params = new URLSearchParams({ tab: "locations" });
+    const status = over.fus ?? availabilityFilter.status;
+    params.set("fus", status);
+    const q = over.fq ?? availabilityFilter.q;
+    if (q) params.set("fq", q);
+    if (over.fp && over.fp > 1) params.set("fp", String(over.fp));
+    return `/admin/businesses/${id}?${params.toString()}`;
+  };
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
@@ -728,8 +748,16 @@ export default async function EditBusinessPage({
             ) : (
               <p className="mt-2 text-sm text-ink/50">No connected locations.</p>
             )}
-            {businessLocations.hasMore && (
-              <p className="mt-2 text-xs text-ink/45">Showing the first {businessLocations.items.length}.</p>
+            {operatedTotal > BUSINESS_LOCATIONS_PAGE_SIZE && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink/60" data-testid="admin-our-locations-paging">
+                <span>
+                  Showing {((operatedPage - 1) * BUSINESS_LOCATIONS_PAGE_SIZE + 1).toLocaleString()}–{((operatedPage - 1) * BUSINESS_LOCATIONS_PAGE_SIZE + businessLocations.items.length).toLocaleString()} of {operatedTotal.toLocaleString()}
+                </span>
+                <span className="flex gap-3">
+                  {operatedPage > 1 && <Link href={`/admin/businesses/${id}?tab=locations&olp=${operatedPage - 1}`} className="font-semibold text-findmi-700 hover:underline">Previous</Link>}
+                  {businessLocations.hasMore && <Link href={`/admin/businesses/${id}?tab=locations&olp=${operatedPage + 1}`} className="font-semibold text-findmi-700 hover:underline">Next</Link>}
+                </span>
+              </div>
             )}
             <form action={adminConnectBusinessLocation.bind(null, id)} className="mt-4 flex flex-col gap-3">
               <RelationField
@@ -764,62 +792,97 @@ export default async function EditBusinessPage({
               Third-party places where this business is normally available — stocked, sold, served or carried. Not places
               it operates (those are Our Locations above) and not one-off events or pop-ups.
             </p>
-            {pendingAvailability.length > 0 && (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Awaiting Review ({pendingAvailability.length})</p>
-                <ul className="mt-2 flex flex-col gap-2">
-                  {pendingAvailability.map((p) => (
-                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+            {availabilityCounts && availabilityCounts.available && (
+              <p className="mt-3 text-xs font-semibold text-ink/70" data-testid="admin-availability-counts">
+                {availabilityCounts.all.toLocaleString()} {availabilityCounts.all === 1 ? "place" : "places"}
+                {" · "}{availabilityCounts.live.toLocaleString()} live
+                {" · "}{availabilityCounts.pending.toLocaleString()} awaiting review
+                {" · "}{availabilityCounts.declined.toLocaleString()} declined
+              </p>
+            )}
+            {reviewed && <p className="mt-2 rounded-lg bg-findmi-50 px-3 py-2 text-xs font-semibold text-findmi-700">{Number(reviewed).toLocaleString()} entries reviewed.</p>}
+            {availabilityCounts && availabilityCounts.pending > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Awaiting Review ({availabilityCounts.pending.toLocaleString()})</p>
+                {availabilityCounts.pending > 1 && (
+                  <div className="flex gap-3">
+                    <form action={adminReviewAllFindUsAt.bind(null, id, "live")}>
+                      <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">Approve All {availabilityCounts.pending.toLocaleString()}</button>
+                    </form>
+                    <form action={adminReviewAllFindUsAt.bind(null, id, "declined")}>
+                      <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">Decline All {availabilityCounts.pending.toLocaleString()}</button>
+                    </form>
+                  </div>
+                )}
+                {availabilityCounts.pending > 1 && <p className="basis-full text-xs text-amber-800/80">Approve All and Decline All apply to every pending entry, not just the ones listed below.</p>}
+              </div>
+            )}
+            {availabilityCounts && availabilityCounts.available && availabilityCounts.all > 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter entries">
+                  {([["", "All", availabilityCounts.all], ["pending", "Awaiting Review", availabilityCounts.pending], ["live", "Live", availabilityCounts.live], ["declined", "Declined", availabilityCounts.declined]] as const).map(([v, label, n]) => (
+                    <Link key={v || "all"} href={availabilityHref({ fus: v, fp: 1 })} aria-current={availabilityFilter.status === v ? "true" : undefined} className={`rounded-full px-3 py-1 text-xs font-semibold ${availabilityFilter.status === v ? "bg-findmi text-white" : "bg-black/[0.04] text-ink/70 hover:text-ink"}`}>
+                      {label} · {n.toLocaleString()}
+                    </Link>
+                  ))}
+                </div>
+                <form method="get" className="flex gap-2">
+                  <input type="hidden" name="tab" value="locations" />
+                  <input type="hidden" name="fus" value={availabilityFilter.status} />
+                  <input type="search" name="fq" autoCapitalize="none" defaultValue={availabilityFilter.q} placeholder="Search by place, city or address" className="h-9 min-w-0 flex-1 rounded-lg border border-black/10 px-3 text-sm" />
+                  <button type="submit" className="h-9 rounded-lg bg-black/[0.06] px-3 text-xs font-semibold text-ink">Search</button>
+                </form>
+              </div>
+            )}
+            {availabilityPage && availabilityPage.items.length > 0 ? (
+              <>
+                <ul className="mt-3 flex flex-col gap-2" data-testid="admin-availability-list">
+                  {availabilityPage.items.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 px-3 py-2">
                       <div className="min-w-0">
                         <Link href={`/admin/locations/${p.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
                           {p.locationName}
                         </Link>
                         <p className="text-xs text-ink/55">
-                          {availabilityRelationshipsPhrase(p.relationships)} · {availabilityWhenLabel(p.startsOn, p.endsOn)} ·{" "}
+                          {[p.city, p.state].filter(Boolean).join(", ") || "No city"} · {availabilityRelationshipsPhrase(p.relationships)} · {availabilityWhenLabel(p.startsOn, p.endsOn)} ·{" "}
                           {p.products.length > 0 ? p.products.map((x) => x.name).join(", ") : "Brand"}
+                        </p>
+                        <p className="text-xs text-ink/45">
+                          {AVAILABILITY_STATUS_LABELS[p.status]}
+                          {p.locationUnlisted ? " · Not public" : ""}
+                          {p.locationArchived ? " · Archived" : ""}
                         </p>
                       </div>
                       <div className="flex gap-3">
-                        <form action={adminReviewFindUsAt.bind(null, id, p.id, "live")}>
-                          <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">Approve</button>
-                        </form>
-                        <form action={adminReviewFindUsAt.bind(null, id, p.id, "declined")}>
-                          <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">Decline</button>
+                        {p.status !== "live" && (
+                          <form action={adminReviewFindUsAt.bind(null, id, p.id, "live")}>
+                            <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">Approve</button>
+                          </form>
+                        )}
+                        {p.status === "pending" && (
+                          <form action={adminReviewFindUsAt.bind(null, id, p.id, "declined")}>
+                            <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">Decline</button>
+                          </form>
+                        )}
+                        <form action={adminRemoveFindUsAt.bind(null, id, p.locationId)}>
+                          <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">Remove</button>
                         </form>
                       </div>
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            {availabilityLocations.items.filter((l) => availabilityStatusByLocation.get(l.locationId) !== "pending").length > 0 ? (
-              <ul className="mt-3 flex flex-col gap-2">
-                {availabilityLocations.items.filter((l) => availabilityStatusByLocation.get(l.locationId) !== "pending").map((l) => (
-                  <li key={l.locationId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 px-3 py-2">
-                    <div className="min-w-0">
-                      <Link href={`/admin/locations/${l.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
-                        {l.name}
-                      </Link>
-                      <p className="text-xs text-ink/45">
-                        {[l.city, l.state].filter(Boolean).join(", ") || "No city"}
-                        {l.isPending ? " · Not public" : ""}
-                        {availabilityStatusByLocation.get(l.locationId) === "declined" ? " · Declined" : ""}
-                        {l.isArchived ? " · Archived" : ""}
-                      </p>
-                    </div>
-                    <form action={adminRemoveFindUsAt.bind(null, id, l.locationId)}>
-                      <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
-                        Remove
-                      </button>
-                    </form>
-                  </li>
-                ))}
-              </ul>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink/60" data-testid="admin-availability-paging">
+                  <span>
+                    Showing {((availabilityPage.page - 1) * availabilityPage.pageSize + 1).toLocaleString()}–{((availabilityPage.page - 1) * availabilityPage.pageSize + availabilityPage.items.length).toLocaleString()} of {availabilityPage.total.toLocaleString()}
+                  </span>
+                  <span className="flex gap-3">
+                    {availabilityPage.page > 1 && <Link href={availabilityHref({ fp: availabilityPage.page - 1 })} className="font-semibold text-findmi-700 hover:underline">Previous</Link>}
+                    {availabilityPage.page * availabilityPage.pageSize < availabilityPage.total && <Link href={availabilityHref({ fp: availabilityPage.page + 1 })} className="font-semibold text-findmi-700 hover:underline">Next</Link>}
+                  </span>
+                </div>
+              </>
             ) : (
-              <p className="mt-2 text-sm text-ink/50">No Find Us Here locations.</p>
-            )}
-            {availabilityLocations.hasMore && (
-              <p className="mt-2 text-xs text-ink/45">Showing the first {availabilityLocations.items.length}.</p>
+              <p className="mt-2 text-sm text-ink/50">{availabilityCounts && availabilityCounts.all > 0 ? "No entries match this filter." : "No Find Us Here locations."}</p>
             )}
             <form action={adminConnectFindUsAt.bind(null, id)} className="mt-4 flex flex-col gap-3">
               <RelationField

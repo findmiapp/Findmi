@@ -39,12 +39,15 @@ export default function ImportLocationsWizard({
   products,
   productSets,
   productSetsAvailable,
+  resume,
 }: {
   businessId: string;
   homeHref: string;
   products: { id: string; name: string }[];
   productSets: ProductSet[];
   productSetsAvailable: boolean;
+  /** An unfinished import to pick back up (Import History → Continue Import). */
+  resume?: { batchId: string; status: string; counts: ImportCounts } | null;
 }) {
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
@@ -58,6 +61,35 @@ export default function ImportLocationsWizard({
   const [productIds, setProductIds] = useState<string[]>([]);
   const [summary, setSummary] = useState<CommitProgress["summary"] | null>(null);
   const [working, setWorking] = useState<string | null>(null);
+
+  // Continue Import: re-enter an unfinished batch. Unmatched rows finish matching; then review.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resume || resumed.current) return;
+    resumed.current = true;
+    setBatchId(resume.batchId);
+    setCounts(resume.counts);
+    setFileName("Continued Import");
+    if (resume.counts.pending === 0) return setStep("review");
+    setStep("matching");
+    (async () => {
+      let lastRemaining = Number.POSITIVE_INFINITY;
+      for (;;) {
+        const matched = await matchImportAction(businessId, resume.batchId);
+        if (!matched.ok || matched.remaining >= lastRemaining) {
+          setError(matched.ok ? "Matching stopped making progress. Please try again." : matched.error);
+          setWorking(null);
+          return setStep("upload");
+        }
+        lastRemaining = matched.remaining;
+        setCounts(matched.counts);
+        setWorking(`Matching places… ${matched.counts.total - matched.remaining} of ${matched.counts.total}`);
+        if (matched.remaining === 0) break;
+      }
+      setWorking(null);
+      setStep("review");
+    })();
+  }, [resume, businessId]);
 
   const reset = () => {
     setStep("upload");
@@ -249,6 +281,11 @@ export default function ImportLocationsWizard({
           <Link href={homeHref} className={`${primaryButtonClass} mt-4`}>
             View Where To Find Us
           </Link>
+          {batchId && (
+            <Link href={`/account/business/${businessId}/import-locations/history/${batchId}`} className={`${secondaryButtonClass} mt-2`}>
+              View Import Details
+            </Link>
+          )}
           <button type="button" onClick={reset} className={`${secondaryButtonClass} mt-2`}>
             Import Another File
           </button>
@@ -470,9 +507,9 @@ function ReviewStep({ businessId, batchId, counts, onBack, onContinue }: { busin
                 <legend className="sr-only">Choose the matching Location for row {row.rowNumber}</legend>
                 {row.candidates.map((c) => (
                   <label key={c.id} className="flex cursor-pointer items-start gap-2 rounded-lg bg-black/[0.03] px-3 py-2 text-metadata">
-                    <input type="radio" name={`pick-${row.id}`} checked={row.decision === "use_match" && row.chosenLocationId === c.id} onChange={() => decide(row, "use_match", c.id)} className="mt-0.5 accent-findmi" />
+                    <input type="radio" name={`pick-${row.id}`} checked={(row.decision === "use_match" && row.chosenLocationId === c.id) || (row.decision === null && row.matched?.id === c.id)} onChange={() => decide(row, "use_match", c.id)} className="mt-0.5 accent-findmi" />
                     <span className="min-w-0">
-                      <span className="block truncate font-semibold text-primary">{c.name}</span>
+                      <span className="block truncate font-semibold text-primary">{c.name}{row.matched?.id === c.id ? " — Current (Kept By Default)" : ""}</span>
                       <span className="block truncate text-muted">{[c.address, c.city, c.state].filter(Boolean).join(", ")}</span>
                     </span>
                   </label>

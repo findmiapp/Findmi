@@ -75,9 +75,11 @@ test("input Locations are not mutated (nothing is hidden or rewritten elsewhere)
 
 test("data layer: cover filter runs in the query before .limit(); activity images before the top-3 slice; both opt-in", () => {
   assert.match(DATA, /requireCoverImage = false, requireActivityImages = false/);
-  const q = DATA.indexOf('if (requireCoverImage) query = query.not("cover_image_url", "is", null).neq("cover_image_url", "")');
+  // The cover rule is now part of the canonical discovery filter (listed AND Logo AND Cover),
+  // applied to the query before the limit for every caller — see location-discovery-eligibility.test.mjs.
+  const q = DATA.indexOf('applyLocationDiscoveryFilter(supabase.from("locations").select("*, category:categories(id, name, slug)"))');
   const lim = DATA.indexOf('await query.order("name").limit(limit)');
-  assert.ok(q > 0 && lim > q, "cover filter precedes the limit");
+  assert.ok(q > 0 && lim > q, "canonical (cover + logo) filter precedes the limit");
   assert.match(DATA, /if \(requireImages && !hasUsableImageUrl\(e\.cover_image_url\)\) continue;/);
   assert.match(DATA, /if \(requireImages && !hasUsableImageUrl\(appearanceImage\)\) continue;/);
   const filt = DATA.indexOf("if (requireImages && !hasUsableImageUrl(e.cover_image_url))");

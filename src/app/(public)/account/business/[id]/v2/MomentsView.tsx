@@ -82,7 +82,7 @@ function MomentTile({ moment: m, compact = false, businessId, canManageDisplay =
     <div>
       {tile}
       {canManageDisplay ? (
-        <MomentProfileControl businessId={businessId} entryId={m.id} initialHidden={m.profileHidden} />
+        <MomentProfileControl businessId={businessId} entryId={m.id} initialHidden={m.profileHidden} initialFeatured={m.profileFeatured} />
       ) : (
         <p className="mt-1 text-microcopy text-subtle">{m.profileHidden ? "Hidden from your profile" : "On your profile"}</p>
       )}
@@ -134,7 +134,7 @@ export default function MomentsView({
       {data.moments.length > 0 && (
         <OptimisticTabs
           ariaLabel="Moments filter"
-          navClass="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
+          navClass="flex flex-wrap gap-1.5"
           linkClass="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
           activeClass="bg-findmi-50 text-findmi-700"
           inactiveClass="bg-black/[0.04] text-muted hover:text-primary"

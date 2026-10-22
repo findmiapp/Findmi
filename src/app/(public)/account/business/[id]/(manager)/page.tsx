@@ -40,7 +40,10 @@ import { GrowthGoalsView, GrowthIdeasView, growthBadges, growthSummaryFor } from
 import GrowthNav from "../v2/GrowthNav";
 import MomentsView from "../v2/MomentsView";
 import AvailableAtView from "../v2/AvailableAtView";
-import { getOwnerAvailability } from "@/lib/business-availability-owner";
+import { FindUsViewSwitch, MarketDetailView, MarketOverview } from "../v2/MarketFootprintView";
+import { getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
+import { parseAvailabilityFilter } from "@/lib/business-availability-bulk-domain";
+import { getBusinessMarketDetail, getBusinessMarketOverview } from "@/lib/business-market-footprint";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -296,6 +299,15 @@ type ManagerSearchParams = {
     participationCost?: string;
     goal?: string;
     show?: string;
+    /** Find Us Here list: search, status, relationship, imported, page. */
+    fq?: string;
+    fs?: string;
+    fr?: string;
+    fi?: string;
+    fp?: string;
+    /** Find Us Here → By Market: view switch and the selected Market's slug. */
+    fv?: string;
+    fm?: string;
 };
 
 export default async function ManageBusinessPage({
@@ -441,6 +453,10 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const onUpcoming = onFindmiHere && presenceView === "upcoming";
   const onPast = onFindmiHere && presenceView === "past";
   const onFindUs = onFindmiHere && presenceView === "find-us";
+  const onFindUsMarkets = onFindUs && rawSearchParams.fv === "markets";
+  const onFindUsPlaces = onFindUs && !onFindUsMarkets;
+  const marketKey = onFindUsMarkets && typeof rawSearchParams.fm === "string" ? rawSearchParams.fm.replace(/[^a-z0-9-]/gi, "").slice(0, 60) : "";
+  const findUsFilter = parseAvailabilityFilter({ q: rawSearchParams.fq, status: rawSearchParams.fs, relationship: rawSearchParams.fr, imported: rawSearchParams.fi });
   const onLocations = onFindmiHere && presenceView === "locations";
   const onProfile = activeTab === "profile";
   const onProducts = activeTab === "products";
@@ -1246,6 +1262,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     growthData,
     ownerAvailability,
     productSetsData,
+    marketOverview,
+    marketDetail,
     businessMoments,
     exploreData,
     pastAppearances,
@@ -1294,9 +1312,12 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     whenP(needsGrowth, growthTrio, [null, { available: false, ideas: [] }, { available: false, goals: [] }] as unknown as Awaited<ReturnType<typeof growthTrio>>),
     // Findmi Here → Find Us Here (owner view; every status). Fails safe to
     // { available: false } until the details migration is applied.
-    whenP(onFindUs, () => getOwnerAvailability(admin, id), { available: false, items: [] } as Awaited<ReturnType<typeof getOwnerAvailability>>),
+    whenP(onFindUsPlaces, () => getOwnerAvailabilityPage(admin, id, findUsFilter, Number(rawSearchParams.fp) || 1), { available: false, items: [], total: 0, page: 1, pageSize: 50, counts: { all: 0, live: 0, pending: 0, declined: 0, imported: 0 } } as Awaited<ReturnType<typeof getOwnerAvailabilityPage>>),
     // Product Sets feed the Find Us Here Products chooser (template layer).
-    whenP(onFindUs, () => getProductSets(admin, id), { available: false, sets: [] } as Awaited<ReturnType<typeof getProductSets>>),
+    whenP(onFindUsPlaces, () => getProductSets(admin, id), { available: false, sets: [] } as Awaited<ReturnType<typeof getProductSets>>),
+    // Find Us Here → By Market (a separate view of the same footprint, grouped by Market).
+    whenP(onFindUsMarkets && !marketKey, () => getBusinessMarketOverview(admin, id), { available: false, markets: [], others: [], noMarket: { market: null, intents: [], areaLabels: [], upcomingAppearances: 0, ours: 0, findUs: 0, live: 0, pending: 0, declined: 0, relationships: {} } } as Awaited<ReturnType<typeof getBusinessMarketOverview>>),
+    whenP(onFindUsMarkets && Boolean(marketKey), () => getBusinessMarketDetail(admin, id, marketKey, Number(rawSearchParams.fp) || 1), null as Awaited<ReturnType<typeof getBusinessMarketDetail>> | null),
     whenP(
       activeTab === "moments" || onHome,
       () => getBusinessMoments(id, activeTab === "moments" ? { viewerUserId: user?.id ?? null, withDisplay: true } : { limit: 6, viewerUserId: user?.id ?? null }),
@@ -2293,10 +2314,22 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
           </div>
         )}
         {activeTab === "findmi-here" && presenceView === "find-us" && (
+          <div className="mb-4">
+            <FindUsViewSwitch basePath={`/account/business/${id}`} active={onFindUsMarkets ? "markets" : "places"} />
+          </div>
+        )}
+        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && !marketKey && <MarketOverview basePath={`/account/business/${id}`} data={marketOverview} />}
+        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && marketKey && marketDetail && <MarketDetailView basePath={`/account/business/${id}`} detail={marketDetail} marketKey={marketKey} />}
+        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsPlaces && (
           <AvailableAtView
             businessId={id}
             available={ownerAvailability.available}
             items={ownerAvailability.items}
+            total={ownerAvailability.total}
+            page={ownerAvailability.page}
+            pageSize={ownerAvailability.pageSize}
+            counts={ownerAvailability.counts}
+            filter={findUsFilter}
             products={products.map((p) => ({ id: p.id, name: p.name }))}
             productSets={productSetsData.sets}
             productSetsAvailable={productSetsData.available}
@@ -3174,7 +3207,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             recommended={recommendedOpportunities}
             explore={exploreData}
             filters={exploreFilters}
-            nav={growthSummary ? <GrowthNav basePath={basePath} active="opportunities" badges={growthBadges(growthSummary)} /> : null}
+            nav={growthSummary ? <GrowthNav basePath={basePath} active="opportunities" badges={growthBadges(growthSummary)} summary={growthSummary} /> : null}
           />
         )}
 

@@ -81,19 +81,21 @@ export default function QrCampaignGroups({ campaigns, newHref }: { campaigns: Qr
           aria-label="Search QR codes"
           className="h-10 w-full rounded-xl border border-black/10 bg-white px-3 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
         />
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+        <FilterRail label="Status">
           {STATUS_FILTERS.map((f) => (
             <FilterChip key={f.value} active={status === f.value} onClick={() => setStatus(f.value)}>
               {f.label}
             </FilterChip>
           ))}
-          <span aria-hidden="true" className="mx-1 w-px shrink-0 self-stretch bg-black/10" />
-          {KIND_FILTERS.filter((f) => f.value === "all" || kindsPresent.has(f.value)).map((f) => (
+        </FilterRail>
+        <FilterRail label="Type">
+          {KIND_FILTERS.map((f) => (
             <FilterChip key={f.value} active={kind === f.value} onClick={() => setKind(f.value)}>
               {f.label}
+              {f.value !== "all" && !kindsPresent.has(f.value) ? <span className="sr-only"> (none yet)</span> : null}
             </FilterChip>
           ))}
-        </div>
+        </FilterRail>
       </div>
 
       {visible.length === 0 ? (
@@ -124,14 +126,26 @@ export default function QrCampaignGroups({ campaigns, newHref }: { campaigns: Qr
   );
 }
 
+/** One labeled filter group. On a phone each group is its own horizontally
+ * scrolling rail (edge-padded, with a trailing spacer so the last chip clears the
+ * screen edge); where it fits (≥ sm) the chips simply wrap. Two groups, never one long rail. */
+function FilterRail({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div role="group" aria-label={label}>
+      <p className="mb-1 text-microcopy font-semibold uppercase tracking-wide text-subtle">{label}</p>
+      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] after:w-2.5 after:shrink-0 after:content-[''] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:after:hidden [&::-webkit-scrollbar]:hidden">{children}</div>
+    </div>
+  );
+}
+
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`h-8 shrink-0 whitespace-nowrap rounded-full px-3 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
-        active ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.04] text-muted hover:text-primary"
+      className={`relative h-8 shrink-0 whitespace-nowrap rounded-full px-3 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
+        active ? "bg-findmi-50 text-findmi-700 ring-1 ring-findmi/40" : "bg-black/[0.04] text-muted hover:text-primary"
       }`}
     >
       {children}

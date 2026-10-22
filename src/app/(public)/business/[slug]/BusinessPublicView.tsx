@@ -29,6 +29,7 @@ import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import BrandHeading from "@/components/BrandHeading";
 import OurLocations from "@/components/OurLocations";
+import { publicLocationHref } from "@/lib/location-links";
 import SectionAnchorNav from "@/components/SectionAnchorNav";
 import { buildSectionAnchors } from "@/lib/section-anchors";
 import FindUsAt from "@/components/FindUsAt";
@@ -330,8 +331,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   const featuredHref = featuredAppearance
     ? featuredIsEvent
       ? eventHref(featuredAppearance.event!.slug, featuredAppearance.event_occurrence_id)
-      : featuredAppearance.location?.slug && !featuredAppearance.location_hidden
-        ? `/location/${featuredAppearance.location.slug}`
+      : !featuredAppearance.location_hidden && publicLocationHref(featuredAppearance.location)
+        ? publicLocationHref(featuredAppearance.location)!
         : "#findmi-here"
     : null;
   // Same directions-URL construction AppearanceCard's own lowest-tier

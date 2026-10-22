@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
@@ -15,10 +16,12 @@ import {
   availabilityTiming,
   availabilityWhenLabel,
   normalizeAvailabilityRelationships,
+  statusAfterOwnerEdit,
   type AvailabilityRelationship,
   type AvailabilityTiming,
 } from "@/lib/business-availability-domain";
 import { applyProductSet, isProductSetFullySelected, type ProductSet } from "@/lib/business-product-sets-domain";
+import { isEmptyAvailabilityFilter, type AvailabilityFilter } from "@/lib/business-availability-bulk-domain";
 import type { OwnerAvailabilityItem } from "@/lib/business-availability-owner";
 import {
   createProductSetAction,
@@ -30,6 +33,8 @@ import {
   updateProductSetAction,
 } from "../availability-actions";
 import { Chip } from "../../../owner-ui";
+import FindUsBulk from "./FindUsBulk";
+import ProductSetsPanel from "./ProductSetsPanel";
 
 type Place = { id: string; name: string; address?: string | null; city: string | null; state: string | null };
 
@@ -42,11 +47,22 @@ const STATUS_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as c
  * stocked / sold / served / featured / sampled — one place, one entry), WHAT (which Products — none = the Brand),
  * WHEN (ongoing, a date range, or until a date), and carries a STATUS
  * (Pending Review → Live) and SOURCE (added by the Business / verified by
- * Findmi). Only Live, in-effect entries show on the public profile. */
+ * Findmi). Only Live, in-effect entries show on the public profile.
+ *
+ * Built for a footprint of hundreds or thousands: the list is one server-side page
+ * at a time, searchable and filterable by status / relationship / imported, and any
+ * selection (a few rows, a page, or everything matching a filter) can be changed in
+ * bulk. Filters live in the URL (fq / fs / fr / fi / fp), so Back, Forward and a
+ * shared link all keep the same view. */
 export default function AvailableAtView({
   businessId,
   available,
   items,
+  total,
+  page,
+  pageSize,
+  counts,
+  filter,
   products,
   productSets,
   productSetsAvailable,
@@ -55,7 +71,14 @@ export default function AvailableAtView({
   businessId: string;
   /** false before the availability-details migration is applied. */
   available: boolean;
+  /** The current page of entries (already filtered/searched by the server). */
   items: OwnerAvailabilityItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** Whole-footprint totals for the filter chips. */
+  counts: { all: number; live: number; pending: number; declined: number; imported: number };
+  filter: AvailabilityFilter;
   products: { id: string; name: string }[];
   /** The Business's saved Product Sets (template layer for the chooser). */
   productSets: ProductSet[];
@@ -63,10 +86,43 @@ export default function AvailableAtView({
   productSetsAvailable: boolean;
   canEdit: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [navPending, startNav] = useTransition();
+  const [query, setQuery] = useState(filter.q);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [allMatching, setAllMatching] = useState(false);
+
+  const filtered = !isEmptyAvailabilityFilter(filter);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const firstShown = total === 0 ? 0 : (page - 1) * pageSize + 1;
+
+  /** Updates the URL filter params; any change resets to page 1 and clears the selection. */
+  const go = (patch: Partial<Record<"fq" | "fs" | "fr" | "fi" | "fp", string | null>>, mode: "push" | "replace" = "push") => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (!("fp" in patch)) next.delete("fp");
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    setSelected(new Set());
+    setAllMatching(false);
+    startNav(() => (mode === "push" ? router.push : router.replace)(`${pathname}?${next.toString()}`, { scroll: false }));
+  };
+
+  // Debounced search: the URL (and so the server read) changes once typing pauses.
+  useEffect(() => {
+    if (query.trim() === filter.q) return;
+    const t = window.setTimeout(() => go({ fq: query.trim() || null }, "replace"), 350);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   const remove = (id: string) =>
     startTransition(async () => {
@@ -74,6 +130,21 @@ export default function AvailableAtView({
       const result = await removeAvailabilityAction(businessId, id);
       if (!result.ok) setError(result.error);
     });
+
+  const toggle = (id: string) => {
+    setAllMatching(false);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const pageIds = items.map((i) => i.id);
+  const pageAllSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const selectionCount = allMatching ? total : selected.size;
+  const liveSelected = allMatching ? (filter.status === "live" ? total : null) : items.filter((i) => selected.has(i.id) && i.status === "live").length;
+  const chip = (on: boolean) => `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
 
   return (
     <div className="flex flex-col gap-5 lg:max-w-3xl">
@@ -88,6 +159,9 @@ export default function AvailableAtView({
           <Link href={`/account/business/${businessId}/import-locations`} className="flex h-10 shrink-0 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40">
             Import Locations
           </Link>
+          <Link href={`/account/business/${businessId}/import-locations/history`} className="flex h-10 shrink-0 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40">
+            Import History
+          </Link>
           {/* Honest about what exists: a locator Sync needs a real connector. */}
           <span aria-disabled="true" className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-dashed border-black/15 px-4 text-button font-semibold text-subtle">
             Sync Existing Locator
@@ -96,17 +170,84 @@ export default function AvailableAtView({
         </div>
       )}
 
+      {canEdit && available && !adding && !editingId && productSetsAvailable && (
+        <ProductSetsPanel businessId={businessId} products={products} sets={productSets} />
+      )}
+
       {!available && <p className="text-body text-muted">This isn&rsquo;t available yet. Please check back soon.</p>}
       {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
 
       {adding && <PlaceForm businessId={businessId} products={products} productSets={productSets} productSetsAvailable={productSetsAvailable} onDone={() => setAdding(false)} />}
 
+      {available && counts.all > 0 && !adding && !editingId && (
+        <div className="flex flex-col gap-2.5" role="search" aria-label="Find your places">
+          <input
+            type="search"
+            autoCapitalize="none"
+            autoComplete="off"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search your places by name, city or address"
+            aria-label="Search your places"
+            className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20"
+          />
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Status">
+            {([["", "All", counts.all], ["live", "Live", counts.live], ["pending", "Pending Review", counts.pending], ["declined", "Declined", counts.declined]] as const).map(([v, label, n]) => (
+              <button key={v || "all"} type="button" aria-pressed={filter.status === v} onClick={() => go({ fs: v || null })} className={chip(filter.status === v)}>
+                {label} <span className="font-normal opacity-80">{n.toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Relationship">
+            <button type="button" aria-pressed={filter.relationship === ""} onClick={() => go({ fr: null })} className={chip(filter.relationship === "")}>Any Relationship</button>
+            {AVAILABILITY_RELATIONSHIPS.map((r) => (
+              <button key={r} type="button" aria-pressed={filter.relationship === r} onClick={() => go({ fr: filter.relationship === r ? null : r })} className={chip(filter.relationship === r)}>
+                {AVAILABILITY_RELATIONSHIP_LABELS[r].replace(/ Here$/, "")}
+              </button>
+            ))}
+            {counts.imported > 0 && (
+              <button type="button" aria-pressed={filter.imported} onClick={() => go({ fi: filter.imported ? null : "1" })} className={chip(filter.imported)}>
+                Imported <span className="font-normal opacity-80">{counts.imported.toLocaleString()}</span>
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-metadata text-muted">
+            <span role="status">
+              {total === 0 ? "No matching places" : `Showing ${firstShown.toLocaleString()}–${Math.min(total, page * pageSize).toLocaleString()} of ${total.toLocaleString()}`}
+              {filtered && (
+                <>
+                  {" · "}
+                  <button type="button" onClick={() => { setQuery(""); go({ fq: null, fs: null, fr: null, fi: null }); }} className="font-semibold text-accent hover:underline">Clear Filters</button>
+                </>
+              )}
+            </span>
+            {canEdit && (
+              <button type="button" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setSelected(new Set()); setAllMatching(false); }} className="font-semibold text-accent hover:underline">
+                {selecting ? "Done Selecting" : "Select Places"}
+              </button>
+            )}
+          </div>
+          {selecting && items.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-black/[0.03] px-3 py-2 text-metadata">
+              <label className="flex items-center gap-2 font-semibold text-secondary">
+                <input type="checkbox" checked={pageAllSelected} onChange={() => { setAllMatching(false); setSelected(pageAllSelected ? new Set() : new Set(pageIds)); }} className="h-5 w-5 accent-findmi" />
+                Select All On This Page
+              </label>
+              {pageAllSelected && total > pageIds.length && !allMatching && (
+                <button type="button" onClick={() => setAllMatching(true)} className="font-semibold text-accent hover:underline">Select All {total.toLocaleString()} Matching</button>
+              )}
+              {allMatching && <span className="font-semibold text-findmi-700">All {total.toLocaleString()} matching places selected</span>}
+            </div>
+          )}
+        </div>
+      )}
+
       {available && items.length === 0 && !adding && (
-        <p className="text-body text-muted">Nothing here yet. Add a retailer, café or venue where people can find you.</p>
+        <p className="text-body text-muted">{counts.all === 0 ? "Nothing here yet. Add a retailer, café or venue where people can find you." : "No places match. Try a different search or clear the filters."}</p>
       )}
 
       {items.length > 0 && (
-        <ul className="flex flex-col divide-y divide-black/[0.06]">
+        <ul className={`flex flex-col divide-y divide-black/[0.06] transition-opacity ${navPending ? "opacity-60" : ""}`} aria-busy={navPending}>
           {items.map((i) =>
             editingId === i.id ? (
               <li key={i.id} className="py-3">
@@ -114,6 +255,9 @@ export default function AvailableAtView({
               </li>
             ) : (
             <li key={i.id} className="flex items-start gap-3 py-3">
+              {selecting && (
+                <input type="checkbox" checked={allMatching || selected.has(i.id)} onChange={() => toggle(i.id)} aria-label={`Select ${i.locationName}`} className="mt-4 h-5 w-5 shrink-0 accent-findmi" />
+              )}
               <span className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/[0.04] text-ink/25">
                 {i.imageUrl ? <SupabaseImage src={i.imageUrl} alt="" fill sizes="56px" className="object-cover" /> : <NavIcon name="storefront" className="h-6 w-6" />}
               </span>
@@ -137,7 +281,7 @@ export default function AvailableAtView({
                   {i.status === "declined" ? " · Contact Findmi with any questions" : ""}
                 </span>
               </span>
-              {canEdit && (
+              {canEdit && !selecting && (
                 <span className="flex shrink-0 flex-col items-end">
                   <button type="button" disabled={pending || adding} onClick={() => setEditingId(i.id)} className="py-1 text-metadata font-semibold text-accent hover:underline disabled:opacity-50">
                     Edit
@@ -157,14 +301,41 @@ export default function AvailableAtView({
           )}
         </ul>
       )}
+
+      {pages > 1 && !adding && !editingId && (
+        <nav aria-label="Pages" className="flex items-center justify-between text-metadata font-semibold">
+          <button type="button" disabled={page <= 1 || navPending} onClick={() => go({ fp: page - 1 > 1 ? String(page - 1) : null })} className="h-10 rounded-full border border-black/10 bg-white px-4 text-primary disabled:opacity-40">Previous</button>
+          <span className="text-muted">Page {page.toLocaleString()} of {pages.toLocaleString()}</span>
+          <button type="button" disabled={page >= pages || navPending} onClick={() => go({ fp: String(page + 1) })} className="h-10 rounded-full border border-black/10 bg-white px-4 text-primary disabled:opacity-40">Next</button>
+        </nav>
+      )}
+
+      {selecting && selectionCount > 0 && (
+        <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-20 lg:bottom-4">
+          <FindUsBulk
+            businessId={businessId}
+            selectedIds={[...selected]}
+            allMatching={allMatching}
+            matchingTotal={total}
+            filter={filter}
+            liveSelected={liveSelected}
+            products={products}
+            productSets={productSets}
+            onFinished={() => {}}
+            onClear={() => { setSelected(new Set()); setAllMatching(false); }}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 /** One form for both Add and Edit. Editing never changes the place (that is
  * the entry's identity — remove it and add the new one); everything else —
- * how, which Products, when, the note — is editable. Saving a change sends
- * the entry back to Pending Review, and the form says so up front. */
+ * how, which Products, when, the note — is editable. Only a change that adds
+ * a public claim (a way you’re there that wasn’t approved, or new note text)
+ * sends it back to Pending Review (lib/business-availability-domain.ts
+ * statusAfterOwnerEdit); the form says which, live, as you edit. */
 function PlaceForm({
   businessId,
   products,
@@ -227,6 +398,10 @@ function PlaceForm({
       onDone();
     });
 
+  // The same rule the server applies — shown before saving, never a surprise after.
+  const needsReview = initial
+    ? statusAfterOwnerEdit(initial.status, { relationshipsBefore: initial.relationships, relationshipsAfter: relationships, noteBefore: initial.note, noteAfter: note || null }) === "pending" && initial.status !== "pending"
+    : true;
   const toggleRelationship = (r: AvailabilityRelationship) =>
     setRelationships((prev) => normalizeAvailabilityRelationships(prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
   const toggleProduct = (id: string) => setProductIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
@@ -364,15 +539,19 @@ function PlaceForm({
       {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
       <p className="text-microcopy text-subtle">
         {editing
-          ? initial?.status === "live"
-            ? "Saving changes sends this back to Findmi for review. It won\u2019t show publicly until it\u2019s approved again."
-            : "Saving changes sends this to Findmi for review."
+          ? initial?.status === "pending"
+            ? "This is still waiting for Findmi’s review. Your changes are included."
+            : needsReview
+              ? "You’ve added a way you’re there or new note text, so Findmi reviews this again. It won\u2019t show publicly until it\u2019s approved."
+              : initial?.status === "declined"
+                ? "Findmi didn\u2019t approve this place. Saving keeps it off your profile — add a new way you\u2019re there to submit it again."
+                : "Products, dates and removing a way you’re there save right away. This stays live."
           : "Findmi reviews new places before they show on your public profile."}
       </p>
       <div className="flex gap-2">
         <button type="button" onClick={onDone} className="h-11 rounded-full border border-black/10 px-5 text-button font-semibold text-primary hover:border-black/20">Cancel</button>
         <button type="button" disabled={pending} onClick={submit} className="h-11 flex-1 rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600 disabled:opacity-60">
-          {pending ? "Saving…" : editing ? "Save & Resubmit" : "Submit For Review"}
+          {pending ? "Saving…" : !editing ? "Submit For Review" : needsReview ? "Save & Resubmit" : "Save Changes"}
         </button>
       </div>
     </div>

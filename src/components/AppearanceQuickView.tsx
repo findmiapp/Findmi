@@ -45,7 +45,7 @@ export interface AppearanceQuickViewAppearance {
    * Event links open on that date (lib/event-links). */
   event_occurrence_id?: string | null;
   location_id: string | null;
-  location?: { name: string; slug: string } | null;
+  location?: { name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null } | null;
   /** Parent Event hides its address (lib/event-location-privacy). */
   location_hidden?: boolean;
   // Image Fallback Refinement pass — `cover_image_url` added (optional:

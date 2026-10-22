@@ -44,7 +44,7 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
       <OptimisticTabs
         ariaLabel="Findmi Here"
         navClass="flex w-full gap-1 overflow-x-auto rounded-full bg-black/[0.04] p-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:w-fit [&::-webkit-scrollbar]:hidden"
-        linkClass="flex h-9 flex-1 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-button font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 sm:flex-none"
+        linkClass="flex h-9 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full px-2 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 sm:flex-none sm:px-3.5 sm:text-button"
         activeClass="bg-white text-primary shadow-sm"
         inactiveClass="text-muted hover:text-primary"
         active={view}

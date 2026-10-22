@@ -12,7 +12,9 @@ import {
   type OwnerAvailabilityResult,
 } from "@/lib/business-availability-owner";
 import type { AvailabilityRequestInput } from "@/lib/business-availability-domain";
-import { createProductSet, deleteProductSet, updateProductSet, type ProductSetResult } from "@/lib/business-product-sets";
+import { createProductSet, deleteProductSet, duplicateProductSet, updateProductSet, type ProductSetResult } from "@/lib/business-product-sets";
+import { bulkAvailability, type BulkResult } from "@/lib/business-availability-bulk";
+import { parseAvailabilityFilter, validateBulkOp, BULK_IDS_MAX } from "@/lib/business-availability-bulk-domain";
 import type { ProductSetInput } from "@/lib/business-product-sets-domain";
 
 /** Owner mutations for Findmi Here → Where To Find Us. Each re-verifies the
@@ -73,7 +75,7 @@ export async function updateAvailabilityAction(
   businessId: string,
   availabilityId: string,
   input: Omit<AvailabilityRequestInput, "locationId">
-): Promise<OwnerAvailabilityResult & { changed?: boolean }> {
+): Promise<OwnerAvailabilityResult & { changed?: boolean; returnedToReview?: boolean }> {
   const auth = await authorize(businessId);
   if (!auth.ok) return auth;
   const admin = getAdminSupabase();
@@ -125,5 +127,40 @@ export async function deleteProductSetAction(businessId: string, setId: string):
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
   const result = await deleteProductSet(admin, businessId, setId);
   if (result.ok) revalidatePath(`/account/business/${businessId}`);
+  return result;
+}
+
+export async function duplicateProductSetAction(businessId: string, setId: string): Promise<ProductSetResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await duplicateProductSet(admin, businessId, setId);
+  if (result.ok) revalidatePath(`/account/business/${businessId}`);
+  return result;
+}
+
+/** Bulk change to the Business's footprint: one chunk per call (the browser
+ * repeats with `cursor` until `done`). Scope is either explicit entry ids or a
+ * filter the server resolves itself — never a client-supplied id list that was
+ * not re-scoped to THIS Business. */
+export async function bulkAvailabilityAction(
+  businessId: string,
+  scope: { kind: "ids"; ids: string[] } | { kind: "filter"; filter: unknown },
+  rawOp: unknown,
+  cursor: string | null
+): Promise<BulkResult> {
+  const auth = await authorize(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const checked = validateBulkOp(rawOp);
+  if (!checked.ok) return checked;
+  const resolved =
+    scope && scope.kind === "ids"
+      ? ({ kind: "ids", ids: Array.isArray(scope.ids) ? scope.ids.slice(0, BULK_IDS_MAX) : [] } as const)
+      : ({ kind: "filter", filter: parseAvailabilityFilter((scope as { filter?: Record<string, unknown> } | null)?.filter ?? {}) } as const);
+  const result = await bulkAvailability(admin, businessId, resolved, checked.op, typeof cursor === "string" ? cursor : null);
+  if (result.ok && result.done) await revalidatePublic(businessId);
   return result;
 }

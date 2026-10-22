@@ -35,7 +35,7 @@ export default function AppearanceCard({
   // getUpcomingAppearancesForBusiness/getFindMiHereFeed), null/absent
   // whenever appearance.location_id doesn't resolve to one. Additive only:
   // every existing caller passing a plain Appearance keeps working.
-  appearance: Appearance & { location?: { id: string; name: string; slug: string } | null };
+  appearance: Appearance & { location?: { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null } | null };
   eventSlug?: string | null;
   analyticsContext?: AnalyticsPlacementContext;
 }) {

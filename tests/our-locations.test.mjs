@@ -69,7 +69,7 @@ test("one operated Location → Our Locations item with canonical data (address,
   assert.deepEqual(l.hours?.mon, { closed: false, open: "08:00", close: "18:00" }, "the Location's own hours (no copy)");
   assert.deepEqual(c.tablesRead, ["business_locations"], "only the explicit relationship is read");
   const card = read("src/components/OurLocations.tsx");
-  assert.match(card, /href=\{`\/location\/\$\{location\.slug\}`\}/, "links to the canonical Location page");
+  assert.match(card, /publicLocationHref\(\{ slug: location\.slug, logo_url: location\.logoUrl, cover_image_url: location\.coverImageUrl \}\)/, "links to the canonical Location page when it is a discoverable Location");
 });
 
 test("several operated Locations → each exactly once, primary first; Corgi/Babylist shapes representable", async () => {

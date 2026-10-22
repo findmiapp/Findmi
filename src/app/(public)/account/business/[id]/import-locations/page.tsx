@@ -5,7 +5,7 @@ import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isManagingRole } from "@/lib/business-locations";
 import { getProductSets } from "@/lib/business-product-sets";
-import { importAvailable } from "@/lib/locator-import/server";
+import { getResumableImport, importAvailable } from "@/lib/locator-import/server";
 import ChevronIcon from "@/components/ChevronIcon";
 import ImportLocationsWizard from "./ImportLocationsWizard";
 
@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 /** Import Locations — bring a store-locator list (CSV) into Find Us Here.
  * Owner / manager only. Reads the Business's own Products and Product Sets so
  * the import can attach them; everything else happens through the actions. */
-export default async function ImportLocationsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ImportLocationsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ batch?: string }> }) {
   const { id } = await params;
+  const { batch: batchParam } = await searchParams;
   let allowed = false;
   try {
     const membership = await requireBusinessMember(id);
@@ -27,11 +28,12 @@ export default async function ImportLocationsPage({ params }: { params: Promise<
   if (!admin) redirect(errorRedirectUrl(`/account/business/${id}`, "Server isn't configured."));
   if (!allowed) redirect(errorRedirectUrl(`/account/business/${id}`, "Only a Business owner or manager can import locations."));
 
-  const [{ data: business }, { data: products }, productSets, available] = await Promise.all([
+  const [{ data: business }, { data: products }, productSets, available, resume] = await Promise.all([
     admin.from("businesses").select("name").eq("id", id).maybeSingle(),
     admin.from("products").select("id, name").eq("business_id", id).is("archived_at", null).is("trashed_at", null).order("name").limit(300),
     getProductSets(admin, id),
     importAvailable(admin),
+    batchParam ? getResumableImport(admin, id, batchParam) : Promise.resolve(null),
   ]);
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
   const home = `/account/business/${id}?tab=findmi-here`;
@@ -45,6 +47,9 @@ export default async function ImportLocationsPage({ params }: { params: Promise<
       <div>
         <h1 className="font-display text-section-title font-bold text-primary">Import Locations</h1>
         <p className="mt-1 text-body text-muted">Upload a list of the places you’re found. Findmi matches each one to a Location that’s already here before it adds anything new, and you review it all first.</p>
+        <Link href={`/account/business/${id}/import-locations/history`} className="mt-2 inline-block text-metadata font-semibold text-accent hover:underline">
+          Import History
+        </Link>
       </div>
       {available ? (
         <ImportLocationsWizard
@@ -53,6 +58,7 @@ export default async function ImportLocationsPage({ params }: { params: Promise<
           products={(products ?? []) as { id: string; name: string }[]}
           productSets={productSets.sets}
           productSetsAvailable={productSets.available}
+          resume={resume}
         />
       ) : (
         <p role="status" className="rounded-xl bg-black/[0.03] p-4 text-body text-muted">Importing locations isn’t available yet. Please check back soon.</p>

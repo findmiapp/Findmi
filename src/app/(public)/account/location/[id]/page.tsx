@@ -23,6 +23,7 @@ import LocationHoursField from "@/components/admin/LocationHoursField";
 import MemberLocationImageField from "./MemberLocationImageField";
 import MemberLocationGalleryField from "./MemberLocationGalleryField";
 import FeaturedEventControl from "./FeaturedEventControl";
+import EntityMomentsSection from "@/components/account/EntityMomentsSection";
 import {
   assignExistingEventOccurrencesToLocation,
   updateMemberLocationCategory,
@@ -647,6 +648,11 @@ export default async function ManageLocationPage({
                 ))}
               </ul>
             )}
+          </div>
+        )}
+        {tab === "happening" && (
+          <div className="mt-5">
+            <EntityMomentsSection kind="location" entityId={id} canManage={canActForLocation} />
           </div>
         )}
 

@@ -5,7 +5,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isManagingRole } from "@/lib/business-locations";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { setMomentDisplay, type MomentDisplayResult } from "@/lib/entity-moment-display";
+import { setMomentDisplay, type MomentDisplayResult, type MomentDisplayState } from "@/lib/entity-moment-display";
 
 /** Show / hide a Moment on THIS Business's public profile.
  *
@@ -16,7 +16,8 @@ import { setMomentDisplay, type MomentDisplayResult } from "@/lib/entity-moment-
  * Moment that is actually connected to this Business and eligible to appear on
  * its profile (tagged to it, public, published) — re-verified here against the
  * database, never trusted from the client. */
-export async function setMomentProfileDisplayAction(businessId: string, entryId: string, hidden: boolean): Promise<MomentDisplayResult> {
+export async function setMomentProfileDisplayAction(businessId: string, entryId: string, display: MomentDisplayState): Promise<MomentDisplayResult> {
+  if (display !== "shown" && display !== "hidden" && display !== "featured") return { ok: false, error: "Choose what to do." };
   try {
     const membership = await requireBusinessMember(businessId);
     if (!membership.viaAdmin && !isManagingRole(membership.role)) return { ok: false, error: "Only a Business owner or manager can change what shows on your profile." };
@@ -35,7 +36,7 @@ export async function setMomentProfileDisplayAction(businessId: string, entryId:
   if (!connection || !e || e.visibility !== "public" || e.status !== "published") return { ok: false, error: "That Moment isn't connected to your profile." };
 
   const user = await getCurrentUser();
-  const result = await setMomentDisplay(admin, "business", businessId, entryId, hidden ? "hidden" : "shown", user?.id ?? null);
+  const result = await setMomentDisplay(admin, "business", businessId, entryId, display, user?.id ?? null);
   if (result.ok) {
     revalidatePath(`/account/business/${businessId}`);
     const slug = (business as { slug: string | null } | null)?.slug;

@@ -187,7 +187,7 @@ test("UI: hidden → 'Location shared after registration', no Location link, no 
   assert.match(read("src/components/EventUtilityActions.tsx"), /mapQuery && !selected\.location_hidden/);
   assert.match(read("src/components/HomeEventCard.tsx"), /event\.location_visibility === "hidden"\) return null;/);
   const biz = read("src/app/(public)/business/[slug]/BusinessPublicView.tsx");
-  assert.match(biz, /featuredAppearance\.location\?\.slug && !featuredAppearance\.location_hidden/);
+  assert.match(biz, /!featuredAppearance\.location_hidden && publicLocationHref\(featuredAppearance\.location\)/);
   assert.match(biz, /const featuredMapsQuery = featuredAppearance && !featuredAppearance\.location_hidden/);
   assert.match(biz, /featuredAppearance\?\.location_hidden\n\s+\? HIDDEN_LOCATION_COPY/);
 });

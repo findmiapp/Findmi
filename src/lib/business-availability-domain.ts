@@ -154,3 +154,43 @@ export function validateAvailabilityRequest(input: AvailabilityRequestInput): Av
   const note = input.note?.trim().slice(0, AVAILABILITY_NOTE_MAX) || null;
   return { ok: true, value: { locationId: input.locationId, relationships, productIds, startsOn, endsOn, note } };
 }
+
+// ── Review semantics for owner edits ───────────────────────────────────────
+// ONE rule, used by single-entry edits, bulk edits and CSV re-imports, for what an
+// edit does to an entry's review status. The question is never "did something
+// change?" but "did the PUBLIC CLAIM Findmi approved change?":
+//   · A) identity / trust of the Location relationship — claiming a place, or
+//        saying something NEW about how the Business is there. Needs Findmi.
+//   · B) ordinary management of an already-approved relationship — what products
+//        it covers (only ever the Business's own, verified server-side), when it
+//        runs, narrowing what it says. Stays exactly as approved.
+// A place's identity can't be edited at all (the entry is bound to its Location),
+// and a brand-new entry is always created Pending — so a falsely claimed place or a
+// new relationship still always passes review.
+
+/** Whether an edit widens what the entry publicly claims: a relationship it was not
+ * approved for (a Business that was approved as "Stocked" now saying "Served" or
+ * "Sampled"), or new/changed free-text note (arbitrary public copy). Removing a
+ * relationship, clearing the note, changing products or changing dates is not. */
+export function editAddsPublicClaim(edit: {
+  relationshipsBefore: readonly AvailabilityRelationship[];
+  relationshipsAfter: readonly AvailabilityRelationship[];
+  noteBefore?: string | null;
+  noteAfter?: string | null;
+}): boolean {
+  const before = new Set(normalizeAvailabilityRelationships(edit.relationshipsBefore));
+  const addedRelationship = normalizeAvailabilityRelationships(edit.relationshipsAfter).some((r) => !before.has(r));
+  const noteAfter = (edit.noteAfter ?? "").trim();
+  const noteChanged = noteAfter !== "" && noteAfter !== (edit.noteBefore ?? "").trim();
+  return addedRelationship || noteChanged;
+}
+
+/** The status an entry has after an owner edit.
+ *   Live      → stays Live, unless the edit adds a public claim → Pending Review
+ *   Pending   → stays Pending (it has not been approved yet)
+ *   Declined  → stays Declined, unless the edit adds a claim, which is a fresh
+ *               submission → Pending Review */
+export function statusAfterOwnerEdit(current: AvailabilityStatus, edit: Parameters<typeof editAddsPublicClaim>[0]): AvailabilityStatus {
+  if (current === "pending") return "pending";
+  return editAddsPublicClaim(edit) ? "pending" : current;
+}

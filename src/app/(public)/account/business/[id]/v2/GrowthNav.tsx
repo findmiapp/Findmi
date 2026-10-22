@@ -1,5 +1,6 @@
 import OptimisticTabs from "./OptimisticTabs";
-import { GROWTH_DESTINATIONS, GROWTH_DESTINATION_LABELS, growthHref, type GrowthDestination } from "@/lib/growth";
+import Link from "next/link";
+import { GROWTH_DESTINATIONS, GROWTH_DESTINATION_LABELS, GROWTH_WORKFLOW_INTRO, growthHref, growthWorkflowSteps, type GrowthDestination, type GrowthSummary } from "@/lib/growth";
 
 /** The persistent Growth navigation — Goals · Opportunities · Ideas — shown
  * on every Growth page (the hub views, Growth Setup, the goal wizard), so no
@@ -10,12 +11,15 @@ export default function GrowthNav({
   basePath,
   active,
   badges,
+  summary,
 }: {
   basePath: string;
   active: GrowthDestination;
   badges?: Partial<Record<GrowthDestination, number>>;
+  /** When given, the workflow strip under the tabs shows each step's real status. */
+  summary?: GrowthSummary | null;
 }) {
-  return (
+  const nav = (
     <OptimisticTabs
       ariaLabel="Growth"
       navClass="grid grid-cols-3 gap-0.5 rounded-full bg-black/[0.04] p-0.5"
@@ -33,5 +37,25 @@ export default function GrowthNav({
         badge: badges?.[d],
       }))}
     />
+  );
+  if (!summary) return nav;
+  return (
+    <div className="flex flex-col gap-3">
+      {nav}
+      <div className="rounded-2xl bg-black/[0.03] px-4 py-3">
+        <p className="text-metadata text-muted">{GROWTH_WORKFLOW_INTRO}</p>
+        <ol className="mt-2 flex flex-col gap-1.5">
+          {growthWorkflowSteps(summary).map((step, i) => (
+            <li key={step.key}>
+              <Link href={growthHref(basePath, step.key)} aria-current={step.key === active ? "step" : undefined} className="flex items-baseline gap-2 text-metadata">
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center self-center rounded-full text-[11px] font-bold ${step.key === active ? "bg-findmi text-white" : "bg-black/[0.07] text-muted"}`}>{i + 1}</span>
+                <span className={`font-semibold ${step.key === active ? "text-primary" : "text-secondary"}`}>{step.role}</span>
+                <span className={`min-w-0 flex-1 truncate text-right ${step.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{step.status}</span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
   );
 }

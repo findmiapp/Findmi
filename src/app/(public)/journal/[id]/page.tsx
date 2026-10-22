@@ -16,6 +16,7 @@ import ReadMoreText from "@/components/ReadMoreText";
 import { getRelatedPublicMoments } from "@/lib/journal-distribution";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import ChevronIcon from "@/components/ChevronIcon";
+import { publicLocationHref } from "@/lib/location-links";
 
 export const dynamic = "force-dynamic";
 
@@ -301,7 +302,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               )}
               {primaryKind === "location" && location && (
                 <ContextCard
-                  href={`/location/${location.slug}`}
+                  href={publicLocationHref(location)}
                   imageUrl={location.logo_url ?? location.cover_image_url}
                   title={location.name}
                   lines={[[location.address, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(", ") || null]}
@@ -368,7 +369,10 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
                   inside the same row (never the whole row). */}
               {location && primaryKind !== "location" && (
                 <div className="flex items-center gap-3 rounded-xl border border-black/5 bg-white p-2.5 transition hover:border-black/10">
-                  <Link href={`/location/${location.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
+                  {(() => {
+                    const locationHref = publicLocationHref(location);
+                    const rowBody = (
+                      <>
                     <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-black/5">
                       {(location.logo_url ?? location.cover_image_url) && (
                         <Image src={(location.logo_url ?? location.cover_image_url)!} alt="" fill unoptimized sizes="40px" className="object-cover" />
@@ -380,7 +384,16 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
                         <span className="block truncate text-xs uppercase tracking-wide text-ink/50">{[location.city, location.state].filter(Boolean).join(", ")}</span>
                       )}
                     </span>
-                  </Link>
+                                        </>
+                    );
+                    return locationHref ? (
+                      <Link href={locationHref} className="flex min-w-0 flex-1 items-center gap-3">
+                        {rowBody}
+                      </Link>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-3">{rowBody}</div>
+                    );
+                  })()}
                   {directionsHref && (
                     <a
                       href={directionsHref}
@@ -499,19 +512,40 @@ function ContextCard({
   lines,
   actionLabel,
 }: {
-  href: string;
+  /** null = shown in context only (e.g. a Location that isn't a discoverable
+   * Location yet): same card, no link. */
+  href: string | null;
   imageUrl: string | null;
   title: string;
   lines: (string | null)[];
   actionLabel: string;
 }) {
   const shown = lines.filter((l): l is string => Boolean(l));
+  if (!href) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-2 pr-3">
+        <ContextCardBody imageUrl={imageUrl} title={title} shown={shown} />
+      </div>
+    );
+  }
   return (
     <Link
       href={href}
       aria-label={actionLabel}
       className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-2 pr-3 transition hover:border-black/10 hover:bg-findmi-50/40"
     >
+      <ContextCardBody imageUrl={imageUrl} title={title} shown={shown} />
+      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-findmi-700">
+        View
+        <ChevronIcon direction="right" className="h-3 w-3" />
+      </span>
+    </Link>
+  );
+}
+
+function ContextCardBody({ imageUrl, title, shown }: { imageUrl: string | null; title: string; shown: string[] }) {
+  return (
+    <>
       <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-mist">
         {imageUrl && <Image src={imageUrl} alt="" fill unoptimized sizes="64px" className="object-cover" />}
       </span>
@@ -523,11 +557,7 @@ function ContextCard({
           </span>
         ))}
       </span>
-      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-findmi-700">
-        View
-        <ChevronIcon direction="right" className="h-3 w-3" />
-      </span>
-    </Link>
+    </>
   );
 }
 

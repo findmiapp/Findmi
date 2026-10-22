@@ -3,6 +3,7 @@ import SupabaseImage from "./SupabaseImage";
 import NavIcon from "./NavIcon";
 import { LocationOpenBadge } from "./LocationHours";
 import { cityState } from "@/lib/format";
+import { publicLocationHref } from "@/lib/location-links";
 import type { BusinessLocationItem } from "@/lib/business-locations";
 
 /** Our Locations — the permanent physical places this Business operates
@@ -50,11 +51,12 @@ export function CompactLocationCard({ location }: { location: CompactLocation })
   const image = location.coverImageUrl ?? location.logoUrl;
   const contain = !location.coverImageUrl && Boolean(location.logoUrl);
   const place = cityState(location.city, location.state);
-  return (
-    <Link
-      href={`/location/${location.slug}`}
-      className="group flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-3 shadow-sm transition hover:border-findmi/40 active:scale-[0.99]"
-    >
+  // Only a Location with BOTH Logo and Cover is a consumer Location (lib/location-eligibility.ts).
+  // Anything else keeps its place in the list — name and address, in context — but is not
+  // a link to a Location page.
+  const href = publicLocationHref({ slug: location.slug, logo_url: location.logoUrl, cover_image_url: location.coverImageUrl });
+  const body = (
+    <>
       <span className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl ${image ? (contain ? "bg-findmi-50" : "bg-mist") : "bg-findmi-50"}`}>
         {image ? (
           <SupabaseImage src={image} alt="" fill sizes="64px" className={contain ? "object-contain p-2" : "object-cover"} />
@@ -71,7 +73,18 @@ export function CompactLocationCard({ location }: { location: CompactLocation })
         )}
         <LocationOpenBadge hours={location.hours} />
       </span>
-      <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">Visit</span>
+      {href && <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">Visit</span>}
+    </>
+  );
+  if (!href) {
+    return <div className="flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-3 shadow-sm">{body}</div>;
+  }
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-3 shadow-sm transition hover:border-findmi/40 active:scale-[0.99]"
+    >
+      {body}
     </Link>
   );
 }

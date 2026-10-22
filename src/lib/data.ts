@@ -4,6 +4,7 @@ import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirr
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
 import { hasUsableImageUrl, selectFeaturedLocations } from "./featured-locations";
+import { applyLocationDiscoveryFilter, discoverableLocations, isLocationDiscoverable, type LocationDiscoveryFields } from "./location-eligibility";
 import {
   APP_TIMEZONE,
   formatAppearanceDateRange,
@@ -1376,8 +1377,11 @@ export interface AppearanceWithEventSlug extends Appearance {
   // Findmi Here query) selects it; getPastAppearancesForBusiness (the
   // owner-side Where I'll Be past list, out of this pass's scope) doesn't
   // carry it.
-  location?: { id: string; name: string; slug: string } | null;
+  location?: { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null } | null;
 }
+
+/** A Location joined onto an Event date / Appearance, with the fields the consumer-link rule needs. */
+type LocationRef = { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null };
 
 // FindMi Here duplicate-appearance fix — a business can legitimately have
 // more than one appearances row resolving to the exact same real-world
@@ -1533,14 +1537,14 @@ export async function getUpcomingAppearancesForBusiness(
   // distinct appearances exist just past that raw cutoff.
   const { data } = await supabase
     .from("appearances")
-    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug, is_demo)")
+    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug, is_demo, logo_url, cover_image_url)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .gt("end_at", nowIso)
     .order("start_at", { ascending: true })
     .limit(limit * 2);
 
-  type JoinedLocation = { id: string; name: string; slug: string };
+  type JoinedLocation = { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null };
   type JoinedEvent = { slug: string; name: string; cover_image_url: string | null };
   type RawRow = Appearance &
     DedupableAppearance & {
@@ -1578,7 +1582,7 @@ export async function getPastAppearancesForBusiness(
     // carries (name/cover for grouping by Event on the public Past list,
     // location for its link). Additive select; the owner Past list just
     // receives a few more fields.
-    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug, is_demo)")
+    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug, is_demo, logo_url, cover_image_url)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .lte("end_at", nowIso)
@@ -1586,7 +1590,7 @@ export async function getPastAppearancesForBusiness(
     .limit(limit * 2);
 
   type JoinedEvent = { slug: string; name: string; cover_image_url: string | null };
-  type JoinedLocation = { id: string; name: string; slug: string };
+  type JoinedLocation = { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null };
   type RawRow = Appearance &
     DedupableAppearance & { event: JoinedEvent | JoinedEvent[] | null; location: JoinedLocation | JoinedLocation[] | null };
   const rows = ((data ?? []) as never[]).map((row: unknown) => {
@@ -1607,7 +1611,7 @@ export interface ActivityOccurrence {
   start_at: string;
   end_at: string;
   status: string;
-  location: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
+  location: LocationRef | LocationRef[] | null;
   venue_name: string | null;
   address: string | null;
   city: string | null;
@@ -1798,7 +1802,7 @@ export async function getBusinessFindmiHereActivity(
     supabase.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved"),
     supabase
       .from("event_occurrence_businesses")
-      .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo), venue_name, address, city, state)")
+      .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo, logo_url, cover_image_url), venue_name, address, city, state)")
       .eq("business_id", businessId)
       .eq("status", "approved"),
   ]);
@@ -2967,7 +2971,7 @@ export interface AppearanceFeedItem extends Appearance {
   // appearance.location_id points at one. Same bounded-join approach as
   // AppearanceWithEventSlug above; null when there is no first-class
   // Location relationship.
-  location?: { id: string; name: string; slug: string } | null;
+  location?: { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null } | null;
 }
 
 /** Upcoming appearances across all businesses, newest-first by date — powers
@@ -3129,7 +3133,7 @@ export async function getFindMiHereFeed(
   let query = supabase
     .from("appearances")
     .select(
-      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id, geo_place_key, geo_zcta_key, geo_state_key), location:locations(id, name, slug, is_demo, geo_place_key, geo_zcta_key, geo_state_key)"
+      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id, geo_place_key, geo_zcta_key, geo_state_key), location:locations(id, name, slug, is_demo, logo_url, cover_image_url, geo_place_key, geo_zcta_key, geo_state_key)"
     )
     .neq("status", "canceled");
 
@@ -3178,7 +3182,7 @@ export async function getFindMiHereFeed(
 
   type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
   type JoinedEvent = { market_id: string | null; market_area_id: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null };
-  type JoinedLocation = { id: string; name: string; slug: string; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null };
+  type JoinedLocation = { id: string; name: string; slug: string; is_demo?: boolean | null; logo_url: string | null; cover_image_url: string | null; geo_place_key: string | null; geo_zcta_key: string | null; geo_state_key: string | null };
   let items = ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as Appearance & {
       business: JoinedBusiness | JoinedBusiness[];
@@ -3939,7 +3943,7 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
     fetchAllPages<{ business_id: string; occurrence: ActivityOccurrence | ActivityOccurrence[] | null }>((from, to) =>
       supabase
         .from("event_occurrence_businesses")
-        .select("business_id, occurrence:event_occurrences!inner(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo), venue_name, address, city, state)")
+        .select("business_id, occurrence:event_occurrences!inner(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo, logo_url, cover_image_url), venue_name, address, city, state)")
         .in("business_id", ids)
         .eq("status", "approved")
         .gt("occurrence.end_at", nowIso)
@@ -4435,8 +4439,11 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     categoryId = categoryRow.id;
   }
 
-  let query = supabase.from("locations").select("*, category:categories(id, name, slug)").eq("is_demo", false);
-  if (requireCoverImage) query = query.not("cover_image_url", "is", null).neq("cover_image_url", "");
+  // Consumer Location discovery: listed AND both Logo and Cover Image (lib/location-eligibility.ts).
+  // Applied in the query so the limit counts ELIGIBLE rows; `requireCoverImage` is now implied
+  // for every caller (the stricter rule covers it).
+  void requireCoverImage;
+  let query = applyLocationDiscoveryFilter(supabase.from("locations").select("*, category:categories(id, name, slug)"));
   if (areaId) {
     // Canonical Entity Geography completion pass — same read-time Area
     // rollup as getBusinessIdsInArea: a Location with no explicit
@@ -4469,7 +4476,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }
 
   const { data } = await query.order("name").limit(limit);
-  const locations = ((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
+  const locations = discoverableLocations((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
     ...l,
     category: normalizeCategoryEmbed(l.category),
   }));
@@ -4715,17 +4722,14 @@ export async function searchLocations(q: string, limit = 8): Promise<LocationWit
   }
 
   const pattern = `%${term}%`;
-  let query = supabase
-    .from("locations")
-    .select("*, category:categories(id, name, slug)")
-    .eq("is_demo", false);
+  let query = applyLocationDiscoveryFilter(supabase.from("locations").select("*, category:categories(id, name, slug)"));
   query =
     categoryLocationIds.length > 0
       ? query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern},id.in.(${categoryLocationIds.join(",")})`)
       : query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern}`);
 
   const { data } = await query.order("name").limit(limit);
-  return ((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
+  return discoverableLocations((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
     ...l,
     category: normalizeCategoryEmbed(l.category),
   }));
@@ -4748,8 +4752,10 @@ export async function getLocationBySlug(slug: string): Promise<LocationWithCateg
 /** Physical Presence Pass 2 — the public physical-context line for a
  * Location page ("Madison Square Park · Flatiron, New York"). */
 export interface LocationPlaceContext {
-  /** Nearest parent first, outward. Each links to its own public page. */
-  ancestors: { id: string; name: string; slug: string }[];
+  /** Nearest parent first, outward. Each links to its own public page — unless
+   * it isn't a discoverable Location (`linkable: false`: missing Logo or
+   * Cover Image), in which case it is shown by name only. */
+  ancestors: { id: string; name: string; slug: string; linkable: boolean }[];
   /** "Area, Market" discovery-geography suffix from the nearest place in
    * the chain (this Location first) that has one — display only, never
    * inherited onto the Location itself. */
@@ -4774,7 +4780,13 @@ export async function getLocationPlaceContext(
   const { data, error } = await supabase.rpc("get_location_ancestors", { p_location_id: location.id });
   if (error || !data || data.length === 0) return null;
   const rows = data as { id: string; name: string; slug: string; market_id: string | null; market_area_id: string | null; depth: number }[];
-  const ancestors = [...rows].sort((a, b) => a.depth - b.depth).map((r) => ({ id: r.id, name: r.name, slug: r.slug }));
+  // One small follow-up read for the images the discoverability rule needs (the
+  // RPC itself only returns identity) — only ever paid by a Location that has a parent.
+  const { data: imagery } = await supabase.from("locations").select("id, is_demo, logo_url, cover_image_url").in("id", rows.map((r) => r.id));
+  const imageryById = new Map(((imagery ?? []) as ({ id: string } & LocationDiscoveryFields)[]).map((r) => [r.id, r]));
+  const ancestors = [...rows]
+    .sort((a, b) => a.depth - b.depth)
+    .map((r) => ({ id: r.id, name: r.name, slug: r.slug, linkable: isLocationDiscoverable(imageryById.get(r.id)) }));
 
   const geoSource = [location, ...rows].find((n) => n.market_area_id || n.market_id) ?? null;
   let geography: string | null = null;
@@ -4848,7 +4860,7 @@ export interface LocationHappening {
    * descendant place): the exact place it actually happens, so the parent
    * page never implies it happens at the parent itself. Always absent on
    * exact-match items from getUpcomingAtLocation. */
-  at?: { id: string; name: string; slug: string };
+  at?: { id: string; name: string; slug: string; linkable: boolean };
   /** An Event date with its own non-empty details (event_occurrences.details)
    * — cards show a small "Details" hint; the link opens on that date. */
   hasDetails?: boolean;
@@ -5035,24 +5047,26 @@ async function queryUpcomingHappenings(
  * resolves to "no descendants" — Within simply doesn't render. */
 export async function getLocationDescendants(
   locationId: string
-): Promise<{ id: string; name: string; slug: string }[]> {
+): Promise<{ id: string; name: string; slug: string; linkable: boolean }[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const found: { id: string; name: string; slug: string }[] = [];
+  const found: { id: string; name: string; slug: string; linkable: boolean }[] = [];
   const visited = new Set<string>([locationId]);
   let frontier = [locationId];
   for (let depth = 0; depth < 64 && frontier.length > 0; depth++) {
     const { data, error } = await supabase
       .from("locations")
-      .select("id, name, slug")
+      .select("id, name, slug, is_demo, logo_url, cover_image_url")
       .in("parent_location_id", frontier)
       .eq("is_demo", false);
     if (error || !data) break;
     const next: string[] = [];
-    for (const row of data as { id: string; name: string; slug: string }[]) {
+    for (const row of data as ({ id: string; name: string; slug: string } & LocationDiscoveryFields)[]) {
       if (visited.has(row.id)) continue;
       visited.add(row.id);
-      found.push(row);
+      // An incomplete place still counts as part of the hierarchy (its activity shows
+      // under the parent); it just isn't linked as a Location.
+      found.push({ id: row.id, name: row.name, slug: row.slug, linkable: isLocationDiscoverable(row) });
       next.push(row.id);
     }
     frontier = next;

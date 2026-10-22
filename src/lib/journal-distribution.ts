@@ -22,7 +22,7 @@
 // in the private journal-media bucket: exactly ONE cover per card is
 // signed, server-side, via the existing batched resolveSignedUrls.
 import { getSupabase } from "./supabase";
-import { getHiddenMomentIds, notInList } from "./entity-moment-display";
+import { NO_MOMENT_DISPLAY, getEntityMomentDisplay, notInList } from "./entity-moment-display";
 import { resolveSignedUrls } from "./journal";
 import { authorColumn, hasMomentAuthorship, resolveMomentAuthors } from "./moment-authorship";
 
@@ -38,6 +38,8 @@ export interface PublicJournalCard {
   coverUrl: string | null;
   photoCount: number;
   locationName: string | null;
+  /** The displaying entity chose to feature this Moment (shown first). */
+  featured?: boolean;
 }
 
 export interface PublicJournalPage {
@@ -82,6 +84,8 @@ export async function getPublicJournalCollection({
   limit = 6,
   cursor,
   withCount = false,
+  onlyEntryId,
+  ignoreDisplay = false,
 }: {
   /** "author": subjectId is the author's user id (server-resolved from a
    * public entry — see resolvePublicJournalAuthor; never from the URL). */
@@ -90,6 +94,10 @@ export async function getPublicJournalCollection({
   limit?: number;
   cursor?: string | null;
   withCount?: boolean;
+  /** Internal: fetch exactly this entry under the same public/connected rules (the featured Moment). */
+  onlyEntryId?: string;
+  /** Internal: skip the entity's hide/feature preferences. */
+  ignoreDisplay?: boolean;
 }): Promise<PublicJournalPage> {
   const supabase = getSupabase();
   if (!supabase || !UUID_RE.test(subjectId)) return EMPTY;
@@ -102,12 +110,20 @@ export async function getPublicJournalCollection({
   // show (a preference of the displaying entity — the Moment itself is untouched
   // and stays on every other profile and on its own page). Read alongside the
   // Event date lookup; fails open, so no preferences = everything shown.
-  const hiddenPromise = subjectType === "business" || subjectType === "location" || subjectType === "event" ? getHiddenMomentIds(supabase, subjectType, subjectId) : Promise.resolve([] as string[]);
+  const displayPromise = !ignoreDisplay && (subjectType === "business" || subjectType === "location" || subjectType === "event") ? getEntityMomentDisplay(supabase, subjectType, subjectId) : Promise.resolve(NO_MOMENT_DISPLAY);
   if (subjectType === "event") {
     const { data: occ } = await supabase.from("event_occurrences").select("id").eq("event_id", subjectId);
     occurrenceIds = (occ ?? []).map((o) => o.id as string).filter((id) => UUID_RE.test(id));
   }
-  const hiddenIds = await hiddenPromise;
+  const display = await displayPromise;
+  // The featured Moment is pulled out of the date-ordered list (so it never appears twice)
+  // and shown first on the first page.
+  const hiddenIds = display.featured ? [...display.hidden, display.featured] : display.hidden;
+  const loadFeatured = async (): Promise<PublicJournalCard | null> => {
+    if (!display.featured || cursor || onlyEntryId) return null;
+    const f = await getPublicJournalCollection({ subjectType, subjectId, limit: 1, onlyEntryId: display.featured, ignoreDisplay: true });
+    return f.entries[0] ? { ...f.entries[0], featured: true } : null;
+  };
 
   const viaConnection = subjectType !== "location" && subjectType !== "author";
   const columns =
@@ -142,6 +158,7 @@ export async function getPublicJournalCollection({
   }
 
   if (hiddenIds.length > 0) query = query.not("id", "in", notInList(hiddenIds));
+  if (onlyEntryId) query = query.eq("id", onlyEntryId);
 
   const after = parseCursor(cursor);
   if (after) {
@@ -169,7 +186,8 @@ export async function getPublicJournalCollection({
   const rows = (data as unknown as Row[]).filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
   const hasMore = rows.length > pageSize;
   const pageRows = rows.slice(0, pageSize);
-  if (pageRows.length === 0) return { entries: [], nextCursor: null, total: withCount ? (count ?? 0) : null };
+  const featuredEntry = await loadFeatured();
+  if (pageRows.length === 0) return { entries: featuredEntry ? [featuredEntry] : [], nextCursor: null, total: withCount ? (count ?? 0) + (featuredEntry ? 1 : 0) : null };
 
   // Cover + photo count: one metadata query for the page, then sign ONLY
   // one cover per entry (never full galleries) in one batched call.
@@ -214,9 +232,9 @@ export async function getPublicJournalCollection({
 
   const last = pageRows[pageRows.length - 1];
   return {
-    entries,
+    entries: featuredEntry ? [featuredEntry, ...entries] : entries,
     nextCursor: hasMore ? `${last.entry_date}_${last.id}` : null,
-    total: withCount ? (count ?? null) : null,
+    total: withCount ? (count ?? null) !== null ? (count ?? 0) + (featuredEntry ? 1 : 0) : null : null,
   };
 }
 

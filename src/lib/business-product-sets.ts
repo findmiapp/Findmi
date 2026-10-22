@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PRODUCT_SET_MAX_PER_BUSINESS, validateProductSet, type ProductSet, type ProductSetInput } from "./business-product-sets-domain";
+import { PRODUCT_SET_MAX_PER_BUSINESS, PRODUCT_SET_NAME_MAX, validateProductSet, type ProductSet, type ProductSetInput } from "./business-product-sets-domain";
 
 /** Owner-side Product Sets (see business-product-sets-domain.ts and migration
  * 20261101000000). Service-role client only; the caller authorizes the
@@ -84,4 +84,20 @@ export async function deleteProductSet(admin: SupabaseClient, businessId: string
   if (error) return { ok: false, error: missingTable(error) ? UNAVAILABLE : "Couldn't delete that set." };
   if (((data ?? []) as unknown[]).length === 0) return { ok: false, error: "That set wasn't found." };
   return { ok: true };
+}
+
+/** A copy of one set under a free "<name> Copy" name — a starting point for a
+ * variation. The copy holds the same Products at this moment and nothing else
+ * ties it to the original. */
+export async function duplicateProductSet(admin: SupabaseClient, businessId: string, setId: string): Promise<ProductSetResult> {
+  const { data: names } = await admin.from("business_product_sets").select("id, name, business_product_set_items(product_id)").eq("business_id", businessId);
+  type Row = { id: string; name: string; business_product_set_items: { product_id: string }[] | null };
+  const all = (names ?? []) as unknown as Row[];
+  const source = all.find((s) => s.id === setId);
+  if (!source) return { ok: false, error: "That set wasn't found." };
+  const taken = new Set(all.map((s) => s.name.trim().toLowerCase()));
+  const base = `${source.name.slice(0, PRODUCT_SET_NAME_MAX - 8).trim()} Copy`;
+  let name = base;
+  for (let n = 2; taken.has(name.toLowerCase()) && n < 50; n++) name = `${base} ${n}`;
+  return createProductSet(admin, businessId, { name, productIds: (source.business_product_set_items ?? []).map((i) => i.product_id) });
 }

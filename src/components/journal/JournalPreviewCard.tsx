@@ -48,7 +48,7 @@ export default function JournalPreviewCard({
           )}
         </div>
         <div className="min-w-0 flex-1 p-3 sm:p-4">
-          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{dateLabel}</p>
+          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{entry.featured ? "Featured · " : ""}{dateLabel}</p>
           <p className="mt-1 line-clamp-2 font-display text-[15px] font-semibold leading-snug text-ink">{entry.title}</p>
           {entry.excerpt && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink/60">{entry.excerpt}</p>}
           {metaParts.length > 0 && <p className="mt-1.5 truncate text-[11px] text-ink/45">{metaParts.join(" · ")}</p>}
@@ -81,6 +81,7 @@ export default function JournalPreviewCard({
       </div>
       <div className={compact ? "p-3" : "p-3.5"}>
         <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">
+          {entry.featured ? "Featured · " : ""}
           {dateLabel}
           {entry.locationName ? ` · ${entry.locationName}` : ""}
         </p>

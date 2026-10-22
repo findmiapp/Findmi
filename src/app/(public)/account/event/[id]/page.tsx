@@ -7,6 +7,8 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireEventMember, resolveBusinessNavContext } from "@/lib/permissions";
+import { isPageManagerRole } from "@/lib/capabilities";
+import EntityMomentsSection from "@/components/account/EntityMomentsSection";
 import { getAccountContexts } from "@/lib/accountContext";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import ChevronIcon from "@/components/ChevronIcon";
@@ -148,9 +150,11 @@ export default async function ManageEventPage({
   // founder admin session — see lib/permissions.ts), never impersonation,
   // never a fake membership row.
   let isAdminElevated = false;
+  let canManageEventPage = false;
   try {
     const membership = await requireEventMember(id);
     isAdminElevated = Boolean(membership.viaAdmin);
+    canManageEventPage = isAdminElevated || isPageManagerRole(membership.role);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to that event.";
     redirect(errorRedirectUrl("/account", message));
@@ -606,6 +610,11 @@ export default async function ManageEventPage({
                 />
               </div>
             </div>
+          </div>
+        )}
+        {tab === "overview" && (
+          <div className="mt-5">
+            <EntityMomentsSection kind="event" entityId={id} canManage={canManageEventPage} />
           </div>
         )}
 

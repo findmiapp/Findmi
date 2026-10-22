@@ -4,6 +4,7 @@
 // "trending". A rail that doesn't have enough real content is omitted.
 // Pure helpers first (unit-tested); the two small product reads after.
 
+import { isLocationDiscoverable } from "./location-eligibility";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { matchesWhen, type DiscoveryItem, type RankedItem } from "./discovery/engine";
 import type { MomentFeedCard } from "./moment-discovery";
@@ -241,13 +242,15 @@ export async function getFollowedBrandLocations(supabase: SupabaseClient, follow
     .select("business_id, locations!inner(id, slug, name, logo_url, cover_image_url, is_demo)")
     .in("business_id", [...followedBusinessIds])
     .eq("locations.is_demo", false)
-    .limit(limit);
+    // Consumer rail: only discoverable Locations (listed + Logo + Cover). Read a few extra
+    // rows so incomplete ones can't leave the rail short.
+    .limit(limit * 6);
   const rows = (data ?? []) as unknown as FollowedLocationRow[];
   const seen = new Set<string>();
   const out: FollowedBrandLocation[] = [];
   for (const row of rows) {
     const l = row.locations;
-    if (!l || seen.has(l.id)) continue;
+    if (!l || seen.has(l.id) || !isLocationDiscoverable(l)) continue;
     seen.add(l.id);
     out.push({ id: l.id, slug: l.slug, name: l.name, imageUrl: l.logo_url ?? l.cover_image_url });
   }

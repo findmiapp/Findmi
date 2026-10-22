@@ -1,4 +1,4 @@
-import { getHiddenMomentIds } from "./entity-moment-display";
+import { NO_MOMENT_DISPLAY, getEntityMomentDisplay } from "./entity-moment-display";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { hasMomentAuthorship, resolveMomentAuthors, authorColumn } from "./moment-authorship";
 import { resolveSignedUrls } from "./journal";
@@ -59,6 +59,8 @@ export interface BusinessMoment {
   /** This Business has chosen to hide it from its profile (a display
    * preference — see lib/entity-moment-display.ts; the Moment is untouched). */
   profileHidden: boolean;
+  /** This Business shows it first on its profile (at most one). */
+  profileFeatured: boolean;
 }
 
 export interface BusinessMomentsResult {
@@ -124,15 +126,15 @@ export async function getBusinessMoments(
   // entries ride along here: they need no relation lookup, so there is no
   // reason to read them after the others.
   const noRows = Promise.resolve({ data: null });
-  const [taggedRes, approvedEvents, hostedEvents, ourLocations, ownRes, hiddenIds] = await Promise.all([
+  const [taggedRes, approvedEvents, hostedEvents, ourLocations, ownRes, momentDisplay] = await Promise.all([
     admin.from("journal_entry_connections").select("journal_entry_id").eq("business_id", businessId).limit(POOL),
     admin.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved").limit(200),
     admin.from("events").select("id").eq("host_business_id", businessId).limit(100),
     admin.from("business_locations").select("location_id").eq("business_id", businessId).limit(100),
     authorship ? admin.from("journal_entries").select(cols).eq("author_business_id", businessId).order("entry_date", { ascending: false }).limit(POOL) : noRows,
-    options?.withDisplay ? getHiddenMomentIds(admin, "business", businessId) : Promise.resolve([] as string[]),
+    options?.withDisplay ? getEntityMomentDisplay(admin, "business", businessId) : Promise.resolve(NO_MOMENT_DISPLAY),
   ]);
-  const hidden = new Set(hiddenIds);
+  const hidden = new Set(momentDisplay.hidden);
   for (const r of (taggedRes.data ?? []) as { journal_entry_id: string }[]) add(r.journal_entry_id, "tagged");
 
   const eventIds = uuids([...((approvedEvents.data ?? []) as { event_id: string }[]).map((r) => r.event_id), ...((hostedEvents.data ?? []) as { id: string }[]).map((r) => r.id)]);
@@ -213,6 +215,7 @@ export async function getBusinessMoments(
       onProfile: rel.includes("tagged") && r.visibility === "public" && r.status === "published" && !hidden.has(r.id),
       profileEligible: rel.includes("tagged") && r.visibility === "public" && r.status === "published",
       profileHidden: hidden.has(r.id),
+      profileFeatured: momentDisplay.featured === r.id,
     };
   });
   return { moments, counts: countMoments(moments) };

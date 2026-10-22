@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { connectBusinessLocationAvailability, removeBusinessLocationAvailability } from "@/lib/business-location-availability";
-import { reviewAvailability } from "@/lib/business-availability-owner";
+import { reviewAllPendingAvailability, reviewAvailability } from "@/lib/business-availability-owner";
 
 /** Find Us At V1 — founder admin management of where a Business/Brand is
  * normally available (business_location_availability). Admin only (no
@@ -49,4 +49,15 @@ export async function adminReviewFindUsAt(businessId: string, availabilityId: st
   if (locationSlug) revalidatePath(`/location/${locationSlug}`);
   const result = await reviewAvailability(admin, availabilityId, status);
   return done(businessId, result.ok ? { saved: "1" } : { error: result.error });
+}
+
+/** Approve or decline everything this Business has pending (an import can submit
+ * hundreds). Public Business and Location pages refresh within their revalidate window. */
+export async function adminReviewAllFindUsAt(businessId: string, status: "live" | "declined") {
+  const admin = await requireAdminSupabase();
+  const result = await reviewAllPendingAvailability(admin, businessId, status);
+  if (!result.ok) return done(businessId, { error: result.error });
+  const { data: business } = await admin.from("businesses").select("slug").eq("id", businessId).maybeSingle();
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  return done(businessId, { saved: "1", reviewed: String(result.changed) });
 }

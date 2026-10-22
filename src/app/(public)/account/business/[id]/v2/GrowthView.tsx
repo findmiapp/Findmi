@@ -48,7 +48,7 @@ function Header({ basePath, summary }: { basePath: string; summary: ReturnType<t
         <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
         <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>
       </header>
-      <GrowthNav basePath={basePath} active="goals" badges={growthBadges(summary)} />
+      <GrowthNav basePath={basePath} active="goals" badges={growthBadges(summary)} summary={summary} />
     </>
   );
 }
@@ -163,7 +163,7 @@ export function GrowthIdeasView({
         <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
         <p className="mt-1 text-body text-muted">Ideas for reaching your goals, from Findmi.</p>
       </header>
-      <GrowthNav basePath={basePath} active="ideas" badges={growthBadges(summary)} />
+      <GrowthNav basePath={basePath} active="ideas" badges={growthBadges(summary)} summary={summary} />
       {shown.length > 0 ? (
         <>
           <IdeasForYourBrand ideas={shown} layout="grid" canRespond={canRespondToIdeas} respond={respondToIdea} />

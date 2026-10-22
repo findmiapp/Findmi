@@ -190,14 +190,18 @@ function LocationMomentRow({ item }: { item: LocationHappening }) {
 }
 
 /** Physical Presence Pass 3 — "at {exact place}" for a Within item, linking
- * to that child place's own page. */
+ * to that child place's own page when it is a discoverable Location (otherwise by name only). */
 function AtPlaceLink({ at, className }: { at: NonNullable<LocationHappening["at"]>; className: string }) {
   return (
     <p className={`truncate text-xs text-ink/55 ${className}`}>
       at{" "}
-      <Link href={`/location/${at.slug}`} className="font-semibold text-findmi-700 hover:underline">
-        {at.name}
-      </Link>
+      {at.linkable ? (
+        <Link href={`/location/${at.slug}`} className="font-semibold text-findmi-700 hover:underline">
+          {at.name}
+        </Link>
+      ) : (
+        <span className="font-semibold text-ink/70">{at.name}</span>
+      )}
     </p>
   );
 }

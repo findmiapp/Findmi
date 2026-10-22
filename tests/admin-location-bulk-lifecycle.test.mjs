@@ -165,11 +165,14 @@ test("14 & 15. relationships survive Unpublish (and Publish): only locations.is_
 
 test("12 & 13. public href / page semantics follow the same is_demo rule after Publish and Unpublish", async () => {
   const db = fakeDb([row(1)]);
-  assert.equal(LINKS.publicLocationHref(byId(db, 1)), null, "Draft → never linked (no dead link)");
+  // A discoverable Location is listed AND has both Logo and Cover Image (location-eligibility.ts).
+  const withImages = (r) => ({ ...r, logo_url: "https://cdn.example/logo.png", cover_image_url: "https://cdn.example/cover.png" });
+  assert.equal(LINKS.publicLocationHref(withImages(byId(db, 1))), null, "Draft → never linked (no dead link)");
   await PUB.setLocationPublication(db, [id(1)], true, noNotify);
-  assert.equal(LINKS.publicLocationHref(byId(db, 1)), "/location/place-1", "Published → linkable");
+  assert.equal(LINKS.publicLocationHref(withImages(byId(db, 1))), "/location/place-1", "Published + complete → linkable");
+  assert.equal(LINKS.publicLocationHref(byId(db, 1)), null, "Published but without Logo + Cover → shown in context, not linked");
   await PUB.setLocationPublication(db, [id(1)], false, noNotify);
-  assert.equal(LINKS.publicLocationHref(byId(db, 1)), null);
+  assert.equal(LINKS.publicLocationHref(withImages(byId(db, 1))), null);
   // The public page itself resolves only is_demo = false (unchanged).
   assert.match(read("src/lib/data.ts"), /export async function getLocationBySlug[\s\S]{0,300}\.eq\("is_demo", false\)/);
 });

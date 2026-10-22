@@ -205,7 +205,7 @@ test("D/F/G: cards fall back to the Event's image; the Location page shows the O
     assert.match(read(f), /flyer_image_url \?\? (featuredAppearance\.|)?(appearance\.)?event\?\.cover_image_url \?\? null/, f);
   }
   const data = read("src/lib/data.ts");
-  assert.match(data, /\.select\("\*, event:events\(slug, name, cover_image_url\), location:locations\(id, name, slug, is_demo\)"\)/, "Business schedule loads the Event cover");
+  assert.match(data, /\.select\("\*, event:events\(slug, name, cover_image_url\), location:locations\(id, name, slug, is_demo, logo_url, cover_image_url\)"\)/, "Business schedule loads the Event cover");
   const fn = data.slice(data.indexOf("async function queryUpcomingHappenings("), data.indexOf("export async function getLocationDescendants("));
   assert.match(fn, /\.from\("event_occurrences"\)[\s\S]*?\.in\("location_id", locationIds\)/);
   assert.match(fn, /\.in\("location_id", locationIds\)\s*\.is\("event_id", null\)/);

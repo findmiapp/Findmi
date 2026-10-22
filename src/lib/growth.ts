@@ -134,6 +134,25 @@ export function growthDestinationStatus(summary: GrowthSummary, destination: Gro
   return summary.hasSignal ? { value: "None Yet", sub: "Check Back Soon" } : { value: "Personalize", sub: "Add Your Goals" };
 }
 
+/** The one sentence that says how Goals, Ideas and Opportunities fit together — shown on
+ * every Growth page so the three read as one workflow, not three unrelated tabs. */
+export const GROWTH_WORKFLOW_INTRO = "Tell Findmi what you want. Findmi suggests Ideas that may help, and shares an Opportunity when a real one fits.";
+
+/** The role each destination plays, in the order a Business moves through them. */
+export const GROWTH_WORKFLOW_ROLES: { key: GrowthDestination; role: string }[] = [
+  { key: "goals", role: "What You Want" },
+  { key: "ideas", role: "What May Help" },
+  { key: "opportunities", role: "What’s Available" },
+];
+
+/** The three workflow lines (role + the destination's real one-line status). */
+export function growthWorkflowSteps(summary: GrowthSummary): { key: GrowthDestination; role: string; status: string; highlight: boolean }[] {
+  return GROWTH_WORKFLOW_ROLES.map(({ key, role }) => {
+    const s = growthDestinationStatus(summary, key);
+    return { key, role, status: `${s.value} · ${s.sub}`, highlight: Boolean(s.highlight) };
+  });
+}
+
 /** The answers behind the Growth Profile checklist, as the page already has
  * them (`getBrandAudit`). Structural so tests and the view don't need the
  * server module. */
