@@ -35,7 +35,7 @@ export type NextDue = "overdue" | "today" | "soon" | "later";
 export interface NextItem {
   key: string;
   /** 1 overdue · 2 today · 3 soon · 4 Opportunity needing a response ·
-   * 5 other actionable · 6 later dated. */
+   * 5 undated next step · 6 later dated. */
   rank: 1 | 2 | 3 | 4 | 5 | 6;
   title: string;
   /** Status · when ("In Conversation · Follow Up Tomorrow"). */
@@ -70,13 +70,11 @@ const RANK_BY_DUE: Record<NextDue, NextItem["rank"]> = { overdue: 1, today: 2, s
 
 export function buildBusinessNext({
   basePath,
-  businessName,
   placements,
   opportunities,
   today,
 }: {
   basePath: string;
-  businessName: string;
   placements: readonly NextPlacementInput[];
   opportunities: readonly NextOpportunityInput[];
   /** The app calendar day (followUpToday) — same rule as Targets. */
@@ -128,19 +126,8 @@ export function buildBusinessNext({
       actionLabel: "Respond",
     }, o.responseDeadline);
   }
-  const inProgress = opportunities.filter((o) => o.group === "interested" || o.group === "confirmed").length;
-  if (inProgress > 0) {
-    add({
-      key: "opportunities",
-      rank: 5,
-      title: inProgress === 1 ? "1 Opportunity" : `${inProgress} Opportunities`,
-      meta: `Relevant opportunities are available for ${businessName}`,
-      detail: null,
-      due: null,
-      href: `${basePath}?tab=opportunities`,
-      actionLabel: "Review Opportunities",
-    }, null);
-  }
+  // Answered ones (Interested, Confirmed, …) leave nothing for the Business
+  // to do — they stay in Growth, never as a passive summary here.
 
   // Deterministic: rank, then soonest date (undated last), then title, then key.
   const dateOf = (item: NextItem) => sortDate.get(item.key) || "9999";

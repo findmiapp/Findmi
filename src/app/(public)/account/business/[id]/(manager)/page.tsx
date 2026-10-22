@@ -1548,7 +1548,6 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const businessNext = onHome
     ? buildBusinessNext({
         basePath: `/account/business/${id}`,
-        businessName: business.name,
         placements: nextPlacements,
         opportunities: recommendedOpportunities.active.map((i) => ({
           recipientId: i.view.recipientId,

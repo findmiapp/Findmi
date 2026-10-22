@@ -22,6 +22,7 @@ registerHooks({
 const N = await import("../src/lib/business-next.ts");
 const L = await import("../src/lib/business-placements.ts");
 const R = await import("../src/lib/business-relationships.ts");
+const DASH = await import("../src/lib/business-dashboard.ts");
 const read = (p) => readFileSync(p, "utf8");
 const HOME = read("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx");
 const PAGE = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
@@ -31,7 +32,7 @@ const BASE = "/account/business/biz";
 const TODAY = "2026-10-22";
 const place = (id, o = {}) => ({ locationId: id, locationName: `Place ${id}`, status: "in_conversation", nextAction: "Send samples", nextActionAt: null, ...o });
 const opp = (id, group, o = {}) => ({ recipientId: id, title: `Opportunity ${id}`, group, responseDeadline: null, ...o });
-const build = (placements = [], opportunities = [], today = TODAY) => N.buildBusinessNext({ basePath: BASE, businessName: "Mocktail Mart", placements, opportunities, today });
+const build = (placements = [], opportunities = [], today = TODAY) => N.buildBusinessNext({ basePath: BASE, placements, opportunities, today });
 
 // ── Placement next actions ──────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ test("Passed is excluded, and a Target with no step and no date is not actionabl
   assert.equal(items[0].detail, null);
 });
 
-test("ordering: overdue → today → soon → Opportunity needing a response → other actionable → later; stable ties", () => {
+test("ordering: overdue → today → soon → Opportunity needing a response → undated step → later; stable ties", () => {
   const items = build(
     [
       place("later", { nextActionAt: "2026-11-20" }),
@@ -74,7 +75,6 @@ test("ordering: overdue → today → soon → Opportunity needing a response �
     "placement:soon-a",
     "placement:soon-b",
     "opportunity:respond",
-    "opportunities",
     "placement:undated",
     "placement:later",
   ]);
@@ -105,19 +105,36 @@ test("the app calendar day decides: a step dated Oct 22 is not overdue on the ev
 
 // ── Commercial Opportunities ────────────────────────────────────────────────
 
-test("an Opportunity sent to this Business and still answerable surfaces on its own; answered ones are one compact aggregate", () => {
-  const items = build([], [opp("r1", "for_you", { title: "Hotel Lobby Sampling", responseDeadline: "2026-10-27T23:00:00Z" }), opp("r2", "interested"), opp("r3", "confirmed"), opp("r4", "past")]);
-  const respond = items.find((i) => i.key === "opportunity:r1");
+test("an Opportunity still waiting on this Business's response appears in Next with Respond", () => {
+  const [respond, ...rest] = build([], [opp("r1", "for_you", { title: "Hotel Lobby Sampling", responseDeadline: "2026-10-27T23:00:00Z" })]);
+  assert.equal(respond.key, "opportunity:r1");
   assert.equal(respond.title, "Hotel Lobby Sampling");
   assert.equal(respond.meta, "Opportunity · Respond By Oct 27");
+  assert.equal(respond.actionLabel, "Respond");
   assert.equal(respond.href, `${BASE}/opportunities/r1`);
-  const aggregate = items.find((i) => i.key === "opportunities");
-  assert.equal(aggregate.title, "2 Opportunities");
-  assert.equal(aggregate.meta, "Relevant opportunities are available for Mocktail Mart");
-  assert.equal(aggregate.actionLabel, "Review Opportunities");
-  assert.equal(aggregate.href, `${BASE}?tab=opportunities`);
-  assert.equal(items.length, 2, "Past is never actionable");
+  assert.equal(rest.length, 0);
   assert.equal(build([], [opp("r9", "for_you")])[0].meta, "Opportunity · Waiting On Your Response");
+});
+
+test("answered Opportunities (Interested, Confirmed, Past) never appear in Next — not even as a passive summary", () => {
+  assert.deepEqual(build([], [opp("r2", "interested"), opp("r3", "confirmed"), opp("r4", "past")]), []);
+  assert.doesNotMatch(NEXT_SRC, /Review Opportunities|Relevant opportunities|"interested"|"confirmed"/);
+  // Mocktail Mart today: the Babylist step + two Opportunities already marked Interested.
+  const items = build(
+    [place("babylist", { locationName: "Babylist Soho", nextAction: "Find contact info for partnerships director", nextActionAt: "2026-10-23" })],
+    [opp("tabli", "interested", { title: "Tabli Resident Demo — Jersey City" }), opp("test", "interested", { title: "Test" })]
+  );
+  assert.deepEqual(items.map((i) => [i.title, i.meta, i.detail, i.actionLabel]), [["Babylist Soho", "In Conversation · Follow Up Tomorrow", "Find contact info for partnerships director", "Open Relationship"]]);
+  // Once answered, the same Opportunity leaves Next.
+  assert.equal(build([], [opp("r1", "for_you")]).length, 1);
+  assert.equal(build([], [opp("r1", "interested")]).length, 0);
+});
+
+test("Growth keeps counting answered Opportunities exactly as before (Next does not change Growth)", () => {
+  const view = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx");
+  assert.match(view, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length,/);
+  assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
+  assert.match(PAGE, /opportunityItems: \[\.\.\.recommendedOpportunities\.active, \.\.\.recommendedOpportunities\.past\],/);
 });
 
 test("commercial only: Next reads opportunity_listings via the Business's own recipients — never event-participation public.opportunities", () => {
@@ -191,4 +208,24 @@ test("Quick Create keeps exactly its four actions, now below Performance; Growth
   assert.ok(HOME.indexOf('aria-labelledby="performance-snapshot"') < HOME.indexOf('aria-labelledby="quick-create"'));
   assert.match(HOME, /<GrowthPanel basePath=\{basePath\} summary=\{growth\} \/>/);
   assert.match(HOME, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
+});
+
+// ── Needs Attention stays for exceptions ────────────────────────────────────
+
+test("Needs Attention keeps its exception items, never Next's actions, and renders nothing at zero", () => {
+  const base = { businessId: "biz", hasPrimaryMarket: true, pendingMarketRequestText: null, upcomingAppearances: [], newOrderCount: 0, profileIncomplete: false };
+  assert.deepEqual(DASH.buildNeedsAttentionItems(base), [], "nothing wrong → no items");
+  const ids = DASH.buildNeedsAttentionItems({
+    ...base,
+    newOrderCount: 2,
+    hasPrimaryMarket: false,
+    pendingMarketRequestText: "Montclair",
+    upcomingAppearances: [{ id: "a1", title: "Night Market", hasImage: false, hasVenue: false, editHref: "/edit" }],
+    dueTargets: { count: 1, first: { locationId: "l1", name: "Cafe", nextAction: "Send samples", overdue: true } },
+    opportunitiesAwaitingResponse: 2,
+  }).map((i) => i.id);
+  assert.ok(ids.includes("new-orders") && ids.includes("pending-market") && ids.includes("missing-image-a1") && ids.includes("missing-venue-a1"));
+  assert.equal(ids.some((id) => id === "targets-due" || id === "opportunities-awaiting"), false);
+  const bar = read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx");
+  assert.match(bar, /if \(items\.length === 0\) return null;/, "no fake “0 Needs Attention”");
 });
