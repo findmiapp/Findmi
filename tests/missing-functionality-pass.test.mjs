@@ -115,7 +115,10 @@ test("CSV: unclosed quote, empty, header-only and oversized input are refused wi
   assert.equal(CSV.parseCsv('a,b\n"x,1').ok, false);
   assert.equal(CSV.parseCsv("   ").ok, false);
   assert.equal(CSV.parseCsv("a,b").ok, false);
-  assert.equal(CSV.parseCsv("a".repeat(CSV.CSV_MAX_BYTES + 1)).ok, false);
+  assert.equal(CSV.CSV_MAX_BYTES, 10_000_000);
+  const tooBig = CSV.parseCsv("a".repeat(CSV.CSV_MAX_BYTES + 1));
+  assert.equal(tooBig.ok, false);
+  assert.match(tooBig.error, /under 10 MB/);
 });
 
 test("CSV: the cap is 10,000 rows; larger files are truncated and counted, never silently dropped", () => {

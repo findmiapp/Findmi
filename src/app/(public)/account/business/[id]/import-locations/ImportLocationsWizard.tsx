@@ -73,7 +73,7 @@ export default function ImportLocationsWizard({
   async function onFile(file: File | undefined) {
     setError(null);
     if (!file) return;
-    if (file.size > CSV_MAX_BYTES) return setError("That file is too large. Keep it under 2 MB.");
+    if (file.size > CSV_MAX_BYTES) return setError("That file is too large. Keep it under 10 MB.");
     const content = await file.text();
     const parsed = parseCsv(content);
     if (!parsed.ok) return setError(parsed.error);

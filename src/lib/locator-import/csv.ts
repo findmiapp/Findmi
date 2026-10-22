@@ -3,7 +3,7 @@
  * every row. RFC 4180 quoting (embedded commas, quotes and line breaks), a
  * leading BOM, CRLF/LF/CR line ends, and comma / semicolon / tab delimiters. */
 
-export const CSV_MAX_BYTES = 2_000_000;
+export const CSV_MAX_BYTES = 10_000_000;
 export const CSV_MAX_ROWS = 10_000;
 export const CSV_MAX_COLUMNS = 60;
 
@@ -69,7 +69,7 @@ function splitRecord(line: string, delimiter: string): string[] {
 
 export function parseCsv(input: string): CsvParseResult {
   if (typeof input !== "string") return { ok: false, error: "That file couldn't be read." };
-  if (input.length > CSV_MAX_BYTES) return { ok: false, error: "That file is too large. Keep it under 2 MB." };
+  if (input.length > CSV_MAX_BYTES) return { ok: false, error: "That file is too large. Keep it under 10 MB." };
   const text = input.replace(/^﻿/, "");
   if (!text.trim()) return { ok: false, error: "That file is empty." };
   const delimiter = detectDelimiter(text);
