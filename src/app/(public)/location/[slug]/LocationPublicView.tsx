@@ -21,7 +21,6 @@ import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ReadMoreText from "@/components/ReadMoreText";
 import SupabaseImage from "@/components/SupabaseImage";
-import { LocationCoverFallback, LocationMonogram } from "@/components/location/LocationFallback";
 import { CategoryPill } from "@/components/Badge";
 import FeaturedLocationHappeningCard from "@/components/FeaturedLocationHappeningCard";
 import LocationHappeningCollection from "@/components/LocationHappeningCollection";
@@ -34,7 +33,7 @@ import {
   type LocationHappening,
 } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
-import { isLocationDiscoverable } from "@/lib/location-eligibility";
+import { isLocationDiscoverable, isRenderableImageUrl } from "@/lib/location-eligibility";
 import { hasAnyHours } from "@/lib/locationHours";
 import { LocationHoursStatus } from "@/components/LocationHours";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
@@ -116,7 +115,7 @@ export async function generateLocationMetadata(slug: string): Promise<Metadata> 
     title: location.name,
     description: `See what's happening at ${location.name} on Findmi.`,
     alternates: { canonical: canonicalUrl },
-    openGraph: location.cover_image_url ? { images: [location.cover_image_url] } : undefined,
+    openGraph: isRenderableImageUrl(location.cover_image_url) ? { images: [location.cover_image_url] } : undefined,
     // A Location without both Logo and Cover Image is not part of consumer discovery
     // (lib/location-eligibility.ts). Its direct URL keeps working — shared links and
     // QR codes never break — but it is kept out of search engines (and the sitemap)
@@ -187,7 +186,16 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // the exact same cover+gallery lightbox EventCoverLightbox already
   // provides for Event covers (a generic images/alt primitive, not
   // Event-specific despite its name) rather than building a second one.
-  const heroImages = [location.cover_image_url, ...galleryImages].filter((u): u is string => Boolean(u));
+  // Only images that can actually render: a stored value that looks like a URL but isn't one
+  // Findmi can display would otherwise leave a big blank block (see lib/location-eligibility.ts).
+  const heroImages = [location.cover_image_url, ...galleryImages].filter(isRenderableImageUrl);
+  // A Location can be real and useful before its profile is finished: it exists, it can be
+  // reached from the Events / Brands that reference it, and it shows what Findmi genuinely
+  // knows — it just isn't part of consumer discovery yet (noindex; see generateLocationMetadata).
+  // Such a page doesn't fake imagery: no cover → no hero block; no logo → no logo tile.
+  const profileComplete = isLocationDiscoverable(location);
+  const hasHero = heroImages.length > 0;
+  const logoUrl = isRenderableImageUrl(location.logo_url) ? location.logo_url : null;
 
   // Action row — the same approved action family as the Event page
   // (EventActionRow): Directions as the wide primary (Location has no
@@ -249,15 +257,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           Location Public Page Composition pass — mobile 5/4 -> 3/2 (~17%
           shorter) so identity and activity reach the first screen sooner;
           same object-cover crop, desktop unchanged. */}
+      {hasHero && (
       <div className="sm:px-0 sm:pt-6">
         <div className="relative aspect-[3/2] w-full overflow-hidden rounded-b-3xl bg-mist shadow-sm sm:aspect-[21/9] sm:rounded-3xl sm:border sm:border-black/5">
-          {heroImages.length > 0 ? (
-            <EventCoverLightbox images={heroImages} alt={location.name} />
-          ) : (
-            // Location Import V1 — a Findmi-styled hero from the place's own
-            // name / category / city (never a fake photo); real media wins.
-            <LocationCoverFallback name={location.name} category={location.category?.name ?? null} city={location.city} state={location.state} />
-          )}
+          <EventCoverLightbox images={heroImages} alt={location.name} />
           {heroImages.length > 1 && (
             <div className="pointer-events-none absolute right-3 top-3 z-[2] flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
               <GalleryGlyph className="h-3.5 w-3.5" />
@@ -281,6 +284,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           <AdminEditButton href={`/admin/locations/${location.id}`} className="absolute left-3 top-3 z-10" />
         </div>
       </div>
+      )}
 
       {/* 2. Logo + identity — Location Public Page Composition pass: ONE
           compact profile block. The logo (88px mobile, 112px sm+) still
@@ -292,19 +296,16 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           naturally. No logo -> the same column spans the full width. */}
       <div className="px-4 sm:px-0">
         <div className="flex items-start gap-2.5 sm:gap-4">
-          {!location.logo_url && (
-            // Profile fallback — a monogram tile in the same logo slot.
-            <LocationMonogram name={location.name} className="relative -mt-8 h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl border-[3px] border-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-12 sm:h-28 sm:w-28 sm:border-4" />
-          )}
-          {location.logo_url && (
+          {logoUrl && (
             // Small Public UI Polish pass — border-white + subtle ring so a
-            // light logo keeps a real edge against the page.
-            <div className="relative -mt-8 h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl border-[3px] border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-12 sm:h-28 sm:w-28 sm:border-4">
-              <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="112px" className="object-cover" />
-              <ImageZoomTrigger images={[location.logo_url]} alt={location.name} label={`View larger logo for ${location.name}`} />
+            // light logo keeps a real edge against the page. It overlaps the cover's
+            // bottom edge only when there IS a cover; never a made-up logo tile.
+            <div className={`relative ${hasHero ? "-mt-8 sm:-mt-12" : "mt-2"} h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl border-[3px] border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:h-28 sm:w-28 sm:border-4`}>
+              <SupabaseImage src={logoUrl} alt={location.name} fill sizes="112px" className="object-cover" />
+              <ImageZoomTrigger images={[logoUrl]} alt={location.name} label={`View larger logo for ${location.name}`} />
             </div>
           )}
-          <div className="min-w-0 flex-1 pt-2 sm:pt-3">
+          <div className={`min-w-0 flex-1 ${hasHero ? "pt-2 sm:pt-3" : "pt-5 sm:pt-8"}`}>
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
 
             {/* Hero geography — two distinct lines, never joined by a dot:
@@ -333,6 +334,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             {cityStateZip(location.city, location.state, location.postal_code) && (
               <p className={`${placeContext && placeContext.ancestors.length > 0 ? "" : "mt-1 "}text-sm leading-snug text-ink/55`} data-testid="location-hero-address">
                 {cityStateZip(location.city, location.state, location.postal_code)}
+              </p>
+            )}
+            {!profileComplete && (
+              <p className="mt-2 text-xs leading-snug text-ink/45" data-testid="location-profile-incomplete">
+                Findmi knows this place — its profile isn&rsquo;t complete yet.
               </p>
             )}
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
 import type { LocationWithCategory } from "@/lib/data";
+import { isRenderableImageUrl } from "@/lib/location-eligibility";
 import { cityState } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
@@ -27,8 +28,8 @@ export default function LocationCard({
   const place = cityState(location.city, location.state);
   const meta = [location.category?.name, place].filter(Boolean).join(" · ");
   const upcoming = location.upcomingCount ?? 0;
-  const hasLogo = Boolean(location.logo_url);
-  const hasCover = Boolean(location.cover_image_url);
+  const hasLogo = isRenderableImageUrl(location.logo_url);
+  const hasCover = isRenderableImageUrl(location.cover_image_url);
   const overlap = hasLogo && hasCover;
 
   const analyticsFields = buildEntityEventFields("location", location.id, { locationId: location.id }, analyticsContext);
@@ -46,6 +47,9 @@ export default function LocationCard({
         onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
       />
 
+      {/* No usable image at all (a Location the person saved / follows that isn't discovery-
+          ready): no media region — never a large blank placeholder block. */}
+      {(hasCover || hasLogo) && (
       <div className="relative">
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-3xl bg-mist">
           {hasCover ? (
@@ -68,11 +72,7 @@ export default function LocationCard({
                 />
               </div>
             </div>
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-ink">
-              <PinGlyph className="h-10 w-10 text-white/25" />
-            </div>
-          )}
+          ) : null}
         </div>
 
         {overlap && (
@@ -81,8 +81,9 @@ export default function LocationCard({
           </div>
         )}
       </div>
+      )}
 
-      <div className={`relative flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-8" : "pt-3"}`}>
+      <div className={`relative flex flex-col gap-1 ${hasCover || hasLogo ? "rounded-b-3xl" : "rounded-3xl"} p-3.5 ${overlap ? "pt-8" : hasCover || hasLogo ? "pt-3" : ""}`}>
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{location.name}</p>
         {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
 
@@ -104,20 +105,6 @@ export default function LocationCard({
         </p>
       </div>
     </div>
-  );
-}
-
-function PinGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
   );
 }
 

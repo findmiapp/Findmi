@@ -1,17 +1,20 @@
-import { isLocationDiscoverable } from "./location-eligibility";
-
-// Public Location links — ONE rule for every public surface that links a
-// canonical Location: a Location is linked as a consumer Location only when it is
-// discoverable (lib/location-eligibility.ts: listed AND both Logo and Cover Image).
-// Otherwise it is still shown by name / address in context, but never linked as a
-// Location card/link. (Its direct /location/[slug] URL, if one exists, keeps working —
-// see getLocationBySlug — so shared links and printed QR codes never break; the page
-// is simply kept out of discovery and search engines.) Archived / trashed Locations
-// are already invisible to public reads (RLS). The image keys are REQUIRED in the type
-// so a caller that doesn't read them fails to compile rather than silently linking.
+// Public Location links — TWO distinct questions, never mixed:
+//
+//   DISCOVERY   "may Findmi proactively surface this Location?" — listed AND Logo AND Cover
+//               (lib/location-eligibility.ts). Decided by the discovery QUERIES (/locations,
+//               Featured, search, Market/Area, rails, sitemap); a Location that fails it never
+//               becomes a card in any of them.
+//   CONTEXT     "may this reference lead to the Location's page?" — a person who opened an
+//               Event, Appearance, Business, Moment or a parent place and wants to know
+//               WHERE. Any listed Location has a page (an unfinished one is noindex and shows
+//               what Findmi really knows), so a contextual link works whether or not the
+//               Location is discovery-ready. An UNLISTED Location (is_demo) has no public page,
+//               so it is shown by name / address only.
+//
+// `publicLocationHref` is the CONTEXT link — the one helper every contextual reference uses.
 export function publicLocationHref(
-  location: { slug?: string | null; is_demo?: boolean | null; logo_url: string | null | undefined; cover_image_url: string | null | undefined } | null | undefined
+  location: { slug?: string | null; is_demo?: boolean | null } | null | undefined
 ): string | null {
-  if (!location?.slug || !isLocationDiscoverable(location)) return null;
+  if (!location?.slug || location.is_demo === true) return null;
   return `/location/${location.slug}`;
 }

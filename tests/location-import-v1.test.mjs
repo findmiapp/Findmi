@@ -462,9 +462,11 @@ test("public fallback: deterministic monogram + branded hero from the Location's
   assert.equal(FB.locationFallbackLine({ category: "Event Venue", city: "New York", state: "NY" }), "Event Venue · New York, NY");
   assert.equal(FB.locationFallbackLine({ category: null, area: "Chelsea", city: "New York" }), "Chelsea");
   const view = read("src/app/(public)/location/[slug]/LocationPublicView.tsx");
-  assert.match(view, /\{heroImages\.length > 0 \? \(\n\s+<EventCoverLightbox images=\{heroImages\} alt=\{location\.name\} \/>\n\s+\) : \(/);
-  assert.match(view, /<LocationCoverFallback name=\{location\.name\} category=\{location\.category\?\.name \?\? null\} city=\{location\.city\} state=\{location\.state\} \/>/);
-  assert.match(view, /\{!location\.logo_url && \(\n[^\n]*\n\s+<LocationMonogram name=\{location\.name\}/);
+  // Closeout: an unfinished profile no longer fakes a hero or a logo tile — no cover → the hero block
+  // is simply not rendered; no logo → no logo tile (real media still wins when present).
+  assert.match(view, /\{hasHero && \(/);
+  assert.match(view, /<EventCoverLightbox images=\{heroImages\} alt=\{location\.name\} \/>/);
+  assert.doesNotMatch(view, /LocationMonogram|LocationCoverFallback/);
   const comp = read("src/components/location/LocationFallback.tsx");
   assert.doesNotMatch(comp, /<img|SupabaseImage|purple|violet|#C6FF00|lime/i, "no fake photography, no rejected colors");
   assert.match(comp, /aria-hidden="true"/);

@@ -43,8 +43,10 @@ test("anchor nav is derived from sections that rendered, in page order, with an 
   assert.equal(items[0].id, ANCH.OVERVIEW_ANCHOR_ID);
 });
 
-test("a page with too few real sections gets no nav; duplicates collapse", () => {
-  assert.deepEqual(ANCH.buildSectionAnchors([{ id: "a", label: "A", present: true }, { id: "b", label: "B", present: true }]), []);
+test("one meaningful section gets no nav; two (Overview + one real) get it; duplicates collapse", () => {
+  assert.deepEqual(ANCH.buildSectionAnchors([]), []);
+  assert.deepEqual(ANCH.buildSectionAnchors([{ id: "a", label: "A", present: false }]), [], "an absent section never counts");
+  assert.deepEqual(ANCH.buildSectionAnchors([{ id: "a", label: "A", present: true }]).map((i) => i.id), [ANCH.OVERVIEW_ANCHOR_ID, "a"], "2 sections is enough");
   const dup = ANCH.buildSectionAnchors([
     { id: "a", label: "A", present: true },
     { id: "a", label: "A again", present: true },
@@ -54,8 +56,9 @@ test("a page with too few real sections gets no nav; duplicates collapse", () =>
   assert.deepEqual(dup.map((i) => i.id), [ANCH.OVERVIEW_ANCHOR_ID, "a", "b", "c"]);
 });
 
-test("Business, Location and Event pages all render the one shared SectionAnchorNav", () => {
+test("Business, Location, Event and Person pages all render the one shared SectionAnchorNav", () => {
   for (const f of [
+    "src/app/(public)/people/[slug]/page.tsx",
     "src/app/(public)/business/[slug]/BusinessPublicView.tsx",
     "src/app/(public)/location/[slug]/LocationPublicView.tsx",
     "src/app/(public)/event/[slug]/EventPublicView.tsx",

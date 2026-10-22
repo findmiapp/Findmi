@@ -51,10 +51,9 @@ export function CompactLocationCard({ location }: { location: CompactLocation })
   const image = location.coverImageUrl ?? location.logoUrl;
   const contain = !location.coverImageUrl && Boolean(location.logoUrl);
   const place = cityState(location.city, location.state);
-  // Only a Location with BOTH Logo and Cover is a consumer Location (lib/location-eligibility.ts).
-  // Anything else keeps its place in the list — name and address, in context — but is not
-  // a link to a Location page.
-  const href = publicLocationHref({ slug: location.slug, logo_url: location.logoUrl, cover_image_url: location.coverImageUrl });
+  // A contextual reference (this Business's own place / where it is carried): it links to the
+  // Location's page whether or not that Location is discovery-ready (lib/location-links.ts).
+  const href = publicLocationHref({ slug: location.slug });
   const body = (
     <>
       <span className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl ${image ? (contain ? "bg-findmi-50" : "bg-mist") : "bg-findmi-50"}`}>

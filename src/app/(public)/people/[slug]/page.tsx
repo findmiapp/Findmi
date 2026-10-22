@@ -6,6 +6,8 @@ import AdminEditButton from "@/components/AdminEditButton";
 import CompactCard from "@/components/CompactCard";
 import ChevronIcon from "@/components/ChevronIcon";
 import { getBusinessesForPerson, getPersonBySlug } from "@/lib/data";
+import SectionAnchorNav from "@/components/SectionAnchorNav";
+import { buildSectionAnchors } from "@/lib/section-anchors";
 
 export const revalidate = 60;
 
@@ -38,6 +40,10 @@ export default async function PersonPage({
   if (!person) notFound();
 
   const businesses = await getBusinessesForPerson(person.id);
+  // Same shared contextual navigation as Business / Location / Event: only sections that
+  // really render. The header + bio is the Overview; Brands counts only when there are any
+  // (the empty "none linked yet" note is not a section worth jumping to).
+  const sectionAnchors = buildSectionAnchors([{ id: "brands", label: "Brands", present: businesses.length > 0 }]);
 
   return (
     <div className="relative mx-auto max-w-3xl px-6 py-10">
@@ -80,9 +86,15 @@ export default async function PersonPage({
         </div>
       </div>
 
+      {sectionAnchors.length > 0 && (
+        <div className="mt-6">
+          <SectionAnchorNav items={sectionAnchors} containerClassName="" />
+        </div>
+      )}
+
       {person.short_bio && <p className="mt-6 max-w-2xl whitespace-pre-line text-base leading-relaxed text-ink/70">{person.short_bio}</p>}
 
-      <section className="mt-10">
+      <section id="brands" className="mt-10 scroll-mt-24">
         <h2 className="font-display text-lg font-semibold tracking-tight text-ink">Brands</h2>
         {businesses.length === 0 ? (
           <p className="mt-3 text-sm text-ink/50">No public Findmi brands linked yet.</p>

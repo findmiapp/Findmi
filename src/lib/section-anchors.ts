@@ -15,9 +15,10 @@ export interface SectionAnchorCandidate extends SectionAnchorItem {
   present: boolean;
 }
 
-/** A page with fewer real sections than this is short enough that a jump row
- * is noise, so the nav is omitted. */
-export const MIN_ANCHOR_SECTIONS = 3;
+/** Navigation appears when the page has MORE THAN ONE meaningful section: the top of the
+ * page (Overview) plus at least this many real sections. One section alone is nothing to
+ * navigate between, so the nav is omitted — never padded with a made-up section. */
+export const MIN_ANCHOR_SECTIONS = 1;
 export const OVERVIEW_ANCHOR_ID = "overview-top";
 
 export function buildSectionAnchors(candidates: SectionAnchorCandidate[], overviewLabel = "Overview"): SectionAnchorItem[] {

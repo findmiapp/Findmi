@@ -32,9 +32,10 @@ const BULK = await import("../src/lib/business-availability-bulk.ts");
 const OWNER = await import("../src/lib/business-availability-owner.ts");
 const FEATURED = await import("../src/lib/featured-locations.ts");
 const FORMAT = await import("../src/lib/format.ts");
+const SECTION = await import("../src/lib/section-anchors.ts");
 
-const LOGO = "https://cdn.example/logo.png";
-const COVER = "https://cdn.example/cover.png";
+const LOGO = "https://drcbrzwchlirfspjgtik.supabase.co/storage/v1/object/public/findmi-media/logo.jpg";
+const COVER = "https://drcbrzwchlirfspjgtik.supabase.co/storage/v1/object/public/findmi-media/cover.jpg";
 
 // ═══ 1. Location discovery eligibility ═══════════════════════════════════════
 
@@ -48,14 +49,17 @@ test("eligibility: listed AND usable Logo AND usable Cover — nothing else qual
   assert.equal(E.isLocationDiscoverable({ logo_url: LOGO, cover_image_url: COVER }), true, "is_demo absent = listed");
   assert.equal(E.isLocationDiscoverable(null), false);
   assert.equal(E.isLocationDiscoverable(undefined), false);
-  for (const junk of ["", "   ", "null", "undefined", "NULL", "ftp://x/y.png", "cdn.example/x.png"]) {
+  // Renderable = a place Findmi is configured to display from (Supabase PUBLIC storage, Unsplash,
+  // Tally's CDN, a site path). A string that merely looks like an image URL does not count.
+  for (const junk of ["", "   ", "null", "undefined", "NULL", "ftp://x/y.png", "cdn.example/x.png", "https://cdn.example/logo.png", "http://drcbrzwchlirfspjgtik.supabase.co/storage/v1/object/public/findmi-media/a.jpg", "https://drcbrzwchlirfspjgtik.supabase.co/storage/v1/object/sign/findmi-media/a.jpg?token=x", "https://evil.example/https://x.supabase.co/storage/v1/object/public/a.jpg"]) {
     assert.equal(E.isLocationDiscoverable({ ...ok, logo_url: junk }), false, `Logo ${JSON.stringify(junk)}`);
     assert.equal(E.isLocationDiscoverable({ ...ok, cover_image_url: junk }), false, `Cover ${JSON.stringify(junk)}`);
   }
   assert.equal(E.isLocationDiscoverable({ ...ok, logo_url: "/uploads/logo.png", cover_image_url: "/uploads/cover.png" }), true, "site-relative paths are usable");
+  assert.equal(E.isLocationDiscoverable({ ...ok, cover_image_url: "https://images.unsplash.com/photo-1?w=800" }), true, "Unsplash (an allowed host)");
 });
 
-test("eligibility: one predicate — the canonical link helper, the in-memory filter and the DB filter all agree", () => {
+test("eligibility: one predicate — the in-memory filter and the DB filter agree; the contextual link is a separate question", () => {
   const rows = [
     { id: "full", is_demo: false, logo_url: LOGO, cover_image_url: COVER },
     { id: "no-logo", is_demo: false, logo_url: null, cover_image_url: COVER },
@@ -64,8 +68,10 @@ test("eligibility: one predicate — the canonical link helper, the in-memory fi
     { id: "unlisted", is_demo: true, logo_url: LOGO, cover_image_url: COVER },
   ];
   assert.deepEqual(E.discoverableLocations(rows).map((r) => r.id), ["full"]);
-  for (const r of rows) assert.equal(LINKS.publicLocationHref({ slug: r.id, ...r }) !== null, r.id === "full", r.id);
-  assert.equal(LINKS.publicLocationHref({ slug: "full", ...rows[0] }), "/location/full");
+  // CONTEXT links follow the listing alone: a listed-but-incomplete Location is reachable from an
+  // Event / Business / Moment; only an unlisted one has no page.
+  for (const r of rows) assert.equal(LINKS.publicLocationHref({ slug: r.id, ...r }) !== null, r.id !== "unlisted", r.id);
+  assert.equal(LINKS.publicLocationHref({ slug: "no-logo", ...rows[1] }), "/location/no-logo");
 
   // The DB form: record the filter calls and evaluate the patterns against sample values.
   const calls = [];
@@ -79,9 +85,9 @@ test("eligibility: one predicate — the canonical link helper, the in-memory fi
       const re = new RegExp(`^${pat.join(".").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*")}$`, "i");
       return re.test(value ?? "");
     });
-  for (const v of [LOGO, "http://a/b.png", "HTTPS://A/B.PNG", "/uploads/x.png", "", "null", "undefined", "ftp://x", "cdn.example/x.png"]) {
+  for (const v of [LOGO, "https://images.unsplash.com/p.jpg", "https://x.tally.so/a.png", "HTTPS://DRCB.SUPABASE.CO/STORAGE/V1/OBJECT/PUBLIC/F/A.JPG", "/uploads/x.png", "http://a/b.png", "https://cdn.example/a.png", "https://x.supabase.co/storage/v1/object/sign/f/a.jpg", "", "null", "undefined", "ftp://x", "cdn.example/x.png"]) {
     for (const col of ["logo_url", "cover_image_url"]) {
-      assert.equal(matches(col, v), FEATURED.hasUsableImageUrl(v), `${col} ${JSON.stringify(v)}`);
+      assert.equal(matches(col, v), E.isRenderableImageUrl(v), `${col} ${JSON.stringify(v)}`);
     }
   }
 });
@@ -133,7 +139,7 @@ test("consumer discovery: no scattered image checks — only the canonical modul
   assert.deepEqual(scattered, []);
   // Raw `/location/${…slug}` links on consumer surfaces must be gated.
   const consumerLinks = [
-    ["src/components/OurLocations.tsx", /publicLocationHref\(/],
+    ["src/components/OurLocations.tsx", /publicLocationHref\(\{ slug: location\.slug \}\)/],
     ["src/components/LocationHappeningCollection.tsx", /at\.linkable/],
     ["src/app/(public)/location/[slug]/LocationPublicView.tsx", /a\.linkable/],
     ["src/app/(public)/journal/[id]/page.tsx", /publicLocationHref\(location\)/],
@@ -142,8 +148,8 @@ test("consumer discovery: no scattered image checks — only the canonical modul
   for (const [file, re] of consumerLinks) assert.match(read(file), re, file);
   // Ancestor / descendant context carries a `linkable` flag computed by the same predicate.
   const data = read("src/lib/data.ts");
-  assert.match(data, /linkable: isLocationDiscoverable\(imageryById\.get\(r\.id\)\)/);
-  assert.match(data, /linkable: isLocationDiscoverable\(row\)/);
+  // Context: a listed parent / child place has a page, so it links; an unlisted one doesn't.
+  assert.match(data, /linkable: imageryById\.get\(r\.id\)\?\.is_demo !== true/);
 });
 
 test("incomplete Locations stay fully usable internally: pickers, search, import and admin do not apply the discovery filter", () => {
@@ -164,17 +170,37 @@ test("incomplete Locations stay fully usable internally: pickers, search, import
   assert.doesNotMatch(picker, /logo_url|cover_image_url/);
 });
 
-test("a public Event / Appearance keeps its incomplete Location: name and address show, but there is no Location link", () => {
+test("contextual references link to an incomplete Location (discovery ≠ context); an unlisted one is shown by name only", () => {
   const incomplete = { slug: "corner-shop", is_demo: false, logo_url: null, cover_image_url: COVER };
-  assert.equal(LINKS.publicLocationHref(incomplete), null);
-  // The renderers fall back to non-link markup when href is null.
-  assert.match(read("src/components/EventLocationCard.tsx"), /<div className="flex items-center gap-3 rounded-xl border border-black\/10 bg-white p-2\.5">\{inner\}<\/div>/);
-  assert.match(read("src/components/EventScheduleSummary.tsx"), /WhereFact name=\{location\.name\} href=\{publicLocationHref\(location\)\}/);
+  assert.equal(LINKS.publicLocationHref(incomplete), "/location/corner-shop", "Event → Location keeps working");
+  assert.equal(LINKS.publicLocationHref({ ...incomplete, is_demo: true }), null, "unlisted has no page");
+  for (const f of [
+    "src/app/(public)/event/[slug]/EventPublicView.tsx",
+    "src/components/event/EventLocationFeature.tsx",
+    "src/components/EventScheduleSummary.tsx",
+    "src/components/EventOccurrenceQuickView.tsx",
+    "src/components/EventLocationCard.tsx",
+    "src/components/AppearanceCard.tsx",
+    "src/components/AppearanceQuickView.tsx",
+  ]) assert.match(read(f), /publicLocationHref\(/, f);
+  assert.match(read("src/components/EventLocationCard.tsx"), /<div className="flex items-center gap-3 rounded-xl border border-black\/10 bg-white p-2\.5">\{inner\}<\/div>/, "unlisted → name / address, no link");
   const card = read("src/components/OurLocations.tsx");
-  assert.match(card, /if \(!href\) \{\s*return <div className="flex items-center gap-3 rounded-3xl/, "Find Us Here / Our Locations: a non-link row for an incomplete Location");
-  // The row still carries the name and address.
-  assert.match(card, /\{location\.name\}/);
-  assert.match(card, /location\.address/);
+  assert.match(card, /if \(!href\) \{\s*return <div className="flex items-center gap-3 rounded-3xl/);
+  // Discovery surfaces never take their candidates from the contextual helper.
+  for (const f of ["src/lib/data.ts", "src/app/(public)/locations/page.tsx", "src/app/sitemap.ts"]) assert.doesNotMatch(read(f), /publicLocationHref/, f);
+});
+
+test("incomplete Location page: no fake hero / logo, intentionally unlisted, claim kept", () => {
+  const view = read("src/app/(public)/location/[slug]/LocationPublicView.tsx");
+  assert.match(view, /const heroImages = \[location\.cover_image_url, \.\.\.galleryImages\]\.filter\(isRenderableImageUrl\)/, "only images that can render");
+  assert.match(view, /\{hasHero && \(/, "no cover → the hero block collapses");
+  assert.match(view, /const logoUrl = isRenderableImageUrl\(location\.logo_url\)/);
+  assert.doesNotMatch(view, /LocationMonogram|LocationCoverFallback/, "no manufactured logo / cover");
+  assert.match(view, /\{!profileComplete && \(/);
+  assert.match(view, /<ClaimButton type="location"/, "Claim stays available on an incomplete Location");
+  // The personal-list card never draws a large blank placeholder.
+  const card = read("src/components/LocationCard.tsx");
+  assert.doesNotMatch(card, /bg-ink|PinGlyph/);
 });
 
 test("direct /location/[slug] keeps working for an incomplete Location (200) but is kept out of search engines and the sitemap", () => {
@@ -472,7 +498,7 @@ test("market footprint: owner-side totals read in pages — no single read relie
 
 test("Location hero: line 1 = parent-place descriptor (only if any); line 2 = City, State ZIP from the Location's own address — no dot, no Market label", () => {
   const view = read("src/app/(public)/location/[slug]/LocationPublicView.tsx");
-  const hero = view.slice(view.indexOf("Hero geography"), view.indexOf("No real cover photo"));
+  const hero = view.slice(view.indexOf("Hero geography"), view.indexOf("profileComplete &&"));
   assert.match(hero, /placeContext && placeContext\.ancestors\.length > 0 && \(/, "no descriptor → no blank line");
   assert.match(hero, /cityStateZip\(location\.city, location\.state, location\.postal_code\)/, "canonical address data");
   assert.doesNotMatch(hero, /placeContext\.geography/, "never the Market display label");
@@ -483,4 +509,33 @@ test("Location hero: line 1 = parent-place descriptor (only if any); line 2 = Ci
   assert.equal(cityStateZip("New York", "NY", "10010"), "New York, NY 10010");
   assert.equal(cityStateZip("New York", "NY", null), "New York, NY");
   assert.equal(cityStateZip(null, null, null), "");
+});
+
+// ═══ 5. Shared contextual navigation ═════════════════════════════════════════
+
+test("contextual nav: every candidate section id exists in the rendered markup (no chip can point at nothing)", () => {
+  const ALL = SRC.map(read).join("\n");
+  for (const f of [
+    "src/app/(public)/business/[slug]/BusinessPublicView.tsx",
+    "src/app/(public)/location/[slug]/LocationPublicView.tsx",
+    "src/app/(public)/event/[slug]/EventPublicView.tsx",
+    "src/app/(public)/people/[slug]/page.tsx",
+  ]) {
+    const src = read(f);
+    const block = src.slice(src.indexOf("buildSectionAnchors(["), src.indexOf("]);", src.indexOf("buildSectionAnchors([")));
+    const ids = [...block.matchAll(/id: "([a-z-]+)"/g)].map((m) => m[1]);
+    assert.ok(ids.length > 0, f);
+    for (const id of ids) assert.match(ALL, new RegExp(`id=\\{?"${id}"`), `${f}: #${id}`);
+    assert.match(src, /<SectionAnchorNav /, f);
+  }
+});
+
+test("contextual nav: Overview + one real section is enough; Person page uses the shared component with real sections only", () => {
+  const ANCH = SECTION;
+  assert.deepEqual(ANCH.buildSectionAnchors([{ id: "brands", label: "Brands", present: true }]).map((i) => i.label), ["Overview", "Brands"]);
+  assert.deepEqual(ANCH.buildSectionAnchors([{ id: "brands", label: "Brands", present: false }]), []);
+  const person = read("src/app/(public)/people/[slug]/page.tsx");
+  assert.match(person, /present: businesses\.length > 0/);
+  assert.match(person, /<section id="brands"/);
+  assert.match(person, /sectionAnchors\.length > 0 && \(/, "no empty wrapper when there is no nav");
 });

@@ -4,7 +4,7 @@ import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirr
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
 import { hasUsableImageUrl, selectFeaturedLocations } from "./featured-locations";
-import { applyLocationDiscoveryFilter, discoverableLocations, isLocationDiscoverable, type LocationDiscoveryFields } from "./location-eligibility";
+import { applyLocationDiscoveryFilter, discoverableLocations } from "./location-eligibility";
 import {
   APP_TIMEZONE,
   formatAppearanceDateRange,
@@ -4752,9 +4752,9 @@ export async function getLocationBySlug(slug: string): Promise<LocationWithCateg
 /** Physical Presence Pass 2 — the public physical-context line for a
  * Location page ("Madison Square Park · Flatiron, New York"). */
 export interface LocationPlaceContext {
-  /** Nearest parent first, outward. Each links to its own public page — unless
-   * it isn't a discoverable Location (`linkable: false`: missing Logo or
-   * Cover Image), in which case it is shown by name only. */
+  /** Nearest parent first, outward. Each links to its own public page (a contextual
+   * reference — lib/location-links.ts) unless it has none (`linkable: false`: unlisted),
+   * in which case it is shown by name only. */
   ancestors: { id: string; name: string; slug: string; linkable: boolean }[];
   /** "Area, Market" discovery-geography suffix from the nearest place in
    * the chain (this Location first) that has one — display only, never
@@ -4780,13 +4780,13 @@ export async function getLocationPlaceContext(
   const { data, error } = await supabase.rpc("get_location_ancestors", { p_location_id: location.id });
   if (error || !data || data.length === 0) return null;
   const rows = data as { id: string; name: string; slug: string; market_id: string | null; market_area_id: string | null; depth: number }[];
-  // One small follow-up read for the images the discoverability rule needs (the
-  // RPC itself only returns identity) — only ever paid by a Location that has a parent.
-  const { data: imagery } = await supabase.from("locations").select("id, is_demo, logo_url, cover_image_url").in("id", rows.map((r) => r.id));
-  const imageryById = new Map(((imagery ?? []) as ({ id: string } & LocationDiscoveryFields)[]).map((r) => [r.id, r]));
+  // One small follow-up read for whether each parent has a public page (the RPC itself only
+  // returns identity) — only ever paid by a Location that has a parent.
+  const { data: listing } = await supabase.from("locations").select("id, is_demo").in("id", rows.map((r) => r.id));
+  const imageryById = new Map(((listing ?? []) as { id: string; is_demo: boolean | null }[]).map((r) => [r.id, r]));
   const ancestors = [...rows]
     .sort((a, b) => a.depth - b.depth)
-    .map((r) => ({ id: r.id, name: r.name, slug: r.slug, linkable: isLocationDiscoverable(imageryById.get(r.id)) }));
+    .map((r) => ({ id: r.id, name: r.name, slug: r.slug, linkable: imageryById.get(r.id)?.is_demo !== true }));
 
   const geoSource = [location, ...rows].find((n) => n.market_area_id || n.market_id) ?? null;
   let geography: string | null = null;
@@ -5056,17 +5056,17 @@ export async function getLocationDescendants(
   for (let depth = 0; depth < 64 && frontier.length > 0; depth++) {
     const { data, error } = await supabase
       .from("locations")
-      .select("id, name, slug, is_demo, logo_url, cover_image_url")
+      .select("id, name, slug")
       .in("parent_location_id", frontier)
       .eq("is_demo", false);
     if (error || !data) break;
     const next: string[] = [];
-    for (const row of data as ({ id: string; name: string; slug: string } & LocationDiscoveryFields)[]) {
+    for (const row of data as { id: string; name: string; slug: string }[]) {
       if (visited.has(row.id)) continue;
       visited.add(row.id);
-      // An incomplete place still counts as part of the hierarchy (its activity shows
-      // under the parent); it just isn't linked as a Location.
-      found.push({ id: row.id, name: row.name, slug: row.slug, linkable: isLocationDiscoverable(row) });
+      // Only listed places are read above, so each has a page: a contextual link works even
+      // when the place isn't discovery-ready.
+      found.push({ id: row.id, name: row.name, slug: row.slug, linkable: true });
       next.push(row.id);
     }
     frontier = next;

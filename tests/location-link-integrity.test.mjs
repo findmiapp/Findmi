@@ -41,7 +41,7 @@ test("1 + 2 + 7. a listed Location is linked; an unlisted one is never linked �
   assert.equal(L.publicLocationHref({ slug: "the-canvas", is_demo: false, ...IMG }), "/location/the-canvas");
   assert.equal(L.publicLocationHref({ slug: "the-canvas", is_demo: true, ...IMG }), null, "unlisted → no public page → no link");
   assert.equal(L.publicLocationHref({ slug: "the-canvas", ...IMG }), "/location/the-canvas", "rows read without is_demo keep the previous behavior");
-  assert.equal(L.publicLocationHref({ slug: "the-canvas", is_demo: false, logo_url: null, cover_image_url: IMG.cover_image_url }), null, "no Logo → not a consumer Location");
+  assert.equal(L.publicLocationHref({ slug: "the-canvas", is_demo: false, logo_url: null, cover_image_url: null }), "/location/the-canvas", "a listed Location without images is still reachable from context");
   assert.equal(L.publicLocationHref(null), null);
   assert.equal(L.publicLocationHref({ slug: "", ...IMG }), null);
   // The public Location page resolves only listed Locations — the rule the helper mirrors.

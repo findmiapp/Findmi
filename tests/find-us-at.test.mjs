@@ -169,7 +169,7 @@ test("Brand page: one / several Find Us At Locations — canonical data, each on
   assert.deepEqual(one.items, []);
   assert.match(read("src/components/FindUsAt.tsx"), /if \(locations\.length === 0\) return null;/);
   assert.match(read("src/components/FindUsAt.tsx"), /<CompactLocationCard location=\{l\} \/>/, "same canonical card (links to /location/[slug])");
-  assert.match(read("src/components/OurLocations.tsx"), /href = publicLocationHref\(\{ slug: location\.slug, logo_url: location\.logoUrl, cover_image_url: location\.coverImageUrl \}\)/, "links only a discoverable Location; an incomplete one stays listed without a link");
+  assert.match(read("src/components/OurLocations.tsx"), /href = publicLocationHref\(\{ slug: location\.slug \}\)/, "a contextual reference links to the Location page, discovery-ready or not");
 });
 
 test("public Find Us At excludes a pair that is also an Our Location (bad data defense)", async () => {
