@@ -4,6 +4,7 @@ import { startTransition, useActionState, useEffect, useRef, useState, type Form
 import { DateTimeField, DateTimeRangeField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import { RelationField, type SearchResult } from "@/components/admin/RelationPicker";
+import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { OPPORTUNITY_TYPES, OPPORTUNITY_TYPE_LABELS, type PricingMode } from "@/lib/opportunity-listings-domain";
@@ -32,6 +33,9 @@ export interface OpportunityFormValues {
   description: string | null;
   image_url: string | null;
   place_text: string | null;
+  /** Block B — absent until the geography migration is applied. */
+  market_id?: string | null;
+  market_area_id?: string | null;
   host_name: string | null;
   starts_at: string | null;
   ends_at: string | null;
@@ -86,6 +90,7 @@ export default function OpportunityForm({
   legacyUnclassified,
   initialLocation,
   initialEvent,
+  markets = [],
   action,
   saveLabel,
   cancelHref,
@@ -99,6 +104,8 @@ export default function OpportunityForm({
   legacyUnclassified: boolean;
   initialLocation: SearchResult | null;
   initialEvent: SearchResult | null;
+  /** Active Markets with their Areas, for an Opportunity that covers a geography. */
+  markets?: MarketWithAreaOptions[];
   action: (formData: FormData) => Promise<OpportunitySaveResult>;
   saveLabel: string;
   cancelHref: string;
@@ -155,6 +162,19 @@ export default function OpportunityForm({
           clearLabel="No Findmi Location"
           placeholder="Search Findmi places…"
         />
+        <div>
+          <MarketAreaFields
+            markets={markets}
+            defaultMarketId={listing?.market_id ?? null}
+            defaultAreaId={listing?.market_area_id ?? null}
+            marketLabel="Market (optional)"
+            areaLabel="Area (optional)"
+            blankMarketOptionLabel="No Market"
+          />
+          <p className="mt-1.5 text-xs text-ink/45">
+            For an Opportunity that covers a whole Market or Area (e.g. Jersey City) rather than one place. If a Location is chosen, its own Market and Area are used instead.
+          </p>
+        </div>
         <TextField label="Place" name="place_text" defaultValue={listing?.place_text} placeholder="e.g. Jersey City, NJ" hint="Shown when there's no Location, or to add detail." />
         <TextField label="Host Name" name="host_name" defaultValue={listing?.host_name} placeholder="e.g. 3 Acres" />
       </Section>

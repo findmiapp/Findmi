@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getAdminOpportunityListing, getAdminOpportunityOptions } from "@/lib/opportunity-listings";
 import { getEventOptionById, getLocationOptionById } from "@/lib/admin/queries";
 import { isLegacyUnclassified } from "@/lib/opportunity-commercial-terms-bridge";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import OpportunityForm from "../../OpportunityForm";
 import { saveOpportunity } from "../../actions";
 import type { InitialOption } from "../../CommercialTermsBuilder";
@@ -72,6 +73,7 @@ export default async function EditOpportunityPage({
           initialOptions={initialOptions}
           legacyUnclassified={isLegacyUnclassified(options.length)}
           initialLocation={initialLocation}
+          markets={await getActiveMarketsWithAreaOptions()}
           initialEvent={initialEvent}
           action={saveOpportunity.bind(null, listing.id)}
           saveLabel="Save Changes"

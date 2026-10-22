@@ -366,6 +366,9 @@ export interface ListingFormInput {
   description: string | null;
   image_url: string | null;
   location_id: string | null;
+  /** Block B: Market / Area an Opportunity covers when it isn't tied to one Location. */
+  market_id?: string | null;
+  market_area_id?: string | null;
   place_text: string | null;
   host_name: string | null;
   event_id: string | null;
@@ -389,6 +392,9 @@ export interface ListingFields {
   description: string | null;
   image_url: string | null;
   location_id: string | null;
+  /** Null whenever location_id is set — a Location carries its own geography. */
+  market_id: string | null;
+  market_area_id: string | null;
   place_text: string | null;
   host_name: string | null;
   event_id: string | null;
@@ -468,6 +474,10 @@ export function validateListingInput(input: ListingFormInput): { ok: true; value
       description: text.description,
       image_url: blank(input.image_url),
       location_id: blank(input.location_id),
+      // One geography source: a Location-specific Opportunity derives its Market /
+      // Area from the Location, so explicit scope is only kept without one.
+      market_id: blank(input.location_id) ? null : blank(input.market_id),
+      market_area_id: blank(input.location_id) ? null : blank(input.market_area_id),
       place_text: text.place_text,
       host_name: text.host_name,
       event_id: blank(input.event_id),

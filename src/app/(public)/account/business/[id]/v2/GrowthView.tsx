@@ -51,7 +51,7 @@ function Header({ basePath, summary, active = "goals" }: { basePath: string; sum
     <>
       <header>
         <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
-        <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>
+        {active === "goals" && <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>}
       </header>
       <GrowthNav basePath={basePath} active={active} badges={growthBadges(summary)} summary={summary} />
     </>
@@ -173,7 +173,6 @@ export function GrowthIdeasView({
     <div className="flex flex-col gap-6 lg:max-w-3xl">
       <header>
         <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
-        <p className="mt-1 text-body text-muted">Ideas for reaching your goals, from Findmi.</p>
       </header>
       <GrowthNav basePath={basePath} active="ideas" badges={growthBadges(summary)} summary={summary} />
       {shown.length > 0 ? (

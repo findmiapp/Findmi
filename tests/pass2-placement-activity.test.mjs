@@ -266,7 +266,7 @@ test("pagination never skips or repeats rows that share a timestamp (one transac
   assert.equal(new Set(all).size, 30);
 });
 
-test("the Targets LIST never reads Activity; only an opened Target does", async () => {
+test("the Targets LIST never reads Activity; only an opened relationship workspace does", async () => {
   const t = seed();
   t.locations = [{ id: "l1", name: "Cafe", slug: "cafe" }];
   const db = fakeDb(t);
@@ -274,8 +274,8 @@ test("the Targets LIST never reads Activity; only an opened Target does", async 
   assert.equal(db.calls.filter((c) => c.table === "business_location_placement_activities").length, 0);
   assert.doesNotMatch(L.BUSINESS_PLACEMENT_COLUMNS, /activit/);
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(page, /open \? getPlacementActivityPage\(admin, id, open\.id, null\) : null,/);
-  assert.equal((page.match(/getPlacementActivityPage\(/g) ?? []).length, 1, "one read site: the opened Target");
+  assert.match(page, /data\.placement \? getPlacementActivityPage\(admin, id, data\.placement\.id, null\) : null,/);
+  assert.equal((page.match(/getPlacementActivityPage\(/g) ?? []).length, 1, "one read site: the opened workspace");
 });
 
 // ── Permissions (actions) ─────────────────────────────────────────────────
@@ -291,18 +291,22 @@ test("permissions: owner/manager/Findmi Admin add notes; staff read only; Findmi
   assert.equal(D.canEditPlacements("staff", true), true, "founder Admin (Manage-As)");
   assert.deepEqual(D.placementActor(true, JON), { actor: "findmi", userId: null });
   assert.deepEqual(D.placementActor(false, JON), { actor: "business", userId: JON });
-  const view = read("src/app/(public)/account/business/[id]/v2/TargetsView.tsx");
-  assert.match(view, /<ActivityFeed businessId=\{businessId\} placementId=\{item\.id\} canAdd=\{canEdit\} initial=\{activity\} \/>/);
+  const view = read("src/app/(public)/account/business/[id]/v2/RelationshipWorkspace.tsx");
+  assert.match(view, /<ActivityFeed businessId=\{businessId\} placementId=\{placement\.id\} canAdd=\{canEdit\} initial=\{props\.activity\} \/>/);
   assert.match(view, /\{canAdd && initial\?\.available !== false && \(/, "the composer only renders for editors");
-  assert.doesNotMatch(view.slice(view.indexOf("function ActivityFeed")), /internal/i, "Activity never shows Findmi internal notes");
-  assert.doesNotMatch(view.slice(view.indexOf("function ActivityEntry")), /Edit|Delete|Remove/, "append-only: no edit or delete controls");
+  const feed = view.slice(view.indexOf("function ActivityFeed"), view.indexOf("// ── Findmi Internal"));
+  assert.ok(feed.length > 0);
+  assert.doesNotMatch(feed, /internal/i, "Activity never shows Findmi internal notes");
+  assert.doesNotMatch(view.slice(view.indexOf("function ActivityEntry"), view.indexOf("function ActivityFeed")), /Edit|Delete|Remove/, "append-only: no edit or delete controls");
 });
 
-test("Summary / Context is the relabeled `notes` field", () => {
-  const view = read("src/app/(public)/account/business/[id]/v2/TargetsView.tsx");
+test("Summary is the relabeled `notes` field: read first, Edit when needed", () => {
+  const view = read("src/app/(public)/account/business/[id]/v2/RelationshipWorkspace.tsx");
   assert.equal(D.PLACEMENT_SUMMARY_LABEL, "Summary / Context");
-  assert.equal((view.match(/\{PLACEMENT_SUMMARY_LABEL\}/g) ?? []).length, 2, "editor and read-only view");
-  assert.match(view, /value=\{notes\}/);
+  const block = view.slice(view.indexOf("function SummaryBlock"), view.indexOf("function Presence"));
+  assert.equal((block.match(/<h3 className=\{sectionTitle\}>Summary<\/h3>/g) ?? []).length, 2, "editor and read view");
+  assert.match(block, /save\(businessId, item, \{ notes: text \|\| null \}\)/);
+  assert.match(block, /\{item\.notes \? "Edit" : "Add Summary"\}/);
   assert.doesNotMatch(view, /">Notes</);
 });
 
@@ -322,7 +326,7 @@ test("Targets resolve from Growth and from Find Us Here — the same view, recor
   assert.match(page, /const targetsPromise = whenP\(\s*onTargets,/);
   assert.equal((page.match(/<TargetsView\b/g) ?? []).length, 1, "ONE TargetsView element");
   assert.match(page, /onFindUsTargets && targetsView\}/, "Find Us Here door kept");
-  assert.match(page, /growthView === "targets" && \([\s\S]*?<GrowthTargetsHeader basePath=\{basePath\} summary=\{growthSummary\} \/>[\s\S]*?\{targetsView\}/, "Growth door");
+  assert.match(page, /growthView === "targets" && !workspaceView && \([\s\S]*?<GrowthTargetsHeader basePath=\{basePath\} summary=\{growthSummary\} \/>[\s\S]*?\{targetsView\}/, "Growth door");
   // In-view links keep whichever door you came through (they patch the current URL).
   const view = read("src/app/(public)/account/business/[id]/v2/TargetsView.tsx");
   assert.match(view, /const next = new URLSearchParams\(searchParams\.toString\(\)\);/);

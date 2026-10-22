@@ -168,14 +168,18 @@ test("Product Sets: duplicate, rename/edit, counts; entries never reference a se
 // ── Market view ────────────────────────────────────────────────────────────
 
 test("the Market view uses only real rows: curated market_id, no percentages, scores or text matching", () => {
-  const lib = read("src/lib/business-market-footprint.ts").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.match(lib, /market_id/);
-  assert.doesNotMatch(lib, /penetration|score|percent|%/i);
-  assert.doesNotMatch(lib, /ilike|\.eq\("city"|\.eq\("state"|\.or\(/);
-  const view = read("src/app/(public)/account/business/[id]/v2/MarketFootprintView.tsx").replace(/\/\*[\s\S]*?\*\//g, "");
-  assert.match(view, /Not In A Market Yet/);
-  assert.match(view, /no estimates or scores/);
-  assert.doesNotMatch(view, /Hamptons|Long Island|New Jersey|NYC/, "no launch market is hard-coded");
+  // Pass 2 Block B: the Market view now reads through the shared relationship
+  // reader + geography scope helper — the same rules still hold.
+  for (const f of ["src/lib/business-market-footprint.ts", "src/lib/business-relationships.ts", "src/lib/geography-scope.ts"]) {
+    const lib = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert.match(lib, /market_id/, f);
+    assert.doesNotMatch(lib, /penetration|score|percent|%/i, f);
+    assert.doesNotMatch(lib, /ilike|\.eq\("city"|\.eq\("state"|\.or\(/, f);
+  }
+  const view = read("src/app/(public)/account/business/[id]/v2/GeographyViews.tsx").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(view, /Not In A Findmi Market Yet/);
+  assert.doesNotMatch(view, /score|percent|%/i, "no estimates or scores");
+  assert.doesNotMatch(view, /Hamptons|Long Island|New Jersey|NYC|Jersey City/, "no launch market is hard-coded");
 });
 
 // ── Moments display for all three entities ─────────────────────────────────

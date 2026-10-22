@@ -430,3 +430,16 @@ export async function searchAvailabilityLocations(
     .limit(20);
   return (data ?? []) as { id: string; name: string; address: string | null; city: string | null; state: string | null }[];
 }
+
+/** This Business's Find Us Here entry at ONE place (any status), or null — the
+ * relationship workspace's Presence. Same columns and mapping as the paged list;
+ * the (business, location) pair is unique, so there is at most one. */
+export async function getOwnerAvailabilityForLocation(admin: SupabaseClient, businessId: string, locationId: string): Promise<OwnerAvailabilityItem | null> {
+  const read = (multi: boolean) => admin.from("business_location_availability").select(columns(multi)).eq("business_id", businessId).eq("location_id", locationId).maybeSingle();
+  let { data, error } = await read(true);
+  if (isMissingColumn(error)) ({ data, error } = await read(false));
+  if (error || !data) return null;
+  const row = data as unknown as RawRow;
+  const { data: links } = await admin.from("business_location_availability_products").select("availability_id, product_id, products(id, name)").eq("availability_id", row.id);
+  return rowsToItems([row], (links ?? []) as RawLink[])[0] ?? null;
+}

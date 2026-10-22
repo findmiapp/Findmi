@@ -40,14 +40,17 @@ import { GrowthGoalsView, GrowthIdeasView, GrowthTargetsHeader, growthBadges, gr
 import GrowthNav from "../v2/GrowthNav";
 import MomentsView from "../v2/MomentsView";
 import AvailableAtView from "../v2/AvailableAtView";
-import { FindUsViewSwitch, MarketDetailView, MarketOverview } from "../v2/MarketFootprintView";
+import { FindUsViewSwitch } from "../v2/MarketFootprintView";
 import { getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
 import { parseAvailabilityFilter } from "@/lib/business-availability-bulk-domain";
 import { canEditPlacements, parsePlacementFilter } from "@/lib/business-placements-domain";
 import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage, getPlacementActivityPage, getPlacementPursuit } from "@/lib/business-placements";
+import { getDueNextActions, getGeographyDetail, getGeographyOverview, getGrowingIn, getRelationshipWorkspace } from "@/lib/business-relationships";
+import { cleanSlug, resolveGeographyScope } from "@/lib/geography-scope";
+import RelationshipWorkspace from "../v2/RelationshipWorkspace";
+import { GeographyDetailView, GeographyOverviewView } from "../v2/GeographyViews";
 import { isAdminSession } from "@/lib/admin/auth";
 import TargetsView from "../v2/TargetsView";
-import { getBusinessMarketDetail, getBusinessMarketOverview } from "@/lib/business-market-footprint";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -312,11 +315,14 @@ type ManagerSearchParams = {
     /** Find Us Here → By Market: view switch and the selected Market's slug. */
     fv?: string;
     fm?: string;
-    /** Find Us Here → Targets: search, status, page, and the open Target. */
+    /** Find Us Here → Targets: search, status, page, and the open Target (legacy). */
     tq?: string;
     ts?: string;
     tp?: string;
     pt?: string;
+    /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
+    fa?: string;
+    loc?: string;
 };
 
 export default async function ManageBusinessPage({
@@ -470,8 +476,15 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const onGrowthTargets = activeTab === "growth" && viewParam === "targets";
   const onTargets = onFindUsTargets || onGrowthTargets;
   const targetsFilter = parsePlacementFilter({ q: rawSearchParams.tq, status: rawSearchParams.ts });
-  const openTargetId = onTargets && typeof rawSearchParams.pt === "string" ? rawSearchParams.pt : "";
   const marketKey = onFindUsMarkets && typeof rawSearchParams.fm === "string" ? rawSearchParams.fm.replace(/[^a-z0-9-]/gi, "").slice(0, 60) : "";
+  const areaKey = onFindUsMarkets && marketKey && marketKey !== "none" ? cleanSlug(rawSearchParams.fa) : "";
+  // The Business ↔ Location relationship workspace — ONE page per place, opened
+  // from any lens (Places, By Market, Targets, Growth → Targets) with `loc`;
+  // legacy `pt` (a Placement id) resolves to its place.
+  const workspaceDoor = onFindUs || onGrowthTargets;
+  const requestedLoc = workspaceDoor && typeof rawSearchParams.loc === "string" ? rawSearchParams.loc : "";
+  const legacyPt = workspaceDoor && !requestedLoc && typeof rawSearchParams.pt === "string" ? rawSearchParams.pt : "";
+  const wantsWorkspace = Boolean(requestedLoc || legacyPt);
   const findUsFilter = parseAvailabilityFilter({ q: rawSearchParams.fq, status: rawSearchParams.fs, relationship: rawSearchParams.fr, imported: rawSearchParams.fi });
   const onLocations = onFindmiHere && presenceView === "locations";
   const onProfile = activeTab === "profile";
@@ -1229,25 +1242,33 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   };
   const growthTrio = () => Promise.all([getBrandAudit(id), getIdeasForBusiness(id), getBusinessGoals(id)]);
   const schedulePromise = whenP(needsSchedule || needsHosted, loadSchedule, undefined);
-  // Targets — private Placement pipeline (lib/business-placements.ts).
-  // Business reads never select internal_notes; those are read only for a
-  // founder Admin session, and only for the open Target. Activity is read only
-  // for the open Target (first page) — never for the list.
-  const targetsPromise = whenP(
-    onTargets,
+  // Relationship workspace (lib/business-relationships.ts). Placement reads never
+  // select internal_notes; those are read only for a founder Admin session.
+  // Activity is read only for the opened place (first page) — never for a list.
+  const workspacePromise = whenP(
+    wantsWorkspace,
     async () => {
-      const open = openTargetId ? await getBusinessPlacement(admin, id, openTargetId) : null;
-      // A missing / not-this-Business Target falls back to the list.
-      const list = open ? null : await getBusinessPlacementsPage(admin, id, targetsFilter, Number(rawSearchParams.tp) || 1);
-      const findmiAdmin = Boolean(open) && (isAdminElevated || (await isAdminSession()));
-      const [internalNotes, activity] = await Promise.all([
-        open && findmiAdmin ? adminGetPlacementInternalNotes(admin, id, open.id) : null,
-        open ? getPlacementActivityPage(admin, id, open.id, null) : null,
+      const locationId = requestedLoc || (await getBusinessPlacement(admin, id, legacyPt))?.locationId || "";
+      const data = locationId ? await getRelationshipWorkspace(admin, id, locationId) : null;
+      if (!data) return null;
+      const findmiAdmin = Boolean(data.placement) && (isAdminElevated || (await isAdminSession()));
+      const [internalNotes, activity, scope] = await Promise.all([
+        data.placement && findmiAdmin ? adminGetPlacementInternalNotes(admin, id, data.placement.id) : null,
+        data.placement ? getPlacementActivityPage(admin, id, data.placement.id, null) : null,
+        onFindUsMarkets && marketKey && marketKey !== "none" ? resolveGeographyScope(admin, marketKey, areaKey) : null,
       ]);
-      return { list, open, findmiAdmin, internalNotes, activity };
+      return { data, findmiAdmin, internalNotes, activity, scopeLabel: scope?.label ?? null };
     },
     null
   );
+  // Targets list — private Placement pipeline (lib/business-placements.ts); not read while a workspace is open.
+  const targetsPromise = whenP(
+    onTargets,
+    async () => ((await workspacePromise) ? null : getBusinessPlacementsPage(admin, id, targetsFilter, Number(rawSearchParams.tp) || 1)),
+    null
+  );
+  const growingInPromise = whenP(onGrowthTargets && !wantsWorkspace, () => getGrowingIn(admin, id), [] as Awaited<ReturnType<typeof getGrowingIn>>);
+  const dueNextPromise = whenP(onHome, () => getDueNextActions(admin, id), { count: 0, first: null } as Awaited<ReturnType<typeof getDueNextActions>>);
   // Growth's one-line Targets status (two head counts).
   const targetsPursuitPromise = whenP(needsGrowth, () => getPlacementPursuit(admin, id), { total: 0, pursuing: 0 });
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
@@ -1351,10 +1372,18 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     // { available: false } until the details migration is applied.
     whenP(onFindUsPlaces, () => getOwnerAvailabilityPage(admin, id, findUsFilter, Number(rawSearchParams.fp) || 1), { available: false, items: [], total: 0, page: 1, pageSize: 50, counts: { all: 0, live: 0, pending: 0, declined: 0, imported: 0 } } as Awaited<ReturnType<typeof getOwnerAvailabilityPage>>),
     // Product Sets feed the Find Us Here Products chooser (template layer).
-    whenP(onFindUsPlaces, () => getProductSets(admin, id), { available: false, sets: [] } as Awaited<ReturnType<typeof getProductSets>>),
+    whenP(onFindUsPlaces || wantsWorkspace, () => getProductSets(admin, id), { available: false, sets: [] } as Awaited<ReturnType<typeof getProductSets>>),
     // Find Us Here → By Market (a separate view of the same footprint, grouped by Market).
-    whenP(onFindUsMarkets && !marketKey, () => getBusinessMarketOverview(admin, id), { available: false, markets: [], others: [], noMarket: { market: null, intents: [], areaLabels: [], upcomingAppearances: 0, ours: 0, findUs: 0, live: 0, pending: 0, declined: 0, relationships: {} } } as Awaited<ReturnType<typeof getBusinessMarketOverview>>),
-    whenP(onFindUsMarkets && Boolean(marketKey), () => getBusinessMarketDetail(admin, id, marketKey, Number(rawSearchParams.fp) || 1), null as Awaited<ReturnType<typeof getBusinessMarketDetail>> | null),
+    // By Market — the geography lens over the same relationships (shared reader + scope helper).
+    whenP(onFindUsMarkets && !marketKey && !wantsWorkspace, () => getGeographyOverview(admin, id), null as Awaited<ReturnType<typeof getGeographyOverview>> | null),
+    whenP(
+      onFindUsMarkets && Boolean(marketKey) && !wantsWorkspace,
+      async () => {
+        const scope = marketKey === "none" ? ("none" as const) : await resolveGeographyScope(admin, marketKey, areaKey);
+        return scope ? getGeographyDetail(admin, id, scope) : null;
+      },
+      null as Awaited<ReturnType<typeof getGeographyDetail>> | null
+    ),
     whenP(
       activeTab === "moments" || onHome,
       () => getBusinessMoments(id, activeTab === "moments" ? { viewerUserId: user?.id ?? null, withDisplay: true } : { limit: 6, viewerUserId: user?.id ?? null }),
@@ -1368,11 +1397,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     // The schedule/hosted reads, and the Products list, load their own
     // outer state (see loadSchedule / loadProducts above).
     schedulePromise,
-    whenP(onProducts || onFindUs, loadProducts, undefined),
+    whenP(onProducts || onFindUs || wantsWorkspace, loadProducts, undefined),
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
-  const [targetsData, targetsPursuit] = await Promise.all([targetsPromise, targetsPursuitPromise]);
+  const [workspace, targetsList, targetsPursuit, growingIn, dueNext] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, dueNextPromise]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1386,23 +1415,40 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         targets: targetsPursuit,
       })
     : null;
-  // One Targets view for both doors (Find Us Here and Growth): same records, same actions.
-  const targetsView = targetsData ? (
+  // One Targets list for both doors (Find Us Here and Growth): same records, same actions.
+  const targetsView = targetsList ? (
     <TargetsView
       businessId={id}
-      available={targetsData.list ? targetsData.list.available : Boolean(targetsData.open)}
-      items={targetsData.list?.items ?? []}
-      total={targetsData.list?.total ?? 0}
-      page={targetsData.list?.page ?? 1}
-      pageSize={targetsData.list?.pageSize ?? 25}
-      counts={targetsData.list?.counts ?? { all: 0, target: 0, in_conversation: 0, placement_pending: 0, active: 0, passed: 0 }}
+      available={targetsList.available}
+      items={targetsList.items}
+      total={targetsList.total}
+      page={targetsList.page}
+      pageSize={targetsList.pageSize}
+      counts={targetsList.counts}
       filter={targetsFilter}
       canEdit={canEditPlacements(membershipRole, isAdminElevated)}
-      open={targetsData.open}
-      openMissing={Boolean(openTargetId) && !targetsData.open}
-      isFindmiAdmin={targetsData.findmiAdmin}
-      internalNotes={targetsData.internalNotes}
-      activity={targetsData.activity}
+      openMissing={wantsWorkspace && !workspace}
+    />
+  ) : null;
+  // One relationship workspace for every door; Back returns to the lens it was opened from.
+  const workspaceBack = (() => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt") q.set(k, v);
+    return `/account/business/${id}?${q.toString()}`;
+  })();
+  const workspaceView = workspace ? (
+    <RelationshipWorkspace
+      businessId={id}
+      data={workspace.data}
+      canEdit={canEditPlacements(membershipRole, isAdminElevated)}
+      isFindmiAdmin={workspace.findmiAdmin}
+      internalNotes={workspace.internalNotes}
+      activity={workspace.activity}
+      backHref={workspaceBack}
+      backLabel={onTargets ? "Targets" : onFindUsMarkets ? (workspace.scopeLabel ?? "By Market") : "Places"}
+      products={products.map((p) => ({ id: p.id, name: p.name }))}
+      productSets={productSetsData.sets}
+      productSetsAvailable={productSetsData.available}
     />
   ) : null;
   const requestPayoutAction = referralPartner
@@ -1479,6 +1525,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       description: !(business.short_description || business.description),
       category: !currentCategoryId,
     },
+    dueTargets: dueNext,
+    opportunitiesAwaitingResponse: growthSummary?.matchesAwaitingResponse ?? 0,
   });
 
 
@@ -1743,10 +1791,21 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             notice={goalNotice}
           />
         )}
-        {activeTab === "growth" && growthSummary && growthView === "targets" && (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-6 lg:max-w-3xl">
+        {activeTab === "growth" && growthSummary && growthView === "targets" && workspaceView}
+        {activeTab === "growth" && growthSummary && growthView === "targets" && !workspaceView && (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 lg:max-w-3xl">
               <GrowthTargetsHeader basePath={basePath} summary={growthSummary} />
+              {growingIn.length > 0 && (
+                <nav aria-label="Growing In" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-metadata">
+                  <span className="font-semibold text-muted">Growing In</span>
+                  {growingIn.map((g) => (
+                    <Link key={`${g.marketSlug}/${g.areaSlug ?? ""}`} href={`${basePath}?tab=findmi-here&view=find-us&fv=markets&fm=${g.marketSlug}${g.areaSlug ? `&fa=${g.areaSlug}` : ""}`} className="inline-flex min-h-9 items-center font-semibold text-accent hover:underline">
+                      {g.label} →
+                    </Link>
+                  ))}
+                </nav>
+              )}
             </div>
             {targetsView}
           </div>
@@ -2379,15 +2438,16 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             />
           </div>
         )}
-        {activeTab === "findmi-here" && presenceView === "find-us" && (
+        {activeTab === "findmi-here" && presenceView === "find-us" && workspaceView}
+        {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && (
           <div className="mb-4">
             <FindUsViewSwitch basePath={`/account/business/${id}`} active={onFindUsMarkets ? "markets" : onFindUsTargets ? "targets" : "places"} />
           </div>
         )}
-        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && !marketKey && <MarketOverview basePath={`/account/business/${id}`} data={marketOverview} />}
-        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsMarkets && marketKey && marketDetail && <MarketDetailView basePath={`/account/business/${id}`} detail={marketDetail} marketKey={marketKey} />}
-        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsTargets && targetsView}
-        {activeTab === "findmi-here" && presenceView === "find-us" && onFindUsPlaces && (
+        {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && onFindUsMarkets && !marketKey && <GeographyOverviewView basePath={`/account/business/${id}`} data={marketOverview} />}
+        {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && onFindUsMarkets && marketKey && <GeographyDetailView basePath={`/account/business/${id}`} detail={marketDetail} />}
+        {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && onFindUsTargets && targetsView}
+        {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && onFindUsPlaces && (
           <AvailableAtView
             businessId={id}
             available={ownerAvailability.available}

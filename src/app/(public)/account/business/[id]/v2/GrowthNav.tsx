@@ -39,22 +39,48 @@ export default function GrowthNav({
     />
   );
   if (!summary) return nav;
+  const steps = growthWorkflowSteps(summary);
+  const strip = (
+    <ol className="flex flex-col gap-1.5">
+      {steps.map((step, i) => (
+        <li key={step.key}>
+          <Link href={growthHref(basePath, step.key)} aria-current={step.key === active ? "step" : undefined} className="flex items-baseline gap-2 text-metadata">
+            <span className={`flex h-5 w-5 shrink-0 items-center justify-center self-center rounded-full text-[11px] font-bold ${step.key === active ? "bg-findmi text-white" : "bg-black/[0.07] text-muted"}`}>{i + 1}</span>
+            <span className={`font-semibold ${step.key === active ? "text-primary" : "text-secondary"}`}>{step.role}</span>
+            <span className={`min-w-0 flex-1 truncate text-right ${step.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{step.status}</span>
+          </Link>
+        </li>
+      ))}
+    </ol>
+  );
+  // Progressive disclosure: Goals (the Growth landing) shows the whole
+  // framework; every other Growth page shows only where it sits in it, one
+  // line, with the full overview a tap away — the working content comes first.
+  if (active !== "goals") {
+    const here = steps.find((s) => s.key === active);
+    return (
+      <div className="flex flex-col gap-2">
+        {nav}
+        <details className="rounded-2xl bg-black/[0.03]">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-4 text-metadata">
+            {here && <span className="shrink-0 font-semibold text-primary">{here.role}</span>}
+            {here && <span className="min-w-0 truncate text-muted">{here.status}</span>}
+            <span className="ml-auto shrink-0 font-semibold text-accent">Growth Overview ▾</span>
+          </summary>
+          <div className="flex flex-col gap-2 px-4 pb-3">
+            <p className="text-metadata text-muted">{GROWTH_WORKFLOW_INTRO}</p>
+            {strip}
+          </div>
+        </details>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
       {nav}
       <div className="rounded-2xl bg-black/[0.03] px-4 py-3">
         <p className="text-metadata text-muted">{GROWTH_WORKFLOW_INTRO}</p>
-        <ol className="mt-2 flex flex-col gap-1.5">
-          {growthWorkflowSteps(summary).map((step, i) => (
-            <li key={step.key}>
-              <Link href={growthHref(basePath, step.key)} aria-current={step.key === active ? "step" : undefined} className="flex items-baseline gap-2 text-metadata">
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center self-center rounded-full text-[11px] font-bold ${step.key === active ? "bg-findmi text-white" : "bg-black/[0.07] text-muted"}`}>{i + 1}</span>
-                <span className={`font-semibold ${step.key === active ? "text-primary" : "text-secondary"}`}>{step.role}</span>
-                <span className={`min-w-0 flex-1 truncate text-right ${step.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{step.status}</span>
-              </Link>
-            </li>
-          ))}
-        </ol>
+        <div className="mt-2">{strip}</div>
       </div>
     </div>
   );

@@ -335,6 +335,9 @@ test("49 (updated after the classification correction). Pass 3 itself added no m
       // Brand Audit + Opportunity Ideas V1 — new Idea tables only; no
       // Opportunity listing / Commercial Terms table is touched.
       "20261021000000_brand_audit_and_opportunity_ideas.sql",
+      // Pass 2 Block B — two nullable geography columns on opportunity_listings
+      // (market_id / market_area_id); no Commercial Terms table is touched.
+      "20261104000000_opportunity_listings_geography.sql",
     ]
   );
 });

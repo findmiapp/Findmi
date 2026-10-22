@@ -36,7 +36,7 @@ import { Chip } from "../../../owner-ui";
 import FindUsBulk from "./FindUsBulk";
 import ProductSetsPanel from "./ProductSetsPanel";
 
-type Place = { id: string; name: string; address?: string | null; city: string | null; state: string | null };
+export type Place = { id: string; name: string; address?: string | null; city: string | null; state: string | null };
 
 const STATUS_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as const;
 
@@ -336,12 +336,13 @@ export default function AvailableAtView({
  * a public claim (a way you’re there that wasn’t approved, or new note text)
  * sends it back to Pending Review (lib/business-availability-domain.ts
  * statusAfterOwnerEdit); the form says which, live, as you edit. */
-function PlaceForm({
+export function PlaceForm({
   businessId,
   products,
   productSets,
   productSetsAvailable,
   initial,
+  fixedPlace,
   onDone,
 }: {
   businessId: string;
@@ -349,12 +350,15 @@ function PlaceForm({
   productSets: ProductSet[];
   productSetsAvailable: boolean;
   initial?: OwnerAvailabilityItem;
+  /** Add for ONE known place (the relationship workspace's Add To Find Us Here):
+   * the place is preset and can't be changed. Same save path and review rules. */
+  fixedPlace?: Place;
   onDone: () => void;
 }) {
   const editing = Boolean(initial);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Place[]>([]);
-  const [place, setPlace] = useState<Place | null>(initial ? { id: initial.locationId, name: initial.locationName, city: initial.city, state: initial.state } : null);
+  const [place, setPlace] = useState<Place | null>(initial ? { id: initial.locationId, name: initial.locationName, city: initial.city, state: initial.state } : fixedPlace ?? null);
   const [relationships, setRelationships] = useState<AvailabilityRelationship[]>(initial?.relationships ?? ["stocked"]);
   const [productIds, setProductIds] = useState<string[]>(initial?.products.map((p) => p.id) ?? []);
   const [timing, setTiming] = useState<AvailabilityTiming>(initial ? availabilityTiming(initial.startsOn, initial.endsOn) : "ongoing");
@@ -409,7 +413,7 @@ function PlaceForm({
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-black/[0.08] bg-white p-4">
-      <p className="font-display text-card-title-lg font-bold text-primary">{editing ? "Edit Place" : "Add A Place"}</p>
+      <p className="font-display text-card-title-lg font-bold text-primary">{editing ? (fixedPlace ? "Find Us Here" : "Edit Place") : fixedPlace ? "Add To Find Us Here" : "Add A Place"}</p>
 
       <div>
         <label htmlFor="avail-place" className="text-metadata font-semibold text-secondary">Where</label>
@@ -419,7 +423,7 @@ function PlaceForm({
               {place.name}
               {place.city ? ` · ${place.city}` : ""}
             </span>
-            {!editing && <button type="button" onClick={() => { setPlace(null); setQuery(""); }} className="shrink-0 text-metadata font-semibold text-accent">Change</button>}
+            {!editing && !fixedPlace && <button type="button" onClick={() => { setPlace(null); setQuery(""); }} className="shrink-0 text-metadata font-semibold text-accent">Change</button>}
           </div>
         ) : (
           <>

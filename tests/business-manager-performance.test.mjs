@@ -94,7 +94,8 @@ test("data is per destination: heavy reads only run where they render", () => {
   assert.match(PAGE, /const marketsPromise = whenP\(onHome \|\| onSettings, loadMarkets/);
   assert.match(PAGE, /whenP\(onHome \|\| onPerformance, \(\) => getBusinessFollowerSummary/);
   assert.match(PAGE, /whenP\(onUpcoming \|\| onProducts, loadQrByEntity/);
-  assert.match(PAGE, /whenP\(onProducts \|\| onFindUs, loadProducts/);
+  // Pass 2 Block B: an open relationship workspace (Add To Find Us Here) needs Products too.
+  assert.match(PAGE, /whenP\(onProducts \|\| onFindUs \|\| wantsWorkspace, loadProducts/);
   assert.match(PAGE, /const needsSchedule = onHome \|\| onUpcoming/);
   assert.match(PAGE, /const needsHosted = onHome \|\| onUpcoming \|\| onPast/);
   // The platform-wide Event/occurrence reads (Add picker + orphan participations) are Upcoming-only.

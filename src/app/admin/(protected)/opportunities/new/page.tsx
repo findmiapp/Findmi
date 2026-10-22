@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import OpportunityForm from "../OpportunityForm";
 import { createOpportunity } from "../actions";
 
@@ -24,6 +25,7 @@ export default async function NewOpportunityPage({ searchParams }: { searchParam
           initialOptions={[]}
           legacyUnclassified={false}
           initialLocation={null}
+          markets={await getActiveMarketsWithAreaOptions()}
           initialEvent={null}
           action={createOpportunity}
           saveLabel="Save Draft"

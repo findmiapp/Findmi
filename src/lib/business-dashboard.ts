@@ -460,6 +460,10 @@ export interface NeedsAttentionInput {
   profileIncomplete: boolean;
   /** Which of profileIncomplete's own signals are missing (optional detail). */
   missingProfile?: { logo: boolean; description: boolean; category: boolean };
+  /** Targets whose Next Action is due today or overdue (not Passed) — lib/business-relationships.ts. */
+  dueTargets?: { count: number; first: { locationId: string; name: string; nextAction: string | null; overdue: boolean } | null };
+  /** Commercial Opportunities sent to this Business still waiting for its answer. */
+  opportunitiesAwaitingResponse?: number;
 }
 
 /** Every item here is derived from data the page already fetches — no new
@@ -514,6 +518,31 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
         actionHref: missingVenue.editHref,
       });
     }
+  }
+
+  // Pass 2 Block B — derived from the records that own them (a Target's own
+  // Next Action date; an Opportunity's own recipient status). No task records:
+  // the item disappears when the Next Action changes or the Business responds.
+  const due = input.dueTargets;
+  if (due && due.count > 0 && due.first) {
+    const when = due.first.overdue ? "is overdue" : "is due today";
+    items.push({
+      id: "targets-due",
+      title: due.count === 1 ? "Follow Up" : `${due.count} Follow-Ups Due`,
+      message: due.count === 1 ? `${due.first.name}: ${due.first.nextAction ?? "your next step"} ${when}.` : `${due.first.name} and ${due.count - 1} more have a next step due.`,
+      actionLabel: due.count === 1 ? "Open" : "View Targets",
+      actionHref: due.count === 1 ? `${base}?tab=findmi-here&view=find-us&fv=targets&loc=${due.first.locationId}` : `${base}?tab=growth&view=targets`,
+    });
+  }
+  if ((input.opportunitiesAwaitingResponse ?? 0) > 0) {
+    const n = input.opportunitiesAwaitingResponse!;
+    items.push({
+      id: "opportunities-awaiting",
+      title: n === 1 ? "Opportunity Needs Response" : `${n} Opportunities Need Response`,
+      message: n === 1 ? "Findmi sent you an Opportunity. Let us know if you’re interested." : "Findmi sent you Opportunities. Let us know which interest you.",
+      actionLabel: "Respond",
+      actionHref: `${base}?tab=opportunities`,
+    });
   }
 
   if (input.newOrderCount > 0) {

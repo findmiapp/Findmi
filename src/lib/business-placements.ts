@@ -180,6 +180,14 @@ export async function getBusinessPlacement(admin: SupabaseClient, businessId: st
   return toItem(data as unknown as RawRow);
 }
 
+/** This Business's Placement at ONE place, or null (the pair is unique). */
+export async function getBusinessPlacementByLocation(admin: SupabaseClient, businessId: string, locationId: string): Promise<BusinessPlacementItem | null> {
+  if (!UUID.test(locationId)) return null;
+  const { data, error } = await admin.from("business_location_placements").select(BUSINESS_PLACEMENT_COLUMNS).eq("business_id", businessId).eq("location_id", locationId).maybeSingle();
+  if (error || !data) return null;
+  return toItem(data as unknown as RawRow);
+}
+
 /** Add a canonical Location as a Target. Never duplicates: when this Business
  * already has a Placement for the Location (any status, Passed included) the
  * existing one is returned so the caller can open — and if needed reopen — it.

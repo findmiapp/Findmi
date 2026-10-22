@@ -94,6 +94,9 @@ export interface BusinessOpportunity {
 
 /** Full rows — Admin only. */
 export interface AdminOpportunityListing extends BusinessOpportunityListing {
+  /** Block B — absent until the geography migration is applied. */
+  market_id?: string | null;
+  market_area_id?: string | null;
   /** Opportunities V2 — absent until the V2 migration is applied. */
   visibility?: "private" | "discoverable";
   internal_notes: string | null;

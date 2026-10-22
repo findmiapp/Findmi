@@ -78,6 +78,8 @@ function readListingForm(formData: FormData, legacy: LegacyBridgePricing) {
     description: str(formData, "description"),
     image_url: str(formData, "image_url"),
     location_id: str(formData, "location_id"),
+    market_id: str(formData, "market_id"),
+    market_area_id: str(formData, "market_area_id"),
     place_text: str(formData, "place_text"),
     host_name: str(formData, "host_name"),
     event_id: str(formData, "event_id"),
@@ -117,14 +119,28 @@ async function persistCommercialTerms(
 }
 
 /** Referenced Location / Event must exist (a clear message instead of a
- * foreign-key error). */
+ * foreign-key error). Block B: an explicit Market / Area scope must be an
+ * active Market, and an Area must belong to it (an Area chosen without its
+ * Market takes the Area's own Market) — same posture as Locations/Events.
+ * Normalizes `fields` in place. */
 async function checkReferences(supabase: NonNullable<ReturnType<typeof getAdminSupabase>>, fields: ListingFields): Promise<string | null> {
-  const [location, event] = await Promise.all([
+  const [location, event, area] = await Promise.all([
     fields.location_id ? supabase.from("locations").select("id").eq("id", fields.location_id).maybeSingle() : null,
     fields.event_id ? supabase.from("events").select("id").eq("id", fields.event_id).maybeSingle() : null,
+    fields.market_area_id ? supabase.from("market_areas").select("id, market_id").eq("id", fields.market_area_id).eq("active", true).maybeSingle() : null,
   ]);
   if (fields.location_id && !location?.data) return "That Location no longer exists.";
   if (fields.event_id && !event?.data) return "That Event no longer exists.";
+  if (fields.market_area_id) {
+    const a = area?.data as { id: string; market_id: string } | null;
+    if (!a) return "That Area isn't available.";
+    if (fields.market_id && fields.market_id !== a.market_id) return "That Area isn't in the chosen Market.";
+    fields.market_id = a.market_id;
+  }
+  if (fields.market_id) {
+    const { data: market } = await supabase.from("markets").select("id").eq("id", fields.market_id).eq("active", true).maybeSingle();
+    if (!market) return "That Market isn't available.";
+  }
   return null;
 }
 

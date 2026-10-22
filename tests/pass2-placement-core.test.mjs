@@ -353,13 +353,13 @@ test("Add Target's create action reuses the shared inline-place workflow behind 
   assert.match(picker, /useResults = usePlaceResults/, "existing picker callers keep the account search");
 });
 
-test("the Manager page reads internal notes only for a founder Admin session and only for the open Target", () => {
+test("the Manager page reads internal notes only for a founder Admin session and only for the open relationship workspace", () => {
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(page, /const findmiAdmin = Boolean\(open\) && \(isAdminElevated \|\| \(await isAdminSession\(\)\)\);/);
-  assert.match(page, /open && findmiAdmin \? adminGetPlacementInternalNotes\(admin, id, open\.id\) : null,/);
+  assert.match(page, /const findmiAdmin = Boolean\(data\.placement\) && \(isAdminElevated \|\| \(await isAdminSession\(\)\)\);/);
+  assert.match(page, /data\.placement && findmiAdmin \? adminGetPlacementInternalNotes\(admin, id, data\.placement\.id\) : null,/);
   assert.match(page, /canEdit=\{canEditPlacements\(membershipRole, isAdminElevated\)\}/);
-  const view = read("src/app/(public)/account/business/[id]/v2/TargetsView.tsx");
-  assert.match(view, /\{isFindmiAdmin && <InternalNotes /);
+  const view = read("src/app/(public)/account/business/[id]/v2/RelationshipWorkspace.tsx");
+  assert.match(view, /\{placement && props\.isFindmiAdmin && <InternalNotes /);
 });
 
 // ── Pass 1 Find Us Here unchanged ──────────────────────────────────────────
