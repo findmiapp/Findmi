@@ -286,7 +286,7 @@ test("workspace hierarchy and removed clutter", () => {
   const order = ["<StatusControl", "<NextCard", "<SummaryBlock", "<ActivityFeed", "<Presence", "<OpportunityCards", "Appearances Here", "<InternalNotes"];
   const at = order.map((o) => body.indexOf(o));
   assert.ok(at.every((i) => i > 0), "every section present");
-  assert.deepEqual([...at].sort((a, b) => a - b), at, "Primary → Next → Summary → Activity → Presence → Opportunities → Appearances → Findmi Internal");
+  assert.deepEqual([...at].sort((a, b) => a - b), at, "Primary → Next → Context → Activity → Presence → Opportunities → Appearances → Findmi Internal");
   assert.doesNotMatch(w, /Notes are kept in order/);
   assert.match(w, /<details/, "Findmi Internal is collapsed");
   assert.match(w, /Add a note/i, "compact composer");
@@ -317,12 +317,33 @@ test("appearance context reads exclude canceled appearances", () => {
 
 // ── Growth progressive disclosure ───────────────────────────────────────────
 
-test("Growth: the full framework on Goals only; a compact expandable overview elsewhere", () => {
+test("Growth: the full framework on Goals only; the work tabs show just the tabs", () => {
   const nav = read(`${V2}/GrowthNav.tsx`);
-  assert.match(nav, /Growth Overview ▾/);
-  assert.match(nav, /<details/);
-  assert.match(nav, /active !== "goals"|active === "goals"/);
-  assert.match(read(PAGE), /getGrowingIn\(/, "contextual Growing In links, no Markets destination");
+  assert.match(nav, /if \(!summary \|\| active !== "goals"\) return nav;/, "Targets / Opportunities / Ideas: tabs only");
+  assert.match(nav, /GROWTH_WORKFLOW_INTRO/, "Goals keeps the framework");
+  assert.doesNotMatch(nav, /Growth Overview|<details/, "no overview scaffolding on work views");
+  const page = read(PAGE);
+  assert.match(page, /getGrowingIn\(/, "contextual Growing In links, no Markets destination");
+  assert.match(page, /context=\{[\s\S]*?growingIn\.length > 0 \?[\s\S]*?aria-label="Growing In"/, "Growing In sits inside the Targets surface");
+});
+
+test("Targets: no permanent explanation — a small Private marker; the note stays in the empty state", () => {
+  const view = read(`${V2}/TargetsView.tsx`);
+  assert.doesNotMatch(view, /Places you want to get into/);
+  assert.match(view, /title=\{PLACEMENT_PRIVACY_NOTE\}>\s*<LockIcon className="h-3 w-3" \/> Private/);
+  assert.match(view, /counts\.all === 0 && <span className="mt-1 block text-metadata">\{PLACEMENT_PRIVACY_NOTE\}<\/span>/);
+  // Add Target → Growing In → search → status filters → rows.
+  const at = ["Add Target\n", "{context && !adding && context}", 'role="search"', 'aria-label="Status"', "{items.map((i) =>"].map((m) => view.indexOf(m));
+  assert.ok(at.every((i) => i > 0));
+  assert.deepEqual([...at].sort((a, b) => a - b), at);
+});
+
+test("Workspace labels: Context (the notes field) and Presence (Find Us Here)", () => {
+  const w = read(`${V2}/RelationshipWorkspace.tsx`);
+  assert.equal((w.match(/<h3 id="ws-presence" className=\{sectionTitle\}>Presence<\/h3>/g) ?? []).length, 2);
+  assert.match(w, /Not On Find Us Here/);
+  assert.match(w, /When you&rsquo;re available here, add this place to your public footprint\./);
+  assert.doesNotMatch(w, /<h3[^>]*>(Summary|Find Us Here)<\/h3>/);
 });
 
 // ── Needs Attention ─────────────────────────────────────────────────────────

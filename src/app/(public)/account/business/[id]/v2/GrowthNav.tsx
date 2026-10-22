@@ -16,7 +16,7 @@ export default function GrowthNav({
   basePath: string;
   active: GrowthDestination;
   badges?: Partial<Record<GrowthDestination, number>>;
-  /** When given, the workflow strip under the tabs shows each step's real status. */
+  /** When given on Goals, the workflow strip under the tabs shows each step's real status. */
   summary?: GrowthSummary | null;
 }) {
   const nav = (
@@ -38,7 +38,9 @@ export default function GrowthNav({
       }))}
     />
   );
-  if (!summary) return nav;
+  // Goals (the Growth landing) explains the Growth model; every other Growth
+  // page is a working surface — the tabs alone orient it, the work comes first.
+  if (!summary || active !== "goals") return nav;
   const steps = growthWorkflowSteps(summary);
   const strip = (
     <ol className="flex flex-col gap-1.5">
@@ -53,28 +55,6 @@ export default function GrowthNav({
       ))}
     </ol>
   );
-  // Progressive disclosure: Goals (the Growth landing) shows the whole
-  // framework; every other Growth page shows only where it sits in it, one
-  // line, with the full overview a tap away — the working content comes first.
-  if (active !== "goals") {
-    const here = steps.find((s) => s.key === active);
-    return (
-      <div className="flex flex-col gap-2">
-        {nav}
-        <details className="rounded-2xl bg-black/[0.03]">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-4 text-metadata">
-            {here && <span className="shrink-0 font-semibold text-primary">{here.role}</span>}
-            {here && <span className="min-w-0 truncate text-muted">{here.status}</span>}
-            <span className="ml-auto shrink-0 font-semibold text-accent">Growth Overview ▾</span>
-          </summary>
-          <div className="flex flex-col gap-2 px-4 pb-3">
-            <p className="text-metadata text-muted">{GROWTH_WORKFLOW_INTRO}</p>
-            {strip}
-          </div>
-        </details>
-      </div>
-    );
-  }
   return (
     <div className="flex flex-col gap-3">
       {nav}

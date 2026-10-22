@@ -165,7 +165,7 @@ export type PlacementActor = (typeof PLACEMENT_ACTORS)[number];
 export const PLACEMENT_ACTIVITY_NOTE_MAX = 2000;
 export const PLACEMENT_ACTIVITY_PAGE_SIZE = 25;
 
-export const PLACEMENT_SUMMARY_LABEL = "Summary / Context";
+export const PLACEMENT_SUMMARY_LABEL = "Context";
 export const PLACEMENT_SUMMARY_HINT = "Lasting context about this place — who’s who, how you were introduced. Edit it any time; dated updates go in Activity.";
 
 export function validateActivityNote(v: unknown): { ok: true; value: string } | { ok: false; error: string } {

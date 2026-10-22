@@ -300,13 +300,13 @@ test("permissions: owner/manager/Findmi Admin add notes; staff read only; Findmi
   assert.doesNotMatch(view.slice(view.indexOf("function ActivityEntry"), view.indexOf("function ActivityFeed")), /Edit|Delete|Remove/, "append-only: no edit or delete controls");
 });
 
-test("Summary is the relabeled `notes` field: read first, Edit when needed", () => {
+test("Context is the relabeled `notes` field: read first, Edit when needed", () => {
   const view = read("src/app/(public)/account/business/[id]/v2/RelationshipWorkspace.tsx");
-  assert.equal(D.PLACEMENT_SUMMARY_LABEL, "Summary / Context");
+  assert.equal(D.PLACEMENT_SUMMARY_LABEL, "Context");
   const block = view.slice(view.indexOf("function SummaryBlock"), view.indexOf("function Presence"));
-  assert.equal((block.match(/<h3 className=\{sectionTitle\}>Summary<\/h3>/g) ?? []).length, 2, "editor and read view");
+  assert.equal((block.match(/<h3 className=\{sectionTitle\}>Context<\/h3>/g) ?? []).length, 2, "editor and read view");
   assert.match(block, /save\(businessId, item, \{ notes: text \|\| null \}\)/);
-  assert.match(block, /\{item\.notes \? "Edit" : "Add Summary"\}/);
+  assert.match(block, /\{item\.notes \? "Edit" : "Add Context"\}/);
   assert.doesNotMatch(view, /">Notes</);
 });
 

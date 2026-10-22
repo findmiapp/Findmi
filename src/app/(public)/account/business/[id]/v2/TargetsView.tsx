@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -89,12 +89,13 @@ export function LockIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+/** A restrained marker, not a paragraph — the full note is its tooltip and
+ * the empty state's second line. */
 function Privacy() {
   return (
-    <p className="flex items-center gap-2 text-metadata text-muted">
-      <LockIcon className="h-3.5 w-3.5" />
-      <span>{PLACEMENT_PRIVACY_NOTE}</span>
-    </p>
+    <span className="inline-flex shrink-0 items-center gap-1 text-microcopy text-subtle" title={PLACEMENT_PRIVACY_NOTE}>
+      <LockIcon className="h-3 w-3" /> Private
+    </span>
   );
 }
 
@@ -128,6 +129,7 @@ export default function TargetsView({
   filter,
   canEdit,
   openMissing,
+  context,
 }: {
   businessId: string;
   /** false until the placements migration is applied. */
@@ -141,10 +143,12 @@ export default function TargetsView({
   canEdit: boolean;
   /** A `pt` / `loc` link that isn't a place this Business can open. */
   openMissing: boolean;
+  /** Optional page context under Add Target (Growth's "Growing In" links). */
+  context?: ReactNode;
 }) {
   return (
     <BusinessIdContext.Provider value={businessId}>
-      <TargetList businessId={businessId} available={available} items={items} total={total} page={page} pageSize={pageSize} counts={counts} filter={filter} canEdit={canEdit} openMissing={openMissing} />
+      <TargetList businessId={businessId} available={available} items={items} total={total} page={page} pageSize={pageSize} counts={counts} filter={filter} canEdit={canEdit} openMissing={openMissing} context={context} />
     </BusinessIdContext.Provider>
   );
 }
@@ -160,6 +164,7 @@ function TargetList({
   filter,
   canEdit,
   openMissing,
+  context,
 }: {
   businessId: string;
   available: boolean;
@@ -171,6 +176,7 @@ function TargetList({
   filter: PlacementFilter;
   canEdit: boolean;
   openMissing: boolean;
+  context?: ReactNode;
 }) {
   const { href, go, navPending } = useTargetNav();
   const [adding, setAdding] = useState(false);
@@ -202,21 +208,25 @@ function TargetList({
   const chip = (on: boolean) => `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
 
   return (
-    <div className="flex flex-col gap-5 lg:max-w-3xl">
-      <p className="text-body text-muted">Places you want to get into — a retailer, café, hotel or venue — and where each conversation stands.</p>
-      <Privacy />
-
+    <div className="flex flex-col gap-4 lg:max-w-3xl">
       {!available && <p className="text-body text-muted">This isn&rsquo;t available yet. Please check back soon.</p>}
       {openMissing && <p role="status" className="rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-metadata text-secondary">That Target wasn&rsquo;t found.</p>}
       {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
 
-      {canEdit && available && !adding && (
-        <div>
-          <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
-            Add Target
-          </button>
+      {available && !adding && (
+        <div className="flex min-h-10 items-center justify-between gap-3">
+          {canEdit && (
+            <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
+              Add Target
+            </button>
+          )}
+          <span className="ml-auto">
+            <Privacy />
+          </span>
         </div>
       )}
+
+      {context && !adding && context}
 
       {adding && (
         <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.08] bg-white p-4">
@@ -279,6 +289,7 @@ function TargetList({
       {available && items.length === 0 && !adding && (
         <p className="text-body text-muted">
           {counts.all === 0 ? (canEdit ? "No Targets yet. Add a place you want to be stocked, sold, served or featured in." : "No Targets yet.") : "No Targets match. Try a different search or clear the filters."}
+          {counts.all === 0 && <span className="mt-1 block text-metadata">{PLACEMENT_PRIVACY_NOTE}</span>}
         </p>
       )}
 

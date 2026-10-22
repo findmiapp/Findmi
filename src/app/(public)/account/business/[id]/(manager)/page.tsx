@@ -1428,6 +1428,19 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       filter={targetsFilter}
       canEdit={canEditPlacements(membershipRole, isAdminElevated)}
       openMissing={wantsWorkspace && !workspace}
+      context={
+        // Growth door only (growingIn is read only there).
+        growingIn.length > 0 ? (
+          <nav aria-label="Growing In" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-metadata">
+            <span className="font-semibold text-muted">Growing In</span>
+            {growingIn.map((g) => (
+              <Link key={`${g.marketSlug}/${g.areaSlug ?? ""}`} href={`/account/business/${id}?tab=findmi-here&view=find-us&fv=markets&fm=${g.marketSlug}${g.areaSlug ? `&fa=${g.areaSlug}` : ""}`} className="inline-flex min-h-9 items-center font-semibold text-accent hover:underline">
+                {g.label} →
+              </Link>
+            ))}
+          </nav>
+        ) : null
+      }
     />
   ) : null;
   // One relationship workspace for every door; Back returns to the lens it was opened from.
@@ -1793,19 +1806,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         )}
         {activeTab === "growth" && growthSummary && growthView === "targets" && workspaceView}
         {activeTab === "growth" && growthSummary && growthView === "targets" && !workspaceView && (
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-4 lg:max-w-3xl">
               <GrowthTargetsHeader basePath={basePath} summary={growthSummary} />
-              {growingIn.length > 0 && (
-                <nav aria-label="Growing In" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-metadata">
-                  <span className="font-semibold text-muted">Growing In</span>
-                  {growingIn.map((g) => (
-                    <Link key={`${g.marketSlug}/${g.areaSlug ?? ""}`} href={`${basePath}?tab=findmi-here&view=find-us&fv=markets&fm=${g.marketSlug}${g.areaSlug ? `&fa=${g.areaSlug}` : ""}`} className="inline-flex min-h-9 items-center font-semibold text-accent hover:underline">
-                      {g.label} →
-                    </Link>
-                  ))}
-                </nav>
-              )}
             </div>
             {targetsView}
           </div>

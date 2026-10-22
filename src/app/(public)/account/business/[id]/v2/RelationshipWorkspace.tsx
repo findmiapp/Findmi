@@ -33,7 +33,7 @@ import { OpportunityCards } from "./GeographyViews";
  * when there's no Target yet; old `pt` links resolve to the same place.
  *
  * Reading order, phone first: the place and where things stand → NEXT (the
- * future) → Summary (present understanding) → Find Us Here (public presence) →
+ * future) → Context (present understanding) → Presence (Find Us Here) →
  * Opportunities / Appearances (only when there are any) → Activity (the past) →
  * Findmi Internal (admin only, collapsed). State does the explaining; editing
  * opens only where you ask for it. Owners and managers edit; staff read. */
@@ -202,7 +202,7 @@ function TrackAsTarget({ businessId, locationId }: { businessId: string; locatio
   );
 }
 
-// ── Next / Summary ─────────────────────────────────────────────────────────
+// ── Next / Context ─────────────────────────────────────────────────────────
 
 const save = (businessId: string, item: BusinessPlacementItem, patch: Partial<{ notes: string | null; nextAction: string | null; nextActionAt: string | null }>) =>
   updateTargetAction(businessId, item.id, { status: item.status, notes: item.notes, nextAction: item.nextAction, nextActionAt: item.nextActionAt, ...patch });
@@ -266,7 +266,8 @@ function NextCard({ businessId, item, canEdit }: { businessId: string; item: Bus
   );
 }
 
-/** SUMMARY / CONTEXT — present understanding, read first; Edit when needed. */
+/** CONTEXT — the Placement `notes` field (label only): present understanding,
+ * read first; Edit when needed. */
 function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item: BusinessPlacementItem; canEdit: boolean }) {
   const { refresh } = useTargetNav();
   const [editing, setEditing] = useState(false);
@@ -276,8 +277,8 @@ function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item:
   if (!item.notes && !canEdit) return null;
   if (editing) {
     return (
-      <section aria-label="Summary" className="flex flex-col gap-2">
-        <h3 className={sectionTitle}>Summary</h3>
+      <section aria-label="Context" className="flex flex-col gap-2">
+        <h3 className={sectionTitle}>Context</h3>
         <textarea autoCapitalize="sentences" rows={4} autoFocus value={text} maxLength={PLACEMENT_LIMITS.notes} onChange={(e) => setText(e.target.value)} placeholder="e.g. Independent café. Sarah is the owner. Introduced through Derek." className={inputClass} />
         {error && <p role="alert" className="text-metadata font-semibold text-red-700">{error}</p>}
         <div className="flex items-center gap-1">
@@ -303,10 +304,10 @@ function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item:
     );
   }
   return (
-    <section aria-label="Summary" className="flex flex-col gap-0.5">
+    <section aria-label="Context" className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between gap-3">
-        <h3 className={sectionTitle}>Summary</h3>
-        {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>{item.notes ? "Edit" : "Add Summary"}</button>}
+        <h3 className={sectionTitle}>Context</h3>
+        {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>{item.notes ? "Edit" : "Add Context"}</button>}
       </div>
       {item.notes && <p className="whitespace-pre-line break-words text-body text-primary">{item.notes}</p>}
     </section>
@@ -334,7 +335,7 @@ function Presence({ businessId, data, canEdit, products, productSets, productSet
   if (data.ours) {
     return (
       <section aria-labelledby="ws-presence" className="flex flex-col gap-1">
-        <h3 id="ws-presence" className={sectionTitle}>Find Us Here</h3>
+        <h3 id="ws-presence" className={sectionTitle}>Presence</h3>
         <p className="text-body text-secondary">This is one of your own Locations.</p>
       </section>
     );
@@ -345,7 +346,7 @@ function Presence({ businessId, data, canEdit, products, productSets, productSet
   const canAdd = canEdit && !presence && placement?.status === "active";
   return (
     <section aria-labelledby="ws-presence" className="flex flex-col gap-1.5">
-      <h3 id="ws-presence" className={sectionTitle}>Find Us Here</h3>
+      <h3 id="ws-presence" className={sectionTitle}>Presence</h3>
       {presence ? (
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -360,9 +361,16 @@ function Presence({ businessId, data, canEdit, products, productSets, productSet
           {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>Manage</button>}
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="min-w-0 flex-1 text-body text-secondary">Not on Find Us Here</p>
-          {canAdd && <button type="button" onClick={() => setEditing(true)} className={primaryBtn}>Add To Find Us Here</button>}
+        <div className="flex flex-col gap-2">
+          <div>
+            <p className="text-body font-semibold text-secondary">Not On Find Us Here</p>
+            <p className="text-metadata text-muted">When you&rsquo;re available here, add this place to your public footprint.</p>
+          </div>
+          {canAdd && (
+            <div>
+              <button type="button" onClick={() => setEditing(true)} className={primaryBtn}>Add To Find Us Here</button>
+            </div>
+          )}
         </div>
       )}
     </section>
