@@ -273,5 +273,8 @@ test("the Event participation `opportunities` table is never touched by Admin Op
   assert.equal(/from\("opportunities"\)/.test(ACTIONS), false);
   const lib = readFileSync(new URL("../src/lib/opportunity-listings.ts", import.meta.url), "utf8");
   assert.equal(/from\("opportunities"\)/.test(lib), false);
-  assert.equal(/lib\/opportunities"/.test(ACTIONS + lib), false);
+  // The only lib/opportunities use is the shared Conversations layer (Findmi
+  // replying in a recipient's Relationship Thread) — never its table.
+  assert.equal(/lib\/opportunities"/.test(lib), false);
+  assert.match(ACTIONS, /import \{ sendFindmiMessage \} from "@\/lib\/opportunities";/);
 });

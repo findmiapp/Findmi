@@ -3,6 +3,7 @@ import type { ThreadMessagingFacts } from "./communication-policy";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getAccountEmail, getEntityManagerEmails, dedupeEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import {
   ensureEventAppearance,
   cancelEventAppearance,
@@ -36,7 +37,9 @@ import {
 
 export type OpportunityType = "event_invitation" | "event_application";
 export type OpportunityStatus = "pending" | "accepted" | "declined" | "withdrawn" | "superseded";
-export type ConversationEntityType = "business" | "event" | "location" | "personal";
+/** "findmi" — Findmi taking part as itself (Opportunity Relationship
+ * Thread): no user, no entity, never authorized through any members table. */
+export type ConversationEntityType = "business" | "event" | "location" | "personal" | "findmi";
 
 export interface OpportunityRow {
   id: string;
@@ -103,7 +106,7 @@ async function addParticipant(
  * one happens to act first. Membership is re-derived fresh from the
  * existing *_members tables (never a second identity system) — see this
  * pass's own audit conclusion. */
-async function addEntityParticipants(
+export async function addEntityParticipants(
   admin: SupabaseClient,
   conversationId: string,
   entityType: "business" | "event" | "location",
@@ -118,6 +121,80 @@ async function addEntityParticipants(
 }
 
 export type MessageKind = "note" | "system" | "text";
+
+/** The one Findmi participant on a conversation (created if missing). The
+ * table's UNIQUE NULLS NOT DISTINCT constraint keeps it to exactly one. */
+export async function ensureFindmiParticipant(admin: SupabaseClient, conversationId: string): Promise<string | null> {
+  await admin
+    .from("conversation_participants")
+    .upsert(
+      { conversation_id: conversationId, user_id: null, entity_type: "findmi", entity_id: null },
+      { onConflict: "conversation_id,user_id,entity_type,entity_id", ignoreDuplicates: true }
+    );
+  const { data } = await admin
+    .from("conversation_participants")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("entity_type", "findmi")
+    .is("user_id", null)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/** A system line in a thread's history (no sender). `createdAt` lets a
+ * lazily-created thread record past events at the time they happened. */
+export async function addSystemMessage(admin: SupabaseClient, conversationId: string, body: string, createdAt?: string): Promise<void> {
+  await admin
+    .from("conversation_messages")
+    .insert({ conversation_id: conversationId, sender_participant_id: null, kind: "system", body, ...(createdAt ? { created_at: createdAt } : {}) });
+}
+
+/** A text message from Findmi itself — shown as "Findmi", never as the
+ * admin who typed it (admin is a shared session; no personal identity is
+ * attached). The caller authorizes (requireAdmin) and scopes the thread. */
+export async function sendFindmiMessage(admin: SupabaseClient, conversationId: string, body: string): Promise<void> {
+  const participantId = await ensureFindmiParticipant(admin, conversationId);
+  await addMessage(admin, conversationId, participantId, "text", body);
+  await markFindmiRead(admin, conversationId);
+  await notifyNewMessage(admin, conversationId, null, "findmi", null, body, "Findmi");
+}
+
+/** Read state — the viewer opened this thread. Ensures the viewer has their
+ * own participant row for each identity they hold in it (a manager added
+ * after the thread started has none yet), then stamps last_read_at on the
+ * viewer's rows only: read state is per participant, never per entity. */
+export async function markConversationRead(
+  admin: SupabaseClient,
+  conversationId: string,
+  userId: string,
+  identities: { entityType: "business" | "event" | "location"; entityId: string }[]
+): Promise<void> {
+  for (const i of identities) await addParticipant(admin, conversationId, userId, i.entityType, i.entityId);
+  await admin.from("conversation_participants").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", conversationId).eq("user_id", userId);
+}
+
+export async function markFindmiRead(admin: SupabaseClient, conversationId: string): Promise<void> {
+  await admin
+    .from("conversation_participants")
+    .update({ last_read_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("entity_type", "findmi")
+    .is("user_id", null);
+}
+
+/** Unread for one viewer: a message from someone other than the viewer's own
+ * participant rows, newer than the latest of those rows' last_read_at (or
+ * any such message when the viewer never opened the thread). System history
+ * lines never count — a Business's own answer must not mark its thread
+ * unread, and Findmi's outcomes are emailed. Pure. */
+export function isConversationUnread(
+  viewerRows: readonly { id: string; last_read_at: string | null }[],
+  messages: readonly { kind: string; sender_participant_id: string | null; created_at: string }[]
+): boolean {
+  const mine = new Set(viewerRows.map((r) => r.id));
+  const lastRead = viewerRows.reduce<string | null>((max, r) => (r.last_read_at && (!max || r.last_read_at > max) ? r.last_read_at : max), null);
+  return messages.some((m) => m.kind !== "system" && !(m.sender_participant_id && mine.has(m.sender_participant_id)) && (!lastRead || new Date(m.created_at) > new Date(lastRead)));
+}
 
 async function addMessage(
   admin: SupabaseClient,
@@ -161,6 +238,10 @@ async function addPartyParticipants(
 ): Promise<void> {
   if (party.entityType === "personal") {
     if (actingUserId) await addParticipant(admin, conversationId, actingUserId, "personal", null);
+    return;
+  }
+  if (party.entityType === "findmi") {
+    await ensureFindmiParticipant(admin, conversationId);
     return;
   }
   if (!party.entityId) return;
@@ -269,6 +350,7 @@ async function getEntityDisplayName(
   entityType: ConversationEntityType,
   entityId: string | null
 ): Promise<string> {
+  if (entityType === "findmi") return "Findmi";
   if (entityType === "personal" || !entityId) return "A Findmi member";
   const { data } = await admin.from(ENTITY_TABLE[entityType]).select("name").eq("id", entityId).maybeSingle();
   return (data as { name: string } | null)?.name ?? ENTITY_LABEL[entityType];
@@ -306,10 +388,15 @@ export async function notifyNewMessage(
   body: string,
   senderNameOverride?: string
 ): Promise<void> {
-  const { data } = await admin.from("conversation_participants").select("user_id").eq("conversation_id", conversationId);
-  const recipientUserIds = [...new Set(((data ?? []) as { user_id: string }[]).map((row) => row.user_id))].filter(
-    (id) => id !== senderUserId
-  );
+  const { data } = await admin.from("conversation_participants").select("user_id, entity_type").eq("conversation_id", conversationId);
+  const rows = (data ?? []) as { user_id: string | null; entity_type: ConversationEntityType }[];
+  // Findmi is a participant without an account: when someone else writes
+  // into a Findmi-mediated thread, Findmi hears about it the way it hears
+  // about every other marketplace event (notifyAdmin).
+  if (senderEntityType !== "findmi" && rows.some((r) => r.entity_type === "findmi")) {
+    await notifyFindmiOfMessage(admin, conversationId, senderEntityType, senderEntityId, body, senderNameOverride);
+  }
+  const recipientUserIds = [...new Set(rows.map((row) => row.user_id))].filter((id): id is string => Boolean(id) && id !== senderUserId);
   if (recipientUserIds.length === 0) return;
   const emails = await Promise.all(recipientUserIds.map((id) => getAccountEmail(admin, id)));
   const to = dedupeEmails(emails);
@@ -326,6 +413,33 @@ export async function notifyNewMessage(
     body: [`"${preview}"`],
     actionLabel: "Reply on Findmi",
     actionUrl: `/account/messages/${conversationId}`,
+  });
+}
+
+async function notifyFindmiOfMessage(
+  admin: SupabaseClient,
+  conversationId: string,
+  senderEntityType: ConversationEntityType,
+  senderEntityId: string | null,
+  body: string,
+  senderNameOverride?: string
+): Promise<void> {
+  const { data: conversation } = await admin.from("conversations").select("subject_type, subject_id").eq("id", conversationId).maybeSingle();
+  const c = conversation as { subject_type: string; subject_id: string } | null;
+  let actionUrl = `/admin/conversations/${conversationId}`;
+  if (c?.subject_type === "commercial_opportunity") {
+    const { data: recipient } = await admin.from("opportunity_recipients").select("listing_id").eq("id", c.subject_id).maybeSingle();
+    const listingId = (recipient as { listing_id: string } | null)?.listing_id;
+    if (listingId) actionUrl = `/admin/opportunities/${listingId}/thread/${c.subject_id}`;
+  }
+  const senderName = senderNameOverride ?? (await getEntityDisplayName(admin, senderEntityType, senderEntityId));
+  const preview = body.length > 300 ? `${body.slice(0, 297)}...` : body;
+  await notifyAdmin({
+    subject: `New message from ${senderName}`,
+    heading: `${senderName} wrote to Findmi`,
+    body: [`"${preview}"`],
+    actionLabel: "Open Thread",
+    actionUrl,
   });
 }
 
@@ -1233,12 +1347,12 @@ export async function getApplicationsForBusiness(admin: SupabaseClient, business
 
 async function labelsForParticipants(
   admin: SupabaseClient,
-  participants: { entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[]
+  participants: { entity_type: ConversationEntityType; entity_id: string | null; user_id: string | null }[]
 ): Promise<Map<string, string>> {
   const businessIds = [...new Set(participants.filter((p) => p.entity_type === "business" && p.entity_id).map((p) => p.entity_id as string))];
   const eventIds = [...new Set(participants.filter((p) => p.entity_type === "event" && p.entity_id).map((p) => p.entity_id as string))];
   const locationIds = [...new Set(participants.filter((p) => p.entity_type === "location" && p.entity_id).map((p) => p.entity_id as string))];
-  const personalUserIds = [...new Set(participants.filter((p) => p.entity_type === "personal").map((p) => p.user_id))];
+  const personalUserIds = [...new Set(participants.filter((p) => p.entity_type === "personal" && p.user_id).map((p) => p.user_id as string))];
 
   const [businesses, events, locations, profiles] = await Promise.all([
     businessIds.length ? admin.from("businesses").select("id, name").in("id", businessIds) : Promise.resolve({ data: [] }),
@@ -1246,7 +1360,7 @@ async function labelsForParticipants(
     locationIds.length ? admin.from("locations").select("id, name").in("id", locationIds) : Promise.resolve({ data: [] }),
     personalUserIds.length ? admin.from("profiles").select("id, display_name").in("id", personalUserIds) : Promise.resolve({ data: [] }),
   ]);
-  const map = new Map<string, string>();
+  const map = new Map<string, string>([["findmi", "Findmi"]]);
   for (const b of (businesses.data ?? []) as { id: string; name: string }[]) map.set(`business:${b.id}`, b.name);
   for (const e of (events.data ?? []) as { id: string; name: string }[]) map.set(`event:${e.id}`, e.name);
   for (const l of (locations.data ?? []) as { id: string; name: string }[]) map.set(`location:${l.id}`, l.name);
@@ -1254,7 +1368,8 @@ async function labelsForParticipants(
   return map;
 }
 
-function labelKey(entityType: ConversationEntityType, entityId: string | null, userId: string): string {
+function labelKey(entityType: ConversationEntityType, entityId: string | null, userId: string | null): string {
+  if (entityType === "findmi") return "findmi";
   return entityType === "personal" ? `personal:${userId}` : `${entityType}:${entityId}`;
 }
 
@@ -1332,7 +1447,7 @@ export async function getConversationThread(
     .from("conversation_participants")
     .select("id, entity_type, entity_id, user_id")
     .eq("conversation_id", conversationId);
-  const participants = (participantRows ?? []) as { id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[];
+  const participants = (participantRows ?? []) as { id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string | null }[];
   const labels = await labelsForParticipants(admin, participants);
 
   const partiesMap = new Map<string, ConversationThreadParty>();
@@ -1341,7 +1456,7 @@ export async function getConversationThread(
     if (!partiesMap.has(key)) {
       partiesMap.set(key, {
         entityType: p.entity_type,
-        entityId: p.entity_type === "personal" ? null : p.entity_id,
+        entityId: p.entity_type === "personal" || p.entity_type === "findmi" ? null : p.entity_id,
         label: labels.get(key) ?? "Findmi Member",
       });
     }
@@ -1433,6 +1548,8 @@ export interface ConversationListItem {
    * approach already proven in the admin Communications dashboard
    * (lib/admin/conversations.ts). Null for every other subject_type. */
   productName: string | null;
+  /** This viewer hasn't opened the thread since someone else last wrote. */
+  unread: boolean;
 }
 
 /** The Messages/Inbox entry point's one data source — every Conversation
@@ -1480,15 +1597,15 @@ export async function listConversationsForUser(
 
   const [{ data: conversationRows }, { data: participantRows }, { data: messageRows }] = await Promise.all([
     admin.from("conversations").select("id, created_at, guest_name, subject_type, subject_id").in("id", conversationIds),
-    admin.from("conversation_participants").select("conversation_id, entity_type, entity_id, user_id").in("conversation_id", conversationIds),
+    admin.from("conversation_participants").select("id, conversation_id, entity_type, entity_id, user_id, last_read_at").in("conversation_id", conversationIds),
     admin
       .from("conversation_messages")
-      .select("conversation_id, body, created_at")
+      .select("conversation_id, kind, body, created_at, sender_participant_id")
       .in("conversation_id", conversationIds)
       .order("created_at", { ascending: false }),
   ]);
 
-  const participants = (participantRows ?? []) as { conversation_id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[];
+  const participants = (participantRows ?? []) as { id: string; conversation_id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string | null; last_read_at: string | null }[];
   const labels = await labelsForParticipants(admin, participants);
 
   // Launch V2 Pass 1 — product name resolution, same "batch by ids
@@ -1517,8 +1634,12 @@ export async function listConversationsForUser(
   }
 
   const lastMessageByConversation = new Map<string, { body: string; created_at: string }>();
-  for (const m of (messageRows ?? []) as { conversation_id: string; body: string; created_at: string }[]) {
+  const messagesByConversation = new Map<string, { kind: string; sender_participant_id: string | null; created_at: string }[]>();
+  for (const m of (messageRows ?? []) as { conversation_id: string; kind: string; body: string; created_at: string; sender_participant_id: string | null }[]) {
     if (!lastMessageByConversation.has(m.conversation_id)) lastMessageByConversation.set(m.conversation_id, m);
+    const list = messagesByConversation.get(m.conversation_id) ?? [];
+    list.push(m);
+    messagesByConversation.set(m.conversation_id, list);
   }
   const conversationMeta = new Map(conversationMetaRows.map((c) => [c.id, c]));
 
@@ -1556,6 +1677,10 @@ export async function listConversationsForUser(
       subjectId: meta?.subject_id ?? "",
       myEntityLabel: mine ? (labels.get(labelKey(mine.entity_type, mine.entity_id, mine.user_id)) ?? null) : null,
       productName: meta?.subject_type === "product_inquiry" ? (productNameById.get(meta.subject_id) ?? null) : null,
+      unread: isConversationUnread(
+        parties.filter((p) => p.user_id === userId),
+        messagesByConversation.get(conversationId) ?? []
+      ),
     });
   }
 

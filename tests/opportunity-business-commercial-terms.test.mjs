@@ -338,6 +338,9 @@ test("49 (updated after the classification correction). Pass 3 itself added no m
       // Pass 2 Block B — two nullable geography columns on opportunity_listings
       // (market_id / market_area_id); no Commercial Terms table is touched.
       "20261104000000_opportunity_listings_geography.sql",
+      // Opportunity Relationship Thread — opportunity_recipients.conversation_id
+      // (nullable FK to conversations); no Commercial Terms table is touched.
+      "20261105000000_opportunity_relationship_thread.sql",
     ]
   );
 });

@@ -828,6 +828,11 @@ export async function sendReply(
 ): Promise<ActionResult> {
   const text = body.trim();
   if (!text) return { error: "Write a message first." };
+  // Only a real member identity can reply here. "findmi" is Findmi itself —
+  // written only by Admin (sendFindmiMessage), never through this action.
+  if (actingEntityType !== "business" && actingEntityType !== "event" && actingEntityType !== "location" && actingEntityType !== "personal") {
+    return { error: "You don't have access to that." };
+  }
 
   try {
     if (actingEntityType === "business") await requireBusinessMember(actingEntityId!);

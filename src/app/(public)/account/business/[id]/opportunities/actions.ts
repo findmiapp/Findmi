@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { expressExploreInterest, respondToOpportunityListing } from "@/lib/opportunity-listings";
+import { expressExploreInterest, openBusinessOpportunityThread, respondToOpportunityListing } from "@/lib/opportunity-listings";
 import { isBusinessResponseStatus } from "@/lib/opportunity-listings-domain";
 import { createBusinessGoal, setBusinessGoalStatus, updateBusinessGoal } from "@/lib/opportunity-goals";
 import { isGoalStatus, type GoalFormInput } from "@/lib/opportunity-goals-domain";
@@ -46,6 +46,20 @@ export async function expressInterestFromExplore(businessId: string, listingId: 
   if (!result.ok) redirect(`${back}?error=${encodeURIComponent(result.error)}`);
   revalidatePath(`/account/business/${businessId}`);
   redirect(`/account/business/${businessId}/opportunities/${result.recipientId}?responded=interested`);
+}
+
+/** Opens this Business's thread with Findmi about one Opportunity. Every
+ * rule is enforced by openBusinessOpportunityThread. */
+export async function openOpportunityThread(businessId: string, recipientId: string) {
+  const detail = `/account/business/${businessId}/opportunities/${recipientId}`;
+  let result: Awaited<ReturnType<typeof openBusinessOpportunityThread>>;
+  try {
+    result = await openBusinessOpportunityThread({ businessId, recipientId });
+  } catch (err) {
+    redirect(`/account?error=${encodeURIComponent(err instanceof Error ? err.message : "You don't have access to that business.")}`);
+  }
+  if (!result.ok) redirect(`${detail}?error=${encodeURIComponent(result.error)}`);
+  redirect(result.href);
 }
 
 // ---------------------------------------------------------------- goals

@@ -87,11 +87,15 @@ export default async function InboxPage({
   const showConversations = filter !== "opportunities";
   const showOpportunities = filter !== "customers";
   const conversationRows = filter === "customers" ? customerConversations : conversations;
+  const unreadCount = conversations.filter((c) => c.unread).length;
   const totalCount = (showConversations ? conversationRows.length : 0) + (showOpportunities ? opportunities.length : 0);
 
   return (
     <PersonalAppShell displayName={displayName}>
-      <h1 className="font-display text-page-title font-bold text-primary">Inbox</h1>
+      <h1 className="font-display text-page-title font-bold text-primary">
+        Inbox
+        {unreadCount > 0 && <span className="ml-2 align-middle text-label font-bold uppercase text-findmi-700">{unreadCount} Unread</span>}
+      </h1>
       <p className="mt-1.5 text-body text-muted">Customers, organizers and event invitations that need your attention.</p>
 
       <div className="mt-5 flex gap-1.5">
@@ -128,7 +132,10 @@ export default async function InboxPage({
                 <li key={c.id} className="py-3 first:pt-0 last:pb-0">
                   <Link href={`/account/messages/${c.id}`} className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-body font-semibold text-primary">{c.otherPartyLabel}</p>
+                      <p className="flex items-center gap-1.5 truncate text-body font-semibold text-primary">
+                        {c.unread && <span aria-label="Unread" className="h-2 w-2 shrink-0 rounded-full bg-findmi" />}
+                        <span className="truncate">{c.otherPartyLabel}</span>
+                      </p>
                       <p className="mt-0.5 truncate text-metadata text-muted">
                         {[conversationContextLabel(c.subjectType), c.myEntityLabel, c.productName].filter(Boolean).join(" · ")}
                       </p>

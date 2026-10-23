@@ -13,7 +13,7 @@ import {
 } from "@/components/opportunities/OpportunityPresentation";
 import { BusinessStateBadge } from "@/components/opportunities/BusinessOpportunityCard";
 import { loadBusinessShell } from "../loadBusinessShell";
-import { respondToOpportunity } from "../actions";
+import { openOpportunityThread, respondToOpportunity } from "../actions";
 import { getSiteContactInfo } from "@/lib/contact-info";
 import { CHOOSE_PACKAGE_MESSAGE, choosePackageMailto, requiresPackageChoice } from "@/lib/opportunity-package-policy";
 
@@ -195,6 +195,21 @@ export default async function BusinessOpportunityDetailPage({
         <OpportunityResponseSection title={view.state.choices.length === 2 ? "Interested?" : "Your Response"}>
           <DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} choosePackageHref={choosePackageHref} />
         </OpportunityResponseSection>
+
+        {/* Conversation — this Business's thread with Findmi about this Opportunity */}
+        <section aria-labelledby="opportunity-conversation-heading" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5">
+          <div className="min-w-0">
+            <h2 id="opportunity-conversation-heading" className="text-base font-semibold text-ink">
+              Conversation
+            </h2>
+            <p className="mt-0.5 text-metadata text-muted">Questions or details? Message Findmi about this Opportunity.</p>
+          </div>
+          <form action={openOpportunityThread.bind(null, id, view.recipientId)}>
+            <button type="submit" className="rounded-full border border-black/10 bg-white px-4 py-2 text-label font-bold uppercase text-ink/75 transition hover:border-ink/30 hover:text-ink">
+              Messages
+            </button>
+          </form>
+        </section>
 
         {/* 4. Details */}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">

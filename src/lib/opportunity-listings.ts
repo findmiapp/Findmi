@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { getCurrentUserId } from "@/lib/journal";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import { ensureRecipientThread, recordRecipientStatus } from "@/lib/opportunity-recipient-thread";
 import {
   BUSINESS_LISTING_COLUMNS,
   BUSINESS_RECIPIENT_COLUMNS,
@@ -258,6 +259,8 @@ export async function respondToOpportunityListing(args: {
 
   const businessName = (Array.isArray(row.business) ? row.business[0] : row.business)?.name ?? "A Business";
   const listingTitle = listingRow?.title ?? "an Opportunity";
+  // Opportunity Relationship Thread — the answer joins the Business ↔ Findmi history.
+  await recordRecipientStatus(admin, args.recipientId, args.response, "business");
   await notifyAdmin({
     subject: args.response === "interested" ? `${businessName} is interested: ${listingTitle}` : `${businessName} passed: ${listingTitle}`,
     heading: args.response === "interested" ? "A Business is interested in an Opportunity" : "A Business passed on an Opportunity",
@@ -682,6 +685,8 @@ export async function expressExploreInterest(args: { businessId: string; listing
   const { data: businessRow } = await admin.from("businesses").select("name").eq("id", args.businessId).maybeSingle();
   const businessName = (businessRow as { name: string } | null)?.name ?? "A Business";
   const listingTitle = item?.opportunity.title ?? "an Opportunity";
+  // The new relationship gets its Business ↔ Findmi thread ("… is interested.").
+  await ensureRecipientThread(admin, data.id as string);
   await notifyAdmin({
     subject: `${businessName} is interested: ${listingTitle}`,
     heading: "A Business is interested in an Opportunity",
@@ -691,4 +696,23 @@ export async function expressExploreInterest(args: { businessId: string; listing
   });
 
   return { ok: true, recipientId: data.id as string };
+}
+
+/** The Business's thread with Findmi about one Opportunity it received
+ * (created on first open). Requires membership of THIS Business and a
+ * recipient row belonging to it. A founder in Manage-As holds no membership
+ * of the thread, so they're pointed at the Admin thread instead. */
+export async function openBusinessOpportunityThread(args: {
+  businessId: string;
+  recipientId: string;
+}): Promise<{ ok: true; href: string } | { ok: false; error: string }> {
+  const membership = await requireBusinessMember(args.businessId);
+  const admin = requireAdminClient();
+  const { data } = await admin.from("opportunity_recipients").select("id, listing_id").eq("id", args.recipientId).eq("business_id", args.businessId).maybeSingle();
+  const row = data as { id: string; listing_id: string } | null;
+  if (!row) return { ok: false, error: "Opportunity not found." };
+  if (membership.viaAdmin) return { ok: true, href: `/admin/opportunities/${row.listing_id}/thread/${row.id}` };
+  const thread = await ensureRecipientThread(admin, row.id);
+  if (!thread) return { ok: false, error: "Couldn't open this conversation. Please try again." };
+  return { ok: true, href: `/account/messages/${thread.conversationId}` };
 }

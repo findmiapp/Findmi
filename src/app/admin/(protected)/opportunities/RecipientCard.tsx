@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { AdminOpportunityRecipient } from "@/lib/opportunity-listings";
 import { ADMIN_TRANSITIONS, RECIPIENT_STATUS_LABELS, adminTransitionLabel } from "@/lib/opportunity-listings-domain";
 import { RECIPIENT_BADGE, formatOpportunityDate } from "./format";
-import { saveRecipientNotes, setRecipientStatus } from "./actions";
+import { openRecipientThread, saveRecipientNotes, setRecipientStatus } from "./actions";
 
 /** One recipient Business: status, fit/response notes, dates, the canonical
  * Admin moves (ADMIN_TRANSITIONS) and its Admin-only note. */
@@ -58,17 +58,21 @@ export default function RecipientCard({ r, listingId, manageable }: { r: AdminOp
         </dl>
       )}
 
-      {moves.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {moves.map((to) => (
-            <form key={to} action={setRecipientStatus.bind(null, listingId, r.id, to)}>
-              <button type="submit" className={smallBtn}>
-                {adminTransitionLabel(r.status, to)}
-              </button>
-            </form>
-          ))}
-        </div>
-      )}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {moves.map((to) => (
+          <form key={to} action={setRecipientStatus.bind(null, listingId, r.id, to)}>
+            <button type="submit" className={smallBtn}>
+              {adminTransitionLabel(r.status, to)}
+            </button>
+          </form>
+        ))}
+        {/* The Business ↔ Findmi thread for this relationship (created on first open). */}
+        <form action={openRecipientThread.bind(null, listingId, r.id)}>
+          <button type="submit" className={smallBtn}>
+            Thread
+          </button>
+        </form>
+      </div>
 
       <details className="group mt-3 border-t border-black/5 pt-2.5">
         <summary className="cursor-pointer list-none text-xs font-semibold text-ink/55 hover:text-ink">

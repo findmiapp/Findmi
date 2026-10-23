@@ -7,6 +7,9 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import { sendFindmiMessage } from "@/lib/opportunities";
+import { ensureRecipientThread, recordRecipientStatus } from "@/lib/opportunity-recipient-thread";
+import { businessNotificationForAdminStatus } from "@/lib/opportunity-thread-domain";
 import {
   buildAdminRecipientUpdate,
   canListingTransition,
@@ -400,6 +403,10 @@ export async function sendOpportunity(id: string, formData: FormData) {
     // canonical getEntityManagerEmails("business", ...) helper every other
     // product notification already uses — not a new ad-hoc "every member"
     // scan.
+    // Opportunity Relationship Thread — every genuinely new recipient gets its
+    // Business ↔ Findmi thread now ("Opportunity sent to …"). A repeat send
+    // never reaches here, so it can't create another.
+    await Promise.all(insertedRows.map((r) => ensureRecipientThread(supabase, r.id)));
     await Promise.all(
       insertedRows.map(async (r) => {
         const to = await getEntityManagerEmails(supabase, "business", r.business_id);
@@ -431,8 +438,8 @@ export async function setRecipientStatus(listingId: string, recipientId: string,
   const supabase = client(base);
 
   const [{ data: listing }, { data: row }] = await Promise.all([
-    supabase.from("opportunity_listings").select("status").eq("id", listingId).maybeSingle(),
-    supabase.from("opportunity_recipients").select("status").eq("id", recipientId).eq("listing_id", listingId).maybeSingle(),
+    supabase.from("opportunity_listings").select("status, title").eq("id", listingId).maybeSingle(),
+    supabase.from("opportunity_recipients").select("status, business_id").eq("id", recipientId).eq("listing_id", listingId).maybeSingle(),
   ]);
   if (!listing || !row) fail(base, "Recipient not found.");
   if (!canManageRecipients(listing!.status as ListingStatus)) fail(base, "Unarchive this Opportunity before changing recipients.");
@@ -450,8 +457,54 @@ export async function setRecipientStatus(listingId: string, recipientId: string,
     .maybeSingle();
   if (error || !data) fail(base, error?.message ?? "This recipient changed while you were editing. Please try again.");
 
+  // The thread records Findmi's move; the Business is emailed only for the
+  // outcomes it must know about (Confirmed / Cancelled / Withdrawn) — one
+  // email, never also a message notification (system lines don't notify).
+  await recordRecipientStatus(supabase, recipientId, next, "findmi");
+  const notice = businessNotificationForAdminStatus(next, (listing as { title: string }).title);
+  const businessId = (row as { business_id: string }).business_id;
+  if (notice) {
+    await sendProductNotification({
+      to: await getEntityManagerEmails(supabase, "business", businessId),
+      type: "opportunity_recipient_status",
+      subject: notice.subject,
+      heading: notice.heading,
+      body: [notice.body],
+      actionLabel: "Open Opportunity",
+      actionUrl: `/account/business/${businessId}/opportunities/${recipientId}`,
+    });
+  }
+
   revalidateListing(listingId);
   redirect(`${base}?saved=recipient#recipient-${recipientId}`);
+}
+
+/** Opens (creating once if needed) the recipient's Business ↔ Findmi thread. */
+export async function openRecipientThread(listingId: string, recipientId: string) {
+  await requireAdmin();
+  const base = detail(listingId);
+  const supabase = client(base);
+  const { data: row } = await supabase.from("opportunity_recipients").select("id").eq("id", recipientId).eq("listing_id", listingId).maybeSingle();
+  if (!row) fail(base, "Recipient not found.");
+  const thread = await ensureRecipientThread(supabase, recipientId);
+  if (!thread) fail(base, "Couldn't open this conversation. Please try again.");
+  redirect(`${base}/thread/${recipientId}`);
+}
+
+/** Findmi replies AS Findmi in one recipient's thread — scoped to that
+ * recipient of that listing (never a general admin write into any thread). */
+export async function sendFindmiReply(listingId: string, recipientId: string, formData: FormData) {
+  await requireAdmin();
+  const back = `${detail(listingId)}/thread/${recipientId}`;
+  const body = str(formData, "body")?.slice(0, 4000);
+  if (!body) redirect(`${back}?error=${encodeURIComponent("Write a message first.")}`);
+  const supabase = client(back);
+  const { data: row } = await supabase.from("opportunity_recipients").select("id").eq("id", recipientId).eq("listing_id", listingId).maybeSingle();
+  if (!row) fail(back, "Recipient not found.");
+  const thread = await ensureRecipientThread(supabase, recipientId);
+  if (!thread) fail(back, "Couldn't open this conversation. Please try again.");
+  await sendFindmiMessage(supabase, thread!.conversationId, body!);
+  redirect(`${back}?sent=1`);
 }
 
 /** Admin-only note on one recipient. */

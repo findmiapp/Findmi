@@ -37,7 +37,7 @@ export function isDirectBusinessMessagingEnabled(env: Record<string, string | un
 export const DIRECT_MESSAGING_PAUSED_MESSAGE =
   "Direct messages between businesses, events and venues are paused on Findmi. Commercial requests now go through Findmi.";
 
-export type ThreadEntityType = "business" | "event" | "location" | "personal";
+export type ThreadEntityType = "business" | "event" | "location" | "personal" | "findmi";
 
 export interface ThreadMessagingFacts {
   subjectType: string | null;

@@ -29,6 +29,7 @@ const SUBJECT_TYPE_LABEL: Record<string, string> = {
   findmi_sales: "Findmi Sales",
   findmi_commercial_request: "Commercial Request",
   opportunity: "Opportunity",
+  commercial_opportunity: "Commercial Opportunity",
   event_business_chat: "Direct Message",
   business_business_chat: "Direct Message",
   business_location_chat: "Direct Message",
@@ -39,9 +40,9 @@ export function conversationContextLabel(subjectType: string): string {
 }
 
 interface ParticipantRow {
-  entity_type: "business" | "event" | "location" | "personal";
+  entity_type: "business" | "event" | "location" | "personal" | "findmi";
   entity_id: string | null;
-  user_id: string;
+  user_id: string | null;
 }
 
 async function resolveParticipantLabels(
@@ -51,7 +52,7 @@ async function resolveParticipantLabels(
   const businessIds = [...new Set(participants.filter((p) => p.entity_type === "business" && p.entity_id).map((p) => p.entity_id!))];
   const eventIds = [...new Set(participants.filter((p) => p.entity_type === "event" && p.entity_id).map((p) => p.entity_id!))];
   const locationIds = [...new Set(participants.filter((p) => p.entity_type === "location" && p.entity_id).map((p) => p.entity_id!))];
-  const personalUserIds = [...new Set(participants.filter((p) => p.entity_type === "personal").map((p) => p.user_id))];
+  const personalUserIds = [...new Set(participants.filter((p) => p.entity_type === "personal" && p.user_id).map((p) => p.user_id as string))];
 
   const [businesses, events, locations, profiles] = await Promise.all([
     businessIds.length ? admin.from("businesses").select("id, name").in("id", businessIds) : Promise.resolve({ data: [] }),
@@ -59,7 +60,7 @@ async function resolveParticipantLabels(
     locationIds.length ? admin.from("locations").select("id, name").in("id", locationIds) : Promise.resolve({ data: [] }),
     personalUserIds.length ? admin.from("profiles").select("id, display_name").in("id", personalUserIds) : Promise.resolve({ data: [] }),
   ]);
-  const byKey = new Map<string, string>();
+  const byKey = new Map<string, string>([["findmi", "Findmi"]]);
   for (const b of (businesses.data ?? []) as { id: string; name: string }[]) byKey.set(`business:${b.id}`, `${b.name} (Business)`);
   for (const e of (events.data ?? []) as { id: string; name: string }[]) byKey.set(`event:${e.id}`, `${e.name} (Event)`);
   for (const l of (locations.data ?? []) as { id: string; name: string }[]) byKey.set(`location:${l.id}`, `${l.name} (Venue)`);
@@ -67,7 +68,7 @@ async function resolveParticipantLabels(
     byKey.set(`personal:${p.id}`, `${p.display_name || "Findmi Member"} (Consumer)`);
 
   return participants.map((p) => {
-    const key = p.entity_type === "personal" ? `personal:${p.user_id}` : `${p.entity_type}:${p.entity_id}`;
+    const key = p.entity_type === "findmi" ? "findmi" : p.entity_type === "personal" ? `personal:${p.user_id}` : `${p.entity_type}:${p.entity_id}`;
     return byKey.get(key) ?? (p.entity_type === "personal" ? "Findmi Member" : `${p.entity_type} (removed)`);
   });
 }
@@ -332,7 +333,7 @@ export async function getAdminConversationDetail(conversationId: string): Promis
   const participants = (participantRows ?? []) as (ParticipantRow & { id: string })[];
   const labels = await resolveParticipantLabels(admin, participants);
   const labelByParticipantId = new Map(participants.map((p, i) => [p.id, labels[i]]));
-  const entityParty = participants.find((p) => p.entity_type !== "personal");
+  const entityParty = participants.find((p) => p.entity_type !== "personal" && p.entity_type !== "findmi");
   const personalParty = participants.find((p) => p.entity_type === "personal");
 
   let senderLabel: string | null = row.guest_name ?? (personalParty ? (labelByParticipantId.get(personalParty.id) ?? null) : null);
@@ -376,6 +377,15 @@ export async function getAdminConversationDetail(conversationId: string): Promis
       contextLine = [s.city_market_count ? `${s.city_market_count} cities` : null, s.regions || null].filter(Boolean).join(" · ") || null;
     }
     entityLink = { label: "View Sales Inquiry", href: "/admin/sales-inquiries" };
+  } else if (row.subject_type === "commercial_opportunity") {
+    // Business ↔ Findmi thread for one commercial Opportunity recipient.
+    senderLabel = recipientLabel;
+    recipientLabel = "Findmi";
+    const { data: recipient } = await admin.from("opportunity_recipients").select("listing_id, listing:opportunity_listings(title)").eq("id", row.subject_id).maybeSingle();
+    const r = recipient as { listing_id: string; listing: { title: string } | { title: string }[] | null } | null;
+    const listing = r ? (Array.isArray(r.listing) ? r.listing[0] : r.listing) : null;
+    contextLine = listing?.title ?? null;
+    if (r) entityLink = { label: "Open Thread", href: `/admin/opportunities/${r.listing_id}/thread/${row.subject_id}` };
   } else if (row.subject_type === "findmi_commercial_request") {
     recipientLabel = "Findmi";
     contextLine = rawMessages[0]?.body.split("\n")[0] ?? null;

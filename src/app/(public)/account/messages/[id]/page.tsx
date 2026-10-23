@@ -6,6 +6,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import {
   getConversationThread,
   getUserManagedEntities,
+  markConversationRead,
   type ConversationEntityType,
   type ConversationMessageItem,
   type ConversationOpportunityCard,
@@ -82,6 +83,14 @@ export default async function ConversationPage({
     if (p.entityType === "location") return p.entityId != null && myLocationIds.has(p.entityId);
     return false;
   });
+
+  // Opening the thread marks it read for this viewer only (per participant).
+  await markConversationRead(
+    admin,
+    id,
+    user.id,
+    myParties.flatMap((p) => (p.entityId && (p.entityType === "business" || p.entityType === "event" || p.entityType === "location") ? [{ entityType: p.entityType, entityId: p.entityId }] : []))
+  );
 
   const otherParties = thread.parties.filter((p) => !myParties.some((m) => m.entityType === p.entityType && m.entityId === p.entityId));
   // Unify Site-Wide Communications pass — a guest-originated inquiry has
