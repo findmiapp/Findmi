@@ -6,7 +6,7 @@ import FindmiUrlCard from "@/components/FindmiUrlCard";
 import type { HomeActivity, NeedsAttentionItem } from "@/lib/business-dashboard";
 import type { BusinessMoment } from "@/lib/business-moments";
 import type { GrowthSummary } from "@/lib/growth";
-import { NEXT_INITIAL_LIMIT, type NextItem } from "@/lib/business-next";
+import { FOLLOW_UPS_INITIAL_LIMIT, type FollowUp } from "@/lib/business-follow-ups";
 import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { businessCreateActions } from "./createActions";
@@ -32,8 +32,8 @@ const APP_TIMEZONE = "America/New_York";
  *   B. Sticky Home section rail — Overview · Schedule · Growth ·
  *                                 Performance · Create (in-page anchors)
  *   C. Needs Attention          — a compact, collapsed status bar; absent at zero
- *   D. Next                     — WHAT DO I DO NEXT: up to three things this
- *                                 Business can act on (lib/business-next.ts)
+ *   D. Follow-Ups               — conditional; this Business's own Target
+ *                                 follow-ups (lib/business-follow-ups.ts)
  *   E. Happening Now            — conditional; live Appearances + hosted Events
  *   F. Coming Up                — WHAT'S HAPPENING: image-forward rows, one
  *                                 per Event (multi-date summarized), See All
@@ -74,8 +74,8 @@ export default function BusinessHome({
   liveActivities,
   comingUp,
   needsAttention,
-  next,
-  nextExpanded = false,
+  followUps,
+  followUpsExpanded = false,
   metrics,
   metricsRangeLabel,
   pendingInvitationCount,
@@ -96,10 +96,10 @@ export default function BusinessHome({
   /** Next few not-yet-live items, chronological, one per Event / standalone Appearance. */
   comingUp: HomeActivity[];
   needsAttention: NeedsAttentionItem[];
-  /** Next — already ordered (lib/business-next.ts buildBusinessNext). */
-  next: NextItem[];
-  /** `?next=all`: every Next item instead of the first three. */
-  nextExpanded?: boolean;
+  /** Follow-Ups — already ordered (lib/business-follow-ups.ts buildFollowUps). */
+  followUps: FollowUp[];
+  /** `?followups=all`: every Follow-Up instead of the first three. */
+  followUpsExpanded?: boolean;
   metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
   metricsRangeLabel: string | null;
   pendingInvitationCount: number;
@@ -174,8 +174,8 @@ export default function BusinessHome({
       {/* C. Needs Attention — compact, collapsed; renders nothing at zero. */}
       <NeedsAttentionBar items={attention} />
 
-      {/* D. Next — what this Business can act on now. */}
-      <NextSection basePath={basePath} items={next} expanded={nextExpanded} />
+      {/* D. Follow-Ups — only when this Business has any. */}
+      <FollowUpsSection basePath={basePath} items={followUps} expanded={followUpsExpanded} />
 
       {/* E + F. Schedule — Happening Now (only when live), then Coming Up. */}
       <div id="home-schedule" className={`flex flex-col gap-7 ${SECTION_CLASS}`}>
@@ -282,58 +282,52 @@ export default function BusinessHome({
   );
 }
 
-const NEXT_META_TONE: Record<NonNullable<NextItem["due"]>, string> = {
+const FOLLOW_UP_META_TONE: Record<NonNullable<FollowUp["due"]>, string> = {
   overdue: "font-semibold text-amber-700",
   today: "font-semibold text-findmi-700",
   soon: "text-muted",
   later: "text-muted",
 };
 
-/** Next — a derived read (a Target's own next step, an Opportunity waiting on
- * this Business), never a task list: nothing to check off here; each row
- * opens the record that owns it. First three, then See All (URL state). */
-function NextSection({ basePath, items, expanded }: { basePath: string; items: NextItem[]; expanded: boolean }) {
-  const more = items.length > NEXT_INITIAL_LIMIT;
-  const shown = expanded ? items : items.slice(0, NEXT_INITIAL_LIMIT);
+/** Follow-Ups — this Business's own Target next steps (private to it), never a
+ * task list: each row opens the relationship that owns it. Absent when there
+ * are none (no heading, no empty state). First three, then See All (URL state). */
+function FollowUpsSection({ basePath, items, expanded }: { basePath: string; items: FollowUp[]; expanded: boolean }) {
+  if (items.length === 0) return null;
+  const more = items.length > FOLLOW_UPS_INITIAL_LIMIT;
+  const shown = expanded ? items : items.slice(0, FOLLOW_UPS_INITIAL_LIMIT);
   return (
-    <section id="home-next" aria-labelledby="home-next-title" className={SECTION_CLASS}>
+    <section id="home-follow-ups" aria-labelledby="home-follow-ups-title" className={SECTION_CLASS}>
       {more ? (
         <SectionTitle
-          id="home-next-title"
-          title="Next"
-          href={expanded ? `${basePath}#home-next` : `${basePath}?next=all#home-next`}
+          id="home-follow-ups-title"
+          title="Follow-Ups"
+          href={expanded ? `${basePath}#home-follow-ups` : `${basePath}?followups=all#home-follow-ups`}
           linkLabel={expanded ? "Show Less" : `See All ${items.length}`}
         />
       ) : (
-        <h2 id="home-next-title" className="font-display text-section-title font-bold text-primary">
-          Next
+        <h2 id="home-follow-ups-title" className="font-display text-section-title font-bold text-primary">
+          Follow-Ups
         </h2>
       )}
-      {shown.length > 0 ? (
-        <ul className="mt-2.5 flex flex-col gap-2">
-          {shown.map((item) => (
-            <li key={item.key}>
-              <Link
-                href={item.href}
-                className="block rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
-              >
-                <span className="block truncate text-card-title font-semibold text-primary">{item.title}</span>
-                <span className={`line-clamp-2 block break-words text-metadata ${item.due ? NEXT_META_TONE[item.due] : "text-muted"}`}>{item.meta}</span>
-                {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
-                <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
-                  {item.actionLabel}
-                  <ChevronIcon direction="right" className="h-3 w-3" />
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="mt-2">
-          <p className="text-body font-semibold text-primary">You&rsquo;re All Caught Up</p>
-          <p className="text-metadata text-muted">Nothing needs your attention right now.</p>
-        </div>
-      )}
+      <ul className="mt-2.5 flex flex-col gap-2">
+        {shown.map((item) => (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              className="block rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+            >
+              <span className="block truncate text-card-title font-semibold text-primary">{item.title}</span>
+              <span className={`line-clamp-2 block break-words text-metadata ${item.due ? FOLLOW_UP_META_TONE[item.due] : "text-muted"}`}>{item.meta}</span>
+              {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
+              <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
+                Open Relationship
+                <ChevronIcon direction="right" className="h-3 w-3" />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

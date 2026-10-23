@@ -44,9 +44,9 @@ import { FindUsViewSwitch } from "../v2/MarketFootprintView";
 import { getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
 import { parseAvailabilityFilter } from "@/lib/business-availability-bulk-domain";
 import { canEditPlacements, parsePlacementFilter } from "@/lib/business-placements-domain";
-import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage, getNextPlacementActions, getPlacementActivityPage, getPlacementPursuit } from "@/lib/business-placements";
+import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage, getFollowUpPlacements, getPlacementActivityPage, getPlacementPursuit } from "@/lib/business-placements";
 import { followUpToday, getGeographyDetail, getGeographyOverview, getGrowingIn, getRelationshipWorkspace } from "@/lib/business-relationships";
-import { buildBusinessNext } from "@/lib/business-next";
+import { buildFollowUps } from "@/lib/business-follow-ups";
 import { cleanSlug, resolveGeographyScope } from "@/lib/geography-scope";
 import RelationshipWorkspace from "../v2/RelationshipWorkspace";
 import { GeographyDetailView, GeographyOverviewView } from "../v2/GeographyViews";
@@ -324,8 +324,8 @@ type ManagerSearchParams = {
     /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
     fa?: string;
     loc?: string;
-    /** Home: "all" shows every Next item instead of the first three. */
-    next?: string;
+    /** Home: "all" shows every Follow-Up instead of the first three. */
+    followups?: string;
 };
 
 export default async function ManageBusinessPage({
@@ -1271,8 +1271,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     null
   );
   const growingInPromise = whenP(onGrowthTargets && !wantsWorkspace, () => getGrowingIn(admin, id), [] as Awaited<ReturnType<typeof getGrowingIn>>);
-  // Home → Next: Targets with a next step (one bounded read; lib/business-next.ts).
-  const nextPlacementsPromise = whenP(onHome, () => getNextPlacementActions(admin, id), [] as Awaited<ReturnType<typeof getNextPlacementActions>>);
+  // Home → Follow-Ups: this Business's Targets with a next step (one bounded read).
+  const followUpPlacementsPromise = whenP(onHome, () => getFollowUpPlacements(admin, id), [] as Awaited<ReturnType<typeof getFollowUpPlacements>>);
   // Growth's one-line Targets status (two head counts).
   const targetsPursuitPromise = whenP(needsGrowth, () => getPlacementPursuit(admin, id), { total: 0, pursuing: 0 });
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
@@ -1405,7 +1405,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
-  const [workspace, targetsList, targetsPursuit, growingIn, nextPlacements] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, nextPlacementsPromise]);
+  const [workspace, targetsList, targetsPursuit, growingIn, followUpPlacements] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpPlacementsPromise]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1543,21 +1543,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       category: !currentCategoryId,
     },
   });
-  // Home → Next: Targets' own next steps + commercial Opportunities sent to
-  // this Business (the same items Growth already read — no extra query).
-  const businessNext = onHome
-    ? buildBusinessNext({
-        basePath: `/account/business/${id}`,
-        placements: nextPlacements,
-        opportunities: recommendedOpportunities.active.map((i) => ({
-          recipientId: i.view.recipientId,
-          title: i.view.opportunity.title,
-          group: i.view.group,
-          responseDeadline: i.view.opportunity.response_deadline,
-        })),
-        today: followUpToday(),
-      })
-    : [];
+  // Home → Follow-Ups (lib/business-follow-ups.ts): Targets only.
+  const followUps = onHome ? buildFollowUps({ basePath: `/account/business/${id}`, placements: followUpPlacements, today: followUpToday() }) : [];
 
 
   const addProduct = createMemberProduct.bind(null, id);
@@ -1785,8 +1772,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               liveActivities={homeActivities.live}
               comingUp={homeActivities.comingUp}
               needsAttention={needsAttention}
-              next={businessNext}
-              nextExpanded={rawSearchParams.next === "all"}
+              followUps={followUps}
+              followUpsExpanded={rawSearchParams.followups === "all"}
               metrics={
                 performanceData
                   ? {

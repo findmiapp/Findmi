@@ -44,12 +44,12 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → section rail → Needs Attention → Next → Happening Now → Coming Up → Moments → Growth → Performance → Quick Create → Public Profile", () => {
+test("Home hierarchy: Status → section rail → Needs Attention → Follow-Ups → Happening Now → Coming Up → Moments → Growth → Performance → Quick Create → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
     "<HomeSectionNav items={navItems} />",
     "<NeedsAttentionBar items={attention} />",
-    "<NextSection basePath={basePath} items={next} expanded={nextExpanded} />",
+    "<FollowUpsSection basePath={basePath} items={followUps} expanded={followUpsExpanded} />",
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
     "<MomentsStrip",

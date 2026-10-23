@@ -516,8 +516,8 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
     }
   }
 
-  // Target next steps and Opportunities waiting on a response live in Home's
-  // Next section (lib/business-next.ts), not here — never shown twice.
+  // Target next steps live in Home's Follow-Ups (lib/business-follow-ups.ts),
+  // not here — never shown twice.
 
   if (input.newOrderCount > 0) {
     items.push({

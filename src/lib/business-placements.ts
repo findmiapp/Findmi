@@ -19,7 +19,7 @@ import {
   type PlacementActor,
 } from "./business-placements-domain";
 import { safeAuthorName } from "./moment-author";
-import { NEXT_PLACEMENT_READ_LIMIT, type NextPlacementInput } from "./business-next";
+import { FOLLOW_UPS_READ_LIMIT, type FollowUpPlacement } from "./business-follow-ups";
 
 /** Placement Targets — server reads/writes over business_location_placements.
  * Service-role client only; EVERY function here performs NO authorization of its
@@ -140,10 +140,11 @@ export async function getPlacementCounts(admin: SupabaseClient, businessId: stri
   return { available: true, ...counts };
 }
 
-/** Business Home → Next: this Business's open Targets (not Passed) that carry
- * a next step, soonest dated first. One bounded read — no Activity, no
- * internal notes, no other Business's rows. lib/business-next.ts orders them. */
-export async function getNextPlacementActions(admin: SupabaseClient, businessId: string, limit = NEXT_PLACEMENT_READ_LIMIT): Promise<NextPlacementInput[]> {
+/** Business Home → Follow-Ups: this Business's own open Targets (not Passed)
+ * that carry a next step, soonest dated first. One bounded read — no
+ * Activity, no internal notes, no other Business's rows (a Target is private
+ * to the Business tracking it). lib/business-follow-ups.ts orders them. */
+export async function getFollowUpPlacements(admin: SupabaseClient, businessId: string, limit = FOLLOW_UPS_READ_LIMIT): Promise<FollowUpPlacement[]> {
   const { data, error } = await admin
     .from("business_location_placements")
     .select("location_id, status, next_action, next_action_at, locations!inner(name)")

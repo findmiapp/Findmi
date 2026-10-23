@@ -348,7 +348,7 @@ test("Workspace labels: Context (the notes field) and Presence (Find Us Here)", 
 
 // ── Needs Attention ─────────────────────────────────────────────────────────
 
-test("Needs Attention no longer carries Target next steps or Opportunity responses — Home's Next owns them", () => {
+test("Needs Attention no longer carries Target next steps or Opportunity responses", () => {
   const base = { businessId: BIZ, hasPrimaryMarket: true, pendingMarketRequestText: null, upcomingAppearances: [], newOrderCount: 0, profileIncomplete: false };
   const items = DASH.buildNeedsAttentionItems({ ...base, dueTargets: { count: 1, first: { locationId: "l1", name: "Cafe", nextAction: "Send samples", overdue: true } }, opportunitiesAwaitingResponse: 2 });
   assert.equal(items.some((i) => i.id === "targets-due" || i.id === "opportunities-awaiting"), false);
@@ -365,6 +365,6 @@ test("follow-up day: UTC past midnight is still the previous day in the app cale
   assert.equal(R.followUpToday(new Date("2026-12-02T04:30:00Z")), "2026-12-01");
   assert.equal(R.followUpToday(new Date("2026-12-02T05:00:00Z")), "2026-12-02");
   assert.match(read("src/lib/business-relationships.ts"), /export const followUpToday = \(now: Date = new Date\(\)\) => todayIn\(undefined, now\);/);
-  assert.match(read("src/app/(public)/account/business/[id]/(manager)/page.tsx"), /today: followUpToday\(\),/, "Home's Next uses the same day");
+  assert.match(read("src/app/(public)/account/business/[id]/(manager)/page.tsx"), /today: followUpToday\(\)/, "Home's Follow-Ups use the same day");
 });
 
