@@ -174,7 +174,7 @@ test("E. an existing Target is recognized (this Business only) and opens instead
   assert.ok(!JSON.stringify(res).includes("FINDMI SECRET"));
   const view = read(`${V2}/TargetsView.tsx`);
   assert.match(view, /if \(c\.target\) return open\(c\.kind, c\.target\.id, c\.kind === "location" \? c\.id : null\);/, "picking a Targeted result opens it");
-  assert.match(view, /<Chip tone=\{TARGET_STATUS_TONE\[c\.target\.status\]\}>Targeted<\/Chip>/);
+  assert.match(view, /<Chip tone=\{TARGET_STATUS_TONE\[c\.target\.status\]\}>\{TARGET_STATUS_LABELS\[c\.target\.status\]\}<\/Chip>\s*<span[^>]*>Open Relationship<\/span>/, "an existing Target shows its state + Open Relationship");
   assert.match(view, /renderItem=\{\(c\) => <CandidateRow c=\{c\} \/>\}/);
 });
 
@@ -216,10 +216,10 @@ test("Add Target has no Market / Area / Category filters — that's Discover", (
 
 // ── Entry points, Discover presentation, Targets list ──────────────────────
 
-test("D. Growth → Targets: Add Target and Discover are two obvious primary actions", () => {
+test("D. Growth → Targets: Add To Targets and Discover are two obvious primary actions", () => {
   const view = read(`${V2}/TargetsView.tsx`);
-  assert.match(view, /<span className="text-button font-bold">Add Target<\/span>\s*<span[^>]*>I know who I want<\/span>/);
-  assert.match(view, /<span className="text-button font-bold">Discover<\/span>\s*<span[^>]*>Help me find who to pursue<\/span>/);
+  assert.match(view, /<span className="text-button font-bold">Add To Targets<\/span>\s*<span[^>]*>I already know who or where<\/span>/);
+  assert.match(view, /<span className="text-button font-bold">Discover<\/span>\s*<span[^>]*>Find new Places, Businesses and Events<\/span>/);
   assert.match(read("src/app/(public)/account/business/[id]/(manager)/page.tsx"), /discoverHref=\{onGrowthTargets \? `\/account\/business\/\$\{id\}\?tab=growth&view=discover` : undefined\}/, "the existing Discover route, Growth door only");
 });
 

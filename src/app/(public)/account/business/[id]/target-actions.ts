@@ -11,7 +11,9 @@ import type { SelectedLocationDetail } from "@/components/account/EventLocationF
 import { canEditTargets, isAddTargetScope, parseActivityCursor, targetActor, type TargetUpdateInput } from "@/lib/business-targets-domain";
 import { searchTargetCandidates, type TargetCandidate } from "@/lib/target-search";
 import { isTargetKind } from "@/lib/commercial-intents";
+import { relationshipHref, relationshipRefFor } from "@/lib/relationship-links";
 import {
+  TARGET_COLUMN,
   addBusinessTarget,
   addTargetNote,
   adminSetTargetInternalNotes,
@@ -105,6 +107,28 @@ export async function createTargetPlaceAction(businessId: string, formData: Form
   const admin = getAdminSupabase();
   if (!admin) return { status: "error", error: "Server isn't configured." };
   return insertInlinePlace(admin, formData);
+}
+
+/** Connect — start (or open) this Business's private relationship with one
+ * Place, Business or Event. Not a new object: an existing Target is opened
+ * untouched (its intents are never changed here); otherwise a Target is
+ * created through the same authorized path as Add Target, for the intents the
+ * person chose. Never sends an Inquiry, never creates an Opportunity, Find Us
+ * Here entry, Appearance or Event participation. */
+export async function connectAction(businessId: string, kind: string, counterpartyId: string, intents: string[]): Promise<{ ok: true; href: string; existing: boolean } | { ok: false; error: string }> {
+  const auth = await authorizeWrite(businessId);
+  if (!auth.ok) return auth;
+  if (!isTargetKind(kind)) return { ok: false, error: "Choose who to connect with." };
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const { data: existing } = await admin.from("business_targets").select("id, target_location_id").eq("business_id", businessId).eq(TARGET_COLUMN[kind], counterpartyId).maybeSingle();
+  const row = existing as { id: string; target_location_id: string | null } | null;
+  if (row) return { ok: true, existing: true, href: relationshipHref(businessId, relationshipRefFor(kind, { targetId: row.id, locationId: row.target_location_id })) };
+  const user = await getCurrentUser().catch(() => null);
+  const result = await addBusinessTarget(admin, businessId, { kind, counterpartyId, intents, source: auth.viaAdmin ? "admin" : "business", userId: user?.id ?? null });
+  if (!result.ok) return result;
+  refresh(businessId);
+  return { ok: true, existing: result.existing, href: relationshipHref(businessId, relationshipRefFor(kind, { targetId: result.id, locationId: result.locationId })) };
 }
 
 /** Add (or reopen into view) a Target. Writes ONLY the Target row. */

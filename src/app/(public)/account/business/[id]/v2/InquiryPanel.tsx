@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { CommercialIntent, TargetKind } from "@/lib/commercial-intents";
 import { INQUIRY_MESSAGE_MAX, INQUIRY_STATUS_LABELS, INQUIRY_STATUS_TONE, inquiryIntentChoices, intentLabel, isOpenInquiry, type InquiryStatus } from "@/lib/commercial-inquiries-domain";
 import { sendInquiryAction } from "../../../inquiry-actions";
+import { MEDIATION_LINE } from "@/lib/relationship-links";
 import { Chip } from "../../../owner-ui";
 
 /** Inquiry — the deliberate step from a private Target to a shared Commercial
@@ -82,19 +83,19 @@ export default function InquiryPanel({
 
   return (
     <section aria-labelledby="ws-inquiry" className="flex flex-col gap-2">
-      <h3 id="ws-inquiry" className={sectionTitle}>Inquiry</h3>
+      <h3 id="ws-inquiry" className={sectionTitle}>Current Relationship</h3>
 
       {openList.map((open) => (
         <div key={open.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/[0.08] bg-white px-3.5 py-3">
           <div className="min-w-0">
             <p className="flex flex-wrap items-center gap-2">
+              <span className="text-body font-semibold text-primary">{intentLabel(open.intent)} Inquiry</span>
               <Chip tone={INQUIRY_STATUS_TONE[open.status]}>{INQUIRY_STATUS_LABELS[open.status]}</Chip>
-              <span className="text-body font-semibold text-primary">{intentLabel(open.intent)}</span>
             </p>
-            <p className="mt-0.5 text-metadata text-muted">Shared with {counterpartyName} through Findmi · Conversation available</p>
+            <p className="mt-0.5 text-metadata text-muted">{MEDIATION_LINE}</p>
           </div>
           <Link href={href(open.id)} className={primaryBtn}>
-            Open Inquiry
+            Open Conversation
           </Link>
         </div>
       ))}
@@ -160,19 +161,29 @@ export default function InquiryPanel({
               <Chip tone={INQUIRY_STATUS_TONE[last.status]}>{INQUIRY_STATUS_LABELS[last.status]}</Chip>
               {intentLabel(last.intent)} ·
               <Link href={href(last.id)} className="font-semibold text-accent hover:underline">
-                Open
+                Open Conversation
               </Link>
             </p>
           )}
-          {canEdit ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => { setIntent(preselected ?? ""); setComposing(true); }} className={openList.length ? quietBtn.replace("text-muted", "text-accent") : primaryBtn}>
-                {openList.length ? "Send Another Inquiry" : "Send Inquiry"}
+          {openList.length ? (
+            // Secondary: only while another compatible intent remains.
+            canEdit && (
+              <button type="button" onClick={() => { setIntent(preselected ?? ""); setComposing(true); }} className={`${quietBtn} -ml-3 text-accent`}>
+                New Inquiry
               </button>
-              <span className="text-metadata text-muted">{openList.length ? "For a different intent." : "Ask Findmi to connect you. Nothing is sent until you do."}</span>
-            </div>
+            )
           ) : (
-            <p className="text-metadata text-muted">Only an owner or manager can send an Inquiry.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-black/12 px-3.5 py-3">
+              <div className="min-w-0">
+                <p className="text-body font-semibold text-secondary">No Inquiry Yet</p>
+                <p className="text-metadata text-muted">{canEdit ? "Ready to reach out? Findmi helps make the connection." : "Only an owner or manager can send an Inquiry."}</p>
+              </div>
+              {canEdit && (
+                <button type="button" onClick={() => { setIntent(preselected ?? ""); setComposing(true); }} className={primaryBtn}>
+                  Send Inquiry
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

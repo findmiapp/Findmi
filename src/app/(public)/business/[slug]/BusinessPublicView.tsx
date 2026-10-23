@@ -16,6 +16,7 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
+import ForYourBusiness from "@/components/relationships/ForYourBusiness";
 import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
@@ -1061,6 +1062,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               className="mt-8 lg:hidden"
             />
           )}
+
+          {/* For Your Business — the commercial layer, for signed-in managers
+              of OTHER Businesses only; renders nothing for everyone else. */}
+          <ForYourBusiness kind="business" entityId={business.id} entityName={business.name} className="mt-8" />
 
           {/* Claim placement pass — moved off the top action area (never
               competing with Inquire/Follow/Save there) into its own

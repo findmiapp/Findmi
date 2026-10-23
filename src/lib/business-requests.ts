@@ -102,7 +102,7 @@ export function buildBusinessRequests({
       meta: "Event Invitation · Response Requested",
       detail: [i.occurrenceStartAt ? day(i.occurrenceStartAt) : null, i.occurrenceLocationName].filter(Boolean).join(" · ") || null,
       href: "/account/messages?filter=opportunities",
-      actionLabel: "Review",
+      actionLabel: "Review Invitation",
     });
   }
 
@@ -115,7 +115,7 @@ export function buildBusinessRequests({
       meta: "Opportunity · Response Requested",
       detail: o.placeName,
       href: `${basePath}/opportunities/${o.recipientId}`,
-      actionLabel: "Review",
+      actionLabel: "Review Opportunity",
     });
   }
 
@@ -127,7 +127,7 @@ export function buildBusinessRequests({
       meta: `Inquiry · ${COMMERCIAL_INTENT_LABELS[q.intent]} · Response Requested`,
       detail: q.counterpartyName,
       href: `${basePath}/inquiries/${q.id}`,
-      actionLabel: "Review",
+      actionLabel: "Review Inquiry",
     });
   }
 

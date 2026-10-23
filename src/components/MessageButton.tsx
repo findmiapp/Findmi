@@ -54,6 +54,7 @@ export default function MessageButton({
   size = "compact",
   layout = "pill",
   messagingEnabled = false,
+  label,
 }: {
   targetType: "event" | "business" | "location";
   targetId: string;
@@ -86,6 +87,10 @@ export default function MessageButton({
    * and refused by the server; visibility is gated by
    * shouldShowMessageButton. */
   messagingEnabled?: boolean;
+  /** Optional trigger label for a contextual surface (e.g. "Apply To
+   * Participate" in a public page's For Your Business section). The modal
+   * and its workflow are unchanged. */
+  label?: string;
 }) {
   const MESSAGING = messagingEnabled;
   const router = useRouter();
@@ -106,7 +111,7 @@ export default function MessageButton({
   const [notice, setNotice] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const entryMode: Mode = MESSAGING ? "message" : targetType === "event" ? "apply" : "invite";
-  const triggerLabel = MESSAGING ? "Message" : targetType === "event" ? "Apply to Vend" : "Invite to Event";
+  const triggerLabel = label ?? (MESSAGING ? "Message" : targetType === "event" ? "Apply to Vend" : "Invite to Event");
   const fetchedRef = useRef(false);
 
   useEffect(() => setMounted(true), []);

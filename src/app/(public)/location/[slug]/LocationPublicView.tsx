@@ -6,6 +6,7 @@ import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momen
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
+import ForYourBusiness from "@/components/relationships/ForYourBusiness";
 import MessageButton from "@/components/MessageButton";
 import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
@@ -639,6 +640,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             </div>
           </section>
         )}
+
+        {/* For Your Business — the commercial layer, for signed-in Business
+            managers only; renders nothing for everyone else. */}
+        <ForYourBusiness kind="location" entityId={location.id} entityName={location.name} className="mt-10" />
 
         {/* Claim — final major section before footer, deliberately quiet
             (ClaimButton's own compact card variant, no oversized styling

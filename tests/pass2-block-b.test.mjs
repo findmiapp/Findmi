@@ -279,10 +279,10 @@ test("the workspace is addressed by Location (a Business / Event Target by `tgt`
   assert.match(page, /const locationId = requestedLoc \|\| opened\?\.locationId \|\| "";/);
   assert.match(page, /getRelationshipWorkspace\(admin, id, locationId\)/);
   const list = read(`${V2}/TargetsView.tsx`);
-  assert.match(list, /export const targetHref = \(t: Pick<BusinessTargetItem, "id" \| "locationId">\) => \(t\.locationId \? \{ loc: t\.locationId, tgt: null, pt: null \} : \{ tgt: t\.id, loc: null, pt: null \}\);/, "Place rows open the workspace by place; others by Target");
+  assert.match(list, /export const targetHref = \(t: Pick<BusinessTargetItem, "id" \| "locationId">\) =>\s*relationshipParams\(t\.locationId \? \{ kind: "location", locationId: t\.locationId \} : \{ kind: "business", targetId: t\.id \}\);/, "Place rows open the workspace by place; others by Target (the one helper)");
   assert.match(list, /href=\{href\(targetHref\(i\)\)\}/);
   assert.doesNotMatch(list, /function TargetDetail/);
-  assert.match(read(`${V2}/GeographyViews.tsx`), /href\(\{ loc/);
+  assert.match(read(`${V2}/GeographyViews.tsx`), /href\(relationshipParams\(\{ kind: "location", locationId: row\.place\.id \}\)\)/);
 });
 
 test("workspace hierarchy and removed clutter", () => {
@@ -338,7 +338,7 @@ test("Targets: no permanent explanation — a small Private marker; the note sta
   assert.match(view, /title=\{TARGET_PRIVACY_NOTE\}>\s*<LockIcon className="h-3 w-3" \/> Private/);
   assert.match(view, /\{!anyTargets && <span className="mt-1 block text-metadata">\{TARGET_PRIVACY_NOTE\}<\/span>\}/);
   // Add Target → Growing In → search → status filter (one compact selector since the Add Target UX pass) → rows.
-  const at = ["Add Target\n", "{context && !adding && context}", 'role="search"', '<span className="text-metadata font-semibold text-muted">Status</span>', "{items.map((i) =>"].map((m) => view.indexOf(m));
+  const at = ["Add To Targets\n", "{context && !adding && context}", 'role="search"', '<span className="text-metadata font-semibold text-muted">Status</span>', "{items.map((i) =>"].map((m) => view.indexOf(m));
   assert.ok(at.every((i) => i > 0));
   assert.deepEqual([...at].sort((a, b) => a - b), at);
 });

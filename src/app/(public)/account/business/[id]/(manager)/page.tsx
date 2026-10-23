@@ -58,6 +58,7 @@ import DiscoverView from "../v2/DiscoverView";
 import { parseCommercialQuery } from "@/lib/discovery/commercial";
 import { getCommercialDiscovery } from "@/lib/discovery/commercial-server";
 import { getInboundInquiryRequests, getTargetInquiries } from "@/lib/commercial-inquiries";
+import { contextualOpportunities } from "@/lib/relationship-context";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -1280,12 +1281,13 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       if (!locationId) {
         if (!opened) return null;
         const findmiAdmin = isAdminElevated || (await isAdminSession());
-        const [internalNotes, activity, inquiries] = await Promise.all([
+        const [internalNotes, activity, inquiries, opportunities] = await Promise.all([
           findmiAdmin ? adminGetTargetInternalNotes(admin, id, opened.id) : null,
           getTargetActivityPage(admin, id, opened.id, null),
           getTargetInquiries(admin, id, opened.id),
+          contextualOpportunities(admin, id, opened.kind, opened.counterparty.id),
         ]);
-        return { kind: "target" as const, target: opened, findmiAdmin, internalNotes, activity, inquiries, scopeLabel: null };
+        return { kind: "target" as const, target: opened, findmiAdmin, internalNotes, activity, inquiries, opportunities, scopeLabel: null };
       }
       const data = await getRelationshipWorkspace(admin, id, locationId);
       if (!data) return null;
@@ -1511,6 +1513,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       activity={workspace.activity}
       inquiries={workspace.inquiries}
       senderName={business.name}
+      opportunities={workspace.opportunities}
       backHref={workspaceBack}
       backLabel="Targets"
     />

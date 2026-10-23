@@ -717,7 +717,7 @@ test("32/33/34. Requests: an unanswered inbound Inquiry appears; it leaves once 
   assert.deepEqual(inbound.map((r) => [r.id, r.senderName, r.intent]), [[a.inquiryId, "Mocktail Mart", "collaboration"]]);
   assert.deepEqual(await S.getInboundInquiryRequests(fakeDb(t), MOCKTAIL), [], "never on the sender's Requests");
   const built = R.buildBusinessRequests({ basePath: "/b", opportunities: [], invitations: [], newOrderCount: 0, inquiries: inbound });
-  assert.deepEqual(built, [{ key: `inquiry:${a.inquiryId}`, title: "Mocktail Mart", meta: "Inquiry · Collaboration · Response Requested", detail: null, href: `/b/inquiries/${a.inquiryId}`, actionLabel: "Review" }]);
+  assert.deepEqual(built, [{ key: `inquiry:${a.inquiryId}`, title: "Mocktail Mart", meta: "Inquiry · Collaboration · Response Requested", detail: null, href: `/b/inquiries/${a.inquiryId}`, actionLabel: "Review Inquiry" }]);
   await S.recordInquiryReply(fakeDb(t), a.conversationId, { entityType: "business", entityId: BABYLIST });
   assert.deepEqual(await S.getInboundInquiryRequests(fakeDb(t), BABYLIST), [], "answered → gone");
   assert.deepEqual(R.buildBusinessRequests({ basePath: "/b", opportunities: [], invitations: [], newOrderCount: 0 }), [], "inquiries are optional: nothing else changes");
@@ -742,7 +742,7 @@ test("Sender UX: a deliberate Send Inquiry from the Target workspace, never auto
   assert.doesNotMatch(strip(panel), /\.context|nextAction|internalNotes/);
   assert.match(panel, /const \[requestKey, setRequestKey\] = useState\(newKey\);/, "one key per Send — double taps resolve to one Inquiry");
   assert.match(panel, /disabled=\{pending \|\| !intent \|\| !message\.trim\(\)\}/);
-  assert.match(panel, /Open Inquiry/);
+  assert.match(panel, /Open Conversation/, "an open Inquiry opens its Conversation");
   assert.doesNotMatch(read("src/lib/business-targets.ts"), /commercial_inquiries|sendCommercialInquiry/, "adding a Target never sends anything");
   assert.match(read(`${V2}/RelationshipWorkspace.tsx`), /\{target && !data\.ours && \(\s*<InquiryPanel/);
   assert.match(read(`${V2}/TargetWorkspace.tsx`), /\{!c\.archived && \(\s*<InquiryPanel/);

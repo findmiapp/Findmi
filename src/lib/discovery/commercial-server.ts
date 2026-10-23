@@ -5,7 +5,8 @@ import { getOpportunityCandidates, type OpportunityCandidate } from "../relevant
 import { geographyReason } from "../relevant-opportunities-domain";
 import { TARGET_COLUMN } from "../business-targets";
 import type { TargetStatus } from "../business-targets-domain";
-import type { TargetKind } from "../commercial-intents";
+import type { CommercialIntent, TargetKind } from "../commercial-intents";
+import type { InquiryStatus } from "../commercial-inquiries-domain";
 import {
   CATEGORY_FAMILY,
   COMMERCIAL_CANDIDATE_LIMIT,
@@ -83,6 +84,8 @@ export interface CommercialResult {
   href: string | null;
   /** This Business already targets it (any status) — never a second Target. */
   target: { id: string; status: TargetStatus } | null;
+  /** This Business's own open Inquiry with it (shared state), if any. */
+  inquiry: { intent: CommercialIntent; status: InquiryStatus } | null;
   /** One of this Business's own Locations — not a Target. */
   ownLocation: boolean;
   opportunities: CommercialOpportunity[];
@@ -438,7 +441,8 @@ async function enrich(admin: SupabaseClient, viewerId: string, q: CommercialQuer
       : kind === "business"
         ? admin.from("businesses").select("id, slug, city, state, logo_url, cover_image_url, market_area_id").in("id", ids)
         : admin.from("events").select("id, slug, city, venue_name, cover_image_url").in("id", ids);
-  const [detailRows, targetRows, ownRows, catRows, formatRows, opps] = await Promise.all([
+  const inquiryCol = kind === "location" ? "counterparty_location_id" : kind === "event" ? "counterparty_event_id" : "counterparty_business_id";
+  const [detailRows, targetRows, ownRows, catRows, formatRows, opps, inquiryRows] = await Promise.all([
     details,
     admin.from("business_targets").select("id, status, target_location_id, target_business_id, target_event_id").eq("business_id", viewerId).in(TARGET_COLUMN[kind], ids),
     kind === "location" ? admin.from("business_locations").select("location_id").eq("business_id", viewerId).in("location_id", ids) : Promise.resolve({ data: [] }),
@@ -447,6 +451,8 @@ async function enrich(admin: SupabaseClient, viewerId: string, q: CommercialQuer
     // Only Opportunities THIS Business may already see (sent to it, or open and
     // discoverable) — a result never reveals what was offered to anyone else.
     getOpportunityCandidates(admin, viewerId),
+    // This Business's own open Inquiries with the page's results (never anyone else's).
+    admin.from("commercial_inquiries").select("intent, status, created_at, counterparty_business_id, counterparty_location_id, counterparty_event_id").eq("sender_business_id", viewerId).in(inquiryCol, ids).in("status", ["sent", "responded"]).order("created_at", { ascending: false }),
   ]);
   // A Business result's Opportunities: ones at a Location it operates, or for an Event it hosts.
   const bizLinks = new Map<string, { locations: Set<string>; events: Set<string> }>();
@@ -463,6 +469,11 @@ async function enrich(admin: SupabaseClient, viewerId: string, q: CommercialQuer
   }
   const byId = new Map(((detailRows.data ?? []) as Row[]).map((r) => [r.id as string, r]));
   const targets = new Map(((targetRows.data ?? []) as Row[]).map((r) => [r[TARGET_COLUMN[kind]] as string, { id: r.id as string, status: r.status as TargetStatus }]));
+  const inquiries = new Map<string, { intent: CommercialIntent; status: InquiryStatus }>();
+  for (const r of (inquiryRows.data ?? []) as Row[]) {
+    const id = r[inquiryCol] as string;
+    if (!inquiries.has(id)) inquiries.set(id, { intent: r.intent as CommercialIntent, status: r.status as InquiryStatus });
+  }
   const own = new Set(((ownRows.data ?? []) as Row[]).map((r) => r.location_id as string));
   const owner = kind === "business" ? "business_id" : "event_id";
   const namesFor = (id: string) => {
@@ -474,7 +485,7 @@ async function enrich(admin: SupabaseClient, viewerId: string, q: CommercialQuer
 
   return page.map((c) => {
     const d = byId.get(c.id) ?? {};
-    const base = { id: c.id, kind, name: c.name, role: ROLE_LABEL[q.entity], date: c.date ?? null, reasons: reasonLabels(c.reasons), target: targets.get(c.id) ?? null, ownLocation: own.has(c.id) };
+    const base = { id: c.id, kind, name: c.name, role: ROLE_LABEL[q.entity], date: c.date ?? null, reasons: reasonLabels(c.reasons), target: targets.get(c.id) ?? null, inquiry: inquiries.get(c.id) ?? null, ownLocation: own.has(c.id) };
     if (kind === "location") {
       const ancestors = areaAncestors(catalog, (d.market_area_id as string) ?? null);
       const o = opportunityContext(viewerId, opps, (oc) => {

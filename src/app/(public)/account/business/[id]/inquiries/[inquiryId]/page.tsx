@@ -13,6 +13,7 @@ import { getConversationThread, markConversationRead } from "@/lib/opportunities
 import { getInquiryForBusiness } from "@/lib/commercial-inquiries";
 import { INQUIRY_STATUS_LABELS, INQUIRY_STATUS_TONE, inquiryActionsFor, intentLabel } from "@/lib/commercial-inquiries-domain";
 import { formatDateShort, formatTime } from "@/lib/format";
+import { MEDIATION_LINE, relationshipHref, relationshipRefFor } from "@/lib/relationship-links";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +39,9 @@ export default async function InquiryDetailPage({ params }: { params: Promise<{ 
   const other = inquiry.role === "sender" ? inquiry.counterparty : inquiry.sender;
   const targetHref =
     inquiry.role === "sender" && inquiry.targetId
-      ? `${shell.basePath}?tab=growth&view=targets&${inquiry.counterparty.kind === "location" ? `loc=${inquiry.counterparty.id}` : `tgt=${inquiry.targetId}`}`
+      ? relationshipHref(id, relationshipRefFor(inquiry.counterparty.kind, { targetId: inquiry.targetId, locationId: inquiry.counterparty.kind === "location" ? inquiry.counterparty.id : null }))
       : null;
+  const open = inquiry.status === "sent" || inquiry.status === "responded";
   const back = inquiry.role === "sender" ? (targetHref ?? `${shell.basePath}?tab=growth&view=targets`) : `${shell.basePath}#home-requests`;
 
   return (
@@ -48,36 +50,24 @@ export default async function InquiryDetailPage({ params }: { params: Promise<{ 
       <div className="flex max-w-3xl flex-col gap-4">
         <Link href={back} className="flex w-fit items-center gap-1 text-metadata font-semibold text-accent hover:underline">
           <ChevronIcon direction="left" className="h-3 w-3" />
-          {inquiry.role === "sender" ? (targetHref ? "Target" : "Targets") : "Home"}
+          {inquiry.role === "sender" ? (targetHref ? "Relationship" : "Targets") : "Home"}
         </Link>
 
+        {/* Simple hierarchy: who → what and where it stands → who's helping →
+            what you can do → the Conversation. Details stay secondary. */}
         <header className="flex items-start gap-3">
           <TargetThumb imageUrl={other.imageUrl} kind={other.kind} />
           <div className="min-w-0 flex-1">
-            <p className="text-label font-bold uppercase text-findmi-700">{inquiry.role === "sender" ? "Inquiry Sent" : "Inquiry Received"}</p>
             <h1 className="font-display text-card-title-lg font-bold leading-snug text-primary">{other.name}</h1>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <Chip tone={INQUIRY_STATUS_TONE[inquiry.status]}>{INQUIRY_STATUS_LABELS[inquiry.status]}</Chip>
-              <span className="text-metadata font-semibold text-primary">{intentLabel(inquiry.intent)}</span>
-            </div>
-            {other.href && (
-              <Link href={other.href} className="mt-1 inline-flex min-h-10 items-center text-metadata font-semibold text-accent hover:underline">
-                View {other.kind === "event" ? "Event" : other.kind === "location" ? "Place" : "Profile"} →
-              </Link>
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-metadata font-semibold text-primary">
+              {intentLabel(inquiry.intent)} Inquiry ·<Chip tone={INQUIRY_STATUS_TONE[inquiry.status]}>{INQUIRY_STATUS_LABELS[inquiry.status]}</Chip>
+            </p>
+            {open && <p className="mt-1.5 text-metadata text-secondary">{MEDIATION_LINE}</p>}
+            {open && inquiry.role === "sender" && inquiry.findmiOnly && (
+              <p className="mt-1 text-metadata text-muted">{other.name} isn&rsquo;t managed on Findmi yet. We&rsquo;ll help route your Inquiry.</p>
             )}
           </div>
         </header>
-
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-3 text-metadata min-[400px]:grid-cols-[auto_1fr]">
-          <dt className="font-semibold text-muted">From</dt>
-          <dd className="min-w-0 truncate text-primary">{inquiry.sender.name}</dd>
-          <dt className="font-semibold text-muted">To</dt>
-          <dd className="min-w-0 truncate text-primary">{inquiry.counterparty.name}</dd>
-          <dt className="font-semibold text-muted">Sent</dt>
-          <dd className="text-primary">{formatDateShort(inquiry.createdAt)}</dd>
-          <dt className="font-semibold text-muted">With</dt>
-          <dd className="text-primary">{inquiry.findmiOnly ? "Findmi (they're not on Findmi yet — Findmi will reach out)" : "Findmi is part of this conversation"}</dd>
-        </dl>
 
         {actions.length > 0 && <InquiryActions inquiryId={inquiry.id} asEntity={{ entityType: "business", entityId: id }} actions={actions} />}
         {!mayAct && inquiry.status !== "withdrawn" && (
@@ -113,6 +103,25 @@ export default async function InquiryDetailPage({ params }: { params: Promise<{ 
             </>
           )}
         </section>
+
+        <details className="rounded-xl border border-black/[0.08] bg-white px-3.5 py-3 text-metadata">
+          <summary className="cursor-pointer font-semibold text-muted">Inquiry Details</summary>
+          <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 min-[400px]:grid-cols-[auto_1fr]">
+            <dt className="font-semibold text-muted">From</dt>
+            <dd className="min-w-0 truncate text-primary">{inquiry.sender.name}</dd>
+            <dt className="font-semibold text-muted">To</dt>
+            <dd className="min-w-0 truncate text-primary">{inquiry.counterparty.name}</dd>
+            <dt className="font-semibold text-muted">Sent</dt>
+            <dd className="text-primary">{formatDateShort(inquiry.createdAt)}</dd>
+            <dt className="font-semibold text-muted">With</dt>
+            <dd className="text-primary">{inquiry.findmiOnly ? "Findmi (they're not on Findmi yet — Findmi will reach out)" : "Findmi is part of this conversation"}</dd>
+          </dl>
+          {other.href && (
+            <Link href={other.href} className="mt-1 inline-flex min-h-10 items-center font-semibold text-accent hover:underline">
+              View {other.kind === "event" ? "Event" : other.kind === "location" ? "Place" : "Profile"} →
+            </Link>
+          )}
+        </details>
       </div>
     </BusinessAppShell>
   );

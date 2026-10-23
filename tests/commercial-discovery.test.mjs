@@ -407,8 +407,9 @@ test("19. an existing Target is recognized (Mocktail Mart → Babylist Soho) wit
   const other = await run({ market: "nyc", q: "babylist" }, B_LAVAZZA);
   assert.equal(byName(other.res, "Babylist Soho").target, null);
   const view = read(`${V2}/DiscoverView.tsx`);
-  assert.match(view, /tab=growth&view=targets&\$\{kind === "location" \? `loc=\$\{r\.id\}` : `tgt=\$\{target\.id\}`\}/, "opens the place workspace (loc) or the Target (tgt)");
-  assert.match(view, /Targeted · \{TARGET_STATUS_LABELS\[target\.status\]\}<\/span>\s*<Link href=\{openHref\}[^>]*>\s*Open/, "Targeted · status, then Open — never a second Target action");
+  assert.match(view, /relationshipHref\(businessId, relationshipRefFor\(kind, \{ targetId: r\.target\.id, locationId: kind === "location" \? r\.id : null \}\)\)/, "opens the place workspace (loc) or the Target (tgt) via the ONE helper");
+  assert.match(view, /<Chip tone=\{TARGET_STATUS_TONE\[r\.target\.status\]\}>\{TARGET_STATUS_LABELS\[r\.target\.status\]\}<\/Chip>/, "state shown");
+  assert.match(view, /<Link href=\{openHref\}[^>]*>\s*\{RELATIONSHIP_ACTIONS\.open\}/, "state, then Open Relationship — never a second Target action");
 });
 
 test("20/21/22/25. Target from a result uses the live business_targets path: compatible intents, no duplicate, no side effects", async () => {
@@ -435,8 +436,10 @@ test("20/21/22/25. Target from a result uses the live business_targets path: com
   // Own Location / own Business are refused by the same path.
   assert.equal((await L.addBusinessTarget(fakeDb(tables), B_MOCKTAIL, { kind: "location", counterpartyId: L_OURS, intents: ["placement"], source: "business", userId: null })).ok, false);
   const view = read(`${V2}/DiscoverView.tsx`);
-  assert.match(view, /addTargetAction\(businessId, kind, r\.id, intents\)/, "the UI calls the existing authorized Target action");
-  assert.match(view, /<IntentPicker kind=\{kind\}/, "the canonical compatible-intent picker");
+  assert.match(view, /<ConnectControl businessId=\{businessId\} kind=\{kind\} counterpartyId=\{r\.id\} \/>/, "the UI Connects through the shared control");
+  const connect = read("src/components/relationships/ConnectControl.tsx");
+  assert.match(connect, /connectAction\(businessId, kind, counterpartyId, intents\)/, "which calls the existing authorized Target action");
+  assert.match(connect, /<IntentPicker kind=\{kind\}/, "the canonical compatible-intent picker");
   assert.doesNotMatch(view, /createConversation|sendInquiry|notify|insertAppearance/);
 });
 

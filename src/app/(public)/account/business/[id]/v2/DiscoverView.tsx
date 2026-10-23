@@ -5,10 +5,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { COMMERCIAL_ENTITIES, COMMERCIAL_ENTITY_LABELS, COMMERCIAL_PAGE_SIZE, COMMERCIAL_SEARCH_MIN_CHARS, CATEGORY_FAMILY, TARGET_KIND_FOR_ENTITY, type CommercialEntity } from "@/lib/discovery/commercial";
 import type { CommercialDiscovery, CommercialResult } from "@/lib/discovery/commercial-server";
-import { TARGET_STATUS_LABELS, formatTargetDate } from "@/lib/business-targets-domain";
-import { DEFAULT_INTENTS_BY_KIND, type CommercialIntent } from "@/lib/commercial-intents";
-import { addTargetAction } from "../target-actions";
-import { IntentPicker, LockIcon, TargetThumb } from "./TargetsView";
+import { TARGET_STATUS_LABELS, TARGET_STATUS_TONE, formatTargetDate } from "@/lib/business-targets-domain";
+import { INQUIRY_STATUS_LABELS, intentLabel } from "@/lib/commercial-inquiries-domain";
+import { RELATIONSHIP_ACTIONS, relationshipHref, relationshipRefFor } from "@/lib/relationship-links";
+import ConnectControl from "@/components/relationships/ConnectControl";
+import { LockIcon, TargetThumb } from "./TargetsView";
 import { Chip } from "../../../owner-ui";
 
 /** Discover — Growth → Targets → Discover: find who or what to pursue, by
@@ -206,24 +207,17 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
   );
 }
 
+const VIEW_LABEL = { location: "View Place", business: "View Business", event: "View Event" } as const;
+
+/** One result: what it is, why it's relevant, what's happening commercially
+ * (Opportunities), your relationship, and ONE obvious action — Connect when
+ * you have no relationship yet, Open Relationship when you do. The public page
+ * stays a quiet secondary link. Connect creates the private Target only (it
+ * never sends an Inquiry). */
 function ResultRow({ businessId, result: r, entity, canEdit }: { businessId: string; result: CommercialResult; entity: CommercialEntity; canEdit: boolean }) {
   const kind = TARGET_KIND_FOR_ENTITY[entity];
-  const [picking, setPicking] = useState(false);
-  const [intents, setIntents] = useState<CommercialIntent[]>([...DEFAULT_INTENTS_BY_KIND[kind]]);
-  const [saving, startSave] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [added, setAdded] = useState<{ id: string; status: keyof typeof TARGET_STATUS_LABELS } | null>(null);
-  const target = r.target ?? added;
-  const openHref = target ? `/account/business/${businessId}?tab=growth&view=targets&${kind === "location" ? `loc=${r.id}` : `tgt=${target.id}`}` : null;
-
-  const save = () =>
-    startSave(async () => {
-      setError(null);
-      const res = await addTargetAction(businessId, kind, r.id, intents);
-      if (!res.ok) return setError(res.error);
-      setAdded({ id: res.id, status: res.status });
-      setPicking(false);
-    });
+  const openHref = r.target ? relationshipHref(businessId, relationshipRefFor(kind, { targetId: r.target.id, locationId: kind === "location" ? r.id : null })) : null;
+  const opps = r.opportunityCount;
 
   return (
     <li className="flex flex-col gap-2 py-3">
@@ -233,73 +227,45 @@ function ResultRow({ businessId, result: r, entity, canEdit }: { businessId: str
           <p className="truncate text-card-title font-semibold text-primary">{r.name}</p>
           <p className="truncate text-metadata text-muted">{[r.role, r.category].filter(Boolean).join(" · ")}</p>
           <p className="truncate text-metadata text-secondary">{[r.date ? formatTargetDate(r.date) : null, r.context].filter(Boolean).join(" · ")}</p>
-          {r.reasons.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
+          {(r.reasons.length > 0 || opps > 0) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
               {r.reasons.map((reason) => (
                 <Chip key={reason} tone="aquaSoft">
                   {reason}
                 </Chip>
               ))}
+              {opps > 0 && (
+                <Link href={opps === 1 ? r.opportunities[0].path : (openHref ?? `/account/business/${businessId}?tab=opportunities`)} className="ml-0.5 text-metadata font-semibold text-accent hover:underline">
+                  {opps === 1 ? "1 Opportunity" : `${opps} Opportunities`}
+                </Link>
+              )}
             </div>
           )}
-          {r.opportunityCount > 0 && (
-            <p className="mt-1 text-metadata text-muted">
-              {r.opportunities.map((o, i) => (
-                <span key={o.path}>
-                  {i > 0 && " · "}
-                  <Link href={o.path} className="font-semibold text-accent hover:underline">
-                    {o.title}
-                  </Link>{" "}
-                  <span className="text-subtle">({o.reason})</span>
-                </span>
-              ))}
-              {r.opportunityCount > r.opportunities.length && ` · ${r.opportunityCount - r.opportunities.length} more Opportunit${r.opportunityCount - r.opportunities.length === 1 ? "y" : "ies"}`}
+          {(r.target || r.inquiry) && (
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-metadata text-secondary">
+              {r.target && <Chip tone={TARGET_STATUS_TONE[r.target.status]}>{TARGET_STATUS_LABELS[r.target.status]}</Chip>}
+              {r.inquiry && <span>{intentLabel(r.inquiry.intent)} Inquiry · {INQUIRY_STATUS_LABELS[r.inquiry.status]}</span>}
             </p>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 pl-[4.25rem]">
-        {r.href && (
-          <Link href={r.href} target="_blank" className="flex h-9 items-center rounded-full bg-black/[0.04] px-3.5 text-metadata font-semibold text-primary transition hover:bg-black/[0.07]">
-            View
-          </Link>
-        )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pl-[4.25rem]">
         {r.ownLocation ? (
           <span className="text-metadata text-muted">Your Location</span>
-        ) : target && openHref ? (
-          <>
-            <span className="flex h-9 items-center rounded-full bg-findmi-50 px-3.5 text-metadata font-semibold text-findmi-700">Targeted · {TARGET_STATUS_LABELS[target.status]}</span>
-            <Link href={openHref} className="flex h-9 items-center rounded-full bg-findmi px-3.5 text-metadata font-bold text-white transition hover:bg-findmi-600">
-              Open
-            </Link>
-          </>
-        ) : canEdit && !picking ? (
-          <button type="button" onClick={() => setPicking(true)} className="flex h-9 items-center rounded-full bg-findmi px-3.5 text-metadata font-bold text-white transition hover:bg-findmi-600">
-            Target
-          </button>
+        ) : openHref ? (
+          <Link href={openHref} className="flex h-10 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
+            {RELATIONSHIP_ACTIONS.open}
+          </Link>
+        ) : canEdit ? (
+          <ConnectControl businessId={businessId} kind={kind} counterpartyId={r.id} />
         ) : null}
+        {r.href && (
+          <Link href={r.href} target="_blank" className="text-metadata font-semibold text-accent hover:underline">
+            {VIEW_LABEL[kind]}
+          </Link>
+        )}
       </div>
-
-      {picking && !target && (
-        <div className="ml-[4.25rem] flex flex-col gap-2 rounded-xl bg-black/[0.03] p-3">
-          <span className="text-metadata font-semibold text-muted">Why</span>
-          <IntentPicker kind={kind} value={intents} onChange={setIntents} disabled={saving} />
-          {error && (
-            <p role="alert" className="text-metadata text-red-600">
-              {error}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={save} disabled={saving || intents.length === 0} className="flex h-9 items-center rounded-full bg-findmi px-3.5 text-metadata font-bold text-white transition hover:bg-findmi-600 disabled:opacity-50">
-              {saving ? "Adding…" : "Add Target"}
-            </button>
-            <button type="button" onClick={() => setPicking(false)} disabled={saving} className="flex h-9 items-center rounded-full px-3.5 text-metadata font-semibold text-muted hover:text-primary">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </li>
   );
 }

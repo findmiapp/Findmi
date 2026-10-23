@@ -97,7 +97,7 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
 
       {!target && !data.ours && canEdit && <TrackAsTarget businessId={businessId} locationId={place.id} />}
 
-      {target && <NextCard businessId={businessId} item={target} canEdit={canEdit} />}
+      {/* Current relationship (shared Inquiry state) first, then what we do next. */}
       {target && !data.ours && (
         <InquiryPanel
           businessId={businessId}
@@ -112,6 +112,7 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
           canEdit={canEdit}
         />
       )}
+      {target && <NextCard businessId={businessId} item={target} canEdit={canEdit} />}
       {target && <SummaryBlock businessId={businessId} item={target} canEdit={canEdit} />}
       {target && <IntentsBlock businessId={businessId} item={target} canEdit={canEdit} />}
       {target && <ActivityFeed businessId={businessId} targetId={target.id} canAdd={canEdit} initial={props.activity} />}
@@ -410,6 +411,8 @@ function Presence({ businessId, data, canEdit, products, productSets, productSet
     return <PlaceForm businessId={businessId} products={products} productSets={productSets} productSetsAvailable={productSetsAvailable} initial={presence ?? undefined} fixedPlace={fixedPlace} onDone={done} />;
   }
   const canAdd = canEdit && !presence && target?.status === "active";
+  // Presence is a fact: no Find Us Here here and nothing useful to do → no section.
+  if (!presence && !canAdd) return null;
   return (
     <section aria-labelledby="ws-presence" className="flex flex-col gap-1.5">
       <h3 id="ws-presence" className={sectionTitle}>Presence</h3>

@@ -9,6 +9,7 @@ import type { GeographyCard, GeographyDetail, GeographyOverview, RelationshipCou
 import type { RelevantOpportunity } from "@/lib/relevant-opportunities";
 import { Chip } from "../../../owner-ui";
 import { PlaceThumb, useTargetNav } from "./TargetsView";
+import { relationshipParams } from "@/lib/relationship-links";
 
 /** Find Us Here → By Market — the geography lens over the SAME relationships
  * every other lens shows (lib/business-relationships.ts). Each geography keeps
@@ -125,7 +126,7 @@ function PlaceRow({ row, show }: { row: RelationshipRow; show: "footprint" | "pi
   const p = row.target;
   return (
     <li>
-      <Link href={href({ loc: row.place.id })} scroll={false} className="flex items-start gap-3 px-3.5 py-3 transition hover:bg-black/[0.02]">
+      <Link href={href(relationshipParams({ kind: "location", locationId: row.place.id }))} scroll={false} className="flex items-start gap-3 px-3.5 py-3 transition hover:bg-black/[0.02]">
         <PlaceThumb imageUrl={row.place.imageUrl} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-body font-semibold text-primary">{row.place.name}</span>

@@ -30,6 +30,8 @@ import type { BusinessTargetItem, TargetCounts, TargetKindCounts } from "@/lib/b
 import type { TargetCandidate } from "@/lib/target-search";
 import { addTargetAction, createTargetPlaceAction, searchTargetCandidatesAction } from "../target-actions";
 import { Chip } from "../../../owner-ui";
+import { IntentPicker } from "@/components/relationships/IntentPicker";
+import { relationshipParams, relationshipRefFor } from "@/lib/relationship-links";
 
 /** Targets — the places, Businesses and Events this Business is privately
  * pursuing, and where each pursuit stands (Target → In Conversation → Agreed →
@@ -108,7 +110,8 @@ export function useTargetNav() {
 }
 
 /** Where a Target opens: a place's relationship workspace, or the Target itself. */
-export const targetHref = (t: Pick<BusinessTargetItem, "id" | "locationId">) => (t.locationId ? { loc: t.locationId, tgt: null, pt: null } : { tgt: t.id, loc: null, pt: null });
+export const targetHref = (t: Pick<BusinessTargetItem, "id" | "locationId">) =>
+  relationshipParams(t.locationId ? { kind: "location", locationId: t.locationId } : { kind: "business", targetId: t.id });
 
 export function LockIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -156,28 +159,8 @@ export function NextActionLine({ item }: { item: Pick<BusinessTargetItem, "nextA
 
 const chipClass = (on: boolean) => `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
 
-/** Why — the compatible intents for one counterparty kind, as toggles. */
-export function IntentPicker({ kind, value, onChange, disabled }: { kind: TargetKind; value: readonly CommercialIntent[]; onChange: (next: CommercialIntent[]) => void; disabled?: boolean }) {
-  return (
-    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Why">
-      {INTENTS_BY_KIND[kind].map((i) => {
-        const on = value.includes(i);
-        return (
-          <button
-            key={i}
-            type="button"
-            aria-pressed={on}
-            disabled={disabled}
-            onClick={() => onChange(on ? value.filter((v) => v !== i) : INTENTS_BY_KIND[kind].filter((x) => x === i || value.includes(x)))}
-            className={`${chipClass(on)} disabled:opacity-50`}
-          >
-            {COMMERCIAL_INTENT_LABELS[i]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+/** Why — the compatible intents for one counterparty kind (shared component). */
+export { IntentPicker };
 
 export default function TargetsView({
   businessId,
@@ -237,30 +220,33 @@ export default function TargetsView({
       {openMissing && <p role="status" className="rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-metadata text-secondary">That Target wasn&rsquo;t found.</p>}
 
       {available && !adding && discoverHref && (
-        // Growth's two ways in: you know who (Add Target), or you want help finding them (Discover).
+        // Targets = your private working list; Discover = finding new ones. Two
+        // ways in to ONE set of relationships: you already know who or where
+        // (Add To Targets), or you want to find new ones (Discover).
         <div className="flex flex-col gap-2">
+          <p className="text-metadata text-muted">Your commercial working list — the Places, Businesses and Events you&rsquo;re tracking.</p>
           <div className={`grid gap-2 ${canEdit ? "grid-cols-2" : "grid-cols-1"}`}>
             {canEdit && (
               <button type="button" onClick={() => setAdding(true)} className="flex min-h-[60px] flex-col items-start justify-center rounded-2xl bg-findmi px-4 py-2.5 text-left text-white transition hover:bg-findmi-600">
-                <span className="text-button font-bold">Add Target</span>
-                <span className="text-microcopy text-white/85">I know who I want</span>
+                <span className="text-button font-bold">Add To Targets</span>
+                <span className="text-microcopy text-white/85">I already know who or where</span>
               </button>
             )}
             <Link href={discoverHref} className="flex min-h-[60px] flex-col items-start justify-center rounded-2xl border border-findmi/40 bg-white px-4 py-2.5 text-left text-findmi-700 transition hover:bg-findmi-50">
               <span className="text-button font-bold">Discover</span>
-              <span className="text-microcopy text-muted">Help me find who to pursue</span>
+              <span className="text-microcopy text-muted">Find new Places, Businesses and Events</span>
             </Link>
           </div>
-          <span className="self-end">
-            <Privacy />
-          </span>
+          <p className="flex items-start gap-1.5 text-microcopy text-subtle" title={TARGET_PRIVACY_NOTE}>
+            <LockIcon className="mt-0.5 h-3 w-3" /> Targets are private. Your Targets, Context, Next Steps and Activity are never shared with them.
+          </p>
         </div>
       )}
       {available && !adding && !discoverHref && (
         <div className="flex min-h-10 items-center justify-between gap-3">
           {canEdit && (
             <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
-              Add Target
+              Add To Targets
             </button>
           )}
           <span className="ml-auto">
@@ -359,7 +345,7 @@ export default function TargetsView({
                   </span>
                   <NextActionLine item={i} />
                 </span>
-                <span className="shrink-0 py-1 text-metadata font-semibold text-accent">Open</span>
+                <span className="shrink-0 py-1 text-metadata font-semibold text-accent">Open Relationship</span>
               </Link>
             </li>
           ))}
@@ -407,7 +393,11 @@ export function CandidateRow({ c }: { c: TargetCandidate }) {
       <TargetThumb imageUrl={c.imageUrl} kind={c.kind} />
       <CandidateIdentity c={c} />
       {c.target ? (
-        <Chip tone={TARGET_STATUS_TONE[c.target.status]}>Targeted</Chip>
+        // Already in your Targets: its state, and it opens — never a second one.
+        <span className="flex shrink-0 flex-col items-end gap-0.5">
+          <Chip tone={TARGET_STATUS_TONE[c.target.status]}>{TARGET_STATUS_LABELS[c.target.status]}</Chip>
+          <span className="text-microcopy font-semibold text-accent">Open Relationship</span>
+        </span>
       ) : c.ownLocation ? (
         <span className="shrink-0 text-microcopy text-subtle">Yours</span>
       ) : null}
@@ -433,7 +423,7 @@ function AddTarget({ businessId, placesOnly, onClose }: { businessId: string; pl
 
   const open = (kind: TargetKind, id: string, locationId: string | null) => {
     onClose();
-    go({ ...(kind === "location" && locationId ? { loc: locationId, tgt: null } : { tgt: id, loc: null }), pt: null });
+    go(relationshipParams(relationshipRefFor(kind, { targetId: id, locationId })));
   };
   const pick = (c: Picked) => {
     setError(null);
@@ -456,8 +446,8 @@ function AddTarget({ businessId, placesOnly, onClose }: { businessId: string; pl
     <PickerContext.Provider value={{ businessId, scope }}>
       <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.08] bg-white p-4">
         <div>
-          <p className="font-display text-card-title-lg font-bold text-primary">Add Target</p>
-          <p className="mt-0.5 text-metadata text-muted">You know who you want. Private to your team and Findmi — they&rsquo;re never told.</p>
+          <p className="font-display text-card-title-lg font-bold text-primary">Add To Targets</p>
+          <p className="mt-0.5 text-metadata text-muted">I already know who or where. Private to your team and Findmi — they&rsquo;re never told.</p>
         </div>
 
         {!placesOnly && !picked && (

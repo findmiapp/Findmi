@@ -8,6 +8,8 @@ import { Chip } from "../../../owner-ui";
 import { ActivityFeed, IntentsBlock, InternalNotes, NextCard, StatusControl, SummaryBlock } from "./RelationshipWorkspace";
 import { LockIcon, TargetThumb } from "./TargetsView";
 import InquiryPanel, { type TargetInquirySummary } from "./InquiryPanel";
+import ContextualOpportunityList from "@/components/relationships/ContextualOpportunityList";
+import type { ContextualOpportunity } from "@/lib/relationship-context";
 
 /** One Business or Event Target — the same private pursuit as a Place Target
  * (status, Next, Context, Why, Activity, Findmi Internal), without the
@@ -24,6 +26,7 @@ export default function TargetWorkspace({
   activity,
   inquiries,
   senderName,
+  opportunities = [],
   backHref,
   backLabel,
 }: {
@@ -37,6 +40,8 @@ export default function TargetWorkspace({
   /** This Business's Inquiries from this Target (sender side). */
   inquiries: TargetInquirySummary[];
   senderName: string;
+  /** Opportunities this Business can already see about this exact counterparty. */
+  opportunities?: ContextualOpportunity[];
   backHref: string;
   backLabel: string;
 }) {
@@ -69,7 +74,7 @@ export default function TargetWorkspace({
         </div>
       </header>
 
-      <NextCard businessId={businessId} item={target} canEdit={canEdit} />
+      {/* Current relationship (shared Inquiry state) first, then what we do next. */}
       {!c.archived && (
         <InquiryPanel
           businessId={businessId}
@@ -84,9 +89,16 @@ export default function TargetWorkspace({
           canEdit={canEdit}
         />
       )}
+      <NextCard businessId={businessId} item={target} canEdit={canEdit} />
       <SummaryBlock businessId={businessId} item={target} canEdit={canEdit} />
       <IntentsBlock businessId={businessId} item={target} canEdit={canEdit} />
       <ActivityFeed businessId={businessId} targetId={target.id} canAdd={canEdit} initial={activity} />
+      {opportunities.length > 0 && (
+        <section aria-labelledby="ws-opps" className="flex flex-col gap-2">
+          <h3 id="ws-opps" className="text-label font-bold uppercase text-subtle">Opportunities</h3>
+          <ContextualOpportunityList items={opportunities} />
+        </section>
+      )}
       {isFindmiAdmin && <InternalNotes businessId={businessId} targetId={target.id} initial={internalNotes} />}
     </div>
   );

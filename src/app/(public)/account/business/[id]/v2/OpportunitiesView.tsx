@@ -77,7 +77,7 @@ export default function OpportunitiesView({
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
         <h1 className="font-display text-page-title-lg font-bold text-primary">Growth</h1>
-        <p className="mt-1 text-body text-muted">Opportunities Findmi recommends for your Business, and ways to find more.</p>
+        <p className="mt-1 text-body text-muted">Browse commercial opportunities available to your Business.</p>
       </div>
       {nav}
 

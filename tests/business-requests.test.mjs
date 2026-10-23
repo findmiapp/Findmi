@@ -41,7 +41,7 @@ const build = ({ opportunities = [], invitations = [], newOrderCount = 0 } = {})
 
 test("an Opportunity offered on an open listing is a Request: Response Requested → Review its detail page", () => {
   const [r] = build({ opportunities: [opp("r1", "open", "offered", { title: "Hotel Lobby Sampling", placeName: "The Grove Hotel" })] });
-  assert.deepEqual(r, { key: "opportunity:r1", title: "Hotel Lobby Sampling", meta: "Opportunity · Response Requested", detail: "The Grove Hotel", href: `${BASE}/opportunities/r1`, actionLabel: "Review" });
+  assert.deepEqual(r, { key: "opportunity:r1", title: "Hotel Lobby Sampling", meta: "Opportunity · Response Requested", detail: "The Grove Hotel", href: `${BASE}/opportunities/r1`, actionLabel: "Review Opportunity" });
 });
 
 test("Interested, Not Interested, Confirmed, and an offer on a closed listing are not Requests", () => {

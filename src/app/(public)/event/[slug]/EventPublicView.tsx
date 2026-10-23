@@ -21,6 +21,8 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
+import ForYourBusiness from "@/components/relationships/ForYourBusiness";
+import { RELATIONSHIP_ACTIONS } from "@/lib/relationship-links";
 import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
@@ -976,6 +978,26 @@ export async function EventPublicView({ slug }: { slug: string }) {
           {hostedBySection}
           {placeSection}
           {productsSection}
+          {/* For Your Business — the commercial layer, for signed-in Business
+              managers only. Apply To Participate is the Event's existing
+              participation workflow, offered only while applications are open
+              and kept separate from Connect. */}
+          <ForYourBusiness
+            kind="event"
+            entityId={event.id}
+            entityName={event.name}
+            participate={
+              event.vendor_applications_enabled && !vendorDeadlinePassed ? (
+                <MessageButton
+                  targetType="event"
+                  targetId={event.id}
+                  targetName={event.name}
+                  label={RELATIONSHIP_ACTIONS.participate}
+                  eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at, date: calendarDate(o) ?? o.occurrence_date })) : undefined}
+                />
+              ) : undefined
+            }
+          />
           {detailsSection}
         </div>
       </div>

@@ -5,6 +5,7 @@
 // step changes. Pure and client-safe — the page passes in rows it has already read.
 import { TARGET_STATUS_LABELS, type TargetStatus } from "./business-targets-domain";
 import type { TargetKind } from "./commercial-intents";
+import { relationshipQuery, relationshipRefFor } from "./relationship-links";
 
 /** Home shows this many; See All shows the rest of the (bounded) list. */
 export const FOLLOW_UPS_INITIAL_LIMIT = 3;
@@ -93,7 +94,7 @@ export function buildFollowUps({
         meta: [TARGET_STATUS_LABELS[p.status], when].filter(Boolean).join(" · "),
         detail: step,
         due,
-        href: p.locationId ? `${basePath}?tab=growth&view=targets&loc=${p.locationId}` : `${basePath}?tab=growth&view=targets&tgt=${p.targetId}`,
+        href: `${basePath}${relationshipQuery(relationshipRefFor(p.kind, { targetId: p.targetId, locationId: p.locationId }))}`,
       },
       rank: RANK[due ?? "undated"],
       date: p.nextActionAt?.slice(0, 10) ?? "9999",
