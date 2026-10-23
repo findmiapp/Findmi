@@ -88,7 +88,7 @@ test("one scope rule: in memory and pushed into the query agree", () => {
 // ── Footprint / Growth Activity ─────────────────────────────────────────────
 
 const place = (id) => ({ id, name: id, slug: id, city: null, state: null, imageUrl: null, unlisted: false, marketId: "m-nj", areaId: "a-jc" });
-const row = (id, o = {}) => ({ place: place(id), ours: false, presence: null, placement: null, ...o });
+const row = (id, o = {}) => ({ place: place(id), ours: false, presence: null, target: null, ...o });
 const pres = (status, isPublic) => ({ status, relationships: ["sold_here"], public: isPublic });
 
 test("public presence = live AND in date; pending / declined / out-of-date never are", () => {
@@ -107,12 +107,12 @@ test("Current Footprint = Our Locations ∪ live in-date Find Us Here; Targets a
     row("ours+live", { ours: true, presence: pres("live", true) }),
     row("live", { presence: pres("live", true) }),
     row("live-expired", { presence: pres("live", false) }),
-    row("pending", { presence: pres("pending", false), placement: { status: "placement_pending", nextAction: null, nextActionAt: null } }),
+    row("pending", { presence: pres("pending", false), target: { status: "agreed", nextAction: null, nextActionAt: null } }),
     row("declined", { presence: pres("declined", false) }),
-    row("target", { placement: { status: "target", nextAction: null, nextActionAt: null } }),
-    row("talking", { placement: { status: "in_conversation", nextAction: null, nextActionAt: null } }),
-    row("active+live", { presence: pres("live", true), placement: { status: "active", nextAction: null, nextActionAt: null } }),
-    row("passed", { placement: { status: "passed", nextAction: null, nextActionAt: null } }),
+    row("target", { target: { status: "target", nextAction: null, nextActionAt: null } }),
+    row("talking", { target: { status: "in_conversation", nextAction: null, nextActionAt: null } }),
+    row("active+live", { presence: pres("live", true), target: { status: "active", nextAction: null, nextActionAt: null } }),
+    row("passed", { target: { status: "passed", nextAction: null, nextActionAt: null } }),
   ];
   const c = R.countRelationships(rows);
   assert.equal(c.footprint, 4, "ours, ours+live, live, active+live");
@@ -120,7 +120,7 @@ test("Current Footprint = Our Locations ∪ live in-date Find Us Here; Targets a
   assert.equal(c.publicPresence, 3);
   assert.equal(c.pendingReview, 1);
   assert.equal(c.pursuing, 4, "Growth Activity excludes Passed");
-  assert.deepEqual(c.byStatus, { target: 1, in_conversation: 1, placement_pending: 1, active: 1, passed: 1 });
+  assert.deepEqual(c.byStatus, { target: 1, in_conversation: 1, agreed: 1, active: 1, passed: 1 });
   assert.deepEqual(rows.filter(R.isFootprint).map((r) => r.place.id), ["ours", "ours+live", "live", "active+live"]);
   assert.deepEqual(R.countRelationships([]).footprint, 0);
 });
@@ -132,7 +132,10 @@ test("the relationship reader is derived, bounded, and never reads internal note
   assert.doesNotMatch(src, /\.(insert|update|upsert|delete)\(/, "read-only");
   assert.match(src, /const MAX_PAGES = 20;/);
   assert.match(src, /export const GEOGRAPHY_LIST_LIMIT = 50;/);
-  for (const t of ["business_locations", "business_location_availability", "business_location_placements"]) assert.match(src, new RegExp(`from\\("${t}"\\)`));
+  for (const t of ["business_locations", "business_location_availability", "business_targets"]) assert.match(src, new RegExp(`from\\("${t}"\\)`));
+  // Cross-Entity Targets: only Place Targets enter a geography; the legacy table is never read.
+  assert.match(src, /\.not\("target_location_id", "is", null\)/);
+  assert.doesNotMatch(src, /business_location_placements/);
   // No stored counters: no new table, and every count comes from countRelationships.
   assert.doesNotMatch(src, /from\("business_relationships"\)/);
   assert.match(src, /export const isFootprint = \(r: RelationshipRow\) => r\.ours \|\| Boolean\(r\.presence\?\.public\);/);
@@ -268,14 +271,16 @@ test("admin actions validate the Area belongs to the Market, and the form offers
 
 // ── Relationship workspace ──────────────────────────────────────────────────
 
-test("the workspace is addressed by Location; legacy `pt` resolves to it", () => {
+test("the workspace is addressed by Location (a Business / Event Target by `tgt`); legacy `pt` resolves to either", () => {
   const page = read(PAGE);
   assert.match(page, /const requestedLoc = workspaceDoor && typeof rawSearchParams\.loc === "string" \? rawSearchParams\.loc : "";/);
   assert.match(page, /const legacyPt = workspaceDoor && !requestedLoc && typeof rawSearchParams\.pt === "string" \? rawSearchParams\.pt : "";/);
-  assert.match(page, /const locationId = requestedLoc \|\| \(await getBusinessPlacement\(admin, id, legacyPt\)\)\?\.locationId \|\| "";/);
+  assert.match(page, /const opened = requestedLoc \? null : await getBusinessTarget\(admin, id, requestedTgt \|\| legacyPt\);/);
+  assert.match(page, /const locationId = requestedLoc \|\| opened\?\.locationId \|\| "";/);
   assert.match(page, /getRelationshipWorkspace\(admin, id, locationId\)/);
   const list = read(`${V2}/TargetsView.tsx`);
-  assert.match(list, /href\(\{ loc: i\.locationId, pt: null \}\)/, "Target rows open the workspace by place");
+  assert.match(list, /export const targetHref = \(t: Pick<BusinessTargetItem, "id" \| "locationId">\) => \(t\.locationId \? \{ loc: t\.locationId, tgt: null, pt: null \} : \{ tgt: t\.id, loc: null, pt: null \}\);/, "Place rows open the workspace by place; others by Target");
+  assert.match(list, /href=\{href\(targetHref\(i\)\)\}/);
   assert.doesNotMatch(list, /function TargetDetail/);
   assert.match(read(`${V2}/GeographyViews.tsx`), /href\(\{ loc/);
 });
@@ -296,15 +301,15 @@ test("workspace hierarchy and removed clutter", () => {
 
 test("Active → Add To Find Us Here reuses the existing editor and review; no auto-publish, no duplicates", () => {
   const w = read(`${V2}/RelationshipWorkspace.tsx`);
-  assert.match(w, /const canAdd = canEdit && !presence && placement\?\.status === "active";/, "only Active, only when not already on Find Us Here");
+  assert.match(w, /const canAdd = canEdit && !presence && target\?\.status === "active";/, "only Active, only when not already on Find Us Here");
   assert.match(w, /<PlaceForm [^>]*fixedPlace=\{fixedPlace\}/);
   assert.doesNotMatch(w, /requestAvailabilityAction|updateAvailabilityAction|business_location_availability/, "the editor owns the save path");
   assert.doesNotMatch(w, /status: "live"|"live" as/, "never publishes");
   const form = read(`${V2}/AvailableAtView.tsx`);
   assert.match(form, /fixedPlace\?: Place/);
   assert.match(form, /await requestAvailabilityAction\(businessId, \{ locationId: place\.id, \.\.\.fields \}\)/, "same moderated request path");
-  // No lifecycle tie: Placement writes never touch Find Us Here.
-  for (const f of ["src/lib/business-placements.ts", "src/app/(public)/account/business/[id]/placement-actions.ts"]) {
+  // No lifecycle tie: Target writes never touch Find Us Here.
+  for (const f of ["src/lib/business-targets.ts", "src/app/(public)/account/business/[id]/target-actions.ts"]) {
     assert.doesNotMatch(read(f), /business_location_availability/);
   }
 });
@@ -330,8 +335,8 @@ test("Growth: the full framework on Goals only; the work tabs show just the tabs
 test("Targets: no permanent explanation — a small Private marker; the note stays in the empty state", () => {
   const view = read(`${V2}/TargetsView.tsx`);
   assert.doesNotMatch(view, /Places you want to get into/);
-  assert.match(view, /title=\{PLACEMENT_PRIVACY_NOTE\}>\s*<LockIcon className="h-3 w-3" \/> Private/);
-  assert.match(view, /counts\.all === 0 && <span className="mt-1 block text-metadata">\{PLACEMENT_PRIVACY_NOTE\}<\/span>/);
+  assert.match(view, /title=\{TARGET_PRIVACY_NOTE\}>\s*<LockIcon className="h-3 w-3" \/> Private/);
+  assert.match(view, /\{!anyTargets && <span className="mt-1 block text-metadata">\{TARGET_PRIVACY_NOTE\}<\/span>\}/);
   // Add Target → Growing In → search → status filters → rows.
   const at = ["Add Target\n", "{context && !adding && context}", 'role="search"', 'aria-label="Status"', "{items.map((i) =>"].map((m) => view.indexOf(m));
   assert.ok(at.every((i) => i > 0));

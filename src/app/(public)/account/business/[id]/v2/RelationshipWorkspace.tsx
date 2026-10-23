@@ -9,22 +9,23 @@ import {
   availabilityWhenLabel,
 } from "@/lib/business-availability-domain";
 import {
-  PLACEMENT_ACTIVITY_NOTE_MAX,
-  PLACEMENT_LIMITS,
-  PLACEMENT_STATUSES,
-  PLACEMENT_STATUS_HINTS,
-  PLACEMENT_STATUS_LABELS,
-  PLACEMENT_STATUS_TONE,
-  formatPlacementDate,
-  type PlacementStatus,
-} from "@/lib/business-placements-domain";
-import type { BusinessPlacementItem, PlacementActivityItem, PlacementActivityPage } from "@/lib/business-placements";
+  TARGET_ACTIVITY_NOTE_MAX,
+  TARGET_LIMITS,
+  TARGET_STATUSES,
+  TARGET_STATUS_HINTS,
+  TARGET_STATUS_LABELS,
+  TARGET_STATUS_TONE,
+  formatTargetDate,
+  type TargetStatus,
+} from "@/lib/business-targets-domain";
+import { COMMERCIAL_INTENT_LABELS, type CommercialIntent } from "@/lib/commercial-intents";
+import type { BusinessTargetItem, TargetActivityItem, TargetActivityPage } from "@/lib/business-targets";
 import type { RelationshipWorkspaceData } from "@/lib/business-relationships";
 import type { ProductSet } from "@/lib/business-product-sets-domain";
-import { addTargetAction, addTargetNoteAction, loadTargetActivityAction, saveTargetInternalNotesAction, updateTargetAction } from "../placement-actions";
+import { addTargetAction, addTargetNoteAction, loadTargetActivityAction, saveTargetInternalNotesAction, setTargetIntentsAction, updateTargetAction } from "../target-actions";
 import { Chip } from "../../../owner-ui";
 import { PlaceForm } from "./AvailableAtView";
-import { LockIcon, PlaceThumb, useTargetNav } from "./TargetsView";
+import { IntentPicker, LockIcon, PlaceThumb, useTargetNav } from "./TargetsView";
 import { OpportunityCards } from "./GeographyViews";
 
 /** The Business ↔ Location relationship workspace — ONE page for one place,
@@ -52,7 +53,7 @@ export interface WorkspaceProps {
   /** A founder Admin session — the only viewer of Findmi Internal. */
   isFindmiAdmin: boolean;
   internalNotes: string | null;
-  activity: PlacementActivityPage | null;
+  activity: TargetActivityPage | null;
   backHref: string;
   backLabel: string;
   products: { id: string; name: string }[];
@@ -62,7 +63,7 @@ export interface WorkspaceProps {
 
 export default function RelationshipWorkspace(props: WorkspaceProps) {
   const { businessId, data, canEdit, backHref, backLabel } = props;
-  const { place, placement } = data;
+  const { place, target } = data;
   const geography = place.areaName ? [place.areaName, place.marketName].filter(Boolean).join(" · ") : [place.city, place.state].filter(Boolean).join(", ");
 
   return (
@@ -79,9 +80,9 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
           {geography && <p className="text-metadata text-muted">{geography}</p>}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {data.ours && <Chip tone="aqua">Our Location</Chip>}
-            {placement && <StatusControl businessId={businessId} item={placement} canEdit={canEdit} />}
+            {target && <StatusControl businessId={businessId} item={target} canEdit={canEdit} />}
             {place.unlisted && <NotPublicBadge />}
-            {placement && (
+            {target && (
               <span className="inline-flex items-center gap-1 text-microcopy text-subtle" title="Private to your team and Findmi">
                 <LockIcon className="h-3 w-3" /> Private
               </span>
@@ -90,11 +91,12 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
         </div>
       </header>
 
-      {!placement && !data.ours && canEdit && <TrackAsTarget businessId={businessId} locationId={place.id} />}
+      {!target && !data.ours && canEdit && <TrackAsTarget businessId={businessId} locationId={place.id} />}
 
-      {placement && <NextCard businessId={businessId} item={placement} canEdit={canEdit} />}
-      {placement && <SummaryBlock businessId={businessId} item={placement} canEdit={canEdit} />}
-      {placement && <ActivityFeed businessId={businessId} placementId={placement.id} canAdd={canEdit} initial={props.activity} />}
+      {target && <NextCard businessId={businessId} item={target} canEdit={canEdit} />}
+      {target && <SummaryBlock businessId={businessId} item={target} canEdit={canEdit} />}
+      {target && <IntentsBlock businessId={businessId} item={target} canEdit={canEdit} />}
+      {target && <ActivityFeed businessId={businessId} targetId={target.id} canAdd={canEdit} initial={props.activity} />}
 
       <Presence {...props} />
 
@@ -117,13 +119,13 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
               <Link key={label} href={a!.href} className="flex min-h-10 items-baseline gap-2 text-body">
                 <span className="shrink-0 text-metadata font-semibold text-muted">{label}</span>
                 <span className="min-w-0 flex-1 truncate font-semibold text-primary hover:underline">{a!.title}</span>
-                <span className="shrink-0 text-metadata text-muted">{formatPlacementDate(a!.startAt.slice(0, 10))}</span>
+                <span className="shrink-0 text-metadata text-muted">{formatTargetDate(a!.startAt.slice(0, 10))}</span>
               </Link>
             ))}
         </section>
       )}
 
-      {placement && props.isFindmiAdmin && <InternalNotes businessId={businessId} placementId={placement.id} initial={props.internalNotes} />}
+      {target && props.isFindmiAdmin && <InternalNotes businessId={businessId} targetId={target.id} initial={props.internalNotes} />}
     </div>
   );
 }
@@ -131,17 +133,17 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
 // ── Status ─────────────────────────────────────────────────────────────────
 
 /** The status pill; for editors it opens the picker (with each status's hint). */
-function StatusControl({ businessId, item, canEdit }: { businessId: string; item: BusinessPlacementItem; canEdit: boolean }) {
+export function StatusControl({ businessId, item, canEdit }: { businessId: string; item: BusinessTargetItem; canEdit: boolean }) {
   const { refresh } = useTargetNav();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  if (!canEdit) return <Chip tone={PLACEMENT_STATUS_TONE[item.status]}>{PLACEMENT_STATUS_LABELS[item.status]}</Chip>;
-  const choose = (s: PlacementStatus) =>
+  if (!canEdit) return <Chip tone={TARGET_STATUS_TONE[item.status]}>{TARGET_STATUS_LABELS[item.status]}</Chip>;
+  const choose = (s: TargetStatus) =>
     startTransition(async () => {
       setError(null);
       if (s === item.status) return setOpen(false);
-      const result = await updateTargetAction(businessId, item.id, { status: s, notes: item.notes, nextAction: item.nextAction, nextActionAt: item.nextActionAt });
+      const result = await updateTargetAction(businessId, item.id, { status: s, context: item.context, nextAction: item.nextAction, nextActionAt: item.nextActionAt });
       if (!result.ok) return setError(result.error);
       setOpen(false);
       refresh();
@@ -149,12 +151,12 @@ function StatusControl({ businessId, item, canEdit }: { businessId: string; item
   return (
     <span className="sm:relative">
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex min-h-9 items-center gap-1 rounded-md">
-        <Chip tone={PLACEMENT_STATUS_TONE[item.status]}>{PLACEMENT_STATUS_LABELS[item.status]} ▾</Chip>
+        <Chip tone={TARGET_STATUS_TONE[item.status]}>{TARGET_STATUS_LABELS[item.status]} ▾</Chip>
         <span className="sr-only">Change status</span>
       </button>
       {open && (
         <span role="dialog" aria-label="Status" className="absolute inset-x-0 top-full z-20 mt-1 flex flex-col sm:right-auto sm:w-72 rounded-2xl border border-black/10 bg-white p-1.5 shadow-lg">
-          {PLACEMENT_STATUSES.map((s) => (
+          {TARGET_STATUSES.map((s) => (
             <button
               key={s}
               type="button"
@@ -164,8 +166,8 @@ function StatusControl({ businessId, item, canEdit }: { businessId: string; item
               onClick={() => choose(s)}
               className={`flex min-h-11 flex-col items-start rounded-xl px-3 py-2 text-left transition hover:bg-black/[0.03] ${s === item.status ? "bg-findmi-50" : ""}`}
             >
-              <span className={`text-body font-semibold ${s === item.status ? "text-findmi-700" : "text-primary"}`}>{PLACEMENT_STATUS_LABELS[s]}</span>
-              <span className="text-microcopy text-muted">{PLACEMENT_STATUS_HINTS[s]}</span>
+              <span className={`text-body font-semibold ${s === item.status ? "text-findmi-700" : "text-primary"}`}>{TARGET_STATUS_LABELS[s]}</span>
+              <span className="text-microcopy text-muted">{TARGET_STATUS_HINTS[s]}</span>
             </button>
           ))}
           {error && <span role="alert" className="px-3 py-1 text-metadata font-semibold text-red-700">{error}</span>}
@@ -188,7 +190,7 @@ function TrackAsTarget({ businessId, locationId }: { businessId: string; locatio
         onClick={() =>
           startTransition(async () => {
             setError(null);
-            const result = await addTargetAction(businessId, locationId);
+            const result = await addTargetAction(businessId, "location", locationId, ["placement"]);
             if (!result.ok) return setError(result.error);
             refresh();
           })
@@ -204,11 +206,11 @@ function TrackAsTarget({ businessId, locationId }: { businessId: string; locatio
 
 // ── Next / Context ─────────────────────────────────────────────────────────
 
-const save = (businessId: string, item: BusinessPlacementItem, patch: Partial<{ notes: string | null; nextAction: string | null; nextActionAt: string | null }>) =>
-  updateTargetAction(businessId, item.id, { status: item.status, notes: item.notes, nextAction: item.nextAction, nextActionAt: item.nextActionAt, ...patch });
+const save = (businessId: string, item: BusinessTargetItem, patch: Partial<{ context: string | null; nextAction: string | null; nextActionAt: string | null }>) =>
+  updateTargetAction(businessId, item.id, { status: item.status, context: item.context, nextAction: item.nextAction, nextActionAt: item.nextActionAt, ...patch });
 
 /** NEXT — what needs to happen, and when. Prominent; edits inline. */
-function NextCard({ businessId, item, canEdit }: { businessId: string; item: BusinessPlacementItem; canEdit: boolean }) {
+export function NextCard({ businessId, item, canEdit }: { businessId: string; item: BusinessTargetItem; canEdit: boolean }) {
   const { refresh } = useTargetNav();
   const [editing, setEditing] = useState(false);
   const [action, setAction] = useState(item.nextAction ?? "");
@@ -234,7 +236,7 @@ function NextCard({ businessId, item, canEdit }: { businessId: string; item: Bus
       <section aria-label="Next" className="flex flex-col gap-2.5 rounded-2xl border border-findmi/30 bg-white p-3.5">
         <h3 className={sectionTitle}>Next</h3>
         <label className="sr-only" htmlFor="ws-next-action">Next Action</label>
-        <textarea id="ws-next-action" autoCapitalize="sentences" rows={2} autoFocus value={action} maxLength={PLACEMENT_LIMITS.nextAction} onChange={(e) => setAction(e.target.value.replace(/\s*\n\s*/g, " "))} placeholder="e.g. Drop off samples" className={`${inputClass} resize-none`} />
+        <textarea id="ws-next-action" autoCapitalize="sentences" rows={2} autoFocus value={action} maxLength={TARGET_LIMITS.nextAction} onChange={(e) => setAction(e.target.value.replace(/\s*\n\s*/g, " "))} placeholder="e.g. Drop off samples" className={`${inputClass} resize-none`} />
         <label className="flex items-center gap-2">
           <span className="shrink-0 text-metadata font-semibold text-secondary">Date</span>
           <input type="date" autoCapitalize="none" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
@@ -258,7 +260,7 @@ function NextCard({ businessId, item, canEdit }: { businessId: string; item: Bus
   return (
     <section aria-label="Next" className="flex items-start gap-3 rounded-2xl border border-findmi/30 bg-findmi-50/40 px-3.5 py-3">
       <div className="min-w-0 flex-1">
-        <p className="text-label font-bold uppercase text-findmi-700">{item.nextActionAt ? `Next · ${formatPlacementDate(item.nextActionAt)}` : "Next"}</p>
+        <p className="text-label font-bold uppercase text-findmi-700">{item.nextActionAt ? `Next · ${formatTargetDate(item.nextActionAt)}` : "Next"}</p>
         {item.nextAction && <p className="mt-0.5 break-words text-body font-semibold text-primary">{item.nextAction}</p>}
       </div>
       {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>Edit</button>}
@@ -266,20 +268,20 @@ function NextCard({ businessId, item, canEdit }: { businessId: string; item: Bus
   );
 }
 
-/** CONTEXT — the Placement `notes` field (label only): present understanding,
- * read first; Edit when needed. */
-function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item: BusinessPlacementItem; canEdit: boolean }) {
+/** CONTEXT — the Target's `context` field: present understanding, read first;
+ * Edit when needed. */
+export function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item: BusinessTargetItem; canEdit: boolean }) {
   const { refresh } = useTargetNav();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(item.notes ?? "");
+  const [text, setText] = useState(item.context ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  if (!item.notes && !canEdit) return null;
+  if (!item.context && !canEdit) return null;
   if (editing) {
     return (
       <section aria-label="Context" className="flex flex-col gap-2">
         <h3 className={sectionTitle}>Context</h3>
-        <textarea autoCapitalize="sentences" rows={4} autoFocus value={text} maxLength={PLACEMENT_LIMITS.notes} onChange={(e) => setText(e.target.value)} placeholder="e.g. Independent café. Sarah is the owner. Introduced through Derek." className={inputClass} />
+        <textarea autoCapitalize="sentences" rows={4} autoFocus value={text} maxLength={TARGET_LIMITS.context} onChange={(e) => setText(e.target.value)} placeholder="e.g. Independent café. Sarah is the owner. Introduced through Derek." className={inputClass} />
         {error && <p role="alert" className="text-metadata font-semibold text-red-700">{error}</p>}
         <div className="flex items-center gap-1">
           <button
@@ -288,7 +290,7 @@ function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item:
             onClick={() =>
               startTransition(async () => {
                 setError(null);
-                const result = await save(businessId, item, { notes: text || null });
+                const result = await save(businessId, item, { context: text || null });
                 if (!result.ok) return setError(result.error);
                 setEditing(false);
                 refresh();
@@ -298,7 +300,7 @@ function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item:
           >
             {pending ? "Saving…" : "Save"}
           </button>
-          <button type="button" disabled={pending} onClick={() => { setEditing(false); setText(item.notes ?? ""); }} className={quietBtn}>Cancel</button>
+          <button type="button" disabled={pending} onClick={() => { setEditing(false); setText(item.context ?? ""); }} className={quietBtn}>Cancel</button>
         </div>
       </section>
     );
@@ -307,9 +309,55 @@ function SummaryBlock({ businessId, item, canEdit }: { businessId: string; item:
     <section aria-label="Context" className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between gap-3">
         <h3 className={sectionTitle}>Context</h3>
-        {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>{item.notes ? "Edit" : "Add Context"}</button>}
+        {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>{item.context ? "Edit" : "Add Context"}</button>}
       </div>
-      {item.notes && <p className="whitespace-pre-line break-words text-body text-primary">{item.notes}</p>}
+      {item.context && <p className="whitespace-pre-line break-words text-body text-primary">{item.context}</p>}
+    </section>
+  );
+}
+
+/** WHY — the Target's intents (only those its counterparty kind supports). */
+export function IntentsBlock({ businessId, item, canEdit }: { businessId: string; item: BusinessTargetItem; canEdit: boolean }) {
+  const { refresh } = useTargetNav();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<CommercialIntent[]>(item.intents);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  if (editing) {
+    return (
+      <section aria-label="Why" className="flex flex-col gap-2">
+        <h3 className={sectionTitle}>Why</h3>
+        <IntentPicker kind={item.kind} value={value} onChange={setValue} disabled={pending} />
+        {error && <p role="alert" className="text-metadata font-semibold text-red-700">{error}</p>}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={pending || value.length === 0}
+            onClick={() =>
+              startTransition(async () => {
+                setError(null);
+                const result = await setTargetIntentsAction(businessId, item.id, value);
+                if (!result.ok) return setError(result.error);
+                setEditing(false);
+                refresh();
+              })
+            }
+            className={primaryBtn}
+          >
+            {pending ? "Saving…" : "Save"}
+          </button>
+          <button type="button" disabled={pending} onClick={() => { setEditing(false); setValue(item.intents); }} className={quietBtn}>Cancel</button>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section aria-label="Why" className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={sectionTitle}>Why</h3>
+        {canEdit && <button type="button" onClick={() => setEditing(true)} className={linkBtn}>Edit</button>}
+      </div>
+      <p className="text-body text-primary">{item.intents.map((i) => COMMERCIAL_INTENT_LABELS[i]).join(", ") || "—"}</p>
     </section>
   );
 }
@@ -325,7 +373,7 @@ const PRESENCE_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as
 function Presence({ businessId, data, canEdit, products, productSets, productSetsAvailable }: WorkspaceProps) {
   const { refresh } = useTargetNav();
   const [editing, setEditing] = useState(false);
-  const { presence, placement, place } = data;
+  const { presence, target, place } = data;
   const fixedPlace = { id: place.id, name: place.name, address: place.address, city: place.city, state: place.state };
   const done = () => {
     setEditing(false);
@@ -343,7 +391,7 @@ function Presence({ businessId, data, canEdit, products, productSets, productSet
   if (editing) {
     return <PlaceForm businessId={businessId} products={products} productSets={productSets} productSetsAvailable={productSetsAvailable} initial={presence ?? undefined} fixedPlace={fixedPlace} onDone={done} />;
   }
-  const canAdd = canEdit && !presence && placement?.status === "active";
+  const canAdd = canEdit && !presence && target?.status === "active";
   return (
     <section aria-labelledby="ws-presence" className="flex flex-col gap-1.5">
       <h3 id="ws-presence" className={sectionTitle}>Presence</h3>
@@ -392,7 +440,7 @@ function When({ iso }: { iso: string }) {
   );
 }
 
-function ActivityEntry({ entry }: { entry: PlacementActivityItem }) {
+function ActivityEntry({ entry }: { entry: TargetActivityItem }) {
   if (entry.type === "status_change") {
     return (
       <li className="relative pl-5">
@@ -402,7 +450,7 @@ function ActivityEntry({ entry }: { entry: PlacementActivityItem }) {
           <When iso={entry.createdAt} />
         </p>
         <p className="mt-0.5 text-metadata text-secondary">
-          {entry.from ? PLACEMENT_STATUS_LABELS[entry.from] : "—"} <span aria-label="to">→</span> {entry.to ? PLACEMENT_STATUS_LABELS[entry.to] : "—"}
+          {entry.from ? TARGET_STATUS_LABELS[entry.from] : "—"} <span aria-label="to">→</span> {entry.to ? TARGET_STATUS_LABELS[entry.to] : "—"}
           {entry.author ? <span className="text-muted"> · {entry.author}</span> : null}
         </p>
       </li>
@@ -422,9 +470,9 @@ function ActivityEntry({ entry }: { entry: PlacementActivityItem }) {
 
 /** ACTIVITY — the relationship's history, newest first: dated notes and every
  * status change (append-only). A one-line "Add a note…" opens the composer. */
-function ActivityFeed({ businessId, placementId, canAdd, initial }: { businessId: string; placementId: string; canAdd: boolean; initial: PlacementActivityPage | null }) {
+export function ActivityFeed({ businessId, targetId, canAdd, initial }: { businessId: string; targetId: string; canAdd: boolean; initial: TargetActivityPage | null }) {
   const { refresh } = useTargetNav();
-  const [older, setOlder] = useState<PlacementActivityItem[]>([]);
+  const [older, setOlder] = useState<TargetActivityItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -445,7 +493,7 @@ function ActivityFeed({ businessId, placementId, canAdd, initial }: { businessId
   const addNote = () =>
     startAdding(async () => {
       setError(null);
-      const result = await addTargetNoteAction(businessId, placementId, draft);
+      const result = await addTargetNoteAction(businessId, targetId, draft);
       if (!result.ok) return setError(result.error);
       setDraft("");
       setComposing(false);
@@ -455,7 +503,7 @@ function ActivityFeed({ businessId, placementId, canAdd, initial }: { businessId
   const loadMore = () =>
     startLoading(async () => {
       if (!cursor) return;
-      const next = await loadTargetActivityAction(businessId, placementId, cursor);
+      const next = await loadTargetActivityAction(businessId, targetId, cursor);
       if (!next.available) return setError("Couldn’t load more activity. Please try again.");
       setOlder((prev) => [...prev, ...next.items]);
       setCursor(next.nextCursor);
@@ -475,7 +523,7 @@ function ActivityFeed({ businessId, placementId, canAdd, initial }: { businessId
               rows={3}
               autoFocus
               value={draft}
-              maxLength={PLACEMENT_ACTIVITY_NOTE_MAX}
+              maxLength={TARGET_ACTIVITY_NOTE_MAX}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="What happened? e.g. Called the GM — send samples Friday."
               className={inputClass}
@@ -510,7 +558,7 @@ function ActivityFeed({ businessId, placementId, canAdd, initial }: { businessId
 /** Findmi-only (managed service), collapsed by default; a dot shows when it has
  * content. Rendered only for a founder Admin session — the page reads these notes
  * only for that session, and the save action re-checks it. */
-function InternalNotes({ businessId, placementId, initial }: { businessId: string; placementId: string; initial: string | null }) {
+export function InternalNotes({ businessId, targetId, initial }: { businessId: string; targetId: string; initial: string | null }) {
   const [value, setValue] = useState(initial ?? "");
   const [baseline, setBaseline] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -520,7 +568,7 @@ function InternalNotes({ businessId, placementId, initial }: { businessId: strin
   const persist = () =>
     startTransition(async () => {
       setError(null);
-      const result = await saveTargetInternalNotesAction(businessId, placementId, value);
+      const result = await saveTargetInternalNotesAction(businessId, targetId, value);
       if (!result.ok) return setError(result.error);
       setBaseline(value.trim());
       setSaved(true);
@@ -534,7 +582,7 @@ function InternalNotes({ businessId, placementId, initial }: { businessId: strin
       </summary>
       <div className="flex flex-col gap-2 px-3.5 pb-3.5">
         {error && <p role="alert" className="text-metadata font-semibold text-red-700">{error}</p>}
-        <textarea autoCapitalize="sentences" value={value} maxLength={PLACEMENT_LIMITS.internalNotes} rows={3} onChange={(e) => { setValue(e.target.value); setSaved(false); }} className={inputClass} />
+        <textarea autoCapitalize="sentences" value={value} maxLength={TARGET_LIMITS.internalNotes} rows={3} onChange={(e) => { setValue(e.target.value); setSaved(false); }} className={inputClass} />
         <div className="flex items-center gap-3">
           <button type="button" disabled={pending || !dirty} onClick={persist} className="flex h-10 items-center rounded-full border border-black/10 bg-white px-4 text-metadata font-semibold text-primary disabled:opacity-50">
             {pending ? "Saving…" : "Save Internal Notes"}

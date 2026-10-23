@@ -5,46 +5,60 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
+import type { NavIconKey } from "@/lib/navigation";
 import PlaceFindOrCreate, { NotPublicBadge } from "@/components/places/PlaceFindOrCreate";
+import FindOrCreatePicker from "@/components/find-or-create/FindOrCreatePicker";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
 import {
-  PLACEMENT_PRIVACY_NOTE,
-  PLACEMENT_STATUSES,
-  PLACEMENT_STATUS_LABELS,
-  PLACEMENT_STATUS_TONE,
-  formatPlacementDate,
-  isEmptyPlacementFilter,
-  type PlacementFilter,
-} from "@/lib/business-placements-domain";
-import type { BusinessPlacementItem, PlacementCounts } from "@/lib/business-placements";
-import { addTargetAction, createTargetPlaceAction, searchTargetLocationsAction } from "../placement-actions";
+  TARGET_KIND_FILTERS,
+  TARGET_KIND_FILTER_LABELS,
+  TARGET_KIND_LABELS,
+  TARGET_PRIVACY_NOTE,
+  TARGET_SEARCH_MIN_CHARS,
+  TARGET_STATUSES,
+  TARGET_STATUS_LABELS,
+  TARGET_STATUS_TONE,
+  formatTargetDate,
+  isEmptyTargetFilter,
+  type TargetFilter,
+} from "@/lib/business-targets-domain";
+import { COMMERCIAL_INTENT_LABELS, DEFAULT_INTENTS_BY_KIND, INTENTS_BY_KIND, TARGET_KINDS, type CommercialIntent, type TargetKind } from "@/lib/commercial-intents";
+import type { BusinessTargetItem, TargetCounts, TargetKindCounts, TargetSearchResult } from "@/lib/business-targets";
+import { addTargetAction, createTargetPlaceAction, searchTargetCounterpartiesAction, searchTargetLocationsAction } from "../target-actions";
 import { Chip } from "../../../owner-ui";
 
-/** Findmi Here → Find Us Here → Targets: the places this Business is privately
- * trying to get into, and where each pursuit stands (Target → In Conversation →
- * Placement Pending → Active, or Passed). Private to the Business's team and
- * Findmi — a Target is never public and never changes Find Us Here.
+/** Targets — the places, Businesses and Events this Business is privately
+ * pursuing, and where each pursuit stands (Target → In Conversation → Agreed →
+ * Active, or Passed). Private to the Business's team and Findmi — a Target is
+ * never public, never seen by its counterparty, and never changes Find Us Here.
  *
- * One server-side page at a time, searchable and filterable by status; filters
- * live in the URL (tq / ts / tp). A row opens the place's relationship
- * workspace (`loc` — RelationshipWorkspace.tsx), the same one every lens opens,
- * so Back, Forward and a shared link keep the same view. Owners and managers
- * edit; staff read. */
+ * Two lenses over the SAME business_targets records:
+ *   Growth → Targets              — every kind (All / Places / Businesses / Events);
+ *   Find Us Here → Targets        — Places only (`placesOnly`).
+ * One server-side page at a time, searchable and filterable; filters live in
+ * the URL (tq / ts / tk / tp). A Place row opens the place's relationship
+ * workspace (`loc` — RelationshipWorkspace.tsx); a Business or Event row opens
+ * its Target workspace (`tgt` — TargetWorkspace.tsx). Owners and managers edit;
+ * staff read. */
 
-const BusinessIdContext = createContext("");
+const PickerContext = createContext<{ businessId: string; kind: TargetKind }>({ businessId: "", kind: "location" });
 
-/** The Add Target picker's search: linkable places, read through the
- * Business-authorized action (so a founder Admin session works too). A stable,
- * module-level hook; the Business comes from context. */
-function useTargetPlaceResults(query: string): { results: SelectedLocationDetail[]; loading: boolean } {
-  const businessId = useContext(BusinessIdContext);
-  const [results, setResults] = useState<SelectedLocationDetail[]>([]);
+/** Debounced, Business-authorized counterparty search (so a founder Admin
+ * session works too). Nothing is listed until the query is long enough — the
+ * picker never dumps every place, Business or Event on Findmi. */
+function useDebounced<T>(query: string, load: (q: string) => Promise<T[]>): { results: T[]; loading: boolean } {
+  const [results, setResults] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    if (query.trim().length < TARGET_SEARCH_MIN_CHARS) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const t = window.setTimeout(async () => {
-      const found = await searchTargetLocationsAction(businessId, query);
+      const found = await load(query);
       if (!cancelled) {
         setResults(found);
         setLoading(false);
@@ -54,11 +68,22 @@ function useTargetPlaceResults(query: string): { results: SelectedLocationDetail
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [businessId, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
   return { results, loading };
 }
 
-type Param = "tq" | "ts" | "tp" | "pt" | "loc";
+function useTargetPlaceResults(query: string) {
+  const { businessId } = useContext(PickerContext);
+  return useDebounced<SelectedLocationDetail>(query, (q) => searchTargetLocationsAction(businessId, q));
+}
+
+function useTargetCounterpartyResults(query: string) {
+  const { businessId, kind } = useContext(PickerContext);
+  return useDebounced<TargetSearchResult>(query, (q) => searchTargetCounterpartiesAction(businessId, kind, q));
+}
+
+type Param = "tq" | "ts" | "tk" | "tp" | "pt" | "loc" | "tgt";
 
 /** URL helpers that patch the CURRENT url, so whichever lens you came from
  * (Find Us Here, Growth, a Market) stays the context. */
@@ -80,6 +105,9 @@ export function useTargetNav() {
   return { href, go, navPending, refresh: () => router.refresh() };
 }
 
+/** Where a Target opens: a place's relationship workspace, or the Target itself. */
+export const targetHref = (t: Pick<BusinessTargetItem, "id" | "locationId">) => (t.locationId ? { loc: t.locationId, tgt: null, pt: null } : { tgt: t.id, loc: null, pt: null });
+
 export function LockIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 ${className}`}>
@@ -93,30 +121,61 @@ export function LockIcon({ className = "h-4 w-4" }: { className?: string }) {
  * the empty state's second line. */
 function Privacy() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-microcopy text-subtle" title={PLACEMENT_PRIVACY_NOTE}>
+    <span className="inline-flex shrink-0 items-center gap-1 text-microcopy text-subtle" title={TARGET_PRIVACY_NOTE}>
       <LockIcon className="h-3 w-3" /> Private
     </span>
   );
 }
 
-export function PlaceThumb({ imageUrl }: { imageUrl: string | null }) {
+/** Places keep the storefront mark they always had. */
+const KIND_ICON: Record<TargetKind, NavIconKey> = { location: "storefront", business: "tag", event: "calendar" };
+
+export function TargetThumb({ imageUrl, kind = "location" }: { imageUrl: string | null; kind?: TargetKind }) {
   return (
     <span className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/[0.04] text-ink/25">
-      {imageUrl ? <SupabaseImage src={imageUrl} alt="" fill sizes="56px" className="object-cover" /> : <NavIcon name="storefront" className="h-6 w-6" />}
+      {imageUrl ? <SupabaseImage src={imageUrl} alt="" fill sizes="56px" className="object-cover" /> : <NavIcon name={KIND_ICON[kind]} className="h-6 w-6" />}
     </span>
   );
 }
 
-export function NextActionLine({ item }: { item: Pick<BusinessPlacementItem, "nextAction" | "nextActionAt"> }) {
+export function PlaceThumb({ imageUrl }: { imageUrl: string | null }) {
+  return <TargetThumb imageUrl={imageUrl} kind="location" />;
+}
+
+export function NextActionLine({ item }: { item: Pick<BusinessTargetItem, "nextAction" | "nextActionAt"> }) {
   if (!item.nextAction && !item.nextActionAt) return null;
   return (
     <span className="mt-0.5 line-clamp-2 text-metadata text-secondary">
       {/* Date first, so a long action can never clip it. */}
-      Next: {[item.nextActionAt ? formatPlacementDate(item.nextActionAt) : null, item.nextAction].filter(Boolean).join(" · ")}
+      Next: {[item.nextActionAt ? formatTargetDate(item.nextActionAt) : null, item.nextAction].filter(Boolean).join(" · ")}
     </span>
   );
 }
 
+const chipClass = (on: boolean) => `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
+
+/** Why — the compatible intents for one counterparty kind, as toggles. */
+export function IntentPicker({ kind, value, onChange, disabled }: { kind: TargetKind; value: readonly CommercialIntent[]; onChange: (next: CommercialIntent[]) => void; disabled?: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Why">
+      {INTENTS_BY_KIND[kind].map((i) => {
+        const on = value.includes(i);
+        return (
+          <button
+            key={i}
+            type="button"
+            aria-pressed={on}
+            disabled={disabled}
+            onClick={() => onChange(on ? value.filter((v) => v !== i) : INTENTS_BY_KIND[kind].filter((x) => x === i || value.includes(x)))}
+            className={`${chipClass(on)} disabled:opacity-50`}
+          >
+            {COMMERCIAL_INTENT_LABELS[i]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function TargetsView({
   businessId,
@@ -126,66 +185,38 @@ export default function TargetsView({
   page,
   pageSize,
   counts,
+  kindCounts,
   filter,
   canEdit,
   openMissing,
+  placesOnly = false,
   context,
 }: {
   businessId: string;
-  /** false until the placements migration is applied. */
+  /** false until the Targets migration is applied. */
   available: boolean;
-  items: BusinessPlacementItem[];
+  items: BusinessTargetItem[];
   total: number;
   page: number;
   pageSize: number;
-  counts: PlacementCounts;
-  filter: PlacementFilter;
+  counts: TargetCounts;
+  kindCounts: TargetKindCounts;
+  filter: TargetFilter;
   canEdit: boolean;
-  /** A `pt` / `loc` link that isn't a place this Business can open. */
+  /** A `pt` / `loc` / `tgt` link that isn't a Target this Business can open. */
   openMissing: boolean;
+  /** Find Us Here → Targets: Place Targets only. */
+  placesOnly?: boolean;
   /** Optional page context under Add Target (Growth's "Growing In" links). */
-  context?: ReactNode;
-}) {
-  return (
-    <BusinessIdContext.Provider value={businessId}>
-      <TargetList businessId={businessId} available={available} items={items} total={total} page={page} pageSize={pageSize} counts={counts} filter={filter} canEdit={canEdit} openMissing={openMissing} context={context} />
-    </BusinessIdContext.Provider>
-  );
-}
-
-function TargetList({
-  businessId,
-  available,
-  items,
-  total,
-  page,
-  pageSize,
-  counts,
-  filter,
-  canEdit,
-  openMissing,
-  context,
-}: {
-  businessId: string;
-  available: boolean;
-  items: BusinessPlacementItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-  counts: PlacementCounts;
-  filter: PlacementFilter;
-  canEdit: boolean;
-  openMissing: boolean;
   context?: ReactNode;
 }) {
   const { href, go, navPending } = useTargetNav();
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState(filter.q);
-  const filtered = !isEmptyPlacementFilter(filter);
+  const filtered = !isEmptyTargetFilter(filter);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const firstShown = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const anyTargets = placesOnly ? counts.all > 0 : kindCounts.all > 0;
 
   // Debounced search: the URL (and so the server read) changes once typing pauses.
   useEffect(() => {
@@ -195,23 +226,10 @@ function TargetList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  const add = (place: SelectedLocationDetail) =>
-    startTransition(async () => {
-      setError(null);
-      const result = await addTargetAction(businessId, place.id);
-      if (!result.ok) return setError(result.error);
-      setAdding(false);
-      // Open the place's workspace — a place already in the pipeline opens its existing row (never a duplicate).
-      go({ loc: place.id, pt: null, ...(result.existing ? {} : { tq: null, ts: null, tp: null }) });
-    });
-
-  const chip = (on: boolean) => `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
-
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
       {!available && <p className="text-body text-muted">This isn&rsquo;t available yet. Please check back soon.</p>}
       {openMissing && <p role="status" className="rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-metadata text-secondary">That Target wasn&rsquo;t found.</p>}
-      {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
 
       {available && !adding && (
         <div className="flex min-h-10 items-center justify-between gap-3">
@@ -228,29 +246,22 @@ function TargetList({
 
       {context && !adding && context}
 
-      {adding && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.08] bg-white p-4">
-          <div>
-            <p className="font-display text-card-title-lg font-bold text-primary">Add Target</p>
-            <p className="mt-0.5 text-metadata text-muted">Search Findmi first. If the place isn&rsquo;t here yet, you can add it.</p>
-          </div>
-          <PlaceFindOrCreate
-            onSelect={add}
-            useResults={useTargetPlaceResults}
-            createAction={(fd) => createTargetPlaceAction(businessId, fd)}
-            placeholder="Search places — name, street or city"
-            autoFocus
-          />
-          <div className="flex items-center gap-3">
-            {pending && <span className="text-metadata text-muted">Adding…</span>}
-            <button type="button" disabled={pending} onClick={() => setAdding(false)} className="h-10 px-1 text-metadata font-semibold text-muted hover:text-primary disabled:opacity-50">
-              Cancel
+      {adding && <AddTarget businessId={businessId} placesOnly={placesOnly} onClose={() => setAdding(false)} />}
+
+      {available && !placesOnly && anyTargets && !adding && (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Kind">
+          <button type="button" aria-pressed={filter.kind === ""} onClick={() => go({ tk: null, ts: null, tp: null })} className={chipClass(filter.kind === "")}>
+            All <span className="font-normal opacity-80">{kindCounts.all.toLocaleString()}</span>
+          </button>
+          {TARGET_KIND_FILTERS.map((k) => (
+            <button key={k} type="button" aria-pressed={filter.kind === k} onClick={() => go({ tk: filter.kind === k ? null : k, ts: null, tp: null })} className={chipClass(filter.kind === k)}>
+              {TARGET_KIND_FILTER_LABELS[k]} <span className="font-normal opacity-80">{kindCounts[k].toLocaleString()}</span>
             </button>
-          </div>
+          ))}
         </div>
       )}
 
-      {available && counts.all > 0 && !adding && (
+      {available && anyTargets && !adding && (
         <div className="flex flex-col gap-2.5" role="search" aria-label="Find your Targets">
           <input
             type="search"
@@ -263,12 +274,12 @@ function TargetList({
             className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20"
           />
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Status">
-            <button type="button" aria-pressed={filter.status === ""} onClick={() => go({ ts: null, tp: null })} className={chip(filter.status === "")}>
+            <button type="button" aria-pressed={filter.status === ""} onClick={() => go({ ts: null, tp: null })} className={chipClass(filter.status === "")}>
               All <span className="font-normal opacity-80">{counts.all.toLocaleString()}</span>
             </button>
-            {PLACEMENT_STATUSES.map((s) => (
-              <button key={s} type="button" aria-pressed={filter.status === s} onClick={() => go({ ts: filter.status === s ? null : s, tp: null })} className={chip(filter.status === s)}>
-                {PLACEMENT_STATUS_LABELS[s]} <span className="font-normal opacity-80">{counts[s].toLocaleString()}</span>
+            {TARGET_STATUSES.map((s) => (
+              <button key={s} type="button" aria-pressed={filter.status === s} onClick={() => go({ ts: filter.status === s ? null : s, tp: null })} className={chipClass(filter.status === s)}>
+                {TARGET_STATUS_LABELS[s]} <span className="font-normal opacity-80">{counts[s].toLocaleString()}</span>
               </button>
             ))}
           </div>
@@ -288,8 +299,14 @@ function TargetList({
 
       {available && items.length === 0 && !adding && (
         <p className="text-body text-muted">
-          {counts.all === 0 ? (canEdit ? "No Targets yet. Add a place you want to be stocked, sold, served or featured in." : "No Targets yet.") : "No Targets match. Try a different search or clear the filters."}
-          {counts.all === 0 && <span className="mt-1 block text-metadata">{PLACEMENT_PRIVACY_NOTE}</span>}
+          {!anyTargets
+            ? canEdit
+              ? placesOnly
+                ? "No Targets yet. Add a place you want to be stocked, sold, served or featured in."
+                : "No Targets yet. Add a place, Business or Event you want to work with."
+              : "No Targets yet."
+            : "No Targets match. Try a different search or clear the filters."}
+          {!anyTargets && <span className="mt-1 block text-metadata">{TARGET_PRIVACY_NOTE}</span>}
         </p>
       )}
 
@@ -297,15 +314,18 @@ function TargetList({
         <ul className={`flex flex-col divide-y divide-black/[0.06] transition-opacity ${navPending ? "opacity-60" : ""}`} aria-busy={navPending}>
           {items.map((i) => (
             <li key={i.id}>
-              <Link href={href({ loc: i.locationId, pt: null })} scroll={false} className="flex items-start gap-3 py-3 transition hover:bg-black/[0.02]">
-                <PlaceThumb imageUrl={i.imageUrl} />
+              <Link href={href(targetHref(i))} scroll={false} className="flex items-start gap-3 py-3 transition hover:bg-black/[0.02]">
+                <TargetThumb imageUrl={i.counterparty.imageUrl} kind={i.kind} />
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="min-w-0 truncate text-card-title font-semibold text-primary">{i.locationName}</span>
-                    <Chip tone={PLACEMENT_STATUS_TONE[i.status]}>{PLACEMENT_STATUS_LABELS[i.status]}</Chip>
-                    {i.locationUnlisted && <NotPublicBadge />}
+                    <span className="min-w-0 truncate text-card-title font-semibold text-primary">{i.counterparty.name}</span>
+                    <Chip tone={TARGET_STATUS_TONE[i.status]}>{TARGET_STATUS_LABELS[i.status]}</Chip>
+                    {i.counterparty.notPublic && <NotPublicBadge />}
                   </span>
-                  <span className="block truncate text-metadata text-muted">{[i.city, i.state].filter(Boolean).join(", ")}</span>
+                  <span className="block truncate text-metadata text-muted">
+                    {/* The kind is said once, only where kinds mix (Growth's All). */}
+                    {[placesOnly || filter.kind ? null : TARGET_KIND_LABELS[i.kind], i.counterparty.subtitle].filter(Boolean).join(" · ")}
+                  </span>
                   <NextActionLine item={i} />
                 </span>
                 <span className="shrink-0 py-1 text-metadata font-semibold text-accent">Open</span>
@@ -330,3 +350,117 @@ function TargetList({
   );
 }
 
+type Picked = { id: string; name: string; subtitle: string | null; notPublic: boolean };
+
+/** Add Target: what kind → find it (search first; nothing listed until you type)
+ * → why (only intents that fit that kind) → Add. A place not on Findmi yet can
+ * be created inline (unlisted); Businesses and Events are search-only. */
+function AddTarget({ businessId, placesOnly, onClose }: { businessId: string; placesOnly: boolean; onClose: () => void }) {
+  const { go } = useTargetNav();
+  const [kind, setKind] = useState<TargetKind>("location");
+  const [picked, setPicked] = useState<Picked | null>(null);
+  const [intents, setIntents] = useState<CommercialIntent[]>([...DEFAULT_INTENTS_BY_KIND.location]);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const chooseKind = (k: TargetKind) => {
+    setKind(k);
+    setPicked(null);
+    setIntents([...DEFAULT_INTENTS_BY_KIND[k]]);
+    setError(null);
+  };
+  const add = () =>
+    startTransition(async () => {
+      if (!picked) return;
+      setError(null);
+      const result = await addTargetAction(businessId, kind, picked.id, intents);
+      if (!result.ok) return setError(result.error);
+      onClose();
+      // Open the Target — one already in the pipeline opens its existing row (never a duplicate).
+      go({ ...(result.locationId ? { loc: result.locationId, tgt: null } : { tgt: result.id, loc: null }), pt: null, ...(result.existing ? {} : { tq: null, ts: null, tk: null, tp: null }) });
+    });
+
+  const noun = kind === "location" ? "place" : kind === "business" ? "Business" : "Event";
+  return (
+    <PickerContext.Provider value={{ businessId, kind }}>
+      <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.08] bg-white p-4">
+        <div>
+          <p className="font-display text-card-title-lg font-bold text-primary">Add Target</p>
+          <p className="mt-0.5 text-metadata text-muted">Private to your team and Findmi — they&rsquo;re never told.</p>
+        </div>
+
+        {!placesOnly && (
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Target a">
+            {TARGET_KINDS.map((k) => (
+              <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => chooseKind(k)} className={chipClass(kind === k)}>
+                {k === "location" ? "Place" : TARGET_KIND_LABELS[k]}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {picked ? (
+          <div className="flex items-start gap-3 rounded-xl bg-black/[0.03] px-3.5 py-3">
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 truncate text-body font-semibold text-primary">{picked.name}</span>
+                {picked.notPublic && <NotPublicBadge />}
+              </span>
+              {picked.subtitle && <span className="block truncate text-metadata text-muted">{picked.subtitle}</span>}
+            </span>
+            <button type="button" disabled={pending} onClick={() => setPicked(null)} className="min-h-10 shrink-0 text-metadata font-semibold text-accent hover:underline disabled:opacity-50">
+              Change
+            </button>
+          </div>
+        ) : kind === "location" ? (
+          <PlaceFindOrCreate
+            key="location"
+            onSelect={(p) => setPicked({ id: p.id, name: p.name, subtitle: [p.city, p.state].filter(Boolean).join(", ") || null, notPublic: p.is_public === false })}
+            useResults={useTargetPlaceResults}
+            createAction={(fd) => createTargetPlaceAction(businessId, fd)}
+            placeholder="Search places — name, street or city"
+            autoFocus
+          />
+        ) : (
+          <FindOrCreatePicker<TargetSearchResult>
+            key={kind}
+            placeholder={kind === "business" ? "Search Businesses — name or city" : "Search Events — name, venue or city"}
+            useResults={useTargetCounterpartyResults}
+            getKey={(r) => r.id}
+            renderItem={(r) => (
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body font-semibold text-primary">{r.name}</span>
+                {r.subtitle && <span className="block truncate text-metadata text-muted">{r.subtitle}</span>}
+              </span>
+            )}
+            isExactMatch={(r, q) => r.name.trim().toLowerCase() === q.trim().toLowerCase()}
+            onPick={(r) => setPicked({ id: r.id, name: r.name, subtitle: r.subtitle, notPublic: false })}
+            autoFocus
+          />
+        )}
+
+        {!picked && <p className="text-microcopy text-subtle">Type at least {TARGET_SEARCH_MIN_CHARS} letters to find a {noun}.</p>}
+
+        {picked && (
+          <div className="flex flex-col gap-2">
+            <p className="text-label font-bold uppercase text-subtle">Why</p>
+            <IntentPicker kind={kind} value={intents} onChange={setIntents} disabled={pending} />
+          </div>
+        )}
+
+        {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata font-semibold text-red-700">{error}</p>}
+
+        <div className="flex flex-wrap items-center gap-1">
+          {picked && (
+            <button type="button" disabled={pending || intents.length === 0} onClick={add} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 disabled:opacity-50">
+              {pending ? "Adding…" : "Add Target"}
+            </button>
+          )}
+          <button type="button" disabled={pending} onClick={onClose} className="h-10 px-3 text-metadata font-semibold text-muted hover:text-primary disabled:opacity-50">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </PickerContext.Provider>
+  );
+}

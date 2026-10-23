@@ -24,7 +24,7 @@ export function growthSummaryFor({
   activeGoalCount: number;
   opportunityItems: BusinessOpportunityItem[];
   ideas?: BusinessIdea[];
-  /** Placement Targets (lib/business-placements.ts getPlacementPursuit). */
+  /** Targets of every kind (lib/business-targets.ts getTargetPursuit). */
   targets?: { total: number; pursuing: number };
 }) {
   const hasSignal = (audit?.goalCount ?? 0) + activeGoalCount > 0;
@@ -58,9 +58,9 @@ function Header({ basePath, summary, active = "goals" }: { basePath: string; sum
   );
 }
 
-/** Growth → Targets — the same Growth header and navigation above the SAME
- * Targets experience Findmi Here → Find Us Here → Targets shows (the page
- * renders <TargetsView> under it): one set of Placement records, two doors. */
+/** Growth → Targets — the Growth header and navigation above the canonical
+ * all-kind Targets view (the page renders <TargetsView> under it). Findmi Here
+ * → Find Us Here → Targets is the Places-only lens over the SAME records. */
 export function GrowthTargetsHeader({ basePath, summary }: { basePath: string; summary: ReturnType<typeof growthSummaryFor> }) {
   return <Header basePath={basePath} summary={summary} active="targets" />;
 }

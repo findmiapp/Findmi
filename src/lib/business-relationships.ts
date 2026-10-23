@@ -2,8 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeAvailabilityRelationships, type AvailabilityRelationship, type AvailabilityStatus } from "./business-availability-domain";
 import { getOwnerAvailabilityForLocation, type OwnerAvailabilityItem } from "./business-availability-owner";
-import { getBusinessPlacementByLocation, type BusinessPlacementItem } from "./business-placements";
-import type { PlacementStatus } from "./business-placements-domain";
+import { getBusinessTargetByLocation, type BusinessTargetItem } from "./business-targets";
+import type { TargetStatus } from "./business-targets-domain";
 import { todayIn } from "./event-time";
 import { locationInScope, readGeographyCatalog, scopeFromCatalog, scopeLocationFilter, type GeographyScope } from "./geography-scope";
 import { getGrowthContext, getOpportunityCandidates, selectRelevantOpportunities, type RelevantOpportunity } from "./relevant-opportunities";
@@ -16,7 +16,7 @@ import type { RelevanceScope } from "./relevant-opportunities-domain";
  * canonical Location, from the rows that already exist for that pair:
  *   business_locations                — "Our Location" (the Business operates it)
  *   business_location_availability    — Find Us Here (public once live + in date)
- *   business_location_placements      — the private commercial pursuit (Target)
+ *   business_targets (Place Targets)  — the private commercial pursuit (Target)
  *   appearances (location_id)         — dated presence
  *   opportunity_listings              — relevant commercial Opportunities
  * Location id is the identity everywhere (the Map's click target).
@@ -24,10 +24,12 @@ import type { RelevanceScope } from "./relevant-opportunities-domain";
  * Definitions used by every lens:
  *   CURRENT FOOTPRINT = Our Locations ∪ live, in-date Find Us Here (pending and
  *                       declined never count; a Target alone never counts).
- *   GROWTH ACTIVITY   = Placements that aren't Passed, by status.
+ *   GROWTH ACTIVITY   = Place Targets that aren't Passed, by status. Business and
+ *                       Event Targets have no place, so they never enter a
+ *                       geography here (accuracy over completeness).
  *
  * Privacy: service-role client; the caller has already authorized the session
- * for THIS Business, and every read is scoped by business_id. Placement reads
+ * for THIS Business, and every read is scoped by business_id. Target reads
  * never include internal_notes. Reads are bounded (paged id-level reads with a
  * hard page cap; display lists capped). Nothing is stored or cached. */
 
@@ -71,7 +73,8 @@ export interface RelationshipRow {
   place: RelationshipPlace;
   ours: boolean;
   presence: { status: AvailabilityStatus; relationships: AvailabilityRelationship[]; public: boolean } | null;
-  placement: { status: PlacementStatus; nextAction: string | null; nextActionAt: string | null } | null;
+  /** This Business's private Place Target here, if any. */
+  target: { status: TargetStatus; nextAction: string | null; nextActionAt: string | null } | null;
 }
 
 type RawLoc = { id: string; name: string; slug: string; city: string | null; state: string | null; logo_url: string | null; cover_image_url: string | null; is_demo: boolean | null; market_id: string | null; market_area_id: string | null };
@@ -102,16 +105,17 @@ function scoped<Q extends { eq: (c: string, v: string) => Q; in: (c: string, v: 
 
 type OursRaw = { location_id: string; locations: RawLoc | RawLoc[] | null };
 type PresenceRaw = { id: string; location_id: string; status: AvailabilityStatus; relationship: AvailabilityRelationship; relationships?: AvailabilityRelationship[] | null; starts_on: string | null; ends_on: string | null; locations: RawLoc | RawLoc[] | null };
-type PlacementRaw = { location_id: string; status: PlacementStatus; next_action: string | null; next_action_at: string | null; locations: RawLoc | RawLoc[] | null };
+type TargetRaw = { target_location_id: string; status: TargetStatus; next_action: string | null; next_action_at: string | null; locations: RawLoc | RawLoc[] | null };
 
 /** Every relationship of this Business (optionally within one scope), composed
  * per Location. Bounded: paged id-level reads with place display fields. */
 export async function readRelationships(admin: SupabaseClient, businessId: string, scope: RelationshipScope | null): Promise<{ available: boolean; rows: RelationshipRow[]; presenceIds: string[] }> {
-  const ord = (q: any) => q.order("location_id");
-  const [ours, presence, placements] = await Promise.all([
+  const ord = (q: any, col = "location_id") => q.order(col);
+  const [ours, presence, targets] = await Promise.all([
     readAll<OursRaw>((from, to) => ord(scoped(admin.from("business_locations").select(`location_id, ${LOC}`, { count: "exact" }).eq("business_id", businessId), scope)).range(from, to)),
     readAll<PresenceRaw>((from, to) => ord(scoped(admin.from("business_location_availability").select(`id, location_id, status, relationship, relationships, starts_on, ends_on, ${LOC}`, { count: "exact" }).eq("business_id", businessId), scope)).range(from, to)),
-    readAll<PlacementRaw>((from, to) => ord(scoped(admin.from("business_location_placements").select(`location_id, status, next_action, next_action_at, ${LOC}`, { count: "exact" }).eq("business_id", businessId), scope)).range(from, to)),
+    // Place Targets only (target_location_id set): Business / Event Targets are never placed on a map.
+    readAll<TargetRaw>((from, to) => ord(scoped(admin.from("business_targets").select(`target_location_id, status, next_action, next_action_at, ${LOC}`, { count: "exact" }).eq("business_id", businessId).not("target_location_id", "is", null) as any, scope), "target_location_id").range(from, to)),
   ]);
   if (!ours || !presence) return { available: false, rows: [], presenceIds: [] };
   const today = todayIso();
@@ -121,7 +125,7 @@ export async function readRelationships(admin: SupabaseClient, businessId: strin
     if (!loc) return null;
     let r = byLoc.get(loc.id);
     if (!r) {
-      r = { place: toPlace(loc), ours: false, presence: null, placement: null };
+      r = { place: toPlace(loc), ours: false, presence: null, target: null };
       byLoc.set(loc.id, r);
     }
     return r;
@@ -139,10 +143,10 @@ export async function readRelationships(admin: SupabaseClient, businessId: strin
       public: isPublicPresence({ status: p.status, startsOn: p.starts_on, endsOn: p.ends_on }, today),
     };
   }
-  // Placements may be missing before Block A's migration — the rest still works.
-  for (const p of placements ?? []) {
+  // Targets may be missing before the Targets migration — the rest still works.
+  for (const p of targets ?? []) {
     const r = row(p.locations);
-    if (r) r.placement = { status: p.status, nextAction: p.next_action, nextActionAt: p.next_action_at };
+    if (r) r.target = { status: p.status, nextAction: p.next_action, nextActionAt: p.next_action_at };
   }
   return { available: true, rows: [...byLoc.values()], presenceIds: presence.map((p) => p.id) };
 }
@@ -154,19 +158,19 @@ export interface RelationshipCounts {
   publicPresence: number;
   pendingReview: number;
   pursuing: number;
-  byStatus: Record<PlacementStatus, number>;
+  byStatus: Record<TargetStatus, number>;
 }
 
 export function countRelationships(rows: readonly RelationshipRow[]): RelationshipCounts {
-  const c: RelationshipCounts = { footprint: 0, ours: 0, publicPresence: 0, pendingReview: 0, pursuing: 0, byStatus: { target: 0, in_conversation: 0, placement_pending: 0, active: 0, passed: 0 } };
+  const c: RelationshipCounts = { footprint: 0, ours: 0, publicPresence: 0, pendingReview: 0, pursuing: 0, byStatus: { target: 0, in_conversation: 0, agreed: 0, active: 0, passed: 0 } };
   for (const r of rows) {
     if (r.ours) c.ours += 1;
     if (r.presence?.public) c.publicPresence += 1;
     if (r.presence?.status === "pending") c.pendingReview += 1;
     if (isFootprint(r)) c.footprint += 1;
-    if (r.placement) {
-      c.byStatus[r.placement.status] += 1;
-      if (r.placement.status !== "passed") c.pursuing += 1;
+    if (r.target) {
+      c.byStatus[r.target.status] += 1;
+      if (r.target.status !== "passed") c.pursuing += 1;
     }
   }
   return c;
@@ -326,8 +330,8 @@ export async function getGeographyDetail(admin: SupabaseClient, businessId: stri
   const footprint = rows.filter(isFootprint).sort((a, b) => Number(b.ours) - Number(a.ours) || byName(a, b));
   const pendingReview = rows.filter((r) => r.presence?.status === "pending" && !isFootprint(r)).sort(byName);
   const pipeline = rows
-    .filter((r) => r.placement && r.placement.status !== "passed")
-    .sort((a, b) => (a.placement!.nextActionAt ?? "9999").localeCompare(b.placement!.nextActionAt ?? "9999") || byName(a, b));
+    .filter((r) => r.target && r.target.status !== "passed")
+    .sort((a, b) => (a.target!.nextActionAt ?? "9999").localeCompare(b.target!.nextActionAt ?? "9999") || byName(a, b));
 
   // Products placed here (all Find Us Here entries in scope — the Pass 1 rule).
   const coverage = new Map<string, { id: string; name: string; places: number }>();
@@ -400,8 +404,8 @@ export interface RelationshipWorkspaceData {
   /** The Find Us Here entry at this place (any status), editable through the existing editor. */
   presence: OwnerAvailabilityItem | null;
   presencePublic: boolean;
-  /** The private pursuit, when the Business is tracking this place. Never internal_notes. */
-  placement: BusinessPlacementItem | null;
+  /** The private Place Target, when the Business is tracking this place. Never internal_notes. */
+  target: BusinessTargetItem | null;
   nextAppearance: WorkspaceAppearance | null;
   recentAppearance: WorkspaceAppearance | null;
   opportunities: RelevantOpportunity[];
@@ -410,7 +414,7 @@ export interface RelationshipWorkspaceData {
 type WorkspaceLoc = RawLoc & { address: string | null; archived_at: string | null; trashed_at: string | null; latitude: number | null; longitude: number | null; market: { name: string } | { name: string }[] | null; area: { name: string; display_name: string | null } | { name: string; display_name: string | null }[] | null };
 
 /** Everything the relationship workspace shows for (business, location). Works
- * whether or not a Placement exists. Null when the place doesn't exist / is trashed. */
+ * whether or not a Target exists. Null when the place doesn't exist / is trashed. */
 export async function getRelationshipWorkspace(admin: SupabaseClient, businessId: string, locationId: string): Promise<RelationshipWorkspaceData | null> {
   if (!/^[0-9a-f-]{36}$/i.test(locationId)) return null;
   const { data: locRow } = await admin
@@ -423,10 +427,10 @@ export async function getRelationshipWorkspace(admin: SupabaseClient, businessId
   const now = new Date().toISOString();
   const base = `/account/business/${businessId}?tab=findmi-here`;
   const appearanceCols = "id, title, start_at";
-  const [ours, presence, placement, next, recent, candidates, ctx, catalog] = await Promise.all([
+  const [ours, presence, target, next, recent, candidates, ctx, catalog] = await Promise.all([
     admin.from("business_locations").select("id").eq("business_id", businessId).eq("location_id", locationId).maybeSingle(),
     getOwnerAvailabilityForLocation(admin, businessId, locationId),
-    getBusinessPlacementByLocation(admin, businessId, locationId),
+    getBusinessTargetByLocation(admin, businessId, locationId),
     admin.from("appearances").select(appearanceCols).eq("business_id", businessId).eq("location_id", locationId).neq("status", "canceled").gte("start_at", now).order("start_at").limit(1).maybeSingle(),
     admin.from("appearances").select(appearanceCols).eq("business_id", businessId).eq("location_id", locationId).neq("status", "canceled").lt("start_at", now).order("start_at", { ascending: false }).limit(1).maybeSingle(),
     getOpportunityCandidates(admin, businessId),
@@ -453,7 +457,7 @@ export async function getRelationshipWorkspace(admin: SupabaseClient, businessId
     ours: Boolean(ours.data),
     presence,
     presencePublic: presence ? isPublicPresence(presence, todayIso()) : false,
-    placement,
+    target,
     nextAppearance: toAppearance(next.data as { id: string; title: string; start_at: string } | null),
     recentAppearance: toAppearance(recent.data as { id: string; title: string; start_at: string } | null),
     opportunities: selectRelevantOpportunities(businessId, candidates, { kind: "location", locationId, marketId: loc.market_id, areaAncestors: ancestors }, ctx, 6),

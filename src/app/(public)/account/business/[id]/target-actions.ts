@@ -8,31 +8,38 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
-import { canEditPlacements, parseActivityCursor, placementActor, type PlacementStatus, type PlacementUpdateInput } from "@/lib/business-placements-domain";
+import { canEditTargets, parseActivityCursor, targetActor, type TargetUpdateInput } from "@/lib/business-targets-domain";
+import { isTargetKind } from "@/lib/commercial-intents";
 import {
-  addBusinessPlacement,
-  addPlacementNote,
-  adminSetPlacementInternalNotes,
-  getPlacementActivityPage,
+  addBusinessTarget,
+  addTargetNote,
+  adminSetTargetInternalNotes,
+  getTargetActivityPage,
+  searchTargetBusinesses,
+  searchTargetEvents,
   searchTargetLocations,
-  updateBusinessPlacement,
-  type PlacementActivityPage,
-  type PlacementResult,
-} from "@/lib/business-placements";
+  setBusinessTargetIntents,
+  updateBusinessTarget,
+  type AddTargetResult,
+  type TargetActivityPage,
+  type TargetResult,
+  type TargetSearchResult,
+} from "@/lib/business-targets";
 
-/** Owner mutations for Findmi Here → Find Us Here → Targets. Each re-verifies
- * the caller against THIS Business server-side (never trusts the id as sent):
- * an owner or manager — or a founder Admin session, which requireBusinessMember
- * already resolves (Manage-As) — may write; staff are read-only. Nothing here
- * can write internal_notes except saveTargetInternalNotesAction, which requires
- * a founder Admin session itself, never Business membership. Nothing here
- * changes anything public: Targets are private, so only the manager page is
- * revalidated. */
+/** Owner mutations for Targets (Growth → Targets and Findmi Here → Find Us
+ * Here → Targets). Each re-verifies the caller against THIS Business
+ * server-side (never trusts the id as sent): an owner or manager — or a
+ * founder Admin session, which requireBusinessMember already resolves
+ * (Manage-As) — may write; staff are read-only. Nothing here can write
+ * internal_notes except saveTargetInternalNotesAction, which requires a
+ * founder Admin session itself, never Business membership. Nothing here
+ * changes anything public or tells the counterparty anything: Targets are
+ * private, so only the manager page is revalidated. */
 
 async function authorizeWrite(businessId: string): Promise<{ ok: true; viaAdmin: boolean } | { ok: false; error: string }> {
   try {
     const membership = await requireBusinessMember(businessId);
-    if (canEditPlacements(membership.role, membership.viaAdmin)) return { ok: true, viaAdmin: Boolean(membership.viaAdmin) };
+    if (canEditTargets(membership.role, membership.viaAdmin)) return { ok: true, viaAdmin: Boolean(membership.viaAdmin) };
     return { ok: false, error: "Only a Business owner or manager can change Targets." };
   } catch {
     return { ok: false, error: "You don't have access to this business." };
@@ -52,7 +59,7 @@ async function authorizeRead(businessId: string): Promise<boolean> {
 /** Who the database should record as having acted (Findmi for a Manage-As Admin session). */
 async function actingAs(viaAdmin: boolean) {
   const user = viaAdmin ? null : await getCurrentUser().catch(() => null);
-  return placementActor(viaAdmin, user?.id ?? null);
+  return targetActor(viaAdmin, user?.id ?? null);
 }
 
 const refresh = (businessId: string) => revalidatePath(`/account/business/${businessId}`);
@@ -63,6 +70,16 @@ export async function searchTargetLocationsAction(businessId: string, query: str
   const admin = getAdminSupabase();
   if (!auth.ok || !admin) return [];
   return searchTargetLocations(admin, query);
+}
+
+/** Public Businesses or Events for the Add Target picker. */
+export async function searchTargetCounterpartiesAction(businessId: string, kind: string, query: string): Promise<TargetSearchResult[]> {
+  const auth = await authorizeWrite(businessId);
+  const admin = getAdminSupabase();
+  if (!auth.ok || !admin) return [];
+  if (kind === "business") return searchTargetBusinesses(admin, businessId, query);
+  if (kind === "event") return searchTargetEvents(admin, query);
+  return [];
 }
 
 /** The place isn't on Findmi yet: the SAME inline place creation every other
@@ -80,34 +97,33 @@ export async function createTargetPlaceAction(businessId: string, formData: Form
   return insertInlinePlace(admin, formData);
 }
 
-export async function addTargetAction(
-  businessId: string,
-  locationId: string
-): Promise<{ ok: true; id: string; existing: boolean; status: PlacementStatus } | { ok: false; error: string }> {
+/** Add (or reopen into view) a Target. Writes ONLY the Target row. */
+export async function addTargetAction(businessId: string, kind: string, counterpartyId: string, intents: string[]): Promise<AddTargetResult> {
   const auth = await authorizeWrite(businessId);
   if (!auth.ok) return auth;
+  if (!isTargetKind(kind)) return { ok: false, error: "Choose what to target." };
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
   const user = await getCurrentUser().catch(() => null);
-  const result = await addBusinessPlacement(admin, businessId, { locationId, source: auth.viaAdmin ? "admin" : "business", userId: user?.id ?? null });
+  const result = await addBusinessTarget(admin, businessId, { kind, counterpartyId, intents, source: auth.viaAdmin ? "admin" : "business", userId: user?.id ?? null });
   if (result.ok) refresh(businessId);
   return result;
 }
 
-export async function updateTargetAction(businessId: string, placementId: string, input: PlacementUpdateInput): Promise<PlacementResult & { changed?: boolean }> {
+export async function updateTargetAction(businessId: string, targetId: string, input: TargetUpdateInput): Promise<TargetResult & { changed?: boolean }> {
   const auth = await authorizeWrite(businessId);
   if (!auth.ok) return auth;
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
   // Only the four Business fields are forwarded — whatever else arrives is dropped here.
   // A status change records its own Activity in the database (with this actor).
-  const result = await updateBusinessPlacement(
+  const result = await updateBusinessTarget(
     admin,
     businessId,
-    placementId,
+    targetId,
     {
       status: input?.status,
-      notes: input?.notes,
+      context: input?.context,
       nextAction: input?.nextAction,
       nextActionAt: input?.nextActionAt,
     },
@@ -117,32 +133,43 @@ export async function updateTargetAction(businessId: string, placementId: string
   return result;
 }
 
+/** Why this Target is pursued — only intents its counterparty kind supports. */
+export async function setTargetIntentsAction(businessId: string, targetId: string, intents: string[]): Promise<TargetResult & { changed?: boolean }> {
+  const auth = await authorizeWrite(businessId);
+  if (!auth.ok) return auth;
+  const admin = getAdminSupabase();
+  if (!admin) return { ok: false, error: "Server isn't configured for this action." };
+  const result = await setBusinessTargetIntents(admin, businessId, targetId, intents);
+  if (result.ok && result.changed) refresh(businessId);
+  return result;
+}
+
 /** Findmi-only notes (managed service). Requires a founder Admin session —
  * Business membership, of any role, is never enough. */
-export async function saveTargetInternalNotesAction(businessId: string, placementId: string, notes: string): Promise<PlacementResult> {
+export async function saveTargetInternalNotesAction(businessId: string, targetId: string, notes: string): Promise<TargetResult> {
   if (!(await isAdminSession())) return { ok: false, error: "Only Findmi can change internal notes." };
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
-  const result = await adminSetPlacementInternalNotes(admin, businessId, placementId, notes);
+  const result = await adminSetTargetInternalNotes(admin, businessId, targetId, notes);
   if (result.ok) refresh(businessId);
   return result;
 }
 
 /** Add Note: appends a NEW Activity entry (owner, manager or founder Admin). */
-export async function addTargetNoteAction(businessId: string, placementId: string, body: string): Promise<PlacementResult> {
+export async function addTargetNoteAction(businessId: string, targetId: string, body: string): Promise<TargetResult> {
   const auth = await authorizeWrite(businessId);
   if (!auth.ok) return auth;
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
-  const result = await addPlacementNote(admin, businessId, placementId, body, await actingAs(auth.viaAdmin));
+  const result = await addTargetNote(admin, businessId, targetId, body, await actingAs(auth.viaAdmin));
   if (result.ok) refresh(businessId);
   return result;
 }
 
 /** "Load More" — the next (older) page of an opened Target's Activity. */
-export async function loadTargetActivityAction(businessId: string, placementId: string, before: string): Promise<PlacementActivityPage> {
+export async function loadTargetActivityAction(businessId: string, targetId: string, before: string): Promise<TargetActivityPage> {
   const admin = getAdminSupabase();
   const cursor = parseActivityCursor(before);
   if (!admin || !cursor || !(await authorizeRead(businessId))) return { available: false, items: [], nextCursor: null };
-  return getPlacementActivityPage(admin, businessId, placementId, cursor);
+  return getTargetActivityPage(admin, businessId, targetId, cursor);
 }

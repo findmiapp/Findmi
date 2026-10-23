@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { NotPublicBadge } from "@/components/places/PlaceFindOrCreate";
 import { AVAILABILITY_STATUS_LABELS, availabilityRelationshipsPhrase } from "@/lib/business-availability-domain";
-import { PLACEMENT_STATUSES, PLACEMENT_STATUS_LABELS, PLACEMENT_STATUS_TONE, formatPlacementDate, type PlacementStatus } from "@/lib/business-placements-domain";
+import { TARGET_STATUSES, TARGET_STATUS_LABELS, TARGET_STATUS_TONE, formatTargetDate, type TargetStatus } from "@/lib/business-targets-domain";
 import type { GeographyCard, GeographyDetail, GeographyOverview, RelationshipCounts, RelationshipRow } from "@/lib/business-relationships";
 import type { RelevantOpportunity } from "@/lib/relevant-opportunities";
 import { Chip } from "../../../owner-ui";
@@ -15,7 +15,9 @@ import { PlaceThumb, useTargetNav } from "./TargetsView";
  * three separate ideas side by side:
  *   CURRENT FOOTPRINT  — where customers can find you now (Our Locations + live,
  *                        in-date Find Us Here). A Target alone is never footprint.
- *   GROWTH PIPELINE    — the private Targets you're pursuing there.
+ *   GROWTH PIPELINE    — the private Place Targets you're pursuing there
+ *                        (Business and Event Targets have no place, so they
+ *                        never appear in a geography).
  *   OPPORTUNITIES      — commercial Opportunities relevant there.
  * A Business's own geography stays its own words ("Jersey City"), with the
  * Findmi Market only as quiet context. Every place opens the one relationship
@@ -25,7 +27,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString
 const title = "text-label font-bold uppercase text-subtle";
 
 function pipelineLine(c: RelationshipCounts): string | null {
-  const parts = (["in_conversation", "placement_pending", "active"] as const).filter((s) => c.byStatus[s] > 0).map((s) => `${c.byStatus[s]} ${PLACEMENT_STATUS_LABELS[s]}`);
+  const parts = (["in_conversation", "agreed", "active"] as const).filter((s) => c.byStatus[s] > 0).map((s) => `${c.byStatus[s]} ${TARGET_STATUS_LABELS[s]}`);
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -120,7 +122,7 @@ const PRESENCE_TONE = { live: "aqua", pending: "amber", declined: "neutral" } as
 /** One place in a geography — opens the relationship workspace. */
 function PlaceRow({ row, show }: { row: RelationshipRow; show: "footprint" | "pipeline" }) {
   const { href } = useTargetNav();
-  const p = row.placement;
+  const p = row.target;
   return (
     <li>
       <Link href={href({ loc: row.place.id })} scroll={false} className="flex items-start gap-3 px-3.5 py-3 transition hover:bg-black/[0.02]">
@@ -132,11 +134,11 @@ function PlaceRow({ row, show }: { row: RelationshipRow; show: "footprint" | "pi
             {row.presence && (show === "footprint" || row.presence.public) && (
               <Chip tone={PRESENCE_TONE[row.presence.status]}>{row.presence.public ? availabilityRelationshipsPhrase(row.presence.relationships) : AVAILABILITY_STATUS_LABELS[row.presence.status]}</Chip>
             )}
-            {p && (show === "pipeline" || p.status !== "passed") && <Chip tone={PLACEMENT_STATUS_TONE[p.status]}>{PLACEMENT_STATUS_LABELS[p.status]}</Chip>}
+            {p && (show === "pipeline" || p.status !== "passed") && <Chip tone={TARGET_STATUS_TONE[p.status]}>{TARGET_STATUS_LABELS[p.status]}</Chip>}
             {row.place.unlisted && <NotPublicBadge />}
           </span>
           {show === "pipeline" && p && (p.nextAction || p.nextActionAt) && (
-            <span className="mt-0.5 line-clamp-2 text-metadata text-secondary">Next: {[p.nextActionAt ? formatPlacementDate(p.nextActionAt) : null, p.nextAction].filter(Boolean).join(" · ")}</span>
+            <span className="mt-0.5 line-clamp-2 text-metadata text-secondary">Next: {[p.nextActionAt ? formatTargetDate(p.nextActionAt) : null, p.nextAction].filter(Boolean).join(" · ")}</span>
           )}
         </span>
       </Link>
@@ -163,7 +165,7 @@ export function OpportunityCards({ items }: { items: RelevantOpportunity[] }) {
         <li key={o.listingId}>
           <Link href={o.path} className="block rounded-2xl border border-black/[0.08] bg-white px-3.5 py-3 transition hover:border-findmi/40">
             <span className="block text-body font-semibold text-primary">{o.title}</span>
-            <span className="block text-metadata text-muted">{[o.typeLabel, o.placeName, o.startsAt ? formatPlacementDate(o.startsAt.slice(0, 10)) : null].filter(Boolean).join(" · ")}</span>
+            <span className="block text-metadata text-muted">{[o.typeLabel, o.placeName, o.startsAt ? formatTargetDate(o.startsAt.slice(0, 10)) : null].filter(Boolean).join(" · ")}</span>
             <span className="mt-1.5 flex flex-wrap gap-1">
               {o.reasons.map((r) => (
                 <span key={r} className="rounded-full bg-findmi-50 px-2 py-0.5 text-microcopy font-semibold text-findmi-700">{r}</span>
@@ -180,7 +182,7 @@ const when = (iso: string) => new Date(iso).toLocaleDateString("en-US", { weekda
 
 export function GeographyDetailView({ basePath, detail }: { basePath: string; detail: GeographyDetail | null }) {
   const back = `${basePath}?tab=findmi-here&view=find-us&fv=markets`;
-  const [stage, setStage] = useState<PlacementStatus | "">("");
+  const [stage, setStage] = useState<TargetStatus | "">("");
   if (!detail || !detail.available) {
     return (
       <div className="flex flex-col gap-3">
@@ -190,7 +192,7 @@ export function GeographyDetailView({ basePath, detail }: { basePath: string; de
     );
   }
   const c = detail.counts;
-  const pipeline = stage ? detail.pipeline.filter((r) => r.placement?.status === stage) : detail.pipeline;
+  const pipeline = stage ? detail.pipeline.filter((r) => r.target?.status === stage) : detail.pipeline;
   const chip = (on: boolean) => `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
   return (
     <div className="flex flex-col gap-6 lg:max-w-3xl">
@@ -224,9 +226,9 @@ export function GeographyDetailView({ basePath, detail }: { basePath: string; de
         {c.pursuing > 0 && (
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Stage">
             <button type="button" aria-pressed={stage === ""} onClick={() => setStage("")} className={chip(stage === "")}>All <span className="font-normal opacity-80">{c.pursuing}</span></button>
-            {PLACEMENT_STATUSES.filter((s) => s !== "passed" && c.byStatus[s] > 0).map((s) => (
+            {TARGET_STATUSES.filter((s) => s !== "passed" && c.byStatus[s] > 0).map((s) => (
               <button key={s} type="button" aria-pressed={stage === s} onClick={() => setStage(stage === s ? "" : s)} className={chip(stage === s)}>
-                {PLACEMENT_STATUS_LABELS[s]} <span className="font-normal opacity-80">{c.byStatus[s]}</span>
+                {TARGET_STATUS_LABELS[s]} <span className="font-normal opacity-80">{c.byStatus[s]}</span>
               </button>
             ))}
           </div>

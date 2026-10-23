@@ -1,7 +1,8 @@
-// Pass 2 Block A closeout — Placement Activity (append-only notes + automatic status
-// changes), Summary / Context, and Targets reachable from BOTH Growth and Find Us Here.
+// Target Activity (append-only notes + automatic status changes), Context, and Targets
+// reachable from BOTH Growth and Find Us Here — ported from Pass 2 Block A's Placement
+// Activity onto the canonical business_targets system (Cross-Entity Target Foundation).
 // Server reads/writes run against an in-memory fake that also emulates the database
-// trigger (the trigger itself is checked in the migration test below). No network.
+// trigger (the trigger itself is checked in the migration tests). No network.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -20,8 +21,8 @@ registerHooks({
   },
 });
 
-const D = await import("../src/lib/business-placements-domain.ts");
-const L = await import("../src/lib/business-placements.ts");
+const D = await import("../src/lib/business-targets-domain.ts");
+const L = await import("../src/lib/business-targets.ts");
 const G = await import("../src/lib/growth.ts");
 const read = (p) => readFileSync(p, "utf8");
 
@@ -40,11 +41,11 @@ const tick = () => `2026-10-22T10:${String(clock++).padStart(2, "0")}:00.123456+
 function seed() {
   clock = 0;
   return {
-    business_location_placements: [
-      { id: P_A, business_id: BIZ_A, location_id: "l1", status: "target", notes: null, internal_notes: "FINDMI SECRET", next_action: null, next_action_at: null, status_actor: null, status_actor_user_id: null },
-      { id: P_B, business_id: BIZ_B, location_id: "l1", status: "target", notes: null, internal_notes: "OTHER SECRET", next_action: null, next_action_at: null, status_actor: null, status_actor_user_id: null },
+    business_targets: [
+      { id: P_A, business_id: BIZ_A, target_location_id: "l1", target_business_id: null, target_event_id: null, intents: ["placement"], status: "target", context: null, internal_notes: "FINDMI SECRET", next_action: null, next_action_at: null, status_actor: null, status_actor_user_id: null },
+      { id: P_B, business_id: BIZ_B, target_location_id: "l1", target_business_id: null, target_event_id: null, intents: ["placement"], status: "target", context: null, internal_notes: "OTHER SECRET", next_action: null, next_action_at: null, status_actor: null, status_actor_user_id: null },
     ],
-    business_location_placement_activities: [],
+    business_target_activities: [],
     profiles: [
       { id: JON, display_name: "Jonathan" },
       { id: EMAILY, display_name: "someone@example.com" },
@@ -55,7 +56,7 @@ function seed() {
 let seq = 0;
 const newId = () => `cccccccc-cccc-4ccc-8ccc-${String(++seq).padStart(12, "0")}`;
 
-/** Fake service-role client. UPDATEs on placements emulate the migration's trigger:
+/** Fake service-role client. UPDATEs on Targets emulate the migration's trigger:
  * a status change inserts one status_change Activity (with the transient actor) and
  * the actor columns are always cleared. */
 function fakeDb(t) {
@@ -76,7 +77,7 @@ function fakeDb(t) {
         },
         eq(c, v) {
           call.filters.push(`eq ${c}=${v}`);
-          preds.push((r) => (c === "business_location_placements.business_id" ? t.business_location_placements.find((p) => p.id === r.placement_id)?.business_id === v : r[c] === v));
+          preds.push((r) => (c === "business_targets.business_id" ? t.business_targets.find((p) => p.id === r.target_id)?.business_id === v : r[c] === v));
           return chain;
         },
         or(expr) {
@@ -107,9 +108,9 @@ function fakeDb(t) {
             for (const r of matched) {
               const before = r.status;
               Object.assign(r, call.payload);
-              if (table === "business_location_placements") {
+              if (table === "business_targets") {
                 if (r.status !== before) {
-                  t.business_location_placement_activities.push({ id: newId(), placement_id: r.id, activity_type: "status_change", body: null, metadata: { from: before, to: r.status }, actor: r.status_actor, created_by_user_id: r.status_actor_user_id, created_at: tick() });
+                  t.business_target_activities.push({ id: newId(), target_id: r.id, activity_type: "status_change", body: null, metadata: { from: before, to: r.status }, actor: r.status_actor, created_by_user_id: r.status_actor_user_id, created_at: tick() });
                 }
                 r.status_actor = null;
                 r.status_actor_user_id = null;
@@ -119,7 +120,7 @@ function fakeDb(t) {
           }
           if (head) return resolve({ data: null, count: matched.length, error: null });
           let data = matched.map((r) => ({ ...r }));
-          if (table === "business_location_placement_activities") data.sort((a, b) => (a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : a.created_at < b.created_at ? 1 : -1));
+          if (table === "business_target_activities") data.sort((a, b) => (a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : a.created_at < b.created_at ? 1 : -1));
           if (call.limit) data = data.slice(0, call.limit);
           if (single) return resolve({ data: data[0] ?? null, error: null });
           return resolve({ data, count: data.length, error: null });
@@ -130,7 +131,7 @@ function fakeDb(t) {
   };
 }
 
-const note = (db, biz, pid, body, by = MEMBER) => L.addPlacementNote(db, biz, pid, body, by);
+const note = (db, biz, pid, body, by = MEMBER) => L.addTargetNote(db, biz, pid, body, by);
 
 // ── Notes ─────────────────────────────────────────────────────────────────
 
@@ -140,13 +141,13 @@ test("Add Note appends — earlier notes are preserved, and the feed is newest f
   for (const body of ["Called GM. Asked me to send samples Friday.", "Samples delivered. Sarah will review with purchasing Monday.", "Interested in 12oz cold cups. Requested pricing."]) {
     assert.deepEqual(await note(db, BIZ_A, P_A, body), { ok: true });
   }
-  assert.equal(t.business_location_placement_activities.length, 3, "three rows — nothing replaced");
-  const page = await L.getPlacementActivityPage(db, BIZ_A, P_A, null);
+  assert.equal(t.business_target_activities.length, 3, "three rows — nothing replaced");
+  const page = await L.getTargetActivityPage(db, BIZ_A, P_A, null);
   assert.deepEqual(page.items.map((i) => i.body), ["Interested in 12oz cold cups. Requested pricing.", "Samples delivered. Sarah will review with purchasing Monday.", "Called GM. Asked me to send samples Friday."]);
   assert.ok(page.items.every((i) => i.type === "note" && i.author === "Jonathan"));
   assert.equal(page.nextCursor, null);
-  // Notes never touch Summary / Context.
-  assert.equal(t.business_location_placements[0].notes, null);
+  // Notes never touch Context.
+  assert.equal(t.business_targets[0].context, null);
 });
 
 test("notes are validated: empty refused, 2,000 characters max, trimmed", async () => {
@@ -160,7 +161,7 @@ test("Add Note is refused for another Business's Target", async () => {
   const t = seed();
   const db = fakeDb(t);
   assert.equal((await note(db, BIZ_A, P_B, "sneaky")).ok, false);
-  assert.equal(t.business_location_placement_activities.length, 0);
+  assert.equal(t.business_target_activities.length, 0);
 });
 
 // ── Status changes ────────────────────────────────────────────────────────
@@ -168,56 +169,56 @@ test("Add Note is refused for another Business's Target", async () => {
 test("a status change records one status_change Activity with its actor; actor columns end null", async () => {
   const t = seed();
   const db = fakeDb(t);
-  const res = await L.updateBusinessPlacement(db, BIZ_A, P_A, { status: "in_conversation" }, MEMBER);
+  const res = await L.updateBusinessTarget(db, BIZ_A, P_A, { status: "in_conversation" }, MEMBER);
   assert.deepEqual(res, { ok: true, changed: true });
-  const upd = db.calls.find((c) => c.op === "update" && c.table === "business_location_placements");
+  const upd = db.calls.find((c) => c.op === "update" && c.table === "business_targets");
   assert.deepEqual(upd.payload, { status: "in_conversation", status_actor: "business", status_actor_user_id: JON });
-  const [act] = t.business_location_placement_activities;
+  const [act] = t.business_target_activities;
   assert.deepEqual({ type: act.activity_type, meta: act.metadata, actor: act.actor, by: act.created_by_user_id }, { type: "status_change", meta: { from: "target", to: "in_conversation" }, actor: "business", by: JON });
-  assert.equal(t.business_location_placements[0].status_actor, null);
-  const page = await L.getPlacementActivityPage(db, BIZ_A, P_A, null);
+  assert.equal(t.business_targets[0].status_actor, null);
+  const page = await L.getTargetActivityPage(db, BIZ_A, P_A, null);
   assert.deepEqual(page.items.map((i) => [i.type, i.from, i.to, i.author]), [["status_change", "target", "in_conversation", "Jonathan"]]);
 });
 
 test("an unchanged status records nothing; an edit without a status change sends no actor", async () => {
   const t = seed();
   const db = fakeDb(t);
-  assert.deepEqual(await L.updateBusinessPlacement(db, BIZ_A, P_A, { status: "target" }, MEMBER), { ok: true, changed: false });
-  assert.deepEqual(await L.updateBusinessPlacement(db, BIZ_A, P_A, { status: "target", notes: "Independent café. Sarah is the owner." }, MEMBER), { ok: true, changed: true });
+  assert.deepEqual(await L.updateBusinessTarget(db, BIZ_A, P_A, { status: "target" }, MEMBER), { ok: true, changed: false });
+  assert.deepEqual(await L.updateBusinessTarget(db, BIZ_A, P_A, { status: "target", context: "Independent café. Sarah is the owner." }, MEMBER), { ok: true, changed: true });
   const upd = db.calls.find((c) => c.op === "update");
-  assert.deepEqual(upd.payload, { notes: "Independent café. Sarah is the owner." }, "Summary / Context saves; no actor columns");
-  assert.equal(t.business_location_placement_activities.length, 0);
-  assert.equal(t.business_location_placements[0].notes, "Independent café. Sarah is the owner.");
+  assert.deepEqual(upd.payload, { context: "Independent café. Sarah is the owner." }, "Context saves; no actor columns");
+  assert.equal(t.business_target_activities.length, 0);
+  assert.equal(t.business_targets[0].context, "Independent café. Sarah is the owner.");
 });
 
 test("the full pipeline, and Passed → Target on reopen, each record their change (Findmi shown as Findmi)", async () => {
   const t = seed();
   const db = fakeDb(t);
-  for (const s of ["in_conversation", "placement_pending", "active", "passed"]) await L.updateBusinessPlacement(db, BIZ_A, P_A, { status: s }, MEMBER);
-  await L.updateBusinessPlacement(db, BIZ_A, P_A, { status: "target" }, FINDMI);
-  const page = await L.getPlacementActivityPage(db, BIZ_A, P_A, null);
+  for (const s of ["in_conversation", "agreed", "active", "passed"]) await L.updateBusinessTarget(db, BIZ_A, P_A, { status: s }, MEMBER);
+  await L.updateBusinessTarget(db, BIZ_A, P_A, { status: "target" }, FINDMI);
+  const page = await L.getTargetActivityPage(db, BIZ_A, P_A, null);
   assert.deepEqual(page.items.map((i) => `${i.from}→${i.to}:${i.author}`), [
     "passed→target:Findmi",
     "active→passed:Jonathan",
-    "placement_pending→active:Jonathan",
-    "in_conversation→placement_pending:Jonathan",
+    "agreed→active:Jonathan",
+    "in_conversation→agreed:Jonathan",
     "target→in_conversation:Jonathan",
   ]);
-  assert.equal(t.business_location_placements.filter((p) => p.business_id === BIZ_A).length, 1, "reopen keeps the same row");
+  assert.equal(t.business_targets.filter((p) => p.business_id === BIZ_A).length, 1, "reopen keeps the same row");
 });
 
 // ── Reads: privacy, authors, pagination ───────────────────────────────────
 
-test("Activity is scoped through the Placement to THIS Business and never carries internal_notes", async () => {
+test("Activity is scoped through the Target to THIS Business and never carries internal_notes", async () => {
   const t = seed();
   const db = fakeDb(t);
   await note(db, BIZ_B, P_B, "Business B private note");
-  const fromA = await L.getPlacementActivityPage(db, BIZ_A, P_B, null);
+  const fromA = await L.getTargetActivityPage(db, BIZ_A, P_B, null);
   assert.equal(fromA.items.length, 0, "another Business reads nothing");
-  const call = db.calls.filter((c) => c.table === "business_location_placement_activities" && c.op === "select").at(-1);
-  assert.ok(call.filters.includes(`eq business_location_placements.business_id=${BIZ_A}`));
-  assert.match(call.select, /business_location_placements!inner\(business_id\)/);
-  const own = await L.getPlacementActivityPage(db, BIZ_B, P_B, null);
+  const call = db.calls.filter((c) => c.table === "business_target_activities" && c.op === "select").at(-1);
+  assert.ok(call.filters.includes(`eq business_targets.business_id=${BIZ_A}`));
+  assert.match(call.select, /business_targets!inner\(business_id\)/);
+  const own = await L.getTargetActivityPage(db, BIZ_B, P_B, null);
   assert.doesNotMatch(JSON.stringify(own), /SECRET|internal/i);
   assert.doesNotMatch(call.select, /internal_notes/);
   // No ids or emails leave the module.
@@ -230,7 +231,7 @@ test("authors: display name, never an email; Team Member when unnamed; one batch
   await note(db, BIZ_A, P_A, "a", { actor: "business", userId: EMAILY });
   await note(db, BIZ_A, P_A, "b", { actor: "business", userId: JON });
   await note(db, BIZ_A, P_A, "c", { actor: "business", userId: null });
-  const page = await L.getPlacementActivityPage(db, BIZ_A, P_A, null);
+  const page = await L.getTargetActivityPage(db, BIZ_A, P_A, null);
   assert.deepEqual(page.items.map((i) => i.author), ["Team Member", "Jonathan", "Team Member"]);
   assert.equal(db.calls.filter((c) => c.table === "profiles").length, 1, "no N+1 author reads");
 });
@@ -239,13 +240,13 @@ test("pagination: a bounded first page (25) with a cursor; Load More continues f
   const t = seed();
   const db = fakeDb(t);
   for (let i = 0; i < 30; i++) await note(db, BIZ_A, P_A, `n${i}`);
-  const first = await L.getPlacementActivityPage(db, BIZ_A, P_A, null);
-  assert.equal(first.items.length, D.PLACEMENT_ACTIVITY_PAGE_SIZE);
-  const call = db.calls.filter((c) => c.table === "business_location_placement_activities" && c.op === "select").at(-1);
-  assert.equal(call.limit, D.PLACEMENT_ACTIVITY_PAGE_SIZE + 1, "reads one extra row only to know there's more");
+  const first = await L.getTargetActivityPage(db, BIZ_A, P_A, null);
+  assert.equal(first.items.length, D.TARGET_ACTIVITY_PAGE_SIZE);
+  const call = db.calls.filter((c) => c.table === "business_target_activities" && c.op === "select").at(-1);
+  assert.equal(call.limit, D.TARGET_ACTIVITY_PAGE_SIZE + 1, "reads one extra row only to know there's more");
   assert.equal(first.items[0].body, "n29");
   assert.ok(first.nextCursor);
-  const next = await L.getPlacementActivityPage(db, BIZ_A, P_A, D.parseActivityCursor(first.nextCursor));
+  const next = await L.getTargetActivityPage(db, BIZ_A, P_A, D.parseActivityCursor(first.nextCursor));
   assert.deepEqual(next.items.map((i) => i.body), ["n4", "n3", "n2", "n1", "n0"]);
   assert.equal(next.nextCursor, null);
   assert.equal(D.parseActivityCursor(first.nextCursor).at, "2026-10-22T10:05:00.123456+00:00", "microseconds kept");
@@ -258,55 +259,62 @@ test("pagination never skips or repeats rows that share a timestamp (one transac
   const t = seed();
   const db = fakeDb(t);
   const same = "2026-10-22T10:00:00.000000+00:00";
-  for (let i = 0; i < 30; i++) t.business_location_placement_activities.push({ id: `dddddddd-dddd-4ddd-8ddd-${String(i).padStart(12, "0")}`, placement_id: P_A, activity_type: "note", body: `s${i}`, metadata: {}, actor: "business", created_by_user_id: null, created_at: same });
-  const first = await L.getPlacementActivityPage(db, BIZ_A, P_A, null);
-  const next = await L.getPlacementActivityPage(db, BIZ_A, P_A, D.parseActivityCursor(first.nextCursor));
+  for (let i = 0; i < 30; i++) t.business_target_activities.push({ id: `dddddddd-dddd-4ddd-8ddd-${String(i).padStart(12, "0")}`, target_id: P_A, activity_type: "note", body: `s${i}`, metadata: {}, actor: "business", created_by_user_id: null, created_at: same });
+  const first = await L.getTargetActivityPage(db, BIZ_A, P_A, null);
+  const next = await L.getTargetActivityPage(db, BIZ_A, P_A, D.parseActivityCursor(first.nextCursor));
   const all = [...first.items, ...next.items].map((i) => i.body);
   assert.equal(all.length, 30);
   assert.equal(new Set(all).size, 30);
 });
 
-test("the Targets LIST never reads Activity; only an opened relationship workspace does", async () => {
+test("the Targets LIST never reads Activity; only an opened workspace (place or Target) does", async () => {
   const t = seed();
   t.locations = [{ id: "l1", name: "Cafe", slug: "cafe" }];
   const db = fakeDb(t);
-  await L.getBusinessPlacementsPage(db, BIZ_A, D.EMPTY_PLACEMENT_FILTER, 1);
-  assert.equal(db.calls.filter((c) => c.table === "business_location_placement_activities").length, 0);
-  assert.doesNotMatch(L.BUSINESS_PLACEMENT_COLUMNS, /activit/);
+  db.from = ((orig) => (table) => {
+    const c = orig(table);
+    c.not = () => c;
+    return c;
+  })(db.from);
+  await L.getBusinessTargetsPage(db, BIZ_A, D.EMPTY_TARGET_FILTER, 1);
+  assert.equal(db.calls.filter((c) => c.table === "business_target_activities").length, 0);
+  assert.doesNotMatch(L.BUSINESS_TARGET_COLUMNS, /activit/);
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(page, /data\.placement \? getPlacementActivityPage\(admin, id, data\.placement\.id, null\) : null,/);
-  assert.equal((page.match(/getPlacementActivityPage\(/g) ?? []).length, 1, "one read site: the opened workspace");
+  assert.match(page, /data\.target \? getTargetActivityPage\(admin, id, data\.target\.id, null\) : null,/);
+  assert.match(page, /getTargetActivityPage\(admin, id, opened\.id, null\)/, "a Business / Event Target's workspace");
+  assert.equal((page.match(/getTargetActivityPage\(/g) ?? []).length, 2, "two read sites: the two opened workspaces");
 });
 
 // ── Permissions (actions) ─────────────────────────────────────────────────
 
 test("permissions: owner/manager/Findmi Admin add notes; staff read only; Findmi acts as Findmi", () => {
-  const src = read("src/app/(public)/account/business/[id]/placement-actions.ts");
+  const src = read("src/app/(public)/account/business/[id]/target-actions.ts");
   assert.match(src, /export async function addTargetNoteAction[\s\S]*?const auth = await authorizeWrite\(businessId\);\s*if \(!auth\.ok\) return auth;/);
   assert.match(src, /export async function loadTargetActivityAction[\s\S]*?authorizeRead\(businessId\)/);
   assert.match(src, /async function authorizeRead[\s\S]*?await requireBusinessMember\(businessId\);\s*return true;/, "staff (any member) may read");
-  assert.equal(D.canEditPlacements("staff"), false);
-  assert.equal(D.canEditPlacements("owner"), true);
-  assert.equal(D.canEditPlacements("manager"), true);
-  assert.equal(D.canEditPlacements("staff", true), true, "founder Admin (Manage-As)");
-  assert.deepEqual(D.placementActor(true, JON), { actor: "findmi", userId: null });
-  assert.deepEqual(D.placementActor(false, JON), { actor: "business", userId: JON });
+  assert.equal(D.canEditTargets("staff"), false);
+  assert.equal(D.canEditTargets("owner"), true);
+  assert.equal(D.canEditTargets("manager"), true);
+  assert.equal(D.canEditTargets("staff", true), true, "founder Admin (Manage-As)");
+  assert.deepEqual(D.targetActor(true, JON), { actor: "findmi", userId: null });
+  assert.deepEqual(D.targetActor(false, JON), { actor: "business", userId: JON });
   const view = read("src/app/(public)/account/business/[id]/v2/RelationshipWorkspace.tsx");
-  assert.match(view, /<ActivityFeed businessId=\{businessId\} placementId=\{placement\.id\} canAdd=\{canEdit\} initial=\{props\.activity\} \/>/);
+  assert.match(view, /<ActivityFeed businessId=\{businessId\} targetId=\{target\.id\} canAdd=\{canEdit\} initial=\{props\.activity\} \/>/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/TargetWorkspace.tsx"), /<ActivityFeed businessId=\{businessId\} targetId=\{target\.id\} canAdd=\{canEdit\} initial=\{activity\} \/>/);
   assert.match(view, /\{canAdd && initial\?\.available !== false && \(/, "the composer only renders for editors");
-  const feed = view.slice(view.indexOf("function ActivityFeed"), view.indexOf("// ── Findmi Internal"));
+  const feed = view.slice(view.indexOf("export function ActivityFeed"), view.indexOf("// ── Findmi Internal"));
   assert.ok(feed.length > 0);
   assert.doesNotMatch(feed, /internal/i, "Activity never shows Findmi internal notes");
-  assert.doesNotMatch(view.slice(view.indexOf("function ActivityEntry"), view.indexOf("function ActivityFeed")), /Edit|Delete|Remove/, "append-only: no edit or delete controls");
+  assert.doesNotMatch(view.slice(view.indexOf("function ActivityEntry"), view.indexOf("export function ActivityFeed")), /Edit|Delete|Remove/, "append-only: no edit or delete controls");
 });
 
-test("Context is the relabeled `notes` field: read first, Edit when needed", () => {
+test("Context is the Target's `context` field (migrated from Placement notes): read first, Edit when needed", () => {
   const view = read("src/app/(public)/account/business/[id]/v2/RelationshipWorkspace.tsx");
-  assert.equal(D.PLACEMENT_SUMMARY_LABEL, "Context");
-  const block = view.slice(view.indexOf("function SummaryBlock"), view.indexOf("function Presence"));
+  assert.equal(D.TARGET_CONTEXT_LABEL, "Context");
+  const block = view.slice(view.indexOf("export function SummaryBlock"), view.indexOf("export function IntentsBlock"));
   assert.equal((block.match(/<h3 className=\{sectionTitle\}>Context<\/h3>/g) ?? []).length, 2, "editor and read view");
-  assert.match(block, /save\(businessId, item, \{ notes: text \|\| null \}\)/);
-  assert.match(block, /\{item\.notes \? "Edit" : "Add Context"\}/);
+  assert.match(block, /save\(businessId, item, \{ context: text \|\| null \}\)/);
+  assert.match(block, /\{item\.context \? "Edit" : "Add Context"\}/);
   assert.doesNotMatch(view, /">Notes</);
 });
 
@@ -331,12 +339,12 @@ test("Targets resolve from Growth and from Find Us Here — the same view, recor
   const view = read("src/app/(public)/account/business/[id]/v2/TargetsView.tsx");
   assert.match(view, /const next = new URLSearchParams\(searchParams\.toString\(\)\);/);
   // Nothing new stores Targets: one table, one library.
-  assert.doesNotMatch(read("src/lib/growth.ts"), /business_location_placements/);
+  assert.doesNotMatch(read("src/lib/growth.ts"), /business_location_placements|business_targets/);
 });
 
 // ── Migration ─────────────────────────────────────────────────────────────
 
-test("Activity migration: additive, server-only, append-only, status changes recorded by the trigger", () => {
+test("legacy Placement Activity migration (history): additive, server-only, append-only, trigger-recorded", () => {
   const body = read("supabase/migrations/20261103000000_business_location_placement_activities.sql").replace(/--.*$/gm, "");
   assert.doesNotMatch(body, /\bdrop\s+(table|column|trigger)|\bdelete\s+from|\btruncate\b|\bupdate\s+public\./i);
   assert.doesNotMatch(body, /create\s+policy/i);
@@ -346,8 +354,8 @@ test("Activity migration: additive, server-only, append-only, status changes rec
   assert.match(body, /grant select, insert on public\.business_location_placement_activities to service_role;/, "no update/delete: append-only");
   assert.doesNotMatch(body, /grant[^;]*to (anon|authenticated)/i);
   assert.match(body, /references public\.business_location_placements\(id\) on delete cascade/);
-  assert.ok(body.includes(`check (activity_type in (${D.PLACEMENT_ACTIVITY_TYPES.map((s) => `'${s}'`).join(", ")}))`));
-  for (const s of D.PLACEMENT_STATUSES) assert.match(body, new RegExp(`'${s}'`));
+  assert.ok(body.includes("check (activity_type in ('note', 'status_change'))"));
+  for (const s of ["target", "in_conversation", "placement_pending", "active", "passed"]) assert.match(body, new RegExp(`'${s}'`));
   assert.match(body, /\(placement_id, created_at desc, id desc\)/);
   // The trigger: only on a real change, one insert, actor copied then cleared.
   const fn = body.slice(body.indexOf("create or replace function public.business_location_placements_status_changed()"));
@@ -355,28 +363,4 @@ test("Activity migration: additive, server-only, append-only, status changes rec
   assert.doesNotMatch(fn.slice(0, fn.indexOf("$$;")), /internal_notes/);
   // The already-applied Block A migration file is untouched by this pass.
   assert.match(read("supabase/migrations/20261102000000_business_location_placements.sql"), /drop trigger if exists trg_business_location_placements_status_changed/);
-});
-
-test("before the Activity migration a status save still works (actor columns dropped on 42703/PGRST204)", async () => {
-  const t = seed();
-  const db = fakeDb(t);
-  let first = true;
-  const wrapped = {
-    from(table) {
-      const c = db.from(table);
-      if (table !== "business_location_placements") return c;
-      const origUpdate = c.update;
-      c.update = (payload) => {
-        if (first && "status_actor" in payload) {
-          first = false;
-          const fail = { eq: () => fail, then: (r) => r({ data: null, error: { code: "PGRST204", message: "Could not find the 'status_actor' column" } }) };
-          return fail;
-        }
-        return origUpdate(payload);
-      };
-      return c;
-    },
-  };
-  assert.deepEqual(await L.updateBusinessPlacement(wrapped, BIZ_A, P_A, { status: "active" }, MEMBER), { ok: true, changed: true });
-  assert.equal(t.business_location_placements[0].status, "active");
 });

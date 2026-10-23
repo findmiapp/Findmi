@@ -127,8 +127,8 @@ test("every source is this Business's own: another Business's state, or a privat
   assert.match(items, /await requireBusinessMember\(businessId\);/);
   assert.match(items, /\.from\("opportunity_recipients"\)[\s\S]*?\.eq\("business_id", businessId\)/);
   // Orders: proven by the summary test above (another Business's paid "new" item is not counted).
-  // Mocktail Mart tracking Babylist Soho writes only its own placement rows — no shared table.
-  const placements = read("src/lib/business-placements.ts") + read("src/app/(public)/account/business/[id]/placement-actions.ts");
+  // Mocktail Mart tracking Babylist Soho writes only its own Target rows — no shared table.
+  const placements = read("src/lib/business-targets.ts") + read("src/app/(public)/account/business/[id]/target-actions.ts");
   assert.doesNotMatch(placements, /from\("(opportunities|opportunity_recipients|conversations|conversation_messages|orders|order_items|event_businesses)"\)/);
 });
 
@@ -174,6 +174,6 @@ test("Growth counts, Coming Up and Follow-Ups are unchanged", () => {
   assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
   assert.match(HOME, /comingUp\.map\(\(item\) => \(/);
   assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\}/);
-  assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, placements: followUpPlacements, today: followUpToday\(\) \}\)/);
+  assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, targets: followUpTargets, today: followUpToday\(\) \}\)/);
   assert.match(HOME, /<FollowUpsSection basePath=\{basePath\} items=\{followUps\} expanded=\{followUpsExpanded\} \/>/);
 });

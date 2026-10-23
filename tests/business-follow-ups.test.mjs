@@ -1,7 +1,7 @@
 // Business Home → Follow-Ups (lib/business-follow-ups.ts + the bounded Targets
-// read in lib/business-placements.ts): this Business's own Target next steps —
-// nothing else, private to it, absent when there are none. No network, no
-// production DB. `npm test`.
+// read in lib/business-targets.ts): this Business's own Target next steps — of
+// every kind (Place, Business, Event) — nothing else, private to it, absent when
+// there are none. No network, no production DB. `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -21,7 +21,7 @@ registerHooks({
 });
 
 const F = await import("../src/lib/business-follow-ups.ts");
-const L = await import("../src/lib/business-placements.ts");
+const L = await import("../src/lib/business-targets.ts");
 const R = await import("../src/lib/business-relationships.ts");
 const DASH = await import("../src/lib/business-dashboard.ts");
 const read = (p) => readFileSync(p, "utf8");
@@ -32,16 +32,16 @@ const SECTION = HOME.slice(HOME.indexOf("function FollowUpsSection"), HOME.index
 
 const BASE = "/account/business/biz";
 const TODAY = "2026-10-22";
-const place = (id, o = {}) => ({ locationId: id, locationName: `Place ${id}`, status: "in_conversation", nextAction: "Send samples", nextActionAt: null, ...o });
-const build = (placements, today = TODAY) => F.buildFollowUps({ basePath: BASE, placements, today });
+const place = (id, o = {}) => ({ targetId: `t-${id}`, kind: "location", locationId: id, title: `Place ${id}`, status: "in_conversation", nextAction: "Send samples", nextActionAt: null, ...o });
+const build = (targets, today = TODAY) => F.buildFollowUps({ basePath: BASE, targets, today });
 
 // ── Placement follow-ups ────────────────────────────────────────────────────
 
 test("Mocktail-style: the Babylist Soho follow-up appears, opening the relationship workspace by Location", () => {
-  const items = build([place("babylist", { locationName: "Babylist Soho", nextAction: "Find contact info for partnerships director", nextActionAt: "2026-10-23" })]);
+  const items = build([place("babylist", { title: "Babylist Soho", nextAction: "Find contact info for partnerships director", nextActionAt: "2026-10-23" })]);
   assert.deepEqual(items, [
     {
-      key: "placement:babylist",
+      key: "target:t-babylist",
       title: "Babylist Soho",
       meta: "In Conversation · Follow Up Tomorrow",
       detail: "Find contact info for partnerships director",
@@ -58,7 +58,7 @@ test("Passed is excluded, and a Target with no step and no date is not a follow-
     place("empty", { nextAction: "   ", nextActionAt: null }),
     place("dated-only", { nextAction: null, nextActionAt: "2026-10-24" }),
   ]);
-  assert.deepEqual(items.map((i) => i.key), ["placement:dated-only"]);
+  assert.deepEqual(items.map((i) => i.key), ["target:t-dated-only"]);
   assert.equal(items[0].detail, null);
 });
 
@@ -66,15 +66,15 @@ test("ordering is unchanged: overdue → today → due soon → undated → late
   const items = build([
     place("later", { nextActionAt: "2026-11-20" }),
     place("undated", { nextActionAt: null }),
-    place("soon-b", { locationName: "B", nextActionAt: "2026-10-25" }),
-    place("soon-a", { locationName: "A", nextActionAt: "2026-10-25" }),
+    place("soon-b", { title: "B", nextActionAt: "2026-10-25" }),
+    place("soon-a", { title: "A", nextActionAt: "2026-10-25" }),
     place("today", { nextActionAt: TODAY }),
     place("tomorrow", { nextActionAt: "2026-10-23" }),
     place("overdue", { nextActionAt: "2026-10-01" }),
   ]);
-  assert.deepEqual(items.map((i) => i.key), ["placement:overdue", "placement:today", "placement:tomorrow", "placement:soon-a", "placement:soon-b", "placement:undated", "placement:later"]);
-  const shuffled = build([place("soon-b", { locationName: "B", nextActionAt: "2026-10-25" }), place("soon-a", { locationName: "A", nextActionAt: "2026-10-25" })]);
-  assert.deepEqual(shuffled.map((i) => i.key), ["placement:soon-a", "placement:soon-b"]);
+  assert.deepEqual(items.map((i) => i.key), ["target:t-overdue", "target:t-today", "target:t-tomorrow", "target:t-soon-a", "target:t-soon-b", "target:t-undated", "target:t-later"]);
+  const shuffled = build([place("soon-b", { title: "B", nextActionAt: "2026-10-25" }), place("soon-a", { title: "A", nextActionAt: "2026-10-25" })]);
+  assert.deepEqual(shuffled.map((i) => i.key), ["target:t-soon-a", "target:t-soon-b"]);
 });
 
 test("date labels and the app calendar day are unchanged", () => {
@@ -93,9 +93,24 @@ test("date labels and the app calendar day are unchanged", () => {
 
 // ── Only Target follow-ups ──────────────────────────────────────────────────
 
-test("commercial Opportunities never enter Follow-Ups (nor Events, Appearances, Find Us Here, orders or invitations)", () => {
-  assert.doesNotMatch(LIB, /opportunit|appearance|event|availability|order|invitation/i);
-  assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, placements: followUpPlacements, today: followUpToday\(\) \}\)/, "placements are the only input");
+test("Business and Event Targets' next steps join the same Follow-Ups, opening their own Target workspace", () => {
+  const items = build([
+    place("babylist-soho", { title: "Babylist Soho", nextAction: "Contact partnerships director", nextActionAt: "2026-10-24" }),
+    { targetId: "t-biz", kind: "business", locationId: null, title: "Babylist", status: "target", nextAction: "Send wholesale deck", nextActionAt: "2026-10-23" },
+    { targetId: "t-evt", kind: "event", locationId: null, title: "Jersey City Night Market", status: "in_conversation", nextAction: null, nextActionAt: "2026-10-22" },
+    { targetId: "t-passed", kind: "business", locationId: null, title: "Old Lead", status: "passed", nextAction: "x", nextActionAt: "2026-10-22" },
+  ]);
+  assert.deepEqual(items.map((i) => [i.title, i.detail, i.href]), [
+    ["Jersey City Night Market", null, `${BASE}?tab=growth&view=targets&tgt=t-evt`],
+    ["Babylist", "Send wholesale deck", `${BASE}?tab=growth&view=targets&tgt=t-biz`],
+    ["Babylist Soho", "Contact partnerships director", `${BASE}?tab=growth&view=targets&loc=babylist-soho`],
+  ]);
+  assert.equal(items[0].meta, "In Conversation · Due Today");
+});
+
+test("commercial Opportunities never enter Follow-Ups (nor Appearances, Find Us Here, orders or invitations)", () => {
+  assert.doesNotMatch(LIB, /opportunit|appearance|availability|order|invitation/i);
+  assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, targets: followUpTargets, today: followUpToday\(\) \}\)/, "Targets are the only input");
   assert.doesNotMatch(PAGE, /buildBusinessNext/);
 });
 
@@ -127,32 +142,32 @@ test("Home order is unchanged around Follow-Ups", () => {
 
 // ── Privacy: a Target is private to the Business tracking it ────────────────
 
-function placementsDb(rows) {
+function targetsDb(rows) {
   const filters = [];
   const q = {
-    select: () => q,
+    select: (cols) => (filters.push(["select", cols]), q),
     eq: (c, v) => (filters.push([c, v]), q),
     neq: (c, v) => (filters.push([c, `!${v}`]), q),
     or: () => q,
     order: () => q,
-    limit: () => Promise.resolve({ data: rows.filter((r) => filters.every(([c, v]) => (v.startsWith?.("!") ? r[c] !== v.slice(1) : r[c] === v))), error: null }),
+    limit: () => Promise.resolve({ data: rows.filter((r) => filters.filter(([c]) => c !== "select").every(([c, v]) => (v.startsWith?.("!") ? r[c] !== v.slice(1) : r[c] === v))), error: null }),
   };
   return { filters, from: () => q };
 }
 
 test("Babylist's Home never sees Mocktail Mart's private Target / follow-up for Babylist Soho", async () => {
-  const rows = [{ business_id: "mocktail", location_id: "babylist-soho", status: "in_conversation", next_action: "Find contact info for partnerships director", next_action_at: "2026-10-23", internal_notes: "secret", locations: { name: "Babylist Soho" } }];
-  const asBabylist = placementsDb(rows);
-  assert.deepEqual(await L.getFollowUpPlacements(asBabylist, "babylist"), [], "another Business's Target never reaches Babylist");
-  assert.deepEqual(asBabylist.filters[0], ["business_id", "babylist"], "scoped to the Business whose Home it is");
-  const asMocktail = placementsDb(rows);
-  const mine = await L.getFollowUpPlacements(asMocktail, "mocktail");
-  assert.deepEqual(mine, [{ locationId: "babylist-soho", locationName: "Babylist Soho", status: "in_conversation", nextAction: "Find contact info for partnerships director", nextActionAt: "2026-10-23" }], "no internal notes");
-  const lib = read("src/lib/business-placements.ts");
-  const reader = lib.slice(lib.indexOf("export async function getFollowUpPlacements"), lib.indexOf("export async function getPlacementPursuit"));
-  assert.match(reader, /\.select\("location_id, status, next_action, next_action_at, locations!inner\(name\)"\)/);
-  assert.doesNotMatch(reader, /\.eq\("location_id"|internal_notes|activit/, "never read by place, never notes or Activity");
-  assert.match(PAGE, /whenP\(onHome, \(\) => getFollowUpPlacements\(admin, id\)/, "the managed Business only");
+  const rows = [{ id: "t1", business_id: "mocktail", target_location_id: "babylist-soho", target_business_id: null, target_event_id: null, status: "in_conversation", next_action: "Find contact info for partnerships director", next_action_at: "2026-10-23", internal_notes: "secret", location: { name: "Babylist Soho" } }];
+  const asBabylist = targetsDb(rows);
+  assert.deepEqual(await L.getFollowUpTargets(asBabylist, "babylist"), [], "another Business's Target never reaches Babylist");
+  assert.deepEqual(asBabylist.filters[1], ["business_id", "babylist"], "scoped to the OWNER Business whose Home it is — never the counterparty");
+  const asMocktail = targetsDb(rows);
+  const mine = await L.getFollowUpTargets(asMocktail, "mocktail");
+  assert.deepEqual(mine, [{ targetId: "t1", kind: "location", locationId: "babylist-soho", title: "Babylist Soho", status: "in_conversation", nextAction: "Find contact info for partnerships director", nextActionAt: "2026-10-23" }], "no internal notes");
+  const lib = read("src/lib/business-targets.ts");
+  const reader = lib.slice(lib.indexOf("export async function getFollowUpTargets"), lib.indexOf("export async function getTargetPursuit"));
+  assert.match(reader, /\.eq\("business_id", businessId\)/);
+  assert.doesNotMatch(reader, /\.eq\("target_|internal_notes|activit/, "never read by counterparty, never notes or Activity");
+  assert.match(PAGE, /whenP\(onHome, \(\) => getFollowUpTargets\(admin, id\)/, "the managed Business only");
 });
 
 // ── Neighbours unchanged ────────────────────────────────────────────────────

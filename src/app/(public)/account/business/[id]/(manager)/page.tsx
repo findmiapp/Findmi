@@ -43,13 +43,14 @@ import AvailableAtView from "../v2/AvailableAtView";
 import { FindUsViewSwitch } from "../v2/MarketFootprintView";
 import { getOwnerAvailabilityPage } from "@/lib/business-availability-owner";
 import { parseAvailabilityFilter } from "@/lib/business-availability-bulk-domain";
-import { canEditPlacements, parsePlacementFilter } from "@/lib/business-placements-domain";
-import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage, getFollowUpPlacements, getPlacementActivityPage, getPlacementPursuit } from "@/lib/business-placements";
+import { canEditTargets, parseTargetFilter } from "@/lib/business-targets-domain";
+import { adminGetTargetInternalNotes, getBusinessTarget, getBusinessTargetsPage, getFollowUpTargets, getTargetActivityPage, getTargetPursuit } from "@/lib/business-targets";
 import { followUpToday, getGeographyDetail, getGeographyOverview, getGrowingIn, getRelationshipWorkspace } from "@/lib/business-relationships";
 import { buildFollowUps } from "@/lib/business-follow-ups";
 import { buildBusinessRequests } from "@/lib/business-requests";
 import { cleanSlug, resolveGeographyScope } from "@/lib/geography-scope";
 import RelationshipWorkspace from "../v2/RelationshipWorkspace";
+import TargetWorkspace from "../v2/TargetWorkspace";
 import { GeographyDetailView, GeographyOverviewView } from "../v2/GeographyViews";
 import { isAdminSession } from "@/lib/admin/auth";
 import TargetsView from "../v2/TargetsView";
@@ -317,10 +318,13 @@ type ManagerSearchParams = {
     /** Find Us Here → By Market: view switch and the selected Market's slug. */
     fv?: string;
     fm?: string;
-    /** Find Us Here → Targets: search, status, page, and the open Target (legacy). */
+    /** Targets: search, status, kind (Growth only), page, the open Business /
+     * Event Target (tgt), and the legacy open Target id (pt). */
     tq?: string;
     ts?: string;
+    tk?: string;
     tp?: string;
+    tgt?: string;
     pt?: string;
     /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
     fa?: string;
@@ -476,20 +480,24 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const onFindUsMarkets = onFindUs && rawSearchParams.fv === "markets";
   const onFindUsTargets = onFindUs && rawSearchParams.fv === "targets";
   const onFindUsPlaces = onFindUs && !onFindUsMarkets && !onFindUsTargets;
-  // Targets have two doors — Findmi Here → Find Us Here → Targets and Growth →
-  // Targets — onto ONE set of Placement records, one view and one set of actions.
+  // Targets have two doors onto ONE set of business_targets records, one view and
+  // one set of actions: Growth → Targets (every kind) and Findmi Here → Find Us
+  // Here → Targets (the Places-only lens).
   const onGrowthTargets = activeTab === "growth" && viewParam === "targets";
   const onTargets = onFindUsTargets || onGrowthTargets;
-  const targetsFilter = parsePlacementFilter({ q: rawSearchParams.tq, status: rawSearchParams.ts });
+  const targetsFilter = parseTargetFilter({ q: rawSearchParams.tq, status: rawSearchParams.ts, kind: onGrowthTargets ? rawSearchParams.tk : undefined });
   const marketKey = onFindUsMarkets && typeof rawSearchParams.fm === "string" ? rawSearchParams.fm.replace(/[^a-z0-9-]/gi, "").slice(0, 60) : "";
   const areaKey = onFindUsMarkets && marketKey && marketKey !== "none" ? cleanSlug(rawSearchParams.fa) : "";
   // The Business ↔ Location relationship workspace — ONE page per place, opened
-  // from any lens (Places, By Market, Targets, Growth → Targets) with `loc`;
-  // legacy `pt` (a Placement id) resolves to its place.
+  // from any lens (Places, By Market, Targets, Growth → Targets) with `loc`.
+  // A Business or Event Target opens its own Target workspace with `tgt`;
+  // legacy `pt` (a Placement id — kept as the migrated Target's id) resolves to
+  // whichever of the two it is.
   const workspaceDoor = onFindUs || onGrowthTargets;
   const requestedLoc = workspaceDoor && typeof rawSearchParams.loc === "string" ? rawSearchParams.loc : "";
   const legacyPt = workspaceDoor && !requestedLoc && typeof rawSearchParams.pt === "string" ? rawSearchParams.pt : "";
-  const wantsWorkspace = Boolean(requestedLoc || legacyPt);
+  const requestedTgt = workspaceDoor && !requestedLoc && typeof rawSearchParams.tgt === "string" ? rawSearchParams.tgt : "";
+  const wantsWorkspace = Boolean(requestedLoc || legacyPt || requestedTgt);
   const findUsFilter = parseAvailabilityFilter({ q: rawSearchParams.fq, status: rawSearchParams.fs, relationship: rawSearchParams.fr, imported: rawSearchParams.fi });
   const onLocations = onFindmiHere && presenceView === "locations";
   const onProfile = activeTab === "profile";
@@ -1247,36 +1255,45 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   };
   const growthTrio = () => Promise.all([getBrandAudit(id), getIdeasForBusiness(id), getBusinessGoals(id)]);
   const schedulePromise = whenP(needsSchedule || needsHosted, loadSchedule, undefined);
-  // Relationship workspace (lib/business-relationships.ts). Placement reads never
-  // select internal_notes; those are read only for a founder Admin session.
-  // Activity is read only for the opened place (first page) — never for a list.
+  // Relationship workspace (lib/business-relationships.ts) for a place, or the
+  // Target workspace for a Business / Event Target. Target reads never select
+  // internal_notes; those are read only for a founder Admin session. Activity is
+  // read only for the opened Target (first page) — never for a list.
   const workspacePromise = whenP(
     wantsWorkspace,
     async () => {
-      const locationId = requestedLoc || (await getBusinessPlacement(admin, id, legacyPt))?.locationId || "";
-      const data = locationId ? await getRelationshipWorkspace(admin, id, locationId) : null;
+      const opened = requestedLoc ? null : await getBusinessTarget(admin, id, requestedTgt || legacyPt);
+      const locationId = requestedLoc || opened?.locationId || "";
+      if (!locationId) {
+        if (!opened) return null;
+        const findmiAdmin = isAdminElevated || (await isAdminSession());
+        const [internalNotes, activity] = await Promise.all([findmiAdmin ? adminGetTargetInternalNotes(admin, id, opened.id) : null, getTargetActivityPage(admin, id, opened.id, null)]);
+        return { kind: "target" as const, target: opened, findmiAdmin, internalNotes, activity, scopeLabel: null };
+      }
+      const data = await getRelationshipWorkspace(admin, id, locationId);
       if (!data) return null;
-      const findmiAdmin = Boolean(data.placement) && (isAdminElevated || (await isAdminSession()));
+      const findmiAdmin = Boolean(data.target) && (isAdminElevated || (await isAdminSession()));
       const [internalNotes, activity, scope] = await Promise.all([
-        data.placement && findmiAdmin ? adminGetPlacementInternalNotes(admin, id, data.placement.id) : null,
-        data.placement ? getPlacementActivityPage(admin, id, data.placement.id, null) : null,
+        data.target && findmiAdmin ? adminGetTargetInternalNotes(admin, id, data.target.id) : null,
+        data.target ? getTargetActivityPage(admin, id, data.target.id, null) : null,
         onFindUsMarkets && marketKey && marketKey !== "none" ? resolveGeographyScope(admin, marketKey, areaKey) : null,
       ]);
-      return { data, findmiAdmin, internalNotes, activity, scopeLabel: scope?.label ?? null };
+      return { kind: "place" as const, data, findmiAdmin, internalNotes, activity, scopeLabel: scope?.label ?? null };
     },
     null
   );
-  // Targets list — private Placement pipeline (lib/business-placements.ts); not read while a workspace is open.
+  // Targets list — private business_targets pipeline (lib/business-targets.ts); not read while a workspace is open.
+  // Find Us Here's lens reads Place Targets only.
   const targetsPromise = whenP(
     onTargets,
-    async () => ((await workspacePromise) ? null : getBusinessPlacementsPage(admin, id, targetsFilter, Number(rawSearchParams.tp) || 1)),
+    async () => ((await workspacePromise) ? null : getBusinessTargetsPage(admin, id, targetsFilter, Number(rawSearchParams.tp) || 1, { placesOnly: onFindUsTargets })),
     null
   );
   const growingInPromise = whenP(onGrowthTargets && !wantsWorkspace, () => getGrowingIn(admin, id), [] as Awaited<ReturnType<typeof getGrowingIn>>);
   // Home → Follow-Ups: this Business's Targets with a next step (one bounded read).
-  const followUpPlacementsPromise = whenP(onHome, () => getFollowUpPlacements(admin, id), [] as Awaited<ReturnType<typeof getFollowUpPlacements>>);
+  const followUpTargetsPromise = whenP(onHome, () => getFollowUpTargets(admin, id), [] as Awaited<ReturnType<typeof getFollowUpTargets>>);
   // Growth's one-line Targets status (two head counts).
-  const targetsPursuitPromise = whenP(needsGrowth, () => getPlacementPursuit(admin, id), { total: 0, pursuing: 0 });
+  const targetsPursuitPromise = whenP(needsGrowth, () => getTargetPursuit(admin, id), { total: 0, pursuing: 0 });
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
   const galleryPromise = rowsWhen(onProfile || onHome, () =>
     admin.from("business_images").select("url").eq("business_id", id).order("display_order", { ascending: true, nullsFirst: false })
@@ -1407,7 +1424,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
-  const [workspace, targetsList, targetsPursuit, growingIn, followUpPlacements] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpPlacementsPromise]);
+  const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1431,9 +1448,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       page={targetsList.page}
       pageSize={targetsList.pageSize}
       counts={targetsList.counts}
+      kindCounts={targetsList.kindCounts}
       filter={targetsFilter}
-      canEdit={canEditPlacements(membershipRole, isAdminElevated)}
+      canEdit={canEditTargets(membershipRole, isAdminElevated)}
       openMissing={wantsWorkspace && !workspace}
+      placesOnly={onFindUsTargets}
       context={
         // Growth door only (growingIn is read only there).
         growingIn.length > 0 ? (
@@ -1452,14 +1471,25 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // One relationship workspace for every door; Back returns to the lens it was opened from.
   const workspaceBack = (() => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt") q.set(k, v);
+    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt" && k !== "tgt") q.set(k, v);
     return `/account/business/${id}?${q.toString()}`;
   })();
-  const workspaceView = workspace ? (
+  const workspaceView = workspace?.kind === "target" ? (
+    <TargetWorkspace
+      businessId={id}
+      target={workspace.target}
+      canEdit={canEditTargets(membershipRole, isAdminElevated)}
+      isFindmiAdmin={workspace.findmiAdmin}
+      internalNotes={workspace.internalNotes}
+      activity={workspace.activity}
+      backHref={workspaceBack}
+      backLabel="Targets"
+    />
+  ) : workspace ? (
     <RelationshipWorkspace
       businessId={id}
       data={workspace.data}
-      canEdit={canEditPlacements(membershipRole, isAdminElevated)}
+      canEdit={canEditTargets(membershipRole, isAdminElevated)}
       isFindmiAdmin={workspace.findmiAdmin}
       internalNotes={workspace.internalNotes}
       activity={workspace.activity}
@@ -1559,7 +1589,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       })
     : [];
   // Home → Follow-Ups (lib/business-follow-ups.ts): Targets only.
-  const followUps = onHome ? buildFollowUps({ basePath: `/account/business/${id}`, placements: followUpPlacements, today: followUpToday() }) : [];
+  const followUps = onHome ? buildFollowUps({ basePath: `/account/business/${id}`, targets: followUpTargets, today: followUpToday() }) : [];
 
 
   const addProduct = createMemberProduct.bind(null, id);

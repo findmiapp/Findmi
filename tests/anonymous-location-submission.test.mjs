@@ -112,5 +112,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261105000000_opportunity_relationship_thread.sql");
+  assert.equal(files.at(-1), "20261106000000_business_targets.sql");
 });
