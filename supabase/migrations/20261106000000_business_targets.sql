@@ -127,13 +127,11 @@ end;
 $$;
 revoke all on function public.business_targets_status_changed() from public, anon, authenticated;
 
-drop trigger if exists trg_business_targets_status_changed on public.business_targets;
-create trigger trg_business_targets_status_changed
+create or replace trigger trg_business_targets_status_changed
   before update on public.business_targets
   for each row execute function public.business_targets_status_changed();
 
-drop trigger if exists trg_business_targets_updated_at on public.business_targets;
-create trigger trg_business_targets_updated_at
+create or replace trigger trg_business_targets_updated_at
   before update on public.business_targets
   for each row execute function public.set_updated_at();
 
