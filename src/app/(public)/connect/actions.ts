@@ -25,6 +25,8 @@
 // Business/Event Manager actions already use. Only the entry point (a
 // public page instead of a Manager tab) and the redirect target are new.
 
+import { COMMERCIAL_INQUIRY_SUBJECT } from "@/lib/commercial-inquiries-domain";
+import { recordInquiryReply } from "@/lib/commercial-inquiries";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -859,6 +861,8 @@ export async function sendReply(
   }
 
   await sendTextMessage(admin, conversationId, userId, actingEntityType, actingEntityId, text);
+  // Commercial Inquiry: the first reply from the other side moves Sent → Responded.
+  if (facts.subjectType === COMMERCIAL_INQUIRY_SUBJECT) await recordInquiryReply(admin, conversationId, { entityType: actingEntityType, entityId: actingEntityId });
   return { conversationId };
 }
 

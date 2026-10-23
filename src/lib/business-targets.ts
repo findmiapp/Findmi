@@ -351,7 +351,7 @@ export async function getBusinessTargetByLocation(admin: SupabaseClient, busines
 
 /** Whether a counterparty may be targeted at all (exists, not archived/trashed;
  * a Business or Event must be public — only Places may be unlisted, as before). */
-async function checkCounterparty(admin: SupabaseClient, businessId: string, kind: TargetKind, id: string): Promise<string | null> {
+export async function checkCounterparty(admin: SupabaseClient, businessId: string, kind: TargetKind, id: string): Promise<string | null> {
   if (kind === "location") {
     const { data: operated } = await admin.from("business_locations").select("id").eq("business_id", businessId).eq("location_id", id).maybeSingle();
     if (operated) return ALREADY_OUR_LOCATION_TARGET_ERROR;

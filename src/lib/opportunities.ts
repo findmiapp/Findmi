@@ -431,6 +431,8 @@ async function notifyFindmiOfMessage(
     const { data: recipient } = await admin.from("opportunity_recipients").select("listing_id").eq("id", c.subject_id).maybeSingle();
     const listingId = (recipient as { listing_id: string } | null)?.listing_id;
     if (listingId) actionUrl = `/admin/opportunities/${listingId}/thread/${c.subject_id}`;
+  } else if (c?.subject_type === "commercial_inquiry") {
+    actionUrl = `/admin/commercial-inquiries/${c.subject_id}`;
   }
   const senderName = senderNameOverride ?? (await getEntityDisplayName(admin, senderEntityType, senderEntityId));
   const preview = body.length > 300 ? `${body.slice(0, 297)}...` : body;

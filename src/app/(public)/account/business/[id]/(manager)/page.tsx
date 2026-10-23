@@ -57,6 +57,7 @@ import TargetsView from "../v2/TargetsView";
 import DiscoverView from "../v2/DiscoverView";
 import { parseCommercialQuery } from "@/lib/discovery/commercial";
 import { getCommercialDiscovery } from "@/lib/discovery/commercial-server";
+import { getInboundInquiryRequests, getTargetInquiries } from "@/lib/commercial-inquiries";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -1279,18 +1280,23 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       if (!locationId) {
         if (!opened) return null;
         const findmiAdmin = isAdminElevated || (await isAdminSession());
-        const [internalNotes, activity] = await Promise.all([findmiAdmin ? adminGetTargetInternalNotes(admin, id, opened.id) : null, getTargetActivityPage(admin, id, opened.id, null)]);
-        return { kind: "target" as const, target: opened, findmiAdmin, internalNotes, activity, scopeLabel: null };
+        const [internalNotes, activity, inquiries] = await Promise.all([
+          findmiAdmin ? adminGetTargetInternalNotes(admin, id, opened.id) : null,
+          getTargetActivityPage(admin, id, opened.id, null),
+          getTargetInquiries(admin, id, opened.id),
+        ]);
+        return { kind: "target" as const, target: opened, findmiAdmin, internalNotes, activity, inquiries, scopeLabel: null };
       }
       const data = await getRelationshipWorkspace(admin, id, locationId);
       if (!data) return null;
       const findmiAdmin = Boolean(data.target) && (isAdminElevated || (await isAdminSession()));
-      const [internalNotes, activity, scope] = await Promise.all([
+      const [internalNotes, activity, scope, inquiries] = await Promise.all([
         data.target && findmiAdmin ? adminGetTargetInternalNotes(admin, id, data.target.id) : null,
         data.target ? getTargetActivityPage(admin, id, data.target.id, null) : null,
         onFindUsMarkets && marketKey && marketKey !== "none" ? resolveGeographyScope(admin, marketKey, areaKey) : null,
+        data.target ? getTargetInquiries(admin, id, data.target.id) : [],
       ]);
-      return { kind: "place" as const, data, findmiAdmin, internalNotes, activity, scopeLabel: scope?.label ?? null };
+      return { kind: "place" as const, data, findmiAdmin, internalNotes, activity, inquiries, scopeLabel: scope?.label ?? null };
     },
     null
   );
@@ -1302,6 +1308,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     null
   );
   const growingInPromise = whenP(onGrowthTargets && !wantsWorkspace, () => getGrowingIn(admin, id), [] as Awaited<ReturnType<typeof getGrowingIn>>);
+  // Home → Requests: Commercial Inquiries routed to this Business, still unanswered.
+  const inquiryRequestsPromise = whenP(onHome, () => getInboundInquiryRequests(admin, id), [] as Awaited<ReturnType<typeof getInboundInquiryRequests>>);
   // Home → Follow-Ups: this Business's Targets with a next step (one bounded read).
   const followUpTargetsPromise = whenP(onHome, () => getFollowUpTargets(admin, id), [] as Awaited<ReturnType<typeof getFollowUpTargets>>);
   // Commercial Discovery: one bounded, server-filtered page (lib/discovery/commercial-server.ts).
@@ -1442,7 +1450,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
-  const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets, discovery] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise, discoverPromise]);
+  const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets, discovery, inquiryRequests] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise, discoverPromise, inquiryRequestsPromise]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1501,6 +1509,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       isFindmiAdmin={workspace.findmiAdmin}
       internalNotes={workspace.internalNotes}
       activity={workspace.activity}
+      inquiries={workspace.inquiries}
+      senderName={business.name}
       backHref={workspaceBack}
       backLabel="Targets"
     />
@@ -1512,6 +1522,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       isFindmiAdmin={workspace.findmiAdmin}
       internalNotes={workspace.internalNotes}
       activity={workspace.activity}
+      inquiries={workspace.inquiries}
+      senderName={business.name}
       backHref={workspaceBack}
       backLabel={onTargets ? "Targets" : onFindUsMarkets ? (workspace.scopeLabel ?? "By Market") : "Places"}
       products={products.map((p) => ({ id: p.id, name: p.name }))}
@@ -1605,6 +1617,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         })),
         invitations: pendingInvitations,
         newOrderCount: orderSummary.newCount,
+        inquiries: inquiryRequests,
       })
     : [];
   // Home → Follow-Ups (lib/business-follow-ups.ts): Targets only.

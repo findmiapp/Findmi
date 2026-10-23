@@ -133,6 +133,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
           { href: "/admin/conversations", label: "Communications", hint: "Direct & opportunity messages — Inquiries and Sales Inquiries below" },
           { href: "/admin/inquiries", label: "Inquiries", hint: "Native Findmi inquiry threads", sidebar: false, parent: "/admin/conversations" },
           { href: "/admin/sales-inquiries", label: "Sales Inquiries", hint: "Multi-Region/National leads", sidebar: false, parent: "/admin/conversations" },
+          { href: "/admin/commercial-inquiries", label: "Commercial Inquiries", hint: "Business Inquiries Findmi mediates", sidebar: false, parent: "/admin/conversations" },
         ],
       },
       {

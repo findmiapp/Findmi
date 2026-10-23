@@ -105,11 +105,14 @@ test("order: new orders → Event invitations (soonest first) → Opportunities 
 
 // ── Only these three ────────────────────────────────────────────────────────
 
-test("never Conversations, Messages, inquiries, bookings, Targets / Follow-Ups, Find Us Here, Appearances, setup or Area requests", () => {
-  // The one allowed mention: the invitation's existing destination page.
-  assert.doesNotMatch(CODE.replace('"/account/messages?filter=opportunities"', ""), /conversation|message|inquir|booking|placement|follow|availability|appearance|market|profile|from\(/i);
+test("never Conversations, Messages, bookings, Targets / Follow-Ups, Find Us Here, Appearances, setup or Area requests", () => {
+  // Allowed mentions: the invitation's existing destination page, and (since
+  // Commercial Inquiry v1) an inbound Commercial Inquiry still awaiting a
+  // response — a structured request record, never a message or unread state.
+  const code = CODE.replace('"/account/messages?filter=opportunities"', "").replace(/inquir\w*/gi, "");
+  assert.doesNotMatch(code, /conversation|message|booking|placement|follow|availability|appearance|market|profile|unread|last_read|from\(/i);
   const call = PAGE.slice(PAGE.indexOf("buildBusinessRequests({"), PAGE.indexOf(": [];", PAGE.indexOf("buildBusinessRequests({")));
-  assert.deepEqual([...call.matchAll(/^\s{8}(\w+):/gm)].map((m) => m[1]), ["basePath", "opportunities", "invitations", "newOrderCount"], "exactly three inputs");
+  assert.deepEqual([...call.matchAll(/^\s{8}(\w+):/gm)].map((m) => m[1]), ["basePath", "opportunities", "invitations", "newOrderCount", "inquiries"], "exactly four inputs");
 });
 
 test("no new reads: Requests compose rows Home already loads", () => {

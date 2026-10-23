@@ -7,6 +7,7 @@ import type { BusinessTargetItem, TargetActivityPage } from "@/lib/business-targ
 import { Chip } from "../../../owner-ui";
 import { ActivityFeed, IntentsBlock, InternalNotes, NextCard, StatusControl, SummaryBlock } from "./RelationshipWorkspace";
 import { LockIcon, TargetThumb } from "./TargetsView";
+import InquiryPanel, { type TargetInquirySummary } from "./InquiryPanel";
 
 /** One Business or Event Target — the same private pursuit as a Place Target
  * (status, Next, Context, Why, Activity, Findmi Internal), without the
@@ -21,6 +22,8 @@ export default function TargetWorkspace({
   isFindmiAdmin,
   internalNotes,
   activity,
+  inquiries,
+  senderName,
   backHref,
   backLabel,
 }: {
@@ -31,6 +34,9 @@ export default function TargetWorkspace({
   isFindmiAdmin: boolean;
   internalNotes: string | null;
   activity: TargetActivityPage | null;
+  /** This Business's Inquiries from this Target (sender side). */
+  inquiries: TargetInquirySummary[];
+  senderName: string;
   backHref: string;
   backLabel: string;
 }) {
@@ -64,6 +70,20 @@ export default function TargetWorkspace({
       </header>
 
       <NextCard businessId={businessId} item={target} canEdit={canEdit} />
+      {!c.archived && (
+        <InquiryPanel
+          businessId={businessId}
+          senderName={senderName}
+          targetId={target.id}
+          kind={target.kind}
+          counterpartyId={c.id}
+          counterpartyName={c.name}
+          targetIntents={target.intents}
+          eventHref={target.kind === "event" ? c.href : null}
+          inquiries={inquiries}
+          canEdit={canEdit}
+        />
+      )}
       <SummaryBlock businessId={businessId} item={target} canEdit={canEdit} />
       <IntentsBlock businessId={businessId} item={target} canEdit={canEdit} />
       <ActivityFeed businessId={businessId} targetId={target.id} canAdd={canEdit} initial={activity} />

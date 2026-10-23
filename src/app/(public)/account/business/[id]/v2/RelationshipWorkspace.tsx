@@ -27,6 +27,7 @@ import { Chip } from "../../../owner-ui";
 import { PlaceForm } from "./AvailableAtView";
 import { IntentPicker, LockIcon, PlaceThumb, useTargetNav } from "./TargetsView";
 import { OpportunityCards } from "./GeographyViews";
+import InquiryPanel, { type TargetInquirySummary } from "./InquiryPanel";
 
 /** The Business ↔ Location relationship workspace — ONE page for one place,
  * whichever lens opened it (Find Us Here → Places / By Market / Targets, Growth
@@ -54,6 +55,9 @@ export interface WorkspaceProps {
   isFindmiAdmin: boolean;
   internalNotes: string | null;
   activity: TargetActivityPage | null;
+  /** This Business's Inquiries from this place's Target (sender side). */
+  inquiries: TargetInquirySummary[];
+  senderName: string;
   backHref: string;
   backLabel: string;
   products: { id: string; name: string }[];
@@ -94,6 +98,20 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
       {!target && !data.ours && canEdit && <TrackAsTarget businessId={businessId} locationId={place.id} />}
 
       {target && <NextCard businessId={businessId} item={target} canEdit={canEdit} />}
+      {target && !data.ours && (
+        <InquiryPanel
+          businessId={businessId}
+          senderName={props.senderName}
+          targetId={target.id}
+          kind="location"
+          counterpartyId={place.id}
+          counterpartyName={place.name}
+          targetIntents={target.intents}
+          eventHref={null}
+          inquiries={props.inquiries}
+          canEdit={canEdit}
+        />
+      )}
       {target && <SummaryBlock businessId={businessId} item={target} canEdit={canEdit} />}
       {target && <IntentsBlock businessId={businessId} item={target} canEdit={canEdit} />}
       {target && <ActivityFeed businessId={businessId} targetId={target.id} canAdd={canEdit} initial={props.activity} />}

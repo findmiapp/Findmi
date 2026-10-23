@@ -29,7 +29,9 @@
 //     conversations involved at all;
 //   - consumer ↔ organization inquiries (one organization + a person or
 //     guest), including the organization's replies to the consumer;
-//   - Findmi-mediated commercial requests (no organization participant).
+//   - Findmi-mediated commercial requests (no organization participant);
+//   - Commercial Inquiry threads (subject "commercial_inquiry"): Findmi is
+//     always a participant and mediates.
 export function isDirectBusinessMessagingEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.DIRECT_BUSINESS_MESSAGING_ENABLED === "true";
 }
@@ -52,7 +54,8 @@ const ORG_TYPES = new Set<ThreadEntityType>(["business", "event", "location"]);
  * Opportunity has been attached to (threads are reused per entity pair,
  * so the attachment — not only the subject — decides). */
 export function isStructuredThread(facts: Pick<ThreadMessagingFacts, "subjectType" | "hasOpportunity">): boolean {
-  return facts.subjectType === "opportunity" || facts.hasOpportunity;
+  // A Commercial Inquiry thread is Findmi-mediated (Findmi is always a participant).
+  return facts.subjectType === "opportunity" || facts.subjectType === "commercial_inquiry" || facts.hasOpportunity;
 }
 
 /** Distinct organizations in a thread, optionally including the identity

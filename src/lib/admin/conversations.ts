@@ -30,6 +30,7 @@ const SUBJECT_TYPE_LABEL: Record<string, string> = {
   findmi_commercial_request: "Commercial Request",
   opportunity: "Opportunity",
   commercial_opportunity: "Commercial Opportunity",
+  commercial_inquiry: "Commercial Inquiry",
   event_business_chat: "Direct Message",
   business_business_chat: "Direct Message",
   business_location_chat: "Direct Message",

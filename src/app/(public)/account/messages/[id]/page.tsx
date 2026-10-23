@@ -18,6 +18,9 @@ import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../../PersonalAppShell";
 import ReplyComposer from "./ReplyComposer";
 import { DIRECT_MESSAGING_PAUSED_MESSAGE, canSendInThread, isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
+import { COMMERCIAL_INQUIRY_SUBJECT, INQUIRY_STATUS_LABELS, inquiryActionsFor, intentLabel } from "@/lib/commercial-inquiries-domain";
+import { getInquiryByConversation, inquiryActorForEntity } from "@/lib/commercial-inquiries";
+import InquiryActions from "@/components/inquiries/InquiryActions";
 
 export const metadata: Metadata = {
   title: "Conversation",
@@ -109,6 +112,16 @@ export default async function ConversationPage({
     messagingEnabled
   ));
 
+  // Commercial Inquiry thread: what it is, where it stands, and — for the
+  // entity it was routed to (or the sender) — its actions. Never the Target.
+  const inquiry = thread.subjectType === COMMERCIAL_INQUIRY_SUBJECT ? await getInquiryByConversation(admin, id) : null;
+  const inquiryRoles = inquiry
+    ? myParties.flatMap((p) => {
+        const role = p.entityId ? inquiryActorForEntity(inquiry, { entityType: p.entityType, entityId: p.entityId }) : null;
+        return role && p.entityId ? [{ party: p, role }] : [];
+      })
+    : [];
+
   const timeline: TimelineItem[] = [
     ...thread.messages.map((m): TimelineItem => ({ kind: "message", createdAt: m.createdAt, message: m })),
     ...thread.opportunityCards.map((o): TimelineItem => ({ kind: "opportunity", createdAt: o.createdAt, opportunity: o })),
@@ -140,6 +153,22 @@ export default async function ConversationPage({
       )}
 
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata text-red-600">{error}</p>}
+
+      {inquiry && (
+        <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-black/[0.08] bg-white p-3.5">
+          <p className="text-label font-bold uppercase text-findmi-700">Inquiry · {intentLabel(inquiry.intent)}</p>
+          <p className="text-metadata text-muted">Status: {INQUIRY_STATUS_LABELS[inquiry.status]} · Findmi is part of this conversation.</p>
+          {inquiryRoles.map(({ party, role }) =>
+            party.entityType === "business" ? (
+              <Link key={`${party.entityType}:${party.entityId}`} href={`/account/business/${party.entityId}/inquiries/${inquiry.id}`} className="w-fit text-metadata font-semibold text-accent hover:underline">
+                Open Inquiry as {party.label} →
+              </Link>
+            ) : (
+              <InquiryActions key={`${party.entityType}:${party.entityId}`} inquiryId={inquiry.id} asEntity={{ entityType: party.entityType, entityId: party.entityId as string }} actions={inquiryActionsFor(role, inquiry.status)} />
+            )
+          )}
+        </div>
+      )}
 
       <div className="mt-6 flex flex-col gap-3">
         {timeline.length === 0 && <p className="text-body text-muted">No messages yet.</p>}

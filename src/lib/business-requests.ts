@@ -7,12 +7,16 @@
 //     event_invitation / pending);
 //   · paid orders whose fulfillment for it is still "new"
 //     (getBusinessOrderSummary's newCount — one aggregate row).
+//   · a Commercial Inquiry routed to it and still awaiting its first response
+//     (commercial_inquiries "sent").
 // A Request disappears when its record moves on (responded, accepted /
-// declined, fulfilled). Messages and inquiries are not Requests: the
-// Conversations system has no read / handled state. Pure and client-safe.
+// declined, fulfilled). Messages, unread threads and consumer inquiries are
+// not Requests (Conversations have no handled state); a Commercial Inquiry is,
+// only while its own record says it awaits this Business. Pure and client-safe.
 import type { BusinessOpportunityGroup } from "./opportunity-listings-domain";
 import type { OpportunityStatus, OpportunityType } from "./opportunities";
 import { APP_TIMEZONE } from "./format";
+import { COMMERCIAL_INTENT_LABELS, type CommercialIntent } from "./commercial-intents";
 
 /** Home shows this many; See All shows the rest. */
 export const REQUESTS_INITIAL_LIMIT = 3;
@@ -36,6 +40,15 @@ export interface RequestInvitationInput {
   createdAt: string;
 }
 
+export interface RequestInquiryInput {
+  id: string;
+  senderName: string;
+  intent: CommercialIntent;
+  /** The Place / Event it's about, when routed through an operator / host. */
+  counterpartyName: string | null;
+  createdAt: string;
+}
+
 export interface BusinessRequest {
   key: string;
   title: string;
@@ -54,12 +67,15 @@ export function buildBusinessRequests({
   opportunities,
   invitations,
   newOrderCount,
+  inquiries = [],
 }: {
   basePath: string;
   opportunities: readonly RequestOpportunityInput[];
   invitations: readonly RequestInvitationInput[];
   /** Paid orders still "new" for this Business (getBusinessOrderSummary). */
   newOrderCount: number;
+  /** Commercial Inquiries routed to this Business, still Sent (unanswered). */
+  inquiries?: readonly RequestInquiryInput[];
 }): BusinessRequest[] {
   const requests: BusinessRequest[] = [];
 
@@ -99,6 +115,18 @@ export function buildBusinessRequests({
       meta: "Opportunity · Response Requested",
       detail: o.placeName,
       href: `${basePath}/opportunities/${o.recipientId}`,
+      actionLabel: "Review",
+    });
+  }
+
+  // Commercial Inquiries awaiting a first response, oldest first.
+  for (const q of [...inquiries].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))) {
+    requests.push({
+      key: `inquiry:${q.id}`,
+      title: q.senderName,
+      meta: `Inquiry · ${COMMERCIAL_INTENT_LABELS[q.intent]} · Response Requested`,
+      detail: q.counterpartyName,
+      href: `${basePath}/inquiries/${q.id}`,
       actionLabel: "Review",
     });
   }

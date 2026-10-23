@@ -47,10 +47,10 @@ test("Opportunities, Intelligence, Ideas and Activations sit together as one gro
 
 test("Communications / Inquiries / Sales Inquiries: one rail entry, all three still reachable and distinct", () => {
   const g = NAV.getAdminSection("requests").groups.find((x) => x.label === "Communications");
-  assert.deepEqual(g.items.map((i) => i.href), ["/admin/conversations", "/admin/inquiries", "/admin/sales-inquiries"]);
+  assert.deepEqual(g.items.map((i) => i.href), ["/admin/conversations", "/admin/inquiries", "/admin/sales-inquiries", "/admin/commercial-inquiries" /* Commercial Inquiry v1 */]);
   assert.deepEqual(sidebar().filter((i) => i.group === "Communications").map((i) => i.href), ["/admin/conversations"]);
   assert.ok(g.items.every((i) => i.hub !== false), "all three stay listed on the Requests hub");
-  for (const h of ["/admin/inquiries", "/admin/sales-inquiries"]) {
+  for (const h of ["/admin/inquiries", "/admin/sales-inquiries", "/admin/commercial-inquiries"]) {
     assert.equal(NAV.resolveAdminRoute(`${h}/abc`).item.href === undefined, false);
     assert.equal(NAV.resolveAdminRoute(h).item.href, "/admin/conversations");
   }
