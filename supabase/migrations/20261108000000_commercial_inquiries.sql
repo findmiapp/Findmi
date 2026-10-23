@@ -20,8 +20,9 @@
 --      Findmi mediates alone (Sender ↔ Findmi).
 --   3. Idempotency: one Inquiry per (sender, request_key) — a double tap or
 --      retry of the same send resolves to the same row; and at most one OPEN
---      (sent / responded) Inquiry per sender + counterparty, so a later,
---      separate Inquiry is possible once the previous one is resolved.
+--      (sent / responded) Inquiry per sender + counterparty + intent — a
+--      Placement and a Pop-Up Inquiry to the same place may both be open, and
+--      a new same-intent Inquiry is possible once the previous one is resolved.
 --   4. One Conversation per Inquiry (reusing conversations; subject_type
 --      'commercial_inquiry', subject_id = the Inquiry), unique both ways.
 -- RLS on with no client policies; service_role only. No existing row changes.
@@ -68,9 +69,9 @@ create table if not exists public.commercial_inquiries (
   constraint commercial_inquiries_sender_request_key unique (sender_business_id, request_key)
 );
 
--- At most one OPEN Inquiry per sender + counterparty (a resolved one never blocks a new one).
-create unique index if not exists commercial_inquiries_open_counterparty_key
-  on public.commercial_inquiries (sender_business_id, coalesce(counterparty_business_id, counterparty_location_id, counterparty_event_id))
+-- At most one OPEN Inquiry per sender + counterparty + intent (a resolved one never blocks a new one).
+create unique index if not exists commercial_inquiries_open_counterparty_intent_key
+  on public.commercial_inquiries (sender_business_id, coalesce(counterparty_business_id, counterparty_location_id, counterparty_event_id), intent)
   where status in ('sent', 'responded');
 create unique index if not exists commercial_inquiries_conversation_id_key
   on public.commercial_inquiries (conversation_id) where conversation_id is not null;

@@ -133,14 +133,15 @@ async function readBy(admin: SupabaseClient, filter: (q: any) => any): Promise<I
   const { data } = await filter(admin.from("commercial_inquiries").select(INQUIRY_COLUMNS)).maybeSingle();
   return (data as InquiryRow | null) ?? null;
 }
-const openFor = (senderBusinessId: string, kind: TargetKind, counterpartyId: string) => (q: any) =>
-  q.eq("sender_business_id", senderBusinessId).eq(COUNTERPARTY_COLUMN[kind], counterpartyId).in("status", ["sent", "responded"]);
+/** The open Inquiry for one sender + counterparty + intent (at most one: the open-intent unique index). */
+const openFor = (senderBusinessId: string, kind: TargetKind, counterpartyId: string, intent: CommercialIntent) => (q: any) =>
+  q.eq("sender_business_id", senderBusinessId).eq(COUNTERPARTY_COLUMN[kind], counterpartyId).eq("intent", intent).in("status", ["sent", "responded"]);
 
 /** One controlled send: validate → create (or reuse) the Inquiry → its one
  * Conversation, participants, history line and opening message → emails.
  * Idempotent: the same request_key (a double tap / retry) resolves to the same
- * Inquiry, and an Inquiry already open with this counterparty is returned
- * instead of a second one. Messages and emails are written only by the call
+ * Inquiry, and an Inquiry already open with this counterparty FOR THIS INTENT
+ * is returned instead of a second one (a different intent may be open too). Messages and emails are written only by the call
  * that created the thread (or, after an interrupted send, when the thread is
  * still empty), so a retry never duplicates them. */
 export async function sendCommercialInquiry(
@@ -166,7 +167,7 @@ export async function sendCommercialInquiry(
   // Retry of the same send → the same Inquiry (finish its setup if interrupted).
   const retried = await readBy(admin, (q) => q.eq("sender_business_id", senderBusinessId).eq("request_key", input.requestKey));
   if (retried) return finishSend(admin, retried, input.userId, false);
-  const open = await readBy(admin, openFor(senderBusinessId, kind, counterpartyId));
+  const open = await readBy(admin, openFor(senderBusinessId, kind, counterpartyId, checked.intent));
   if (open) return { ok: true, inquiryId: open.id, conversationId: open.conversation_id, existing: true };
 
   const refused = await checkCounterparty(admin, senderBusinessId, kind, counterpartyId);
@@ -192,7 +193,7 @@ export async function sendCommercialInquiry(
   if (error || !inserted) {
     if (error?.code === "23505") {
       // A concurrent double tap (same key) or another open Inquiry won the race.
-      const again = (await readBy(admin, (q) => q.eq("sender_business_id", senderBusinessId).eq("request_key", input.requestKey))) ?? (await readBy(admin, openFor(senderBusinessId, kind, counterpartyId)));
+      const again = (await readBy(admin, (q) => q.eq("sender_business_id", senderBusinessId).eq("request_key", input.requestKey))) ?? (await readBy(admin, openFor(senderBusinessId, kind, counterpartyId, checked.intent)));
       if (again) return { ok: true, inquiryId: again.id, conversationId: again.conversation_id, existing: true };
     }
     console.error("sendCommercialInquiry failed:", error?.message);

@@ -53,7 +53,11 @@ export default function InquiryPanel({
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const { choices, preselected, participation } = inquiryIntentChoices(kind, targetIntents);
+  const { choices: allChoices, preselected: suggested, participation } = inquiryIntentChoices(kind, targetIntents);
+  // One open Inquiry per intent: an intent already open is opened, not re-sent.
+  const openList = inquiries.filter((i) => isOpenInquiry(i.status));
+  const choices = allChoices.filter((i) => !openList.some((o) => o.intent === i));
+  const preselected = suggested && choices.includes(suggested) ? suggested : choices.length === 1 ? choices[0] : null;
   const [composing, setComposing] = useState(false);
   const [intent, setIntent] = useState<CommercialIntent | "">(preselected ?? "");
   const [message, setMessage] = useState("");
@@ -62,8 +66,7 @@ export default function InquiryPanel({
   const [requestKey, setRequestKey] = useState(newKey);
   const [pending, start] = useTransition();
 
-  const open = inquiries.find((i) => isOpenInquiry(i.status)) ?? null;
-  const last = open ? null : (inquiries[0] ?? null);
+  const last = openList.length ? null : (inquiries[0] ?? null);
   const href = (id: string) => `/account/business/${businessId}/inquiries/${id}`;
 
   const send = () =>
@@ -81,8 +84,8 @@ export default function InquiryPanel({
     <section aria-labelledby="ws-inquiry" className="flex flex-col gap-2">
       <h3 id="ws-inquiry" className={sectionTitle}>Inquiry</h3>
 
-      {open ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/[0.08] bg-white px-3.5 py-3">
+      {openList.map((open) => (
+        <div key={open.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/[0.08] bg-white px-3.5 py-3">
           <div className="min-w-0">
             <p className="flex flex-wrap items-center gap-2">
               <Chip tone={INQUIRY_STATUS_TONE[open.status]}>{INQUIRY_STATUS_LABELS[open.status]}</Chip>
@@ -94,7 +97,9 @@ export default function InquiryPanel({
             Open Inquiry
           </Link>
         </div>
-      ) : composing ? (
+      ))}
+
+      {choices.length === 0 ? null : composing ? (
         <div className="flex flex-col gap-3 rounded-xl border border-black/[0.08] bg-white p-3.5">
           <div>
             <p className="font-display text-card-title font-bold text-primary">Send Inquiry</p>
@@ -161,10 +166,10 @@ export default function InquiryPanel({
           )}
           {canEdit ? (
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setComposing(true)} className={primaryBtn}>
-                Send Inquiry
+              <button type="button" onClick={() => { setIntent(preselected ?? ""); setComposing(true); }} className={openList.length ? quietBtn.replace("text-muted", "text-accent") : primaryBtn}>
+                {openList.length ? "Send Another Inquiry" : "Send Inquiry"}
               </button>
-              <span className="text-metadata text-muted">Ask Findmi to connect you. Nothing is sent until you do.</span>
+              <span className="text-metadata text-muted">{openList.length ? "For a different intent." : "Ask Findmi to connect you. Nothing is sent until you do."}</span>
             </div>
           ) : (
             <p className="text-metadata text-muted">Only an owner or manager can send an Inquiry.</p>

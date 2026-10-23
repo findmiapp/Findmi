@@ -113,7 +113,7 @@ function constraintError(table, row, rows) {
     if (rows.some((r) => r.sender_business_id === row.sender_business_id && r.request_key === row.request_key)) return { code: "23505", message: "commercial_inquiries_sender_request_key" };
     const cp = (r) => r.counterparty_business_id ?? r.counterparty_location_id ?? r.counterparty_event_id;
     const open = (r) => r.status === "sent" || r.status === "responded";
-    if (open(row) && rows.some((r) => r !== row && open(r) && r.sender_business_id === row.sender_business_id && cp(r) === cp(row))) return { code: "23505", message: "commercial_inquiries_open_counterparty_key" };
+    if (open(row) && rows.some((r) => r !== row && open(r) && r.sender_business_id === row.sender_business_id && cp(r) === cp(row) && r.intent === row.intent)) return { code: "23505", message: "commercial_inquiries_open_counterparty_intent_key" };
   }
   if (table === "conversations" && row.subject_type === "commercial_inquiry" && rows.some((r) => r.subject_type === "commercial_inquiry" && r.subject_id === row.subject_id)) return { code: "23505", message: "conversations_commercial_inquiry_subject_key" };
   return null;
@@ -405,17 +405,199 @@ test("23. retry after a network failure finishes the same send (Conversation and
   assert.equal(retryAgain.conversationId, retry.conversationId);
 });
 
-test("one open Inquiry per counterparty; a new one is possible once the last is resolved", async () => {
+// ── Open-Inquiry uniqueness: sender + counterparty + intent ─────────────────
+
+const sendPlace = (t, intent, key, message = `About ${intent}`) =>
+  send(fakeDb(t), { targetId: T_BABY, kind: "location", counterpartyId: L_BABY, intent, requestKey: KEY(key), message });
+
+test("U1. same counterparty + same intent while open: the open Inquiry is reused, never a second", async () => {
   const t = seed();
-  const first = await send(fakeDb(t));
-  const second = await send(fakeDb(t), { requestKey: KEY(20), message: "Second try" });
-  assert.deepEqual([second.ok, second.existing, second.inquiryId], [true, true, first.inquiryId], "the open one is returned, not duplicated");
+  captured.length = 0;
+  const first = await sendPlace(t, "placement", 100);
+  const dup = await sendPlace(t, "placement", 101, "A second Placement ask");
+  assert.deepEqual([dup.ok, dup.existing, dup.inquiryId], [true, true, first.inquiryId]);
   assert.equal(t.commercial_inquiries.length, 1);
-  assert.equal((await S.setInquiryOutcome(fakeDb(t), first.inquiryId, "sender", "withdrawn")).ok, true);
-  const third = await send(fakeDb(t), { requestKey: KEY(21), message: "Fresh start" });
-  assert.deepEqual([third.ok, third.existing], [true, false]);
+  assert.equal(t.conversations.length, 1);
+  assert.equal(t.conversation_messages.length, 2, "no second opening message");
+  assert.ok(!t.conversation_messages.some((m) => m.body === "A second Placement ask"));
+  assert.equal(emails(/New Inquiry from Mocktail Mart/).length, 1);
+  // The database itself refuses a racing duplicate (the open-intent unique index).
+  const raw = await fakeDb(t).from("commercial_inquiries").insert({ sender_business_id: MOCKTAIL, counterparty_location_id: L_BABY, intent: "placement", request_key: KEY(102) }).select("id").single();
+  assert.equal(raw.error.code, "23505");
+});
+
+test("U2. same counterparty + a different intent may be open at the same time", async () => {
+  const t = seed();
+  const placement = await sendPlace(t, "placement", 110);
+  const popUp = await sendPlace(t, "pop_up", 111);
+  assert.deepEqual([popUp.ok, popUp.existing], [true, false]);
+  assert.notEqual(popUp.inquiryId, placement.inquiryId);
+  assert.deepEqual(t.commercial_inquiries.map((q) => [q.intent, q.status]).sort(), [["placement", "sent"], ["pop_up", "sent"]].sort());
+  assert.equal(t.conversations.length, 2, "each Inquiry has its own Conversation");
+  assert.equal(new Set(t.commercial_inquiries.map((q) => q.conversation_id)).size, 2);
+  const panel = read(`${V2}/InquiryPanel.tsx`);
+  assert.match(panel, /const choices = allChoices\.filter\(\(i\) => !openList\.some\(\(o\) => o\.intent === i\)\);/, "the composer offers only intents not already open");
+  assert.match(panel, /\{openList\.map\(\(open\) => \(/, "every open Inquiry is listed, each with Open Inquiry");
+});
+
+test("U3. a resolved same-intent Inquiry allows a new one later", async () => {
+  const t = seed();
+  const first = await sendPlace(t, "placement", 120);
+  assert.equal((await S.setInquiryOutcome(fakeDb(t), first.inquiryId, "counterparty", "declined")).ok, true);
+  const later = await sendPlace(t, "placement", 121, "Trying again next season");
+  assert.deepEqual([later.ok, later.existing], [true, false]);
+  assert.notEqual(later.inquiryId, first.inquiryId);
   assert.equal(t.commercial_inquiries.length, 2);
-  assert.equal(t.conversations.length, 2, "each Inquiry has its own thread");
+  for (const resolved of ["withdrawn", "closed"]) {
+    const t2 = seed();
+    const a = await sendPlace(t2, "placement", 122);
+    await S.setInquiryOutcome(fakeDb(t2), a.inquiryId, resolved === "withdrawn" ? "sender" : "findmi", resolved);
+    assert.equal((await sendPlace(t2, "placement", 123)).existing, false, resolved);
+  }
+});
+
+test("U4/U5. request-key retry still resolves to the original — even across intents — with no duplicate thread, messages or emails", async () => {
+  const t = seed();
+  captured.length = 0;
+  const first = await sendPlace(t, "placement", 130);
+  const [r1, r2] = await Promise.all([sendPlace(t, "placement", 130), sendPlace(t, "placement", 130)]);
+  const changed = await sendPlace(t, "pop_up", 130, "Same key, edited form");
+  for (const r of [r1, r2, changed]) assert.deepEqual([r.ok, r.inquiryId], [true, first.inquiryId], "a key is one Send operation");
+  assert.equal(t.commercial_inquiries.length, 1);
+  assert.equal(t.commercial_inquiries[0].intent, "placement");
+  assert.equal(t.conversations.length, 1);
+  assert.equal(t.conversation_messages.length, 2);
+  assert.equal(emails(/New Inquiry from Mocktail Mart/).length, 1);
+  assert.equal(emails(/New Commercial Inquiry/).length, 1);
+});
+
+// ── Routing semantics: routed_entity_* is the resolved commercial ENTITY ────
+
+const ALL_USERS = [USER_MM, USER_BABY, USER_LAV, USER_SHOP, USER_LOCBABY, USER_EVT, USER_OTHER, USER_GHOST, USER_SHOP2];
+const routeOf = async (over, key) => {
+  const t = seed();
+  const res = await send(fakeDb(t), { targetId: null, requestKey: KEY(key), ...over });
+  assert.equal(res.ok, true, JSON.stringify(res));
+  const q = t.commercial_inquiries[0];
+  const people = t.conversation_participants.filter((p) => p.conversation_id === q.conversation_id && p.entity_type !== "findmi" && !(p.entity_type === "business" && p.entity_id === MOCKTAIL));
+  return { t, q, people };
+};
+
+test("R1. Business Target: counterparty = Business B, routing = Business B, B's members join as users", async () => {
+  const { q, people } = await routeOf({ kind: "business", counterpartyId: BABYLIST, intent: "collaboration" }, 200);
+  assert.deepEqual([q.counterparty_business_id, q.routed_entity_type, q.routed_entity_id], [BABYLIST, "business", BABYLIST]);
+  assert.deepEqual(people.map((p) => [p.user_id, p.entity_type, p.entity_id]), [[USER_BABY, "business", BABYLIST]]);
+});
+
+test("R2. Location with direct members: counterparty = routing = Location L", async () => {
+  const { q, people } = await routeOf({ kind: "location", counterpartyId: L_BABY, intent: "placement" }, 201);
+  assert.deepEqual([q.counterparty_location_id, q.routed_entity_type, q.routed_entity_id], [L_BABY, "location", L_BABY]);
+  assert.deepEqual(people.map((p) => [p.user_id, p.entity_type, p.entity_id]), [[USER_LOCBABY, "location", L_BABY]]);
+});
+
+test("R3. Location → operating Business: counterparty stays Location L, routing becomes Business B, B's members join", async () => {
+  const { q, people } = await routeOf({ kind: "location", counterpartyId: L_OPERATED, intent: "placement" }, 202);
+  assert.deepEqual([q.counterparty_location_id, q.counterparty_business_id], [L_OPERATED, null], "the canonical counterparty is never mutated into the Business");
+  assert.deepEqual([q.routed_entity_type, q.routed_entity_id], ["business", SHOPCO]);
+  assert.deepEqual(people.map((p) => [p.user_id, p.entity_type, p.entity_id]), [[USER_SHOP, "business", SHOPCO]]);
+});
+
+test("R4. Event with direct members: counterparty = routing = Event E", async () => {
+  const { q, people } = await routeOf({ kind: "event", counterpartyId: E_MEMBERS, intent: "sponsorship" }, 203);
+  assert.deepEqual([q.counterparty_event_id, q.routed_entity_type, q.routed_entity_id], [E_MEMBERS, "event", E_MEMBERS]);
+  assert.deepEqual(people.map((p) => [p.user_id, p.entity_type]), [[USER_EVT, "event"]]);
+});
+
+test("R5. Event → canonical host Business: counterparty stays Event E, routing becomes Business B", async () => {
+  const { q, people } = await routeOf({ kind: "event", counterpartyId: E_HOSTED, intent: "sponsorship" }, 204);
+  assert.deepEqual([q.counterparty_event_id, q.counterparty_business_id], [E_HOSTED, null]);
+  assert.deepEqual([q.routed_entity_type, q.routed_entity_id], ["business", LAVAZZA]);
+  assert.deepEqual(people.map((p) => [p.user_id, p.entity_type, p.entity_id]), [[USER_LAV, "business", LAVAZZA]]);
+});
+
+test("R6. Findmi-only: counterparty stays the original; no routed entity (both null); Sender ↔ Findmi", async () => {
+  for (const [over, key] of [
+    [{ kind: "location", counterpartyId: L_430, intent: "pop_up" }, 205],
+    [{ kind: "location", counterpartyId: L_MULTI, intent: "placement" }, 206],
+    [{ kind: "event", counterpartyId: E_GHOST, intent: "sponsorship" }, 207],
+    [{ kind: "business", counterpartyId: NOMEMBERS, intent: "collaboration" }, 208],
+  ]) {
+    const { q, people, t } = await routeOf(over, key);
+    assert.equal(S.inquiryCounterpartyId(q), over.counterpartyId);
+    assert.deepEqual([q.routed_entity_type, q.routed_entity_id], [null, null], JSON.stringify(over));
+    assert.deepEqual(people, [], "nobody external joins");
+    assert.ok(t.conversation_participants.some((p) => p.conversation_id === q.conversation_id && p.entity_type === "findmi"));
+  }
+  assert.match(read(MIGRATION), /check \(\(routed_entity_type is null\) = \(routed_entity_id is null\)\)/, "type and id are null together");
+});
+
+test("R7. routed_entity_id is always an entity id of its type — never a user / member id", async () => {
+  const cases = [
+    [{ kind: "business", counterpartyId: BABYLIST, intent: "collaboration" }, 210],
+    [{ kind: "location", counterpartyId: L_BABY, intent: "placement" }, 211],
+    [{ kind: "location", counterpartyId: L_OPERATED, intent: "placement" }, 212],
+    [{ kind: "event", counterpartyId: E_MEMBERS, intent: "sponsorship" }, 213],
+    [{ kind: "event", counterpartyId: E_HOSTED, intent: "sponsorship" }, 214],
+  ];
+  for (const [over, key] of cases) {
+    const { q, t } = await routeOf(over, key);
+    const table = { business: "businesses", location: "locations", event: "events" }[q.routed_entity_type];
+    assert.ok(t[table].some((r) => r.id === q.routed_entity_id), `${q.routed_entity_type} ${q.routed_entity_id} is a real ${table} row`);
+    assert.ok(!ALL_USERS.includes(q.routed_entity_id), "never a user id");
+    const memberRowIds = [...t.business_members, ...t.location_members, ...t.event_members].map((m) => m.id);
+    assert.ok(!memberRowIds.includes(q.routed_entity_id), "never a membership row id");
+  }
+  const src = strip(read("src/lib/commercial-inquiries.ts"));
+  const route = src.slice(src.indexOf("export async function resolveInquiryRoute"), src.indexOf("async function names("));
+  assert.ok(route.length > 200 && !route.includes("async function names("));
+  assert.doesNotMatch(route, /user_id/, "routing never reads a user id");
+  assert.match(src, /routed_entity_type: routed\?\.entityType \?\? null,\s*routed_entity_id: routed\?\.entityId \?\? null,/, "only the resolved entity is stored");
+});
+
+// ── Requests follow routing ────────────────────────────────────────────────
+
+test("Q1. Home → Requests appear only for the Business the Inquiry was routed to", async () => {
+  const { t, q } = await routeOf({ kind: "location", counterpartyId: L_OPERATED, intent: "placement" }, 220);
+  const shop = await S.getInboundInquiryRequests(fakeDb(t), SHOPCO);
+  assert.deepEqual(shop.map((r) => [r.id, r.senderName, r.counterpartyName]), [[q.id, "Mocktail Mart", "Shop Co Flagship"]], "the operating Business, with the place named");
+  for (const other of [OTHER, BABYLIST, SHOP2, MOCKTAIL, LAVAZZA]) assert.deepEqual(await S.getInboundInquiryRequests(fakeDb(t), other), [], other);
+  assert.equal(t.commercial_inquiries[0].counterparty_location_id, L_OPERATED, "still about the Location");
+  const hosted = await routeOf({ kind: "event", counterpartyId: E_HOSTED, intent: "sponsorship" }, 221);
+  assert.deepEqual((await S.getInboundInquiryRequests(fakeDb(hosted.t), LAVAZZA)).map((r) => r.counterpartyName), ["Lavazza Tasting"]);
+  const direct = await routeOf({ kind: "location", counterpartyId: L_BABY, intent: "placement" }, 222);
+  assert.deepEqual(await S.getInboundInquiryRequests(fakeDb(direct.t), BABYLIST), [], "a place routed to its own members is not the Babylist Business's Request");
+});
+
+// ── Privacy around routing ─────────────────────────────────────────────────
+
+test("P1. a routed Business sees the shared Inquiry and nothing private; unrelated Businesses see nothing", async () => {
+  const t = seed();
+  const res = await send(fakeDb(t), { targetId: T_HOSTED, kind: "event", counterpartyId: E_HOSTED, intent: "sponsorship", requestKey: KEY(230) });
+  const view = await S.getInquiryForBusiness(fakeDb(t), LAVAZZA, res.inquiryId);
+  assert.equal(view.role, "counterparty");
+  assert.equal(view.counterparty.name, "Lavazza Tasting");
+  assert.equal(view.sender.name, "Mocktail Mart");
+  assert.equal(view.targetId, null, "no Target");
+  const shared = JSON.stringify({ view, msgs: t.conversation_messages, emails: captured });
+  for (const secret of [T_HOSTED, "SECRET CONTEXT", "SECRET NEXT", "FINDMI INTERNAL SECRET", "2026-11-01", "status_change"]) assert.ok(!shared.includes(secret), secret);
+  assert.deepEqual(Object.keys(view).sort(), ["conversationId", "counterparty", "createdAt", "findmiOnly", "id", "intent", "message", "role", "sender", "status", "statusChangedAt", "targetId"].sort(), "no Target status / Context / Activity / Next / Internal fields exist on the view");
+  assert.equal(view.status, "sent", "the Inquiry's own status, not the Target's (in_conversation)");
+  for (const other of [OTHER, BABYLIST, SHOPCO, GHOSTCO]) assert.equal(await S.getInquiryForBusiness(fakeDb(t), other, res.inquiryId), null, other);
+  const detail = read(DETAIL);
+  assert.doesNotMatch(detail, /getBusinessTarget|getTargetActivityPage|adminGetTargetInternalNotes|nextAction|internalNotes/, "the Inquiry page never reads the Target");
+});
+
+test("P2. membership is access, never identity: the Inquiry names entities, and a removed member loses access", async () => {
+  const t = seed();
+  const res = await send(fakeDb(t), { targetId: null, kind: "location", counterpartyId: L_OPERATED, intent: "placement", requestKey: KEY(231) });
+  const q = t.commercial_inquiries[0];
+  const ids = [q.sender_business_id, q.counterparty_business_id, q.counterparty_location_id, q.counterparty_event_id, q.routed_entity_id].filter(Boolean);
+  assert.ok(ids.every((id) => !ALL_USERS.includes(id)));
+  assert.equal(q.created_by_user_id, USER_MM, "the only user id is the audit field of who pressed Send — never shown, never access");
+  assert.doesNotMatch(strip(read("src/lib/commercial-inquiries.ts")).slice(strip(read("src/lib/commercial-inquiries.ts")).indexOf("export async function toInquiryView")), /created_by_user_id/, "never in a view");
+  // Thread access is entity-level and live (isAuthorizedForConversation): a member removed from Shop Co is no longer authorized.
+  assert.match(read("src/lib/opportunities.ts"), /const \{ data: membership \} = await admin\.from\(spec\.table\)\.select\("id"\)\.eq\("user_id", userId\)\.eq\(spec\.column, row\.entity_id\)\.maybeSingle\(\);/);
+  assert.ok(res.ok);
 });
 
 // ── 25–28. Replies and outcomes ────────────────────────────────────────────
@@ -606,7 +788,8 @@ test("the migration: additive, no destructive statements, constraints for one co
   assert.doesNotMatch(sql, /\bdrop\b|\btruncate\b|\bdelete\s+from\b|\balter\s+table\s+public\.(business_targets|conversations|conversation_participants|conversation_messages|opportunit)/i);
   assert.match(sql, /check \(num_nonnulls\(counterparty_business_id, counterparty_location_id, counterparty_event_id\) = 1\)/);
   assert.match(sql, /constraint commercial_inquiries_sender_request_key unique \(sender_business_id, request_key\)/);
-  assert.match(sql, /where status in \('sent', 'responded'\);/, "uniqueness is about OPEN Inquiries, never a permanent ban");
+  assert.match(sql, /create unique index if not exists commercial_inquiries_open_counterparty_intent_key\s+on public\.commercial_inquiries \(sender_business_id, coalesce\(counterparty_business_id, counterparty_location_id, counterparty_event_id\), intent\)\s+where status in \('sent', 'responded'\);/, "open uniqueness = sender + counterparty + intent; never a permanent ban");
+  assert.doesNotMatch(sql, /commercial_inquiries_open_counterparty_key\b/, "the per-counterparty rule is gone");
   assert.match(sql, /on public\.conversations \(subject_id\) where subject_type = 'commercial_inquiry';/);
   assert.match(sql, /references public\.business_targets\(id\) on delete set null/, "a deleted Target never deletes the shared Inquiry");
   assert.match(sql, /create or replace trigger trg_commercial_inquiries_status_changed/);
