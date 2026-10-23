@@ -16,13 +16,13 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
-import ForYourBusiness from "@/components/relationships/ForYourBusiness";
+import EntityActionBar from "@/components/public-actions/EntityActionBar";
+import { loadPublicActions } from "@/lib/public-actions";
 import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import MessageButton from "@/components/MessageButton";
 import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
-import InquireButton from "@/components/InquireButton";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { VerifiedBadge } from "@/components/Badge";
@@ -406,6 +406,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
   const enabledInquiryTopics = sanitizeBusinessInquiryTopics(business.inquiry_topics);
   const canInquire = pro && business.accepts_inquiries && enabledInquiryTopics.length > 0;
+  // Public Actions — the entity action bar under identity. With nothing
+  // configured, the existing Inquire button carries over as its one action.
+  const publicActions = await loadPublicActions(getAdminSupabase(), "business", business.id, {
+    generalInquiry: canInquire,
+    legacyInquireLabel: business.inquiry_cta_label,
+    website: isSafeExternalUrl(business.website_url) ? business.website_url : null,
+  });
   const showMessageButton = await shouldShowMessageButton("business", business.id);
 
   const location = cityStateZip(business.city, business.state, business.postal_code);
@@ -731,6 +738,24 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
+      {/* Public Actions — directly under identity (category, place, short
+          bio) and above Featured Appearance: what a visitor can do here. */}
+      {(publicActions.actions.length > 0 || publicActions.opportunityCount > 0) && (
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="mt-4 max-w-xl">
+            <EntityActionBar
+              kind="business"
+              entityId={business.id}
+              entityName={business.name}
+              pagePath={`/business/${business.slug}`}
+              actions={publicActions.actions}
+              inquiryTopics={enabledInquiryTopics}
+              opportunityCount={publicActions.opportunityCount}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Live-context relationship module (Public Experience V5) — replaces
           V4's identity-row "Next Up" pill AND the right rail's separate
           "Find [Business] Here" CTA, which together with the Findmi Here
@@ -788,35 +813,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         {/* Right rail on desktop: primary action + Follow/Save, and (desktop
             only) the details/contact block — written first in the DOM so
             it naturally lands right after identity on mobile too. */}
-        <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
-          {/* Action Hierarchy pass (V5) — Follow + Save live in the identity
-              block above; the live-context module above the grid already
-              gives a business with somewhere upcoming its own "View
-              Event/Location" + Directions actions, so this slot no longer
-              duplicates that with a second "Find [Business] Here" CTA (the
-              V4 version of this row did — see the module's own comment for
-              why that was wrong). This slot is Inquire alone, weighted by
-              schedule state: a business with an upcoming appearance already
-              has a stronger reason above to click through, so Inquire stays
-              available but secondary (outline); a business with nothing
-              upcoming has no such moment, so Inquire — when the owner
-              enabled it — regains the full primary treatment. */}
-          {canInquire && (
-            <div className="min-w-0">
-              <InquireButton
-                targetType="business"
-                targetId={business.id}
-                targetName={business.name}
-                label={inquiryLabel}
-                topics={enabledInquiryTopics}
-                className={
-                  appearances.length > 0
-                    ? "flex h-11 w-full items-center justify-center rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                    : "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                }
-              />
-            </div>
-          )}
+        <div className="lg:order-2 lg:sticky lg:top-20">
+          {/* Inquire moved up into the Public Actions bar under identity. */}
 
           {/* Messaging UX Unification pass — the old "Message on Findmi"
               native-inquiry link (native_inquiries_enabled-gated) used to
@@ -845,7 +843,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               business={{ phone: contact.phone, email: contact.email }}
               socialLinks={detailsSocialLinks}
               businessId={business.id}
-              className="mt-6 hidden lg:block"
+              className="hidden lg:block"
             />
           )}
         </div>
@@ -1062,10 +1060,6 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               className="mt-8 lg:hidden"
             />
           )}
-
-          {/* For Your Business — the commercial layer, for signed-in managers
-              of OTHER Businesses only; renders nothing for everyone else. */}
-          <ForYourBusiness kind="business" entityId={business.id} entityName={business.name} className="mt-8" />
 
           {/* Claim placement pass — moved off the top action area (never
               competing with Inquire/Follow/Save there) into its own

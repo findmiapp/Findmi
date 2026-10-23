@@ -55,6 +55,7 @@ export default function MessageButton({
   layout = "pill",
   messagingEnabled = false,
   label,
+  triggerClassName,
 }: {
   targetType: "event" | "business" | "location";
   targetId: string;
@@ -91,6 +92,9 @@ export default function MessageButton({
    * Participate" in a public page's For Your Business section). The modal
    * and its workflow are unchanged. */
   label?: string;
+  /** Optional trigger styling for a shared action bar (the public entity
+   * action bar). Pill layout only; the modal is unchanged. */
+  triggerClassName?: string;
 }) {
   const MESSAGING = messagingEnabled;
   const router = useRouter();
@@ -281,8 +285,7 @@ export default function MessageButton({
   // "compact" matches FollowButton's own h-9/text-xs geometry on Business/
   // Location pages; "default" matches the Event page's Tier A CTA
   // geometry (h-11/text-sm) for the fixed primary-action row.
-  const triggerClass =
-    layout === "grid"
+  const triggerClass = triggerClassName && layout !== "grid" ? triggerClassName : layout === "grid"
       ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
       : size === "compact"
         ? "flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-2.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"

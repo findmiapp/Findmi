@@ -36,8 +36,6 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm,
 const V2 = "src/app/(public)/account/business/[id]/v2";
 const PAGE = "src/app/(public)/account/business/[id]/(manager)/page.tsx";
 const ACTIONS = "src/app/(public)/account/business/[id]/target-actions.ts";
-const REL_ACTIONS = "src/app/(public)/account/relationship-actions.ts";
-const FYB = "src/components/relationships/ForYourBusiness.tsx";
 const CONNECT = "src/components/relationships/ConnectControl.tsx";
 const DETAIL = "src/app/(public)/account/business/[id]/inquiries/[inquiryId]/page.tsx";
 const LOC_PAGE = "src/app/(public)/location/[slug]/LocationPublicView.tsx";
@@ -113,7 +111,7 @@ test("43/44. legacy ?loc= and ?pt= keep resolving in the Business Manager page",
 });
 
 test("27. ONE helper: no surface builds relationship links inline", () => {
-  const files = [`${V2}/TargetsView.tsx`, `${V2}/DiscoverView.tsx`, `${V2}/GeographyViews.tsx`, "src/lib/business-follow-ups.ts", "src/lib/relationship-context.ts", ACTIONS, DETAIL, FYB];
+  const files = [`${V2}/TargetsView.tsx`, `${V2}/DiscoverView.tsx`, `${V2}/GeographyViews.tsx`, "src/lib/business-follow-ups.ts", "src/lib/relationship-context.ts", ACTIONS, DETAIL];
   for (const f of files) assert.doesNotMatch(strip(read(f)), /[&?](loc|tgt)=\$\{/, f);
   assert.match(read(`${V2}/TargetsView.tsx`), /relationshipParams\(t\.locationId \?/);
   assert.match(read(`${V2}/GeographyViews.tsx`), /relationshipParams\(\{ kind: "location", locationId: row\.place\.id \}\)/, "By Market");
@@ -192,7 +190,6 @@ test("18. self Business blocked: never offered, and refused by the Target path",
   assert.deepEqual(rows, []);
   const res = await L.addBusinessTarget(fakeDb(seed()), B_BABYLIST, { kind: "business", counterpartyId: B_BABYLIST, intents: ["collaboration"], source: "business", userId: null });
   assert.equal(res.ok, false);
-  assert.match(read(FYB), /businesses\.filter\(\(b\) => !\(kind === "business" && b\.id === entityId\)\)/);
 });
 
 test("own Location: refused by the Target path", async () => {
@@ -228,61 +225,6 @@ test("29–33. owner-only: never another Business's Target, Context, Next Step, 
   assert.doesNotMatch(src, /notes|next_action|internal|activity/);
 });
 
-test("11/12. public Location anonymous / consumer: nothing commercial (no request, no markup)", () => {
-  const fyb = read(FYB);
-  assert.match(fyb, /const businesses = useBusinesses\(\);/);
-  assert.match(fyb, /if \(!manages\) return;/, "no server request for a visitor who manages no Business");
-  assert.match(fyb, /if \(!manages \|\| !rows \|\| !rows\.length\) return null;/);
-  const action = read(REL_ACTIONS);
-  assert.match(action, /const user = await getCurrentUser\(\)\.catch\(\(\) => null\);\s*if \(!user\) return \[\];/, "the server re-checks the session");
-  assert.match(action, /\.from\("business_members"\)[\s\S]*\.eq\("user_id", user\.id\)/, "Businesses re-read for this viewer — never ids from the client");
-  assert.match(action, /\.filter\(\(r\) => r\.b && !r\.b\.archived_at && !r\.b\.trashed_at\)/);
-});
-
-test("13. public Location Business manager: For Your Business sits below the consumer layer", () => {
-  const page = read(LOC_PAGE);
-  assert.match(page, /<ForYourBusiness kind="location" entityId=\{location\.id\} entityName=\{location\.name\} className="mt-10" \/>/);
-  assert.ok(page.indexOf("<ForYourBusiness") > page.indexOf("<LocationFollowButton"), "after the consumer actions");
-  assert.ok(page.indexOf("<ForYourBusiness") < page.indexOf('<ClaimButton type="location"'));
-  const fyb = read(FYB);
-  assert.match(fyb, /For Your Business/);
-  assert.match(fyb, /location: "Interested in working with this Place\?"/);
-});
-
-test("14. public Location Connect: untracked → Connect (owner / manager only)", async () => {
-  const [r] = await X.getEntityRelationships(fakeDb(seed()), MINE, "location", L_NEW);
-  assert.equal(r.status, null);
-  assert.equal(r.canEdit, true);
-  assert.match(read(FYB), /\) : r\.canEdit \? \(\s*<ConnectControl businessId=\{r\.businessId\} kind=\{kind\} counterpartyId=\{entityId\} \/>/);
-  const [staff] = await X.getEntityRelationships(fakeDb(seed()), [{ id: B_MOCKTAIL, name: "Mocktail Mart", role: "staff" }], "location", L_NEW);
-  assert.equal(staff.canEdit, false, "staff never Connect");
-});
-
-test("15. public Location existing relationship: state + Open Relationship — never Connect again", () => {
-  const fyb = read(FYB);
-  assert.match(fyb, /\{r\.status && <Chip tone="aquaSoft">\{TARGET_STATUS_LABELS\[r\.status\]\}<\/Chip>\}/);
-  assert.match(fyb, /\{r\.href && \(r\.status \|\| r\.inquiries\.length > 0\) \? \(\s*<Link href=\{r\.href\}[^>]*>\s*\{RELATIONSHIP_ACTIONS\.open\}/);
-});
-
-test("16. public Location existing Inquiry: compact shared state", () => {
-  assert.match(read(FYB), /\{intentLabel\(q\.intent\)\} Inquiry ·<Chip tone=\{INQUIRY_STATUS_TONE\[q\.status\]\}>\{INQUIRY_STATUS_LABELS\[q\.status\]\}<\/Chip>/);
-});
-
-test("17. public Business Connect: another Business's page offers Connect for a Business Target", async () => {
-  const [r] = await X.getEntityRelationships(fakeDb(seed()), MINE, "business", B_LAVAZZA);
-  assert.equal(r.status, null);
-  assert.equal(r.href, null, "a Business opens by Target only once there is one");
-  const page = read(BIZ_PAGE);
-  assert.match(page, /<ForYourBusiness kind="business" entityId=\{business\.id\} entityName=\{business\.name\} className="mt-8" \/>/);
-  assert.match(read(FYB), /business: "Interested in working together\?"/);
-});
-
-test("multiple Businesses: each listed by name with its own action — never chosen silently", async () => {
-  const rows = await X.getEntityRelationships(fakeDb(seed()), [...MINE, { id: B_LAVAZZA, name: "Lavazza", role: "manager" }], "location", L_430);
-  assert.deepEqual(rows.map((r) => [r.businessName, r.status]), [["Mocktail Mart", "in_conversation"], ["Lavazza", null]]);
-  assert.match(read(FYB), /\{many \? r\.businessName : `As \$\{r\.businessName\}`\}/);
-});
-
 test("bounded: one Target read and one Inquiry read for all of the viewer's Businesses", async () => {
   const db = fakeDb(seed());
   const many = Array.from({ length: 14 }, (_, i) => ({ id: u(200 + i), name: `B${i}`, role: "owner" }));
@@ -290,24 +232,6 @@ test("bounded: one Target read and one Inquiry read for all of the viewer's Busi
   assert.equal(rows.length, 10);
   assert.equal(db.calls.filter((c) => c.table === "business_targets").length, 1);
   assert.equal(db.calls.filter((c) => c.table === "commercial_inquiries").length, 1);
-});
-
-test("19/21. public Event participation: the existing Apply workflow, separate from Connect, never an Inquiry", () => {
-  const page = read(EVT_PAGE);
-  assert.match(page, /participate=\{\s*event\.vendor_applications_enabled && !vendorDeadlinePassed \? \(\s*<MessageButton\s+targetType="event"\s+targetId=\{event\.id\}\s+targetName=\{event\.name\}\s+label=\{RELATIONSHIP_ACTIONS\.participate\}/);
-  assert.equal(R.RELATIONSHIP_ACTIONS.participate, "Apply To Participate");
-  const mb = read("src/components/MessageButton.tsx");
-  assert.match(mb, /const triggerLabel = label \?\? \(MESSAGING \? "Message" : targetType === "event" \? "Apply to Vend" : "Invite to Event"\);/, "only the label changes");
-  assert.match(mb, /applyToEventPublic/, "the existing participation action");
-  assert.doesNotMatch(strip(mb), /commercial_inquir|sendCommercialInquiry/);
-  assert.match(read(CONNECT), /\["event_participation"\]/, "Connect never carries Event Participation");
-});
-
-test("20. public Event commercial Connect", () => {
-  const page = read(EVT_PAGE);
-  assert.match(page, /<ForYourBusiness\s+kind="event"\s+entityId=\{event\.id\}\s+entityName=\{event\.name\}/);
-  assert.ok(page.indexOf("<ForYourBusiness") > page.indexOf("{lineupSection}"), "below the consumer story");
-  assert.match(read(FYB), /event: "Interested in sponsoring, sampling or activating here\?"/);
 });
 
 // ── Opportunities (22–27) ──────────────────────────────────────────────────
@@ -383,10 +307,10 @@ test("8. no View / Open / Targeted redundancy", () => {
   assert.match(v, /const VIEW_LABEL = \{ location: "View Place", business: "View Business", event: "View Event" \} as const;/, "the public page is one quiet secondary link");
 });
 
-test("9. Add To Targets untracked: the explicit 'I already know' door", () => {
+test("9. Add Target / Discover: the two equal doors on Growth → Targets", () => {
   const v = read(`${V2}/TargetsView.tsx`);
-  assert.match(v, /<span className="text-button font-bold">Add To Targets<\/span>\s*<span[^>]*>I already know who or where<\/span>/);
-  assert.match(v, /<span className="text-button font-bold">Discover<\/span>\s*<span[^>]*>Find new Places, Businesses and Events<\/span>/);
+  assert.match(v, /<span className="text-button font-bold text-findmi-700">Add Target<\/span>\s*<span[^>]*>Search by name<\/span>/);
+  assert.match(v, /<span className="text-button font-bold text-findmi-700">Discover<\/span>\s*<span[^>]*>Explore what&rsquo;s out there<\/span>/);
   assert.match(v, /Targets are private\. Your Targets, Context, Next Steps and Activity are never shared with them\./, "one privacy line");
 });
 
@@ -410,7 +334,6 @@ test("28. Presence remains factual and separate from Target state; shown only wh
   const w = read(`${V2}/RelationshipWorkspace.tsx`);
   assert.match(w, /if \(!presence && !canAdd\) return null;/);
   assert.equal((w.match(/<h3 id="ws-presence" className=\{sectionTitle\}>Presence<\/h3>/g) ?? []).length, 2);
-  assert.doesNotMatch(strip(read(FYB)), /presence|availability/i, "the public section never turns a Target into Presence");
 });
 
 test("34. Inquiry is the shared state: Current Relationship shows Intent Inquiry · Status + mediation + Open Conversation", () => {
@@ -423,7 +346,7 @@ test("34. Inquiry is the shared state: Current Relationship shows Intent Inquiry
 
 test("36. composer collapsed: opened only on a deliberate tap", () => {
   const p = read(`${V2}/InquiryPanel.tsx`);
-  assert.match(p, /const \[composing, setComposing\] = useState\(false\);/);
+  assert.match(p, /const \[composing, setComposing\] = useState\(Boolean\(arriving\)\);/, "closed unless arriving from a public action for that intent");
   assert.match(p, /No Inquiry Yet/);
 });
 
@@ -442,12 +365,6 @@ test("35. Inquiry detail: simple hierarchy; Conversation only for authorized par
   assert.match(d, /const inquiry = await getInquiryForBusiness\(admin, id, inquiryId\);\s*if \(!inquiry\) notFound\(\);/, "only the sender or the routed party");
   assert.match(d, /getConversationThread\(admin, inquiry\.conversationId, user\.id\)/, "the thread checks participation");
   assert.match(d, /relationshipHref\(id, relationshipRefFor\(inquiry\.counterparty\.kind,/, "back to the relationship via the one helper");
-});
-
-test("Open To seam: documented, nothing shown", () => {
-  const fyb = read(FYB);
-  assert.match(fyb, /Open To \(future\)/);
-  assert.doesNotMatch(strip(fyb), /open_to|Open To/);
 });
 
 test("no new tables or migrations in this pass", () => {
@@ -483,16 +400,3 @@ test("53/54. Discover and Add keep the read-only search and the authorized add",
 
 // ── Mobile guards (55–60; verified in the browser QA pass) ─────────────────
 
-test("55–59. mobile: wrapping rows, truncation, no fixed widths in the new surfaces", () => {
-  for (const f of [FYB, CONNECT, "src/components/relationships/ContextualOpportunityList.tsx"]) {
-    const s = read(f);
-    assert.match(s, /flex-wrap/, f);
-    assert.doesNotMatch(s, /\bw-\[\d|min-w-\[\d|whitespace-nowrap/, f);
-  }
-  assert.match(read(FYB), /min-w-0 truncate/);
-});
-
-test("60. no client exception: the public section fails closed", () => {
-  assert.match(read(FYB), /\.catch\(\(\) => live && setRows\(\[\]\)\)/);
-  assert.match(read(REL_ACTIONS), /if \(!isTargetKind\(kind\)\) return \[\];/);
-});

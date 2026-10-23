@@ -3,6 +3,8 @@ import { calendarDate, compareChronological, formatCalendarDate, occurrenceUpcom
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import PublicActionsEditor from "@/components/public-actions/PublicActionsEditor";
+import { getPublicActionsEditorData } from "@/lib/public-actions";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember, resolveBusinessNavContext } from "@/lib/permissions";
@@ -123,6 +125,8 @@ export default async function ManageLocationPage({
   }
 
   const admin = getAdminSupabase();
+  // Public Actions settings (Profile) — owners / managers only.
+  const publicActionsEditor = tab === "profile" && canActForLocation && admin ? await getPublicActionsEditorData(admin, "location", id) : null;
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
   const location = await getAdminLocationById(id);
@@ -678,6 +682,20 @@ export default async function ManageLocationPage({
 
         {tab === "profile" && (
           <div className="flex flex-col gap-6">
+            {publicActionsEditor && (
+              <PublicActionsEditor
+                kind="location"
+                entityId={id}
+                ready={publicActionsEditor.ready}
+                opportunities={publicActionsEditor.opportunities}
+                initial={publicActionsEditor.configured}
+                defaultNote="Nothing is shown yet. Add an action to give visitors a clear way to work with this Place."
+                unavailable={{
+                  ...(location.email ? {} : { general_inquiry: "Shows once this Place has a contact email (Contact & Links)." }),
+                  ...(location.website_url ? {} : { website: "Shows once you add a website (Contact & Links)." }),
+                }}
+              />
+            )}
             {/* Identity — name is a plain fact (Findmi-managed), Category
                 is the one newly owner-editable identity field. */}
             <div>

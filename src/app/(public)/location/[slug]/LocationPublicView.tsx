@@ -6,7 +6,9 @@ import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momen
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
-import ForYourBusiness from "@/components/relationships/ForYourBusiness";
+import EntityActionBar from "@/components/public-actions/EntityActionBar";
+import { loadPublicActions } from "@/lib/public-actions";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import MessageButton from "@/components/MessageButton";
 import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
@@ -176,6 +178,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
   const showHours = hasAnyHours(location.hours);
   const website = isSafeExternalUrl(location.website_url) ? location.website_url : null;
+  // Public Actions — only what this Location's managers configured; the
+  // existing Contact form backs General Inquiry (when it has contact info).
+  const publicActions = await loadPublicActions(getAdminSupabase(), "location", location.id, { generalInquiry: Boolean(location.email), website });
   // Public Graph Integrity Pass 1 — same canonical-URL resolution
   // generateLocationMetadata already uses (handle-first, /location/slug
   // fallback), so a shared link always matches this page's own canonical
@@ -401,6 +406,15 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             expansion, visitor's own clock); omitted without real hours.
             Featured Event follows directly. */}
         {showHours && <LocationHoursStatus hours={location.hours} />}
+        <EntityActionBar
+          kind="location"
+          entityId={location.id}
+          entityName={location.name}
+          pagePath={`/location/${location.slug}`}
+          actions={publicActions.actions}
+          opportunityCount={publicActions.opportunityCount}
+          className="mt-3"
+        />
       </div>
 
       {/* "Events" (Visual implementation pass) — the one resolved featured
@@ -641,9 +655,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* For Your Business — the commercial layer, for signed-in Business
-            managers only; renders nothing for everyone else. */}
-        <ForYourBusiness kind="location" entityId={location.id} entityName={location.name} className="mt-10" />
 
         {/* Claim — final major section before footer, deliberately quiet
             (ClaimButton's own compact card variant, no oversized styling

@@ -43,7 +43,7 @@ export type TargetKind = (typeof TARGET_KINDS)[number];
 /** The intents each counterparty kind can carry, in display order. */
 export const INTENTS_BY_KIND: Record<TargetKind, readonly CommercialIntent[]> = {
   location: ["placement", "sampling", "activation", "pop_up", "vending", "booking"],
-  business: ["wholesale", "distribution", "collaboration", "sponsorship", "sampling", "activation", "content"],
+  business: ["wholesale", "distribution", "collaboration", "sponsorship", "sampling", "activation", "content", "booking"],
   event: ["event_participation", "sponsorship", "sampling", "activation", "vending", "content"],
 };
 

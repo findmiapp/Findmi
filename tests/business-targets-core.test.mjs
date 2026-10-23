@@ -173,7 +173,7 @@ test("the canonical intent vocabulary is exactly the approved twelve, with Title
 
 test("6. intent compatibility is centralized per counterparty kind — never inferred from Category", () => {
   assert.deepEqual([...I.INTENTS_BY_KIND.location], ["placement", "sampling", "activation", "pop_up", "vending", "booking"]);
-  assert.deepEqual([...I.INTENTS_BY_KIND.business], ["wholesale", "distribution", "collaboration", "sponsorship", "sampling", "activation", "content"]);
+  assert.deepEqual([...I.INTENTS_BY_KIND.business], ["wholesale", "distribution", "collaboration", "sponsorship", "sampling", "activation", "content", "booking"]);
   assert.deepEqual([...I.INTENTS_BY_KIND.event], ["event_participation", "sponsorship", "sampling", "activation", "vending", "content"]);
   for (const k of I.TARGET_KINDS) for (const i of I.INTENTS_BY_KIND[k]) assert.ok(I.isCommercialIntent(i));
   assert.deepEqual(I.validateTargetIntents("location", ["wholesale"]).ok, false, "a place is never a wholesale counterparty");

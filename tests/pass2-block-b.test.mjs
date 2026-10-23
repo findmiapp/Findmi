@@ -338,7 +338,7 @@ test("Targets: no permanent explanation — a small Private marker; the note sta
   assert.match(view, /title=\{TARGET_PRIVACY_NOTE\}>\s*<LockIcon className="h-3 w-3" \/> Private/);
   assert.match(view, /\{!anyTargets && <span className="mt-1 block text-metadata">\{TARGET_PRIVACY_NOTE\}<\/span>\}/);
   // Add Target → Growing In → search → status filter (one compact selector since the Add Target UX pass) → rows.
-  const at = ["Add To Targets\n", "{context && !adding && context}", 'role="search"', '<span className="text-metadata font-semibold text-muted">Status</span>', "{items.map((i) =>"].map((m) => view.indexOf(m));
+  const at = ["Add Target\n", "{context && !adding && context}", 'role="search"', '<span className="text-metadata font-semibold text-muted">Status</span>', "{items.map((i) =>"].map((m) => view.indexOf(m));
   assert.ok(at.every((i) => i > 0));
   assert.deepEqual([...at].sort((a, b) => a - b), at);
 });

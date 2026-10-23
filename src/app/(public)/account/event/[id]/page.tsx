@@ -8,6 +8,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireEventMember, resolveBusinessNavContext } from "@/lib/permissions";
 import { isPageManagerRole } from "@/lib/capabilities";
+import PublicActionsEditor from "@/components/public-actions/PublicActionsEditor";
+import { getPublicActionsEditorData } from "@/lib/public-actions";
 import EntityMomentsSection from "@/components/account/EntityMomentsSection";
 import { getAccountContexts } from "@/lib/accountContext";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
@@ -214,6 +216,8 @@ export default async function ManageEventPage({
   const [formats, selectedFormatIds] = await Promise.all([getAllCategories("event_format"), getEventFormatIds(admin, id)]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
+  // Public Actions settings (Details) — owners / managers only.
+  const publicActionsEditor = tab === "details" && canManageEventPage ? await getPublicActionsEditorData(admin!, "event", id) : null;
 
   // QR Campaigns V1 — this Event's own QR campaigns (independent of any
   // Business — event_members, not business_members, is the real
@@ -625,6 +629,21 @@ export default async function ManageEventPage({
             into a closed-by-default disclosure at the bottom. ── */}
         {tab === "details" && (
           <div className="flex flex-col gap-6">
+            {publicActionsEditor && (
+              <PublicActionsEditor
+                kind="event"
+                entityId={id}
+                ready={publicActionsEditor.ready}
+                opportunities={publicActionsEditor.opportunities}
+                initial={publicActionsEditor.configured}
+                defaultNote="Nothing is shown yet. Add an action — like Apply To Participate or Sponsor — so visitors know how to take part."
+                unavailable={{
+                  ...(event.contact_enabled ? {} : { general_inquiry: "Shows once Contact Organizer is on." }),
+                  ...(event.vendor_applications_enabled ? {} : { event_participation: "Shows while participation applications are open." }),
+                  ...(event.external_url ? {} : { website: "Shows once you add an event website." }),
+                }}
+              />
+            )}
             <form action={updateMemberEventDetails.bind(null, id)} className="flex flex-col gap-4">
               <div>
                 <p className="text-label font-bold uppercase text-subtle">Identity</p>

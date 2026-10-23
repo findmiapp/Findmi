@@ -57,6 +57,8 @@ export interface WorkspaceProps {
   activity: TargetActivityPage | null;
   /** This Business's Inquiries from this place's Target (sender side). */
   inquiries: TargetInquirySummary[];
+  /** Arriving from a public action: open the Inquiry composer on this intent. */
+  initialInquiryIntent?: CommercialIntent | null;
   senderName: string;
   backHref: string;
   backLabel: string;
@@ -110,6 +112,7 @@ export default function RelationshipWorkspace(props: WorkspaceProps) {
           eventHref={null}
           inquiries={props.inquiries}
           canEdit={canEdit}
+          initialIntent={props.initialInquiryIntent ?? null}
         />
       )}
       {target && <NextCard businessId={businessId} item={target} canEdit={canEdit} />}

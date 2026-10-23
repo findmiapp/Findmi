@@ -10,6 +10,7 @@ import { LockIcon, TargetThumb } from "./TargetsView";
 import InquiryPanel, { type TargetInquirySummary } from "./InquiryPanel";
 import ContextualOpportunityList from "@/components/relationships/ContextualOpportunityList";
 import type { ContextualOpportunity } from "@/lib/relationship-context";
+import type { CommercialIntent } from "@/lib/commercial-intents";
 
 /** One Business or Event Target — the same private pursuit as a Place Target
  * (status, Next, Context, Why, Activity, Findmi Internal), without the
@@ -27,6 +28,7 @@ export default function TargetWorkspace({
   inquiries,
   senderName,
   opportunities = [],
+  initialInquiryIntent = null,
   backHref,
   backLabel,
 }: {
@@ -42,6 +44,8 @@ export default function TargetWorkspace({
   senderName: string;
   /** Opportunities this Business can already see about this exact counterparty. */
   opportunities?: ContextualOpportunity[];
+  /** Arriving from a public action: open the Inquiry composer on this intent. */
+  initialInquiryIntent?: CommercialIntent | null;
   backHref: string;
   backLabel: string;
 }) {
@@ -87,6 +91,7 @@ export default function TargetWorkspace({
           eventHref={target.kind === "event" ? c.href : null}
           inquiries={inquiries}
           canEdit={canEdit}
+          initialIntent={initialInquiryIntent}
         />
       )}
       <NextCard businessId={businessId} item={target} canEdit={canEdit} />

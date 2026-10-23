@@ -221,24 +221,24 @@ export default function TargetsView({
 
       {available && !adding && discoverHref && (
         // Targets = your private working list; Discover = finding new ones. Two
-        // ways in to ONE set of relationships: you already know who or where
-        // (Add To Targets), or you want to find new ones (Discover).
-        <div className="flex flex-col gap-2">
+        // ways in to ONE set of relationships, given equal weight: you know the
+        // name (Add Target), or you want to look around (Discover).
+        <div className="flex flex-col gap-3">
           <p className="text-metadata text-muted">Your commercial working list — the Places, Businesses and Events you&rsquo;re tracking.</p>
           <div className={`grid gap-2 ${canEdit ? "grid-cols-2" : "grid-cols-1"}`}>
             {canEdit && (
-              <button type="button" onClick={() => setAdding(true)} className="flex min-h-[60px] flex-col items-start justify-center rounded-2xl bg-findmi px-4 py-2.5 text-left text-white transition hover:bg-findmi-600">
-                <span className="text-button font-bold">Add To Targets</span>
-                <span className="text-microcopy text-white/85">I already know who or where</span>
+              <button type="button" onClick={() => setAdding(true)} className="flex min-h-[72px] flex-col items-start justify-center gap-1 rounded-2xl border border-findmi/40 bg-white px-4 py-3 text-left transition hover:bg-findmi-50">
+                <span className="text-button font-bold text-findmi-700">Add Target</span>
+                <span className="text-metadata text-muted">Search by name</span>
               </button>
             )}
-            <Link href={discoverHref} className="flex min-h-[60px] flex-col items-start justify-center rounded-2xl border border-findmi/40 bg-white px-4 py-2.5 text-left text-findmi-700 transition hover:bg-findmi-50">
-              <span className="text-button font-bold">Discover</span>
-              <span className="text-microcopy text-muted">Find new Places, Businesses and Events</span>
+            <Link href={discoverHref} className="flex min-h-[72px] flex-col items-start justify-center gap-1 rounded-2xl border border-findmi/40 bg-white px-4 py-3 text-left transition hover:bg-findmi-50">
+              <span className="text-button font-bold text-findmi-700">Discover</span>
+              <span className="text-metadata text-muted">Explore what&rsquo;s out there</span>
             </Link>
           </div>
           <p className="flex items-start gap-1.5 text-microcopy text-subtle" title={TARGET_PRIVACY_NOTE}>
-            <LockIcon className="mt-0.5 h-3 w-3" /> Targets are private. Your Targets, Context, Next Steps and Activity are never shared with them.
+            <LockIcon className="mt-0.5 h-3 w-3 shrink-0" /> Targets are private. Your Targets, Context, Next Steps and Activity are never shared with them.
           </p>
         </div>
       )}
@@ -246,7 +246,7 @@ export default function TargetsView({
         <div className="flex min-h-10 items-center justify-between gap-3">
           {canEdit && (
             <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
-              Add To Targets
+              Add Target
             </button>
           )}
           <span className="ml-auto">
@@ -446,8 +446,8 @@ function AddTarget({ businessId, placesOnly, onClose }: { businessId: string; pl
     <PickerContext.Provider value={{ businessId, scope }}>
       <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.08] bg-white p-4">
         <div>
-          <p className="font-display text-card-title-lg font-bold text-primary">Add To Targets</p>
-          <p className="mt-0.5 text-metadata text-muted">I already know who or where. Private to your team and Findmi — they&rsquo;re never told.</p>
+          <p className="font-display text-card-title-lg font-bold text-primary">Add Target</p>
+          <p className="mt-0.5 text-metadata text-muted">Search by name. Private to your team and Findmi — they&rsquo;re never told.</p>
         </div>
 
         {!placesOnly && !picked && (

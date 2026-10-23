@@ -216,10 +216,10 @@ test("Add Target has no Market / Area / Category filters — that's Discover", (
 
 // ── Entry points, Discover presentation, Targets list ──────────────────────
 
-test("D. Growth → Targets: Add To Targets and Discover are two obvious primary actions", () => {
+test("D. Growth → Targets: Add Target and Discover are two equal doors", () => {
   const view = read(`${V2}/TargetsView.tsx`);
-  assert.match(view, /<span className="text-button font-bold">Add To Targets<\/span>\s*<span[^>]*>I already know who or where<\/span>/);
-  assert.match(view, /<span className="text-button font-bold">Discover<\/span>\s*<span[^>]*>Find new Places, Businesses and Events<\/span>/);
+  assert.match(view, /<span className="text-button font-bold text-findmi-700">Add Target<\/span>\s*<span[^>]*>Search by name<\/span>/);
+  assert.match(view, /<span className="text-button font-bold text-findmi-700">Discover<\/span>\s*<span[^>]*>Explore what&rsquo;s out there<\/span>/);
   assert.match(read("src/app/(public)/account/business/[id]/(manager)/page.tsx"), /discoverHref=\{onGrowthTargets \? `\/account\/business\/\$\{id\}\?tab=growth&view=discover` : undefined\}/, "the existing Discover route, Growth door only");
 });
 

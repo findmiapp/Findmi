@@ -21,8 +21,9 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
-import ForYourBusiness from "@/components/relationships/ForYourBusiness";
-import { RELATIONSHIP_ACTIONS } from "@/lib/relationship-links";
+import EntityActionBar from "@/components/public-actions/EntityActionBar";
+import { loadPublicActions } from "@/lib/public-actions";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
@@ -401,6 +402,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // event's Apply to Vend) now lives in the one primary action row.
 
   const showContact = event.contact_enabled;
+  // Public Actions — only what this Event's managers configured. Event
+  // Participation is the existing application (while applications are open);
+  // General Inquiry is the existing Contact Organizer form.
+  const publicActions = await loadPublicActions(getAdminSupabase(), "event", event.id, {
+    generalInquiry: Boolean(showContact),
+    participation: Boolean(event.vendor_applications_enabled && !vendorDeadlinePassed),
+    website: isSafeExternalUrl(event.external_url) ? event.external_url : null,
+  });
   const showMessageButton = await shouldShowMessageButton("event", event.id);
   const showFollow = event.follow_enabled;
   const showDirections = event.directions_enabled && Boolean(directionsHref);
@@ -959,6 +968,16 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <div className="order-2 mt-4 lg:mt-5">
           {/* Personal lists (Interested / Must Do) live in Save's organize sheet. */}
           {actions}
+          <EntityActionBar
+            kind="event"
+            entityId={event.id}
+            entityName={event.name}
+            pagePath={`/event/${event.slug}`}
+            actions={publicActions.actions}
+            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at, date: calendarDate(o) ?? o.occurrence_date })) : undefined}
+            opportunityCount={publicActions.opportunityCount}
+            className="mt-3"
+          />
         </div>
       </div>
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
@@ -978,26 +997,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
           {hostedBySection}
           {placeSection}
           {productsSection}
-          {/* For Your Business — the commercial layer, for signed-in Business
-              managers only. Apply To Participate is the Event's existing
-              participation workflow, offered only while applications are open
-              and kept separate from Connect. */}
-          <ForYourBusiness
-            kind="event"
-            entityId={event.id}
-            entityName={event.name}
-            participate={
-              event.vendor_applications_enabled && !vendorDeadlinePassed ? (
-                <MessageButton
-                  targetType="event"
-                  targetId={event.id}
-                  targetName={event.name}
-                  label={RELATIONSHIP_ACTIONS.participate}
-                  eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at, date: calendarDate(o) ?? o.occurrence_date })) : undefined}
-                />
-              ) : undefined
-            }
-          />
           {detailsSection}
         </div>
       </div>

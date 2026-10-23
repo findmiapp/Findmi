@@ -26,6 +26,7 @@ export interface TargetInquirySummary {
 const sectionTitle = "text-label font-bold uppercase text-subtle";
 const primaryBtn = "flex h-10 shrink-0 items-center whitespace-nowrap rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 disabled:opacity-50";
 const quietBtn = "flex h-10 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-metadata font-semibold text-muted hover:text-primary disabled:opacity-50";
+const secondaryBtn = "flex h-10 w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-findmi/40 bg-white px-4 text-button font-bold text-findmi-700 transition hover:bg-findmi-50 disabled:opacity-50";
 
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-${Math.random().toString(16).slice(2, 14).padEnd(12, "0")}`);
 
@@ -40,6 +41,7 @@ export default function InquiryPanel({
   eventHref,
   inquiries,
   canEdit,
+  initialIntent = null,
 }: {
   businessId: string;
   senderName: string;
@@ -52,6 +54,9 @@ export default function InquiryPanel({
   eventHref: string | null;
   inquiries: readonly TargetInquirySummary[];
   canEdit: boolean;
+  /** Arriving from a public action (…&inquire=<intent>): open the composer
+   * on that intent — the person still writes and sends it. */
+  initialIntent?: CommercialIntent | null;
 }) {
   const router = useRouter();
   const { choices: allChoices, preselected: suggested, participation } = inquiryIntentChoices(kind, targetIntents);
@@ -59,8 +64,9 @@ export default function InquiryPanel({
   const openList = inquiries.filter((i) => isOpenInquiry(i.status));
   const choices = allChoices.filter((i) => !openList.some((o) => o.intent === i));
   const preselected = suggested && choices.includes(suggested) ? suggested : choices.length === 1 ? choices[0] : null;
-  const [composing, setComposing] = useState(false);
-  const [intent, setIntent] = useState<CommercialIntent | "">(preselected ?? "");
+  const arriving = canEdit && initialIntent && choices.includes(initialIntent) ? initialIntent : null;
+  const [composing, setComposing] = useState(Boolean(arriving));
+  const [intent, setIntent] = useState<CommercialIntent | "">(arriving ?? preselected ?? "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   // One key per Send operation: a double tap or retry resolves to the same Inquiry.
@@ -168,8 +174,8 @@ export default function InquiryPanel({
           {openList.length ? (
             // Secondary: only while another compatible intent remains.
             canEdit && (
-              <button type="button" onClick={() => { setIntent(preselected ?? ""); setComposing(true); }} className={`${quietBtn} -ml-3 text-accent`}>
-                New Inquiry
+              <button type="button" onClick={() => { setIntent(preselected ?? ""); setComposing(true); }} className={secondaryBtn}>
+                <span aria-hidden="true">+</span> New Inquiry
               </button>
             )
           ) : (

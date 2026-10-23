@@ -59,6 +59,10 @@ import { parseCommercialQuery } from "@/lib/discovery/commercial";
 import { getCommercialDiscovery } from "@/lib/discovery/commercial-server";
 import { getInboundInquiryRequests, getTargetInquiries } from "@/lib/commercial-inquiries";
 import { contextualOpportunities } from "@/lib/relationship-context";
+import { isCommercialIntent } from "@/lib/commercial-intents";
+import PublicActionsEditor from "@/components/public-actions/PublicActionsEditor";
+import { getPublicActionsEditorData } from "@/lib/public-actions";
+import { validateActionLabel } from "@/lib/public-actions-domain";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -330,6 +334,8 @@ type ManagerSearchParams = {
     tk?: string;
     tp?: string;
     tgt?: string;
+    /** Arriving from a public action: open the Inquiry composer on this intent. */
+    inquire?: string;
     pt?: string;
     /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
     fa?: string;
@@ -1453,6 +1459,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
   const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets, discovery, inquiryRequests] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise, discoverPromise, inquiryRequestsPromise]);
+  // Public Actions settings (Inquiries tab) — only read on that tab.
+  const publicActionsEditor = activeTab === "inquiries" && admin ? await getPublicActionsEditorData(admin, "business", id) : null;
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1497,10 +1505,12 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       }
     />
   ) : null;
+  // Arriving from a public action (…&inquire=<intent>): the composer opens on that intent.
+  const inquireIntent = typeof rawSearchParams.inquire === "string" && isCommercialIntent(rawSearchParams.inquire) ? rawSearchParams.inquire : null;
   // One relationship workspace for every door; Back returns to the lens it was opened from.
   const workspaceBack = (() => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt" && k !== "tgt") q.set(k, v);
+    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt" && k !== "tgt" && k !== "inquire") q.set(k, v);
     return `/account/business/${id}?${q.toString()}`;
   })();
   const workspaceView = workspace?.kind === "target" ? (
@@ -1514,6 +1524,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       inquiries={workspace.inquiries}
       senderName={business.name}
       opportunities={workspace.opportunities}
+      initialInquiryIntent={inquireIntent}
       backHref={workspaceBack}
       backLabel="Targets"
     />
@@ -1526,6 +1537,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       internalNotes={workspace.internalNotes}
       activity={workspace.activity}
       inquiries={workspace.inquiries}
+      initialInquiryIntent={inquireIntent}
       senderName={business.name}
       backHref={workspaceBack}
       backLabel={onTargets ? "Targets" : onFindUsMarkets ? (workspace.scopeLabel ?? "By Market") : "Places"}
@@ -2261,6 +2273,16 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                     </span>
                   }
                   href={`${basePath}?tab=inquiries`}
+                />
+                <Row
+                  label="Public Actions"
+                  value={
+                    <span className="inline-flex items-center gap-1">
+                      Edit
+                      <ChevronIcon direction="right" className="h-3 w-3" />
+                    </span>
+                  }
+                  href={`${basePath}?tab=inquiries#public-actions`}
                 />
               </div>
             </Panel>
@@ -3186,6 +3208,27 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             elsewhere on this page. */}
         {activeTab === "inquiries" && (
           <div className="flex flex-col gap-3 lg:max-w-2xl">
+            {/* Public Actions — the buttons under this Business's public
+                identity. With nothing saved, its existing Inquire button is
+                what shows, so the editor starts from it. */}
+            {publicActionsEditor && (() => {
+              const inquireOn = pro && business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0;
+              const legacy = !publicActionsEditor.configured.length && inquireOn;
+              return (
+                <PublicActionsEditor
+                  kind="business"
+                  entityId={id}
+                  ready={publicActionsEditor.ready}
+                  opportunities={publicActionsEditor.opportunities}
+                  initial={legacy ? [{ type: "general_inquiry", label: validateActionLabel(business.inquiry_cta_label).ok ? (business.inquiry_cta_label?.trim() || null) : null, enabled: true, opportunityListingId: null }] : publicActionsEditor.configured}
+                  defaultNote={legacy ? undefined : "Nothing is shown yet. Add an action to give visitors a clear way to reach you."}
+                  unavailable={{
+                    ...(inquireOn ? {} : { general_inquiry: "Shows once Customer Inquiries is on (below)." }),
+                    ...(business.website_url ? {} : { website: "Shows once you add your website in Links & Contact." }),
+                  }}
+                />
+              );
+            })()}
             {/* Launch V2 Pass 1, Section 13 — this tab is now
                 CONFIGURATION ONLY. The legacy list/thread/reply UI that
                 used to render below (backed by the `inquiries`/

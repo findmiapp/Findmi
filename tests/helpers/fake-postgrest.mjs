@@ -81,10 +81,16 @@ export function fakeDb(tables, newId = "00000099-0000-4000-8000-000000000000") {
         limit(n) { limit = n; return chain; },
         insert(payload) { call.op = "insert"; call.payload = payload; return chain; },
         update(payload) { call.op = "update"; call.payload = payload; return chain; },
+        delete() { call.op = "delete"; return chain; },
         maybeSingle() { single = "maybe"; return chain; },
         single() { single = "one"; return chain; },
         then(resolve) {
           const rows = tables[table] ?? [];
+          if (call.op === "insert" && Array.isArray(call.payload)) {
+            const created = call.payload.map((p, i) => ({ id: `${newId.slice(0, -3)}${String(100 + i)}`, ...p }));
+            (tables[table] ??= []).push(...created);
+            return resolve({ data: returning ? created : null, error: null });
+          }
           if (call.op === "insert") {
             const p = call.payload;
             const col = ["target_location_id", "target_business_id", "target_event_id"].find((c) => p[c]);
@@ -96,6 +102,10 @@ export function fakeDb(tables, newId = "00000099-0000-4000-8000-000000000000") {
           const fields = parseSelect(call.select ?? "*");
           const shaped = rows.map((r) => shape(tables, r, fields));
           const matched = shaped.filter((r) => fields.filter((f) => f.embed && f.inner).every((f) => r[f.alias] != null) && preds.every((p) => p(r)));
+          if (call.op === "delete") {
+            tables[table] = rows.filter((r) => !preds.every((p) => p(r)));
+            return resolve({ data: null, error: null });
+          }
           if (call.op === "update") {
             for (const r of rows.filter((r) => matched.some((m) => m.id === r.id))) Object.assign(r, call.payload);
             return resolve({ data: returning ? matched.map((r) => ({ id: r.id })) : null, error: null });

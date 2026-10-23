@@ -41,9 +41,9 @@ test("the Business Overview status row for inquiry settings is labeled accuratel
 });
 
 test("the ?tab=inquiries surface still links out to the real Inbox at /account/messages, unchanged", () => {
-  const tabStart = BUSINESS_PAGE.indexOf('activeTab === "inquiries"');
+  const tabStart = BUSINESS_PAGE.indexOf('{activeTab === "inquiries" && (');
   assert.ok(tabStart !== -1, "expected the inquiries tab render block");
-  const tabBlock = BUSINESS_PAGE.slice(tabStart, tabStart + 2000);
+  const tabBlock = BUSINESS_PAGE.slice(tabStart, tabStart + 4500);
   assert.match(tabBlock, /href="\/account\/messages"/, "must still point the owner at the real Inbox for actual conversations");
   assert.match(tabBlock, /View customer conversations in your Inbox/);
 });
