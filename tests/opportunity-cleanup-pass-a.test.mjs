@@ -125,13 +125,13 @@ test("the commercial Opportunities view no longer embeds Event Invitations & App
 
 // ---------------------------------------------------------------- 8. Home Event Invitation tile routing
 // B1 — the tile became a Needs Attention item; same canonical routing.
-test("Home's Event Invitation attention item routes to the Inbox's Event destination, not the commercial Opportunities tab", () => {
-  const BIZ_HOME = read(`${B}/v2/BusinessHome.tsx`);
-  const at = BIZ_HOME.indexOf('id: "event-invitations"');
-  assert.ok(at > -1, "attention item present");
-  const item = BIZ_HOME.slice(at, BIZ_HOME.indexOf("...needsAttention", at));
-  assert.match(item, /Event Invitation\$\{pendingInvitationCount === 1 \? "" : "s"\}/);
-  assert.match(item, /actionHref: "\/account\/messages\?filter=opportunities"/);
+test("Home's Event Invitation Request routes to the Inbox's Event destination, not the commercial Opportunities tab", () => {
+  const REQUESTS = read("src/lib/business-requests.ts");
+  const at = REQUESTS.indexOf("key: `invitation:${i.id}`");
+  assert.ok(at > -1, "invitation Request present");
+  const item = REQUESTS.slice(at, REQUESTS.indexOf("});", at));
+  assert.match(item, /meta: "Event Invitation · Response Requested"/);
+  assert.match(item, /href: "\/account\/messages\?filter=opportunities"/);
   assert.equal(/tab=opportunities/.test(item), false);
 });
 

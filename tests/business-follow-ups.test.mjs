@@ -96,7 +96,7 @@ test("date labels and the app calendar day are unchanged", () => {
 test("commercial Opportunities never enter Follow-Ups (nor Events, Appearances, Find Us Here, orders or invitations)", () => {
   assert.doesNotMatch(LIB, /opportunit|appearance|event|availability|order|invitation/i);
   assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, placements: followUpPlacements, today: followUpToday\(\) \}\)/, "placements are the only input");
-  assert.doesNotMatch(PAGE, /buildBusinessNext|recommendedOpportunities\.active\.map/);
+  assert.doesNotMatch(PAGE, /buildBusinessNext/);
 });
 
 // ── Home rendering ──────────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ test("zero follow-ups render nothing — no heading, no empty state; the generic
 
 test("Home order is unchanged around Follow-Ups", () => {
   const at = (m) => HOME.indexOf(m);
-  const order = ["<NeedsAttentionBar items={attention} />", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<MomentsStrip", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="quick-create"', 'aria-labelledby="findmi-link"'].map(at);
+  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<MomentsStrip", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="quick-create"', 'aria-labelledby="findmi-link"'].map(at);
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -160,8 +160,8 @@ test("Babylist's Home never sees Mocktail Mart's private Target / follow-up for 
 test("Needs Attention is unchanged: exceptions only, never Target follow-ups, hidden at zero", () => {
   const base = { businessId: "biz", hasPrimaryMarket: true, pendingMarketRequestText: null, upcomingAppearances: [], newOrderCount: 0, profileIncomplete: false };
   assert.deepEqual(DASH.buildNeedsAttentionItems(base), []);
-  const ids = DASH.buildNeedsAttentionItems({ ...base, newOrderCount: 1, dueTargets: { count: 1, first: { locationId: "l1", name: "Cafe", nextAction: "x", overdue: true } } }).map((i) => i.id);
-  assert.deepEqual(ids, ["new-orders"]);
+  const ids = DASH.buildNeedsAttentionItems({ ...base, profileIncomplete: true, dueTargets: { count: 1, first: { locationId: "l1", name: "Cafe", nextAction: "x", overdue: true } } }).map((i) => i.id);
+  assert.deepEqual(ids, ["incomplete-profile"]);
   assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /if \(items\.length === 0\) return null;/);
 });
 

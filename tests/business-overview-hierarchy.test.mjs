@@ -44,11 +44,12 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → section rail → Needs Attention → Follow-Ups → Happening Now → Coming Up → Moments → Growth → Performance → Quick Create → Public Profile", () => {
+test("Home hierarchy: Status → section rail → Needs Attention → Requests → Follow-Ups → Happening Now → Coming Up → Moments → Growth → Performance → Quick Create → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
     "<HomeSectionNav items={navItems} />",
-    "<NeedsAttentionBar items={attention} />",
+    "<NeedsAttentionBar items={needsAttention} />",
+    "<RequestsSection basePath={basePath} items={requests} expanded={requestsExpanded} />",
     "<FollowUpsSection basePath={basePath} items={followUps} expanded={followUpsExpanded} />",
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
@@ -231,10 +232,9 @@ test("a Business with NO geography is valid: no attention item and never 'won't 
   assert.doesNotMatch(PAGE, /receives general discovery|live in the meantime/);
 });
 
-test("the owner's own pending Market Request is still surfaced", () => {
+test("a pending Area request waits on Findmi, not the Business — it is not a Needs Attention item", () => {
   const items = BD.buildNeedsAttentionItems({ ...base, hasPrimaryMarket: false, pendingMarketRequestText: "Hudson Valley" });
-  assert.deepEqual(items.map((i) => i.id), ["pending-market"]);
-  assert.match(items[0].message, /"Hudson Valley" is awaiting review/);
+  assert.deepEqual(items, []);
 });
 
 test("incomplete profile → Complete Profile; either description satisfies it (no new requirements)", () => {
@@ -251,11 +251,10 @@ test("incomplete profile → Complete Profile; either description satisfies it (
   assert.match(PAGE, /const profileIncomplete = !business\.logo_url \|\| !\(business\.short_description \|\| business\.description\) \|\| !currentCategoryId;/);
 });
 
-test("new Orders are ONE attention item (the duplicate Order tile is gone); pending Event Invitations join the list", () => {
-  assert.equal(BD.buildNeedsAttentionItems({ ...base, newOrderCount: 2 })[0].message, "You have 2 new orders to review.");
-  assert.doesNotMatch(HOME, /New Order\{newOrderCount === 1/);
-  assert.doesNotMatch(HOME, /\(pendingInvitationCount > 0 \|\| newOrderCount > 0\) &&/);
-  assert.match(HOME, /\.\.\.\(pendingInvitationCount > 0\s*\?\s*\[\s*\{\s*id: "event-invitations",/);
+test("new Orders and Event Invitations are Requests now — never Needs Attention items", () => {
+  assert.deepEqual(BD.buildNeedsAttentionItems({ ...base, newOrderCount: 2 }), []);
+  assert.doesNotMatch(HOME, /event-invitations|pendingInvitationCount|newOrderCount/);
+  assert.match(PAGE, /invitations: pendingInvitations,\s*newOrderCount: orderSummary\.newCount,/);
 });
 
 // ── Coming Up / Opportunities / Performance ───────────────────────────────
@@ -271,8 +270,6 @@ test("every attention item has a title (what), a message (why) and an action", (
   assert.match(ATTENTION_BAR, /\{item\.title\}/);
   assert.match(ATTENTION_BAR, /\{item\.message\}/);
   assert.match(ATTENTION_BAR, /\{item\.actionLabel\}/);
-  assert.match(HOME, /You\\u2019re invited to participate in \$\{invitedTo\}\./);
-  assert.match(PAGE, /pendingInvitationNames=\{pendingInvitations\.filter\(\(o\) => o\.status === "pending"\)\.map\(\(o\) => o\.eventName\)\}/);
 });
 
 test("Schedule: Happening Now (only when live) then Coming Up; a compact empty state that never repeats Quick Create", () => {

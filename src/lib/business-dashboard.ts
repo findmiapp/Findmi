@@ -453,17 +453,19 @@ export interface NeedsAttentionItem {
 
 export interface NeedsAttentionInput {
   businessId: string;
-  hasPrimaryMarket: boolean;
-  pendingMarketRequestText: string | null;
   upcomingAppearances: DashboardAppearance[];
-  newOrderCount: number;
   profileIncomplete: boolean;
   /** Which of profileIncomplete's own signals are missing (optional detail). */
   missingProfile?: { logo: boolean; description: boolean; category: boolean };
 }
 
-/** Every item here is derived from data the page already fetches — no new
- * generalized tasks/checklist engine, no fabricated alerts. Capped to 5,
+/** Exceptions only: something on this Business is incomplete or wrong and
+ * the Business itself can fix it. Every item is derived from data the page
+ * already fetches — no new generalized tasks/checklist engine, no
+ * fabricated alerts. Requests sent TO the Business (orders, Event
+ * invitations, Opportunities) live in Home's Requests (lib/business-
+ * requests.ts); a pending Area request waits on Findmi, not the Business,
+ * so it is not here. Capped to 5,
  * roughly most-blocking-first; an item simply isn't produced once its
  * underlying condition resolves (nothing to dismiss/snooze). */
 export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAttentionItem[] {
@@ -475,19 +477,6 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   // Preview Your Page link) above this section; a second, smaller
   // mention of the same thing in this list would just be noise.
 
-  // B1 — a Business without geography is valid (VCL A2b), so having no
-  // Findmi Market is never an attention item on its own, and never claims
-  // the Business is hidden from discovery. Only the owner's
-  // own pending Market Request is surfaced.
-  if (!input.hasPrimaryMarket && input.pendingMarketRequestText) {
-    items.push({
-      id: "pending-market",
-      title: "Findmi Area Requested",
-      message: `Your requested area "${input.pendingMarketRequestText}" is awaiting review.`,
-      actionLabel: "View Request",
-      actionHref: `${base}?tab=market`,
-    });
-  }
 
   // Opportunities V2 — an empty schedule is NOT an attention item ("Nothing
   // happening yet." was informational, not actionable, and made Needs
@@ -518,16 +507,6 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
 
   // Target next steps live in Home's Follow-Ups (lib/business-follow-ups.ts),
   // not here — never shown twice.
-
-  if (input.newOrderCount > 0) {
-    items.push({
-      id: "new-orders",
-      title: input.newOrderCount === 1 ? "New Order" : "New Orders",
-      message: `You have ${input.newOrderCount} new order${input.newOrderCount === 1 ? "" : "s"} to review.`,
-      actionLabel: "View Orders",
-      actionHref: `${base}?tab=orders`,
-    });
-  }
 
   // Unified Inbox V3 — the "You have N unread inquiries" item that used
   // to live here is REMOVED: it read unreadInquiryCount from the legacy

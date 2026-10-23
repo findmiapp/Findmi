@@ -7,6 +7,7 @@ import type { HomeActivity, NeedsAttentionItem } from "@/lib/business-dashboard"
 import type { BusinessMoment } from "@/lib/business-moments";
 import type { GrowthSummary } from "@/lib/growth";
 import { FOLLOW_UPS_INITIAL_LIMIT, type FollowUp } from "@/lib/business-follow-ups";
+import { REQUESTS_INITIAL_LIMIT, type BusinessRequest } from "@/lib/business-requests";
 import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { businessCreateActions } from "./createActions";
@@ -31,7 +32,10 @@ const APP_TIMEZONE = "America/New_York";
  *   A. Business status          — publication status + View Public Profile
  *   B. Sticky Home section rail — Overview · Schedule · Growth ·
  *                                 Performance · Create (in-page anchors)
- *   C. Needs Attention          — a compact, collapsed status bar; absent at zero
+ *   C. Needs Attention          — exceptions this Business can fix; a compact,
+ *                                 collapsed status bar; absent at zero
+ *   C2. Requests                — conditional; sent TO this Business and waiting
+ *                                 on it (lib/business-requests.ts)
  *   D. Follow-Ups               — conditional; this Business's own Target
  *                                 follow-ups (lib/business-follow-ups.ts)
  *   E. Happening Now            — conditional; live Appearances + hosted Events
@@ -74,12 +78,12 @@ export default function BusinessHome({
   liveActivities,
   comingUp,
   needsAttention,
+  requests,
+  requestsExpanded = false,
   followUps,
   followUpsExpanded = false,
   metrics,
   metricsRangeLabel,
-  pendingInvitationCount,
-  pendingInvitationNames,
   businessHandle,
   updateHandleAction,
   growth,
@@ -96,18 +100,16 @@ export default function BusinessHome({
   /** Next few not-yet-live items, chronological, one per Event / standalone Appearance. */
   comingUp: HomeActivity[];
   needsAttention: NeedsAttentionItem[];
+  /** Requests — sent TO this Business, waiting on it (lib/business-requests.ts). */
+  requests: BusinessRequest[];
+  /** `?requests=all`: every Request instead of the first three. */
+  requestsExpanded?: boolean;
   /** Follow-Ups — already ordered (lib/business-follow-ups.ts buildFollowUps). */
   followUps: FollowUp[];
   /** `?followups=all`: every Follow-Up instead of the first three. */
   followUpsExpanded?: boolean;
   metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
   metricsRangeLabel: string | null;
-  pendingInvitationCount: number;
-  /** Event names of the pending invitations (same list the count is from). */
-  pendingInvitationNames?: string[];
-  /** Already an item in needsAttention (buildNeedsAttentionItems) — kept
-   * as a prop for callers; not rendered a second time. */
-  newOrderCount: number;
   businessHandle: string | null;
   updateHandleAction: (formData: FormData) => void | Promise<void>;
   /** The one Growth summary (lib/growth.ts) — goals, preferences, matches. */
@@ -118,27 +120,6 @@ export default function BusinessHome({
   const liveNow = liveActivities;
   const status = STATUS_COPY[publicationStatus] ?? STATUS_COPY.draft;
   const create = businessCreateActions(basePath, businessId);
-  // Pending Event Invitations join Needs Attention (they wait on this
-  // Business's response). Routed to the Inbox's Event Invitations filter —
-  // the canonical Event-participation destination, never the commercial
-  // Opportunities tab.
-  const invitedTo = pendingInvitationNames?.length === 1 ? pendingInvitationNames[0] : null;
-  const attention: NeedsAttentionItem[] = [
-    ...(pendingInvitationCount > 0
-      ? [
-          {
-            id: "event-invitations",
-            title: `Event Invitation${pendingInvitationCount === 1 ? "" : "s"}`,
-            message: invitedTo
-              ? `You\u2019re invited to participate in ${invitedTo}.`
-              : `${pendingInvitationCount} Event invitations are waiting for your response.`,
-            actionLabel: pendingInvitationCount === 1 ? "Review Invitation" : "Review Invitations",
-            actionHref: "/account/messages?filter=opportunities",
-          },
-        ]
-      : []),
-    ...needsAttention,
-  ];
   const publicHref = businessSlug ? `/business/${businessSlug}` : null;
   // Needs Attention is a status bar, not a destination — it has no rail entry.
   const navItems: HomeSectionNavItem[] = [
@@ -171,8 +152,11 @@ export default function BusinessHome({
       {/* B. Sticky in-page section rail. */}
       <HomeSectionNav items={navItems} />
 
-      {/* C. Needs Attention — compact, collapsed; renders nothing at zero. */}
-      <NeedsAttentionBar items={attention} />
+      {/* C. Needs Attention — exceptions only; renders nothing at zero. */}
+      <NeedsAttentionBar items={needsAttention} />
+
+      {/* C2. Requests — only when something sent to this Business waits on it. */}
+      <RequestsSection basePath={basePath} items={requests} expanded={requestsExpanded} />
 
       {/* D. Follow-Ups — only when this Business has any. */}
       <FollowUpsSection basePath={basePath} items={followUps} expanded={followUpsExpanded} />
@@ -322,6 +306,50 @@ function FollowUpsSection({ basePath, items, expanded }: { basePath: string; ite
               {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
               <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
                 Open Relationship
+                <ChevronIcon direction="right" className="h-3 w-3" />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Requests — Opportunities, Event invitations and new orders waiting on this
+ * Business. A projection of the records that own them (nothing stored): a row
+ * disappears once the Business responds. Absent when there are none (no
+ * heading, no empty state). First three, then See All (URL state). */
+function RequestsSection({ basePath, items, expanded }: { basePath: string; items: BusinessRequest[]; expanded: boolean }) {
+  if (items.length === 0) return null;
+  const more = items.length > REQUESTS_INITIAL_LIMIT;
+  const shown = expanded ? items : items.slice(0, REQUESTS_INITIAL_LIMIT);
+  return (
+    <section id="home-requests" aria-labelledby="home-requests-title" className={SECTION_CLASS}>
+      {more ? (
+        <SectionTitle
+          id="home-requests-title"
+          title="Requests"
+          href={expanded ? `${basePath}#home-requests` : `${basePath}?requests=all#home-requests`}
+          linkLabel={expanded ? "Show Less" : `See All ${items.length}`}
+        />
+      ) : (
+        <h2 id="home-requests-title" className="font-display text-section-title font-bold text-primary">
+          Requests
+        </h2>
+      )}
+      <ul className="mt-2.5 flex flex-col gap-2">
+        {shown.map((item) => (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              className="block rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+            >
+              <span className="block truncate text-card-title font-semibold text-primary">{item.title}</span>
+              <span className="line-clamp-2 block break-words text-metadata font-semibold text-findmi-700">{item.meta}</span>
+              {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
+              <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
+                {item.actionLabel}
                 <ChevronIcon direction="right" className="h-3 w-3" />
               </span>
             </Link>

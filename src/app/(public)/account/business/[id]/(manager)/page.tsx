@@ -47,6 +47,7 @@ import { canEditPlacements, parsePlacementFilter } from "@/lib/business-placemen
 import { adminGetPlacementInternalNotes, getBusinessPlacement, getBusinessPlacementsPage, getFollowUpPlacements, getPlacementActivityPage, getPlacementPursuit } from "@/lib/business-placements";
 import { followUpToday, getGeographyDetail, getGeographyOverview, getGrowingIn, getRelationshipWorkspace } from "@/lib/business-relationships";
 import { buildFollowUps } from "@/lib/business-follow-ups";
+import { buildBusinessRequests } from "@/lib/business-requests";
 import { cleanSlug, resolveGeographyScope } from "@/lib/geography-scope";
 import RelationshipWorkspace from "../v2/RelationshipWorkspace";
 import { GeographyDetailView, GeographyOverviewView } from "../v2/GeographyViews";
@@ -324,8 +325,9 @@ type ManagerSearchParams = {
     /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
     fa?: string;
     loc?: string;
-    /** Home: "all" shows every Follow-Up instead of the first three. */
+    /** Home: "all" shows every Follow-Up / Request instead of the first three. */
     followups?: string;
+    requests?: string;
 };
 
 export default async function ManageBusinessPage({
@@ -1532,10 +1534,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const profileIncomplete = !business.logo_url || !(business.short_description || business.description) || !currentCategoryId;
   const needsAttention = buildNeedsAttentionItems({
     businessId: id,
-    hasPrimaryMarket: Boolean(primaryMarket),
-    pendingMarketRequestText: pendingMarketRequest?.requestedText ?? null,
     upcomingAppearances: dashboardAppearances,
-    newOrderCount: orderSummary.newCount,
     profileIncomplete,
     missingProfile: {
       logo: !business.logo_url,
@@ -1543,6 +1542,22 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       category: !currentCategoryId,
     },
   });
+  // Home → Requests (lib/business-requests.ts): sent TO this Business and
+  // waiting on it — composed from rows this page already read, no new query.
+  const requests = onHome
+    ? buildBusinessRequests({
+        basePath: `/account/business/${id}`,
+        opportunities: recommendedOpportunities.active.map((i) => ({
+          recipientId: i.view.recipientId,
+          title: i.view.opportunity.title,
+          group: i.view.group,
+          placeName: i.place?.name ?? null,
+          offeredAt: i.view.offeredAt,
+        })),
+        invitations: pendingInvitations,
+        newOrderCount: orderSummary.newCount,
+      })
+    : [];
   // Home → Follow-Ups (lib/business-follow-ups.ts): Targets only.
   const followUps = onHome ? buildFollowUps({ basePath: `/account/business/${id}`, placements: followUpPlacements, today: followUpToday() }) : [];
 
@@ -1785,9 +1800,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                   : null
               }
               metricsRangeLabel={performanceData?.rangeLabel ?? null}
-              pendingInvitationCount={pendingInvitations.filter((o) => o.status === "pending").length}
-              pendingInvitationNames={pendingInvitations.filter((o) => o.status === "pending").map((o) => o.eventName)}
-              newOrderCount={orderSummary.newCount}
+              requests={requests}
+              requestsExpanded={rawSearchParams.requests === "all"}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
               growth={growthSummary!}
