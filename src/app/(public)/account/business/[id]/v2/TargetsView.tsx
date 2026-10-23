@@ -191,6 +191,7 @@ export default function TargetsView({
   openMissing,
   placesOnly = false,
   context,
+  discoverHref,
 }: {
   businessId: string;
   /** false until the Targets migration is applied. */
@@ -209,6 +210,8 @@ export default function TargetsView({
   placesOnly?: boolean;
   /** Optional page context under Add Target (Growth's "Growing In" links). */
   context?: ReactNode;
+  /** Growth door only: Commercial Discovery (find who to target). */
+  discoverHref?: string;
 }) {
   const { href, go, navPending } = useTargetNav();
   const [adding, setAdding] = useState(false);
@@ -237,6 +240,11 @@ export default function TargetsView({
             <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
               Add Target
             </button>
+          )}
+          {discoverHref && (
+            <Link href={discoverHref} className="flex h-10 shrink-0 items-center rounded-full bg-black/[0.04] px-4 text-button font-semibold text-primary transition hover:bg-black/[0.07]">
+              Discover
+            </Link>
           )}
           <span className="ml-auto">
             <Privacy />

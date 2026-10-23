@@ -54,6 +54,9 @@ import TargetWorkspace from "../v2/TargetWorkspace";
 import { GeographyDetailView, GeographyOverviewView } from "../v2/GeographyViews";
 import { isAdminSession } from "@/lib/admin/auth";
 import TargetsView from "../v2/TargetsView";
+import DiscoverView from "../v2/DiscoverView";
+import { parseCommercialQuery } from "@/lib/discovery/commercial";
+import { getCommercialDiscovery } from "@/lib/discovery/commercial-server";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -329,6 +332,13 @@ type ManagerSearchParams = {
     /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
     fa?: string;
     loc?: string;
+    /** Growth → Targets → Discover: Market, Area, entity, Category, search, page. */
+    dm?: string;
+    da?: string;
+    de?: string;
+    dc?: string;
+    dq?: string;
+    dp?: string;
     /** Home: "all" shows every Follow-Up / Request instead of the first three. */
     followups?: string;
     requests?: string;
@@ -484,6 +494,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // one set of actions: Growth → Targets (every kind) and Findmi Here → Find Us
   // Here → Targets (the Places-only lens).
   const onGrowthTargets = activeTab === "growth" && viewParam === "targets";
+  // Growth → Targets → Discover (Commercial Discovery): finds who or what to target.
+  const onDiscover = activeTab === "growth" && viewParam === "discover";
   const onTargets = onFindUsTargets || onGrowthTargets;
   const targetsFilter = parseTargetFilter({ q: rawSearchParams.tq, status: rawSearchParams.ts, kind: onGrowthTargets ? rawSearchParams.tk : undefined });
   const marketKey = onFindUsMarkets && typeof rawSearchParams.fm === "string" ? rawSearchParams.fm.replace(/[^a-z0-9-]/gi, "").slice(0, 60) : "";
@@ -638,7 +650,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     timing: isExploreTiming(rawSearchParams.timing) ? rawSearchParams.timing : null,
     participationCost: isParticipationCostFilter(rawSearchParams.participationCost) ? rawSearchParams.participationCost : null,
   };
-  const growthView = activeTab === "growth" && viewParam === "ideas" ? "ideas" : onGrowthTargets ? "targets" : "goals";
+  const growthView = activeTab === "growth" && viewParam === "ideas" ? "ideas" : onGrowthTargets ? "targets" : onDiscover ? "discover" : "goals";
   const canManageOpportunityGoals = canManageGoals((membershipRole ?? "staff") as GoalRole, isAdminElevated);
   const goalManageNote = canManageOpportunityGoals
     ? null
@@ -1292,6 +1304,12 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const growingInPromise = whenP(onGrowthTargets && !wantsWorkspace, () => getGrowingIn(admin, id), [] as Awaited<ReturnType<typeof getGrowingIn>>);
   // Home → Follow-Ups: this Business's Targets with a next step (one bounded read).
   const followUpTargetsPromise = whenP(onHome, () => getFollowUpTargets(admin, id), [] as Awaited<ReturnType<typeof getFollowUpTargets>>);
+  // Commercial Discovery: one bounded, server-filtered page (lib/discovery/commercial-server.ts).
+  const discoverPromise = whenP(
+    onDiscover,
+    () => getCommercialDiscovery(admin, id, parseCommercialQuery({ market: rawSearchParams.dm, area: rawSearchParams.da, entity: rawSearchParams.de, category: rawSearchParams.dc, q: rawSearchParams.dq, page: rawSearchParams.dp })),
+    null as Awaited<ReturnType<typeof getCommercialDiscovery>> | null
+  );
   // Growth's one-line Targets status (two head counts).
   const targetsPursuitPromise = whenP(needsGrowth, () => getTargetPursuit(admin, id), { total: 0, pursuing: 0 });
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
@@ -1424,7 +1442,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     dashboardPromise,
   ]);
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
-  const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise]);
+  const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets, discovery] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise, discoverPromise]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -1453,6 +1471,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       canEdit={canEditTargets(membershipRole, isAdminElevated)}
       openMissing={wantsWorkspace && !workspace}
       placesOnly={onFindUsTargets}
+      discoverHref={onGrowthTargets ? `/account/business/${id}?tab=growth&view=discover` : undefined}
       context={
         // Growth door only (growingIn is read only there).
         growingIn.length > 0 ? (
@@ -1861,6 +1880,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               <GrowthTargetsHeader basePath={basePath} summary={growthSummary} />
             </div>
             {targetsView}
+          </div>
+        )}
+        {activeTab === "growth" && growthSummary && growthView === "discover" && discovery && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 lg:max-w-3xl">
+              <GrowthTargetsHeader basePath={basePath} summary={growthSummary} />
+            </div>
+            <DiscoverView businessId={id} data={discovery} canEdit={canEditTargets(membershipRole, isAdminElevated)} targetsHref={`${basePath}?tab=growth&view=targets`} />
           </div>
         )}
         {activeTab === "growth" && growthSummary && growthView === "ideas" && (

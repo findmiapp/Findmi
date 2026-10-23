@@ -37,6 +37,8 @@ export interface OpportunityCandidate {
   responseDeadline: string | null;
   geo: ListingGeography;
   recipientId: string | null;
+  /** The Event it is for, when it names one (exact-Event relevance). */
+  eventId: string | null;
 }
 
 export interface GrowthContext {
@@ -56,6 +58,7 @@ type ListingRow = {
   opportunity_type: OpportunityType;
   title: string;
   location_id: string | null;
+  event_id?: string | null;
   starts_at: string | null;
   response_deadline: string | null;
   visibility?: string | null;
@@ -70,7 +73,7 @@ const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ?
 /** `geo` adds the Block B geography columns; before that migration the reader
  * falls back to Location-only geography (nothing breaks). */
 const listingColumns = (geo: boolean) =>
-  `id, status, opportunity_type, title, location_id, starts_at, response_deadline${geo ? ", market_id, market_area_id, market:markets(name), area:market_areas(name, display_name)" : ""}, location:locations(id, name, market_id, market_area_id)`;
+  `id, status, opportunity_type, title, location_id, event_id, starts_at, response_deadline${geo ? ", market_id, market_area_id, market:markets(name), area:market_areas(name, display_name)" : ""}, location:locations(id, name, market_id, market_area_id)`;
 
 const missingGeo = (e: { code?: string; message?: string } | null) => Boolean(e && (e.code === "42703" || e.code === "PGRST200" || /market_area_id|market_id|relationship/.test(e.message ?? "")));
 
@@ -81,7 +84,7 @@ function toCandidate(row: ListingRow, recipientId: string | null): OpportunityCa
   const geo: ListingGeography = loc
     ? { locationId: loc.id, marketId: loc.market_id, areaId: loc.market_area_id, areaName: null, marketName: null }
     : { locationId: null, marketId: row.market_id ?? null, areaId: row.market_area_id ?? null, areaName: area ? area.display_name?.trim() || area.name : null, marketName: market?.name ?? null };
-  return { listingId: row.id, title: row.title, type: row.opportunity_type, placeName: loc?.name ?? null, startsAt: row.starts_at, responseDeadline: row.response_deadline, geo, recipientId };
+  return { listingId: row.id, title: row.title, type: row.opportunity_type, placeName: loc?.name ?? null, startsAt: row.starts_at, responseDeadline: row.response_deadline, geo, recipientId, eventId: row.event_id ?? null };
 }
 
 /** Every Opportunity this Business may see right now, with its geography. */
