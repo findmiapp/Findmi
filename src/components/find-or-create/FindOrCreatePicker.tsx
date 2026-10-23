@@ -44,6 +44,11 @@ export interface FindOrCreatePickerProps<T> {
   createLabel?: (query: string) => string;
   maxResults?: number;
   autoFocus?: boolean;
+  /** Optional controlled query (e.g. kept while the parent switches what is
+   * searched). Controlled results stay shown while there is a query, so a
+   * re-run against a new scope is visible without refocusing. */
+  query?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 const inputClass =
@@ -60,9 +65,15 @@ export default function FindOrCreatePicker<T>({
   createLabel = (q) => `Add “${q}”`,
   maxResults = 8,
   autoFocus = false,
+  query: controlledQuery,
+  onQueryChange,
 }: FindOrCreatePickerProps<T>) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
+  const [ownQuery, setOwnQuery] = useState("");
+  const controlled = controlledQuery !== undefined;
+  const query = controlled ? controlledQuery : ownQuery;
+  const setQuery = (v: string) => (controlled ? onQueryChange?.(v) : setOwnQuery(v));
+  const [focused, setOpen] = useState(false);
+  const open = focused || (controlled && query.trim().length > 0);
   const [creatingName, setCreatingName] = useState<string | null>(null);
   const { results, loading } = useResults(query);
 
@@ -120,7 +131,8 @@ export default function FindOrCreatePicker<T>({
                     onPointerDown={(e) => e.preventDefault()}
                     onClick={() => {
                       onPick(item);
-                      setQuery("");
+                      // A controlled query is the parent's to keep (Change returns to it).
+                      if (!controlled) setQuery("");
                       setOpen(false);
                     }}
                     className="flex min-h-[52px] w-full items-center px-3.5 py-2.5 text-left transition hover:bg-black/[0.03] focus-visible:bg-black/[0.04] focus-visible:outline-none"

@@ -504,7 +504,7 @@ test("pickers search every kind, need 2+ letters (never a dump), and never list 
   for (const f of ["eq is_demo=false", "eq publication_status=live", "is archived_at=null", "is trashed_at=null"]) assert.ok(e.filters.includes(f), f);
   const view = read(`${V2}/TargetsView.tsx`);
   assert.match(view, /if \(query\.trim\(\)\.length < TARGET_SEARCH_MIN_CHARS\) \{/);
-  assert.match(view, /<IntentPicker kind=\{kind\} value=\{intents\} onChange=\{setIntents\}/, "choose why after choosing who");
+  assert.match(view, /<IntentPicker kind=\{picked\.kind\} value=\{intents\} onChange=\{setIntents\}/, "choose why after choosing who (intents for the picked kind)");
 });
 
 test("new place: the shared inline-place workflow offers existing matches first, then creates it unlisted — usable as a Target", async () => {

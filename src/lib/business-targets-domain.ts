@@ -220,3 +220,15 @@ export function parseActivityCursor(v: unknown): ActivityCursor | null {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   return { at, id };
 }
+
+// ── Add Target search scope ────────────────────────────────────────────────
+// "I already know who I want": one search box, optionally narrowed to a kind.
+// All is the default so nobody has to know how Findmi classifies something.
+
+export const ADD_TARGET_SCOPES = ["all", "location", "business", "event"] as const;
+export type AddTargetScope = (typeof ADD_TARGET_SCOPES)[number];
+export const ADD_TARGET_SCOPE_LABELS: Record<AddTargetScope, string> = { all: "All", location: "Places", business: "Businesses", event: "Events" };
+export const isAddTargetScope = isOneOf(ADD_TARGET_SCOPES);
+/** Per-kind bound when searching All (three bounded reads), and for one kind. */
+export const ADD_TARGET_PER_KIND_ALL = 6;
+export const ADD_TARGET_PER_KIND_ONE = 20;

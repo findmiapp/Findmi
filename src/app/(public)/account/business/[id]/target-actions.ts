@@ -8,7 +8,8 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
-import { canEditTargets, parseActivityCursor, targetActor, type TargetUpdateInput } from "@/lib/business-targets-domain";
+import { canEditTargets, isAddTargetScope, parseActivityCursor, targetActor, type TargetUpdateInput } from "@/lib/business-targets-domain";
+import { searchTargetCandidates, type TargetCandidate } from "@/lib/target-search";
 import { isTargetKind } from "@/lib/commercial-intents";
 import {
   addBusinessTarget,
@@ -80,6 +81,15 @@ export async function searchTargetCounterpartiesAction(businessId: string, kind:
   if (kind === "business") return searchTargetBusinesses(admin, businessId, query);
   if (kind === "event") return searchTargetEvents(admin, query);
   return [];
+}
+
+/** Add Target's one search box: All (default), Places, Businesses or Events,
+ * each result with its identity, existing Target and own-Location state. */
+export async function searchTargetCandidatesAction(businessId: string, scope: string, query: string): Promise<TargetCandidate[]> {
+  const auth = await authorizeWrite(businessId);
+  const admin = getAdminSupabase();
+  if (!auth.ok || !admin || !isAddTargetScope(scope)) return [];
+  return searchTargetCandidates(admin, businessId, scope, query);
 }
 
 /** The place isn't on Findmi yet: the SAME inline place creation every other

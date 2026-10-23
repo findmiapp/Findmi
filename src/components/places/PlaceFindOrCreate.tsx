@@ -107,7 +107,7 @@ const fieldClass =
   "h-12 w-full rounded-xl border border-black/10 bg-white px-3.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20";
 
 /** The minimum physical identity of a place — not its public profile. */
-function PlaceCreatePanel({
+export function PlaceCreatePanel({
   initialName,
   createAction,
   onCancel,

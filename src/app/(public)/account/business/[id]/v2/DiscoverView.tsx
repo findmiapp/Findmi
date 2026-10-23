@@ -40,6 +40,7 @@ function useDiscoverNav() {
 }
 
 const chipClass = (on: boolean) => `flex h-9 items-center rounded-full px-3.5 text-metadata font-semibold transition ${on ? "bg-findmi text-white" : "bg-black/[0.04] text-muted hover:text-primary"}`;
+const stepClass = "text-label font-bold uppercase text-subtle";
 const selectClass =
   "h-11 w-full min-w-0 rounded-xl border border-black/10 bg-white px-3 text-input text-primary focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20 disabled:opacity-50";
 
@@ -70,8 +71,14 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
         </span>
       </div>
 
-      <div className="flex flex-col gap-3" role="search" aria-label="Discover">
-        <div className="grid grid-cols-2 gap-2">
+      <div>
+        <h2 className="font-display text-card-title-lg font-bold text-primary">Discover</h2>
+        <p className="mt-0.5 text-metadata text-muted">Find Places, Businesses, Organizers and Events worth pursuing — choose where, what and a Category.</p>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.08] bg-white p-3" role="search" aria-label="Discover">
+        <p className={stepClass}>Where</p>
+        <div className="-mt-1.5 grid grid-cols-2 gap-2">
           <label className="flex min-w-0 flex-col gap-1">
             <span className="text-metadata font-semibold text-muted">Market</span>
             <select value={q.market} onChange={(e) => go({ dm: e.target.value || null, da: null, dp: null })} className={selectClass}>
@@ -86,7 +93,7 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
           <label className="flex min-w-0 flex-col gap-1">
             <span className="text-metadata font-semibold text-muted">Area</span>
             <select value={q.area} disabled={!q.market || areas.length === 0} onChange={(e) => go({ da: e.target.value || null, dp: null })} className={selectClass}>
-              <option value="">{q.market ? "All of the Market" : "Choose a Market first"}</option>
+              <option value="">{q.market ? "Whole Market" : "Market first"}</option>
               {areas.map((a) => (
                 <option key={a.slug} value={a.slug}>
                   {`${"  ".repeat(a.depth)}${a.name}`}
@@ -96,7 +103,8 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
           </label>
         </div>
 
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Looking For">
+        <p className={stepClass}>What</p>
+        <div className="-mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label="What">
           {COMMERCIAL_ENTITIES.map((e) => (
             <button key={e} type="button" aria-pressed={q.entity === e} onClick={() => go({ de: e === "places" ? null : e, dc: CATEGORY_FAMILY[e] === family ? q.category || null : null, dp: null })} className={chipClass(q.entity === e)}>
               {COMMERCIAL_ENTITY_LABELS[e]}
@@ -104,7 +112,8 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <p className={stepClass}>Narrow It Down</p>
+        <div className="-mt-1.5 grid grid-cols-2 gap-2">
           <label className="flex min-w-0 flex-col gap-1">
             <span className="text-metadata font-semibold text-muted">Category</span>
             <select value={q.category} onChange={(e) => go({ dc: e.target.value || null, dp: null })} className={selectClass}>
@@ -131,7 +140,7 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
               autoComplete="off"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={q.market ? `Search ${COMMERCIAL_ENTITY_LABELS[q.entity]}` : "Search by name"}
+              placeholder="Name"
               className="h-11 w-full min-w-0 rounded-xl border border-black/10 bg-white px-3 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/20"
             />
           </label>
@@ -259,9 +268,12 @@ function ResultRow({ businessId, result: r, entity, canEdit }: { businessId: str
         {r.ownLocation ? (
           <span className="text-metadata text-muted">Your Location</span>
         ) : target && openHref ? (
-          <Link href={openHref} className="flex h-9 items-center gap-1.5 rounded-full bg-findmi-50 px-3.5 text-metadata font-semibold text-findmi-700 transition hover:bg-findmi-100">
-            Targeted · {TARGET_STATUS_LABELS[target.status]} · Open
-          </Link>
+          <>
+            <span className="flex h-9 items-center rounded-full bg-findmi-50 px-3.5 text-metadata font-semibold text-findmi-700">Targeted · {TARGET_STATUS_LABELS[target.status]}</span>
+            <Link href={openHref} className="flex h-9 items-center rounded-full bg-findmi px-3.5 text-metadata font-bold text-white transition hover:bg-findmi-600">
+              Open
+            </Link>
+          </>
         ) : canEdit && !picking ? (
           <button type="button" onClick={() => setPicking(true)} className="flex h-9 items-center rounded-full bg-findmi px-3.5 text-metadata font-bold text-white transition hover:bg-findmi-600">
             Target

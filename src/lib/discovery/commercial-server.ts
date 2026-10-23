@@ -125,12 +125,12 @@ const areaLabel = (a: Pick<AreaRow, "name" | "display_name">) => a.display_name?
 const textOr = (cols: string[], q: string) => cols.map((c) => `${c}.ilike.%${q}%`).join(",");
 
 /** "YYYY-MM-DD" in New York (Findmi's markets) — today's date for "upcoming". */
-function nyDate(d: Date): string {
+export function nyDate(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
 /** Not yet over: ends (or, with no end, starts) from now on, or dated today or later. */
-function isUpcoming(r: { start_at?: unknown; end_at?: unknown; occurrence_date?: unknown }, nowIso: string, today: string): boolean {
+export function isUpcoming(r: { start_at?: unknown; end_at?: unknown; occurrence_date?: unknown }, nowIso: string, today: string): boolean {
   const at = (r.end_at ?? r.start_at) as string | null | undefined;
   if (at && Date.parse(at) >= Date.parse(nowIso)) return true;
   const day = r.occurrence_date as string | null | undefined;
