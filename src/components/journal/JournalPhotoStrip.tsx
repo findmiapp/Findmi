@@ -17,7 +17,7 @@ import {
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { JournalBatchPerf, JournalBatchProgress, JournalPhotoItem } from "./useJournalPhotoUpload";
-import { PhotoSourceButtons, PhotoSourceSheet, usePhotoSource } from "./photoSource";
+import { PhotoSourceSheet, usePhotoSource } from "./photoSource";
 
 /** Journal Photo Experience V2 — a sortable grid replacing V1's "big cover
  * + filmstrip" layout. The layout changes to a uniform grid specifically
@@ -95,8 +95,10 @@ export default function JournalPhotoStrip({
   reorderLocked?: boolean;
 }) {
   // Take Photo / Choose From Photos (./photoSource): two inputs feeding the
-  // same onFilesSelected pipeline. On touch devices "+" asks which; on
-  // desktop it opens the ordinary file picker directly.
+  // same onFilesSelected pipeline. On touch devices every add affordance
+  // (the empty "Add Photos" area, the "+" tile) opens a compact action menu;
+  // on desktop it opens the ordinary file picker directly. The sortable grid
+  // below — cover, reorder, remove, notes, sections — stays the primary UI.
   const source = usePhotoSource(onFilesSelected, { disabled });
   const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -155,13 +157,6 @@ export default function JournalPhotoStrip({
           >
             <span className="text-xl leading-none">+</span>
           </button>
-        </div>
-      ) : items.length === 0 && source.canCapture ? (
-        // Touch devices: both choices up front — the camera is never buried
-        // inside a generic file picker.
-        <div className="flex flex-col gap-2 rounded-2xl border-2 border-dashed border-black/15 p-3">
-          <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/45">Add Photos</p>
-          <PhotoSourceButtons takePhoto={source.takePhoto} choosePhotos={source.choosePhotos} disabled={disabled} />
         </div>
       ) : items.length === 0 ? (
         <button

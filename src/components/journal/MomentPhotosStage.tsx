@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetSta
 import Image from "next/image";
 import ChevronIcon from "@/components/ChevronIcon";
 import JournalPhotoStrip from "./JournalPhotoStrip";
-import { PhotoSourceButtons, usePhotoSource } from "./photoSource";
+import { PhotoSourceMenu, usePhotoSource } from "./photoSource";
 import MomentSheet from "./MomentSheet";
 import type { useJournalPhotoUpload } from "./useJournalPhotoUpload";
 import { createJournalSection, updateJournalSection, reorderJournalSections, deleteJournalSection } from "@/app/(public)/my-world/journal/actions";
@@ -628,7 +628,7 @@ function AssignSheet({
             </button>
           )}
           {source.canCapture ? (
-            <PhotoSourceButtons compact takePhoto={source.takePhoto} choosePhotos={source.choosePhotos} />
+            <PhotoSourceMenu takePhoto={source.takePhoto} choosePhotos={source.choosePhotos} />
           ) : (
             <button
               type="button"

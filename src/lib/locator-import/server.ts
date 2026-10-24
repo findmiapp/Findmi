@@ -5,7 +5,8 @@ import { findLikelyDuplicateLocations } from "@/lib/locationCreation";
 import { isMissingAvailabilityTable, ALREADY_OUR_LOCATION_ERROR } from "@/lib/business-location-availability";
 import { normalizeAvailabilityRelationships, statusAfterOwnerEdit, AVAILABILITY_PRODUCT_MAX, type AvailabilityRelationship, type AvailabilityStatus } from "@/lib/business-availability-domain";
 import type { ExistingLocation } from "@/lib/location-import/types";
-import { cleanMapping, missingRequiredMapping, rowFromCells, type ColumnMapping, type ImportRowData } from "./fields";
+import { ALREADY_OPERATED_ROW, NOT_MANAGED_EXISTING_ROW, cleanMapping, missingRequiredMapping, rowFromCells, type ColumnMapping, type ImportRowData, type ImportTarget } from "./fields";
+import { linkBusinessLocation } from "@/lib/business-locations";
 import { classifyImportRow, effectiveAction, findFileDuplicates, preMatchProblem, sourceDetailsChanged, type KnownSourceEntry, type MatchStatus, type RowDecision } from "./match";
 import { LOCATOR_SOURCES, type LocatorSourceId } from "./source";
 
@@ -65,18 +66,29 @@ async function countsFor(admin: SupabaseClient, batchId: string): Promise<Import
   return counts;
 }
 
-type OwnedBatch = { batch: { id: string; business_id: string; source: string; source_label: string | null; status: string; mapping: ColumnMapping }; error?: undefined } | { batch?: undefined; error: string };
+type OwnedBatch =
+  | { batch: { id: string; business_id: string; source: string; source_label: string | null; status: string; mapping: ColumnMapping; target: ImportTarget; created_by_user_id: string | null }; error?: undefined }
+  | { batch?: undefined; error: string };
+
+/** A batch's target relationship. Read on its own so a database without the
+ * `target` column (before its migration) still runs every Find Us Here
+ * import unchanged. */
+async function batchTarget(admin: SupabaseClient, batchId: string): Promise<ImportTarget> {
+  const { data, error } = await admin.from("location_import_batches").select("target").eq("id", batchId).maybeSingle();
+  if (error || !data) return "find_us_here";
+  return (data as { target?: string }).target === "our_locations" ? "our_locations" : "find_us_here";
+}
 
 async function ownedBatch(admin: SupabaseClient, businessId: string, batchId: string): Promise<OwnedBatch> {
   const { data, error } = await admin
     .from("location_import_batches")
-    .select("id, business_id, source, source_label, status, mapping")
+    .select("id, business_id, source, source_label, status, mapping, created_by_user_id")
     .eq("id", batchId)
     .eq("business_id", businessId)
     .maybeSingle();
   if (error) return { error: isMissing(error) ? IMPORT_UNAVAILABLE : "Couldn't load that import." };
   if (!data) return { error: "That import wasn't found." };
-  return { batch: data as NonNullable<OwnedBatch["batch"]> };
+  return { batch: { ...(data as Omit<NonNullable<OwnedBatch["batch"]>, "target">), target: await batchTarget(admin, batchId) } };
 }
 
 /** Stage: read the file with the chosen mapping, store the normalized rows. Creates nothing else. */
@@ -84,7 +96,7 @@ export async function stageImport(
   admin: SupabaseClient,
   businessId: string,
   userId: string | null,
-  input: { sourceId: LocatorSourceId; text: string; label: string | null; mapping: unknown }
+  input: { sourceId: LocatorSourceId; text: string; label: string | null; mapping: unknown; target?: ImportTarget }
 ): Promise<ImportResult<{ batchId: string; counts: ImportCounts }>> {
   const adapter = LOCATOR_SOURCES[input.sourceId];
   if (!adapter) return { ok: false, error: "That source isn't available yet." };
@@ -99,7 +111,9 @@ export async function stageImport(
 
   const { data: batch, error } = await admin
     .from("location_import_batches")
-    .insert({ business_id: businessId, source: adapter.id, source_label: input.label?.slice(0, 200) || null, mapping, created_by_user_id: userId })
+    // `target` is written only for Our Locations, so Find Us Here imports
+    // never depend on the column existing.
+    .insert({ business_id: businessId, source: adapter.id, source_label: input.label?.slice(0, 200) || null, mapping, created_by_user_id: userId, ...(input.target === "our_locations" ? { target: "our_locations" } : {}) })
     .select("id")
     .single();
   if (error || !batch) return { ok: false, error: isMissing(error) ? IMPORT_UNAVAILABLE : "Couldn't start that import." };
@@ -154,7 +168,10 @@ export async function matchBatch(admin: SupabaseClient, businessId: string, batc
   const rows = (pendingRows ?? []) as { id: string; row_number: number; external_id: string | null; data: ImportRowData }[];
 
   // Source identities this Business imported before (repeat import).
-  const ids = [...new Set(rows.map((r) => r.external_id).filter((v): v is string => Boolean(v)))];
+  // Source-id identity is a Find Us Here concept (availability rows carry
+  // it); an Our Locations import matches every row by place.
+  const operatedImport = batch.target === "our_locations";
+  const ids = operatedImport ? [] : [...new Set(rows.map((r) => r.external_id).filter((v): v is string => Boolean(v)))];
   const known = new Map<string, KnownSourceEntry>();
   if (ids.length > 0) {
     const { data: prior } = await admin
@@ -193,7 +210,7 @@ export async function matchBatch(admin: SupabaseClient, businessId: string, batc
     }
     let match = classifyImportRow(row.data, row.row_number, { known: entry, candidates, knownLocation });
     if (match.status === "existing" && match.matchedLocationId && operated.has(match.matchedLocationId)) {
-      match = { ...match, status: "invalid", problem: ALREADY_OUR_LOCATION_ERROR, matchedLocationId: null };
+      match = { ...match, status: "invalid", problem: operatedImport ? ALREADY_OPERATED_ROW : ALREADY_OUR_LOCATION_ERROR, matchedLocationId: null };
     }
     if (match.repeat) repeat += 1;
     await admin
@@ -485,8 +502,16 @@ export async function commitBatch(
   const { count: pending } = await admin.from("location_import_rows").select("id", { count: "exact", head: true }).eq("batch_id", batchId).eq("match_status", "pending");
   if ((pending ?? 0) > 0) return { ok: false, error: "Still matching — try again in a moment." };
 
+  const operatedImport = batch.target === "our_locations";
   const defaults = normalizeAvailabilityRelationships(options.defaultRelationships);
-  if (defaults.length === 0) return { ok: false, error: "Choose how you’re at these places." };
+  if (!operatedImport && defaults.length === 0) return { ok: false, error: "Choose how you’re at these places." };
+  // Our Locations: an EXISTING place links only when the importer already
+  // manages it — the same rule as Connect a Location You Manage.
+  const managedLocationIds = new Set<string>();
+  if (operatedImport && batch.created_by_user_id) {
+    const { data: managed } = await admin.from("location_members").select("location_id").eq("user_id", batch.created_by_user_id).in("role", ["owner", "manager"]);
+    for (const m of (managed ?? []) as { location_id: string }[]) managedLocationIds.add(m.location_id);
+  }
   const productIds = [...new Set(options.productIds.filter(Boolean))].slice(0, AVAILABILITY_PRODUCT_MAX);
   if (productIds.length > 0) {
     const { data: owned } = await admin.from("products").select("id").eq("business_id", businessId).in("id", productIds);
@@ -552,6 +577,21 @@ export async function commitBatch(
     } else {
       locationId = action.locationId;
     }
+    if (operatedImport) {
+      // Business-operated: created places link like one-at-a-time creation;
+      // existing places only when managed.
+      if (!wasCreated && !managedLocationIds.has(locationId)) {
+        await settle("failed", NOT_MANAGED_EXISTING_ROW);
+        continue;
+      }
+      const ours = await linkBusinessLocation(admin, businessId, locationId);
+      if (!ours.ok) {
+        await settle("failed", ours.error, wasCreated ? { chosen_location_id: locationId } : {});
+        continue;
+      }
+      await settle(wasCreated ? "created" : "linked", null, { chosen_location_id: locationId });
+      continue;
+    }
     const explicit = Boolean(row.data.relationships && row.data.relationships.length > 0);
     const linked = await linkAvailability(admin, businessId, batch, row, locationId, relationships, productIds, explicit);
     if (!linked.ok) {
@@ -573,11 +613,11 @@ export async function commitBatch(
 }
 
 /** An unfinished import's state, so the owner can pick it back up. */
-export async function getResumableImport(admin: SupabaseClient, businessId: string, batchId: string): Promise<{ batchId: string; status: string; counts: ImportCounts } | null> {
+export async function getResumableImport(admin: SupabaseClient, businessId: string, batchId: string): Promise<{ batchId: string; status: string; counts: ImportCounts; target: ImportTarget } | null> {
   const owned = await ownedBatch(admin, businessId, batchId);
   if (!owned.batch) return null;
   if (owned.batch.status === "completed" || owned.batch.status === "cancelled") return null;
-  return { batchId, status: owned.batch.status, counts: await countsFor(admin, batchId) };
+  return { batchId, status: owned.batch.status, counts: await countsFor(admin, batchId), target: owned.batch.target };
 }
 
 export async function cancelImport(admin: SupabaseClient, businessId: string, batchId: string): Promise<ImportResult> {

@@ -43,9 +43,10 @@ export default async function ImportEventPage({
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
-      <Link href={businessHome} className="flex w-fit items-center gap-1 text-metadata font-semibold text-muted hover:text-secondary">
+      {/* Back to where Add Event started: Findmi Here → Events. */}
+      <Link href={`${businessHome}?tab=findmi-here`} className="flex w-fit items-center gap-1 text-metadata font-semibold text-muted hover:text-secondary">
         <ChevronIcon direction="left" className="h-3 w-3" />
-        {business.name}
+        {business.name} · Events
       </Link>
       <EventImporter
         businessId={id}

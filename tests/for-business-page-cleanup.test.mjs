@@ -75,11 +75,13 @@ test("12. Free / no-credit-card messaging is present", () => {
 
 test("13. Current Business capabilities are represented truthfully — the value section names only currently-Free capabilities", () => {
   assert.match(PAGE, /function ValuePillars/);
+  // Page Density pass: one compact connected-presence section.
   for (const phrase of [
-    "Show People Who You Are",
-    "Show Them Where To Find You",
-    "Show What's Happening Next",
-    "Turn Activity Into Discovery",
+    "One Business Presence, Connected Across Findmi",
+    "Your Business Page",
+    "Where Customers Can Find You",
+    "Moments",
+    "Discovery",
   ]) {
     assert.ok(PAGE.includes(phrase), `pillar present: ${phrase}`);
   }
@@ -105,8 +107,8 @@ test("13. Current Business capabilities are represented truthfully — the value
   assert.match(NEW_BIZ, /Findmi search &amp; discovery/);
 });
 
-test("14. Current terminology uses Where I'll Be rather than Appearance where user-facing", () => {
-  assert.match(PAGE, /Where I.ll Be/);
+test("14. Current terminology: Events you host or are Appearing At — never the internal Appearance entity", () => {
+  assert.match(PAGE, /Appearing At/);
   assert.doesNotMatch(PAGE, /\bAppearance\b/);
 });
 

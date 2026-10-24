@@ -148,9 +148,7 @@ export default function AvailableAtView({
 
   return (
     <div className="flex flex-col gap-5 lg:max-w-3xl">
-      <div>
-        <p className="min-w-0 text-body text-muted">Where people can find your products and services beyond your own locations — a retailer, café or venue that carries you.</p>
-      </div>
+      {/* The Places lens above already says what Find Us Here is. */}
       {canEdit && available && !adding && !editingId && (
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Add Locations">
           <button type="button" onClick={() => setAdding(true)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">

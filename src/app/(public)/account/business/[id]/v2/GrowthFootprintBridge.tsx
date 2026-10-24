@@ -14,12 +14,12 @@ export default function GrowthFootprintBridge({ businessId }: { businessId: stri
     { label: "Opportunities", href: managerHref(businessId, "opportunities") },
   ];
   return (
-    <section aria-labelledby="grow-footprint-title" className="mt-6 rounded-2xl border border-findmi-100 bg-findmi-50/50 px-4 py-3.5">
-      <h2 id="grow-footprint-title" className="text-card-title font-bold text-primary">
+    <section aria-labelledby="grow-footprint-title" className="mt-5 border-t border-black/[0.06] pt-3">
+      <h2 id="grow-footprint-title" className="text-body font-bold text-primary">
         Want To Grow Your Footprint?
       </h2>
-      <p className="mt-0.5 text-metadata text-muted">Add places you&rsquo;re pursuing, discover potential partners and explore Opportunities that can help you get there.</p>
-      <ul className="mt-2.5 flex flex-wrap gap-1.5">
+      <p className="mt-0.5 text-microcopy text-muted">Add places you&rsquo;re pursuing, discover potential partners and explore Opportunities that can help you get there.</p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
         {links.map((l) => (
           <li key={l.label}>
             <Link

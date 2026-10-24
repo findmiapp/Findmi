@@ -204,6 +204,10 @@ export async function getMissingFromFile(admin: SupabaseClient, businessId: stri
   const { data: batch } = await admin.from("location_import_batches").select("id, source, status").eq("id", batchId).eq("business_id", businessId).maybeSingle();
   const b = batch as { id: string; source: string; status: string } | null;
   if (!b || b.status !== "completed") return { applicable: false, total: 0, entries: [] };
+  // Find Us Here only: an Our Locations import has no source-id entries to
+  // compare (read on its own so a database without `target` is unaffected).
+  const { data: targetRow, error: targetError } = await admin.from("location_import_batches").select("target").eq("id", batchId).maybeSingle();
+  if (!targetError && (targetRow as { target?: string } | null)?.target === "our_locations") return { applicable: false, total: 0, entries: [] };
 
   const inFile = new Set<string>();
   for (let from = 0; ; from += 1000) {

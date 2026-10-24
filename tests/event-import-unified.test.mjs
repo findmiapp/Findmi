@@ -342,7 +342,7 @@ test("shared: three inputs, one engine, one Review, one save path", () => {
   // Exactly one commit path (single + batch) — no paste/upload persistence.
   assert.equal(actions.match(/persistEventImport\(/g).length, 1);
   const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
-  assert.match(ui, /\{ key: "link", label: "From Link" \},\s*\{ key: "text", label: "Paste Details" \},\s*\{ key: "image", label: "Upload" \}/);
+  assert.match(ui, /\{ key: "link", label: "Event Link" \},\s*\{ key: "text", label: "Paste Details" \},\s*\{ key: "image", label: "Flyer \/ Image" \}/);
   assert.match(ui, />Import Event</);
   assert.match(ui, /if \(method === "link"\) showAnalysis\(await analyzeEventImport\(businessId, url\)\);\s*else if \(method === "text"\) showAnalysis\(await analyzeEventImportText\(businessId, pasted\)\);/);
   assert.match(ui, /showAnalysis\(await analyzeEventImportImage\(businessId, form\)\)/);

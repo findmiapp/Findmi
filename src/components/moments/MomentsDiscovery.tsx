@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MomentFeedCard } from "@/lib/moment-discovery";
 import {
   MOMENT_CATEGORY_KEYS,
   MOMENT_CATEGORY_LABELS,
-  MOMENT_FEED_MODES,
   MOMENT_FEED_MODE_LABELS,
+  adjacentBoard,
+  momentsModeHref,
   mergeFollowKeys,
   momentFeedQuery,
   momentInCategory,
@@ -23,6 +24,8 @@ import { getFollowedLocationIds } from "@/lib/followedLocations";
 import { getAccountSession } from "@/lib/accountSession";
 import ChevronIcon from "@/components/ChevronIcon";
 import MomentDiscoveryCard from "./MomentDiscoveryCard";
+import MomentsModeTabs from "./MomentsModeTabs";
+import { useBoardSwipe } from "./useBoardSwipe";
 import { useNearViewport } from "./useNearViewport";
 
 const NO_FOLLOWS: MomentFollowKeys = { businessSlugs: [], eventIds: [], locationIds: [] };
@@ -104,6 +107,22 @@ export default function MomentsDiscovery({
 
   const setCategory = (c: MomentCategoryKey) => setCategories((prev) => ({ ...prev, [mode]: c }));
 
+  // Board navigation: the category chips ARE the board sequence; a swipe on
+  // the content moves to the adjacent board (nothing past either end).
+  const swipe = useBoardSwipe((dir) => {
+    const next = adjacentBoard(chipCategories, category, dir);
+    if (next) setCategory(next);
+  });
+  // Keep the active chip in view after a swipe, without scrolling the page.
+  const chipRailRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const rail = chipRailRef.current;
+    const chip = rail?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!rail || !chip) return;
+    const left = chip.offsetLeft - rail.offsetLeft;
+    if (left < rail.scrollLeft || left + chip.offsetWidth > rail.scrollLeft + rail.clientWidth) rail.scrollTo({ left: Math.max(0, left - 16), behavior: "smooth" });
+  }, [category, mode]);
+
   const forYouNote =
     mode !== "for-you" || !followsReady || forYou.personalized
       ? null
@@ -115,26 +134,10 @@ export default function MomentsDiscovery({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Moments feed" className="inline-flex rounded-full bg-black/[0.05] p-1">
-          {MOMENT_FEED_MODES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={m === mode}
-              onClick={() => setMode(m)}
-              className={`h-8 rounded-full px-4 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
-                m === mode ? "bg-white text-primary shadow-sm" : "text-muted hover:text-primary"
-              }`}
-            >
-              {MOMENT_FEED_MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
-      </div>
+      <MomentsModeTabs active={mode} onSelect={setMode} />
 
       <div
+        ref={chipRailRef}
         role="group"
         aria-label={`Filter ${MOMENT_FEED_MODE_LABELS[mode]} by category`}
         className="-mx-4 mt-3 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 sm:-mx-6 sm:scroll-px-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -146,6 +149,7 @@ export default function MomentsDiscovery({
               key={key}
               type="button"
               aria-pressed={active}
+              data-active={active ? "true" : undefined}
               onClick={() => setCategory(key)}
               className={`h-8 shrink-0 snap-start rounded-full px-3.5 text-metadata font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi focus-visible:ring-offset-1 ${
                 active ? "bg-findmi-600 text-white" : "border border-black/10 bg-white text-ink/65 hover:border-black/20 hover:text-ink"
@@ -164,14 +168,30 @@ export default function MomentsDiscovery({
       {signedIn && pagination && (
         <p className="mt-3 text-metadata text-muted">
           Your own Moments become your personal history in{" "}
-          <Link href="/my-world/journal" className="font-semibold text-findmi-700 hover:underline">
+          <Link href={momentsModeHref("my-moments")} className="font-semibold text-findmi-700 hover:underline">
             My Moments
           </Link>
           .
         </p>
       )}
 
-      <div className="mt-4">
+      {layout === "grid" && chipCategories.length > 1 && (
+        // Board position: which view of the swipeable sequence is showing.
+        <div aria-hidden="true" className="mt-3 flex justify-center gap-1.5 sm:hidden">
+          {chipCategories.map((k) => (
+            <span key={k} className={`h-1.5 rounded-full transition-all ${k === category ? "w-4 bg-findmi-600" : "w-1.5 bg-black/15"}`} />
+          ))}
+        </div>
+      )}
+
+      <div
+        className="mt-4 touch-pan-y"
+        // Grid (/moments): swipe the surface left / right to move between
+        // category boards. The homepage carousel scrolls sideways itself, so
+        // it keeps tap-only chips.
+        {...(layout === "grid" ? swipe.handlers : {})}
+        style={layout === "grid" && swipe.offset ? { transform: `translateX(${swipe.offset}px)` } : { transition: "transform 180ms ease-out" }}
+      >
         {visible.length === 0 ? (
           <p className="rounded-2xl bg-black/[0.03] px-4 py-6 text-sm text-ink/55">No Moments here yet — check back soon.</p>
         ) : mode === "for-you" && layout === "grid" && forYou.personalized ? (

@@ -96,7 +96,10 @@ export function PlacesLens({ basePath, view }: { basePath: string; view: "find-u
         {item("find-us")}
         {item("locations")}
       </nav>
-      <p className="text-metadata text-muted">{PLACES_LENS_COPY[view].body}</p>
+      <p className="flex items-center gap-1.5 text-metadata text-muted">
+        <NavIcon name={view === "locations" ? "storefront" : "pin"} className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+        {PLACES_LENS_COPY[view].body}
+      </p>
     </div>
   );
 }
@@ -205,13 +208,24 @@ export function LocationsPresence({
           : notice === "primary"
             ? "Primary location updated."
             : null;
-  const addButton = canEdit ? (
-    <Link
-      href={connectable.length > 0 ? `${locationsPath}&add=1` : createHref}
-      className="flex h-11 w-fit items-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600"
-    >
-      + Add a Location
-    </Link>
+  // One compact action row at the top — records and actions are reachable
+  // at once (no large explanatory card). Import reuses the one Location
+  // importer, targeted at Our Locations (business_locations).
+  const actions = canEdit ? (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Add Locations">
+      <Link
+        href={connectable.length > 0 ? `${locationsPath}&add=1` : createHref}
+        className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600"
+      >
+        + Add a Location
+      </Link>
+      <Link
+        href={`/account/business/${encodeURIComponent(businessId)}/import-locations?target=our-locations`}
+        className="flex h-10 shrink-0 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40"
+      >
+        Import Locations
+      </Link>
+    </div>
   ) : null;
 
   return (
@@ -222,19 +236,10 @@ export function LocationsPresence({
         </p>
       )}
 
+      {!addOpen && actions}
+
       {locations.length === 0 ? (
-        <div className="flex flex-col gap-4 rounded-2xl border border-black/[0.07] bg-white px-5 py-6">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-findmi-50 text-findmi-700">
-            <NavIcon name="pin" className="h-6 w-6" />
-          </span>
-          <div>
-            <h2 className="font-display text-section-title font-bold text-primary">Our Locations</h2>
-            <p className="mt-1 max-w-md text-body text-muted">
-              Add and manage locations for {businessName}.
-            </p>
-          </div>
-          {!addOpen && addButton}
-        </div>
+        <p className="text-metadata text-muted">No locations yet for {businessName}. Add one, or import a list.</p>
       ) : (
         <>
           <p className="text-metadata text-muted">
@@ -255,7 +260,6 @@ export function LocationsPresence({
               />
             ))}
           </ul>
-          {!addOpen && addButton}
         </>
       )}
 

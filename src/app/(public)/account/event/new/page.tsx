@@ -6,6 +6,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getHostEventEligibility } from "@/lib/entitlements";
 import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
+import EventScheduleFields from "@/components/scheduling/EventScheduleFields";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
@@ -90,6 +91,12 @@ export default async function AddEventPage({
     business_id?: string;
     category_id?: string;
     format_ids?: string;
+    schedule_mode?: string;
+    range_start?: string;
+    range_end?: string;
+    daily_start?: string;
+    daily_end?: string;
+    multi_dates?: string;
   }>;
 }) {
   const {
@@ -103,6 +110,12 @@ export default async function AddEventPage({
     business_id: businessIdParam,
     category_id: submittedCategoryId,
     format_ids: submittedFormatIds,
+    schedule_mode: submittedScheduleMode,
+    range_start: submittedRangeStart,
+    range_end: submittedRangeEnd,
+    daily_start: submittedDailyStart,
+    daily_end: submittedDailyEnd,
+    multi_dates: submittedMultiDates,
   } = await searchParams;
   const locationHint = await getLocationHint(locationIdHint);
 
@@ -204,7 +217,7 @@ export default async function AddEventPage({
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext
-          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing. It’s public on Findmi right away — finish the details and dates in Event Manager."
+          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing — with all its dates. It’s public on Findmi right away; fine-tune everything in Event Manager."
           : "Create your event — it’s public on Findmi right away. Finish the details in Event Manager."}
       </p>
 
@@ -251,19 +264,28 @@ export default async function AddEventPage({
             />
           </label>
 
-          <CategorySubcategoryField categories={eventCategories} defaultCategoryId={submittedCategoryId ?? null} emptyText="No Event categories yet." />
-          <EventFormatField formats={eventFormats} defaultSelectedIds={(submittedFormatIds ?? "").split(",")} />
+          <CategorySubcategoryField variant="compact" categories={eventCategories} defaultCategoryId={submittedCategoryId ?? null} emptyText="No Event categories yet." />
+          <EventFormatField variant="compact" formats={eventFormats} defaultSelectedIds={(submittedFormatIds ?? "").split(",")} />
 
-          <DateTimeRangeFields
-            startName="start_at"
-            endName="end_at"
-            defaultStart={submittedStartAt}
-            defaultEnd={submittedEndAt}
-            startLabel="Starts"
-            endLabel="Ends"
-            required
+          {/* Dates up front — Single Date / Date Range / Multiple Dates over
+              the one Primary Date + occurrences model (EventScheduleFields). */}
+          <EventScheduleFields
             inputClassName={inputClass}
             labelClassName="mb-1.5 block text-body font-medium text-primary"
+            defaults={{ mode: submittedScheduleMode, rangeStart: submittedRangeStart, rangeEnd: submittedRangeEnd, dailyStart: submittedDailyStart, dailyEnd: submittedDailyEnd, multiDates: submittedMultiDates }}
+            single={
+              <DateTimeRangeFields
+                startName="start_at"
+                endName="end_at"
+                defaultStart={submittedStartAt}
+                defaultEnd={submittedEndAt}
+                startLabel="Starts"
+                endLabel="Ends"
+                required
+                inputClassName={inputClass}
+                labelClassName="mb-1.5 block text-body font-medium text-primary"
+              />
+            }
           />
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>

@@ -654,13 +654,14 @@ export default async function ManageEventPage({
                 </label>
                 <div className="mt-3">
                   <CategorySubcategoryField
+                    variant="compact"
                     categories={categories}
                     defaultCategoryId={primaryEventCategoryId(selectedCategoryIds, categories)}
                     emptyText="No Event categories yet."
                   />
                 </div>
                 <div className="mt-3">
-                  <EventFormatField formats={formats} defaultSelectedIds={selectedFormatIds} />
+                  <EventFormatField variant="compact" formats={formats} defaultSelectedIds={selectedFormatIds} />
                 </div>
               </div>
 

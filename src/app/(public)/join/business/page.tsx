@@ -2,19 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
-import CompactCard from "@/components/CompactCard";
-import ProductCard from "@/components/ProductCard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import ChevronIcon from "@/components/ChevronIcon";
-import { getBusinessBySlug, getNextAppearanceHints, getProductsForBusiness, type NextAppearanceHint } from "@/lib/data";
-import { cityState, formatDateShort } from "@/lib/format";
-import type { BusinessWithCategories, Product } from "@/lib/types";
+import NavIcon from "@/components/NavIcon";
 import {
   getJoinPageSections,
   resolveJoinClaimBusiness,
   resolveJoinHero,
   resolveJoinInviteSection,
-  resolveJoinWhatYouGet,
   type ResolvedJoinClaimBusiness,
   type ResolvedJoinInviteSection,
 } from "@/lib/join-page";
@@ -117,7 +112,6 @@ export default async function JoinPage({
   // of plan — see createMemberBusiness -> attribute_referral()).
   const freeCtaHref = ref ? `/account/business/new?ref=${encodeURIComponent(ref)}` : "/account/business/new";
 
-  const whatYouGet = resolveJoinWhatYouGet(overrides);
   const inviteSection = resolveJoinInviteSection(overrides);
   const claim = resolveJoinClaimBusiness(overrides);
 
@@ -126,12 +120,6 @@ export default async function JoinPage({
   // appearance/product (e.g. this exact sandbox, which can't reach
   // production Supabase — see CLAUDE.md) degrades to the existing generic
   // presentation for that one piece, nothing invented in its place.
-  const proofBusiness = await getBusinessBySlug(PROOF_BUSINESS_SLUG);
-  const [appearanceHints, proofProducts] = proofBusiness
-    ? await Promise.all([getNextAppearanceHints([proofBusiness.id]), getProductsForBusiness(proofBusiness.id)])
-    : [new Map<string, NextAppearanceHint>(), [] as Product[]];
-  const proofAppearance = proofBusiness ? (appearanceHints.get(proofBusiness.id) ?? null) : null;
-  const proofProduct = proofProducts[0] ?? null;
 
   return (
     <div>
@@ -143,7 +131,7 @@ export default async function JoinPage({
           discovery experience (/discover) — not a new destination. The
           quiet claim link below it preserves the one legitimate path for
           a Business that already exists, same destination as before. */}
-      <div className="mx-auto max-w-4xl px-6 pt-14 sm:pt-16">
+      <div className="mx-auto max-w-4xl px-6 pt-10 sm:pt-14">
         <div className="max-w-xl">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">For Business</p>
           <h1 className="mt-1 font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
@@ -227,51 +215,14 @@ export default async function JoinPage({
           below) — only truthful, currently-Free capabilities are named;
           nothing here is Pro-gated (see account/business/new's own
           verified Free value section for the same underlying audit). */}
-      <div className="mx-auto max-w-4xl px-6 pt-10 sm:pt-12">
+      <div className="mx-auto max-w-4xl px-6 pb-10 pt-8 sm:pt-10">
         <ValuePillars />
       </div>
 
-      {/* FREE CONFIRMATION — a plain close, not a pricing card: the offer
-          was already stated once in the Hero; this just reconfirms it
-          right before "What You Get"'s concrete proof, so nothing about
-          a future paid plan is ever implied in between. */}
-      <div className="mx-auto max-w-xl px-4 pt-10 text-center sm:px-6">
-        <p className="font-display text-lg font-bold tracking-tight text-ink">Get Started Free</p>
-        <p className="mt-1 text-sm text-ink/60">Everything above is part of your free Findmi Business Page.</p>
-        <p className="mt-1 text-xs text-ink/40">Free. No trial. No credit card.</p>
-      </div>
-
-      {/* WHAT CUSTOMERS GET — a compact product demonstration (real
-          business/product previews where available) rather than four flat
-          gray explanation boxes. */}
-      {whatYouGet.visible && (
-        <div className="mx-auto max-w-4xl px-6 py-16">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">{whatYouGet.eyebrow}</p>
-          <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-            {whatYouGet.heading}
-          </h2>
-          {whatYouGet.body && <p className="mt-2 text-sm text-ink/60">{whatYouGet.body}</p>}
-
-          <WhatYouGetGrid business={proofBusiness} appearance={proofAppearance} product={proofProduct} />
-        </div>
-      )}
-
-      {/* NETWORK / DISCOVERY — Final Join Conversion Story pass. Fixed
-          page copy (same treatment as the hero's "still posting" line
-          above), placed right after the concrete "What You Get"
-          demonstration: the page itself is the opening promise,
-          discovery across Findmi is the additional benefit that comes
-          after it, not the lead. Deliberately makes no traffic/audience/
-          lead-volume/ranking claim. */}
-      <div className="mx-auto max-w-4xl px-6 pb-16 text-center">
-        <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
-          Your page is only the beginning.
-        </h2>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-ink/60">
-          Findmi connects your business to the markets, events, locations and areas where you show up, giving
-          customers more ways to find you.
-        </p>
-      </div>
+      {/* Page Density pass — the separate Free confirmation, the four-tile
+          demo grid and the "only the beginning" section repeated what the
+          connected-presence section above already says; Free is stated in
+          the Hero and the Final CTA. */}
 
       {/* Pricing UX Cleanup pass — the Regional/National Brands sales card
           (previously rendered here via RegionalSection, linking to
@@ -340,33 +291,36 @@ function HeroHeadline({ heading }: { heading: string }) {
  * isBusinessPro). Uses current Findmi terminology (Where I'll Be, not
  * "Appearance") and makes no traffic/audience/growth/AI claim. */
 function ValuePillars() {
-  const pillars: { heading: string; body: string }[] = [
-    {
-      heading: "Show People Who You Are",
-      body: "Your Business Page brings together your story, products, photos, links and essential information.",
-    },
-    {
-      heading: "Show Them Where To Find You",
-      body: "Connect your own Locations, stockists, pop-ups, markets and other places your Business appears.",
-    },
-    {
-      heading: "Show What's Happening Next",
-      body: "Publish Events and Where I'll Be so your Findmi presence stays current as your Business moves through the real world.",
-    },
-    {
-      heading: "Turn Activity Into Discovery",
-      body: "Share Moments and connect your Business into Findmi's broader discovery experience.",
-    },
+  // One Business presence, connected across Findmi — every row is a
+  // capability that exists today (no metrics, no implied features).
+  const pillars: { heading: string; body: string; icon: "storefront" | "tag" | "pin" | "calendar" | "moments" | "compass" | "target" }[] = [
+    { heading: "Your Business Page", body: "Your story, photos, links and essentials in one place.", icon: "storefront" },
+    { heading: "Products", body: "What you make, sell or offer — discoverable from your page.", icon: "tag" },
+    { heading: "Where Customers Can Find You", body: "Your own locations, plus the stockists, cafés and venues that carry you.", icon: "pin" },
+    { heading: "Events", body: "Events you host, and the markets, pop-ups and festivals you’re Appearing At.", icon: "calendar" },
+    { heading: "Moments", body: "Real experiences from your Business and your customers, connected to your page.", icon: "moments" },
+    { heading: "Discovery", body: "Show up across Findmi’s places, events and search wherever you’re connected.", icon: "compass" },
+    { heading: "Connections & Growth", body: "Set goals, track the places you’re pursuing and respond to Opportunities.", icon: "target" },
   ];
   return (
-    <div className="flex flex-col gap-3">
-      {pillars.map((p) => (
-        <div key={p.heading} className="rounded-2xl border border-black/10 bg-white p-4 sm:p-5">
-          <p className="font-display text-base font-bold tracking-tight text-ink">{p.heading}</p>
-          <p className="mt-1 text-sm text-ink/60">{p.body}</p>
-        </div>
-      ))}
-    </div>
+    <section aria-labelledby="one-presence">
+      <h2 id="one-presence" className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
+        One Business Presence, Connected Across Findmi
+      </h2>
+      <ul className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+        {pillars.map((p) => (
+          <li key={p.heading} className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+              <NavIcon name={p.icon} className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-ink">{p.heading}</span>
+              <span className="block text-sm text-ink/60">{p.body}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -378,153 +332,11 @@ function ChevronGlyph({ className = "" }: { className?: string }) {
   );
 }
 
-function CalendarGlyph({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
 
-function EventsGlyph({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
 
-function TagGlyph({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M11.5 4H5a1 1 0 00-1 1v6.5a1 1 0 00.3.7l9 9a1 1 0 001.4 0l6.5-6.5a1 1 0 000-1.4l-9-9a1 1 0 00-.7-.3z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="8.2" cy="8.2" r="1.3" fill="currentColor" />
-    </svg>
-  );
-}
 
-/** "What You Get" — a compact 2x2 product demonstration.
- *
- * /Join Final Visual Conversion pass — replaces four flat gray text tiles.
- * Business Profile and Findmi Here reuse the exact same real proof
- * business/appearance fetched once above (CompactCard — the existing
- * "dense row" pattern already used by the homepage's own secondary rows —
- * for the profile; a compact NEXT UP-style chip for the schedule).
- * Products & Services reuses ProductCard with a real active product when
- * one exists. Events has no cheap single-query "one real event for this
- * business" data source today, so it uses a plain, truthful generic tile
- * (no specific event/date invented) — exactly the fallback this pass's
- * own instructions call for when live data isn't naturally available.
- * Every tile shares one outer frame so the grid stays visually even
- * regardless of which real component renders inside it. */
-function WhatYouGetGrid({
-  business,
-  appearance,
-  product,
-}: {
-  business: BusinessWithCategories | null;
-  appearance: NextAppearanceHint | null;
-  product: Product | null;
-}) {
-  const profileMeta = business
-    ? [business.categories[0]?.name, cityState(business.city, business.state)].filter(Boolean).join(" · ")
-    : "";
 
-  return (
-    <div className="mt-6 grid gap-3 sm:grid-cols-2">
-      <DemoTile label="Business Profile">
-        {business ? (
-          <CompactCard
-            href={`/business/${business.slug}`}
-            image={business.cover_image_url ?? business.logo_url}
-            title={business.name}
-            meta={profileMeta || undefined}
-            cta="View Profile"
-          />
-        ) : (
-          <GenericTile icon={<TagGlyph className="h-5 w-5 text-findmi-700" />} detail="Who you are." />
-        )}
-      </DemoTile>
 
-      <DemoTile label="Products & Services">
-        {product ? (
-          <div className="mx-auto w-full max-w-[180px]">
-            <ProductCard product={product} />
-          </div>
-        ) : (
-          <GenericTile icon={<TagGlyph className="h-5 w-5 text-findmi-700" />} detail="What you offer." />
-        )}
-      </DemoTile>
-
-      <DemoTile label="Findmi Here">
-        {appearance ? (
-          // Public Experience Consolidation pass — was its own one-off
-          // bg-findmi-50 pill, visually unrelated to GenericTile's shape
-          // just below it (different padding, no icon column, different
-          // background). Same icon+text row as GenericTile now — "Next
-          // Up" + real venue/date is what marks this as populated real
-          // content rather than explanatory placeholder text, not a
-          // different card shape.
-          <GenericTile
-            icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />}
-            detail={
-              <>
-                <span className="mr-1 font-bold uppercase tracking-wide text-findmi-700">Next Up</span>
-                <span className="font-semibold text-ink">{appearance.venue}</span> · {formatDateShort(appearance.startAt)}
-              </>
-            }
-          />
-        ) : (
-          <GenericTile icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />} detail="Where you'll be next." />
-        )}
-      </DemoTile>
-
-      <DemoTile label="Events">
-        <GenericTile
-          icon={<EventsGlyph className="h-5 w-5 text-findmi-700" />}
-          detail="The markets, pop-ups and events you're part of."
-        />
-      </DemoTile>
-    </div>
-  );
-}
-
-// Public Experience Consolidation pass — every tile now shares the exact
-// same outer geometry (rounded-2xl/border/p-3), label placement (same
-// text-[11px] eyebrow, same mb-2), AND a fixed min-height content slot,
-// centered, so the grid reads as one even row regardless of whether a
-// tile's content is a real image-bearing card (CompactCard/ProductCard)
-// or the plain icon+text GenericTile shape — the row heights no longer
-// depend on which specific component happens to render inside.
-function DemoTile({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex h-full flex-col rounded-2xl border border-black/10 bg-white p-3">
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
-      <div className="flex min-h-[92px] flex-1 flex-col justify-center">{children}</div>
-    </div>
-  );
-}
-
-function GenericTile({ icon, detail }: { icon: React.ReactNode; detail: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-xl bg-mist/40 px-3 py-3">
-      <span className="mt-0.5 shrink-0">{icon}</span>
-      <p className="text-xs text-ink/60">{detail}</p>
-    </div>
-  );
-}
 
 /** Pro Invite — a quiet, collapsed-by-default utility, not a giant
  * always-open pricing-style card. The redemption flow itself

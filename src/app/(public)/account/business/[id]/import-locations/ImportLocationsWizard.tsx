@@ -1,5 +1,6 @@
 "use client";
 
+import type { ImportTarget } from "@/lib/locator-import/fields";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { CSV_MAX_BYTES, parseCsv, type ParsedCsv } from "@/lib/locator-import/csv";
@@ -40,15 +41,21 @@ export default function ImportLocationsWizard({
   productSets,
   productSetsAvailable,
   resume,
+  target = "find_us_here",
 }: {
   businessId: string;
   homeHref: string;
+  /** Which relationship this import writes (lib/locator-import/fields
+   * ImportTarget). Our Locations skips Find Us Here's "how are you there" /
+   * products step — those describe availability, not operated places. */
+  target?: ImportTarget;
   products: { id: string; name: string }[];
   productSets: ProductSet[];
   productSetsAvailable: boolean;
   /** An unfinished import to pick back up (Import History → Continue Import). */
   resume?: { batchId: string; status: string; counts: ImportCounts } | null;
 }) {
+  const operated = target === "our_locations";
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [text, setText] = useState("");
@@ -120,7 +127,7 @@ export default function ImportLocationsWizard({
     setError(null);
     setStep("matching");
     setWorking("Reading your file…");
-    const staged = await stageImportAction(businessId, { text, label: fileName || null, mapping });
+    const staged = await stageImportAction(businessId, { text, label: fileName || null, mapping, target });
     if (!staged.ok) {
       setError(staged.error);
       setWorking(null);
@@ -157,14 +164,14 @@ export default function ImportLocationsWizard({
       if (!result.ok) {
         setError(result.error);
         setWorking(null);
-        return setStep("options");
+        return setStep(operated ? "review" : "options");
       }
       setSummary(result.summary);
       const finished = result.summary.linked + result.summary.created + result.summary.updated + result.summary.skipped + result.summary.failed;
       if (!result.done && finished <= lastFinished) {
         setError("Importing stopped making progress. Please try again.");
         setWorking(null);
-        return setStep("options");
+        return setStep(operated ? "review" : "options");
       }
       lastFinished = finished;
       setWorking(`Importing… ${finished} done`);
@@ -183,7 +190,7 @@ export default function ImportLocationsWizard({
         </p>
       )}
 
-      {step === "upload" && <UploadStep onFile={onFile} homeHref={homeHref} />}
+      {step === "upload" && <UploadStep onFile={onFile} homeHref={homeHref} operated={operated} />}
 
       {step === "map" && csv && (
         <MapStep csv={csv} fileName={fileName} mapping={mapping} onMapping={setMapping} onBack={reset} onContinue={stageAndMatch} />
@@ -200,7 +207,7 @@ export default function ImportLocationsWizard({
       )}
 
       {step === "review" && batchId && counts && (
-        <ReviewStep businessId={businessId} batchId={batchId} counts={counts} onBack={reset} onContinue={() => setStep("options")} />
+        <ReviewStep businessId={businessId} batchId={batchId} counts={counts} onBack={reset} onContinue={() => (operated ? void runImport() : setStep("options"))} />
       )}
 
       {step === "options" && counts && (
@@ -271,15 +278,19 @@ export default function ImportLocationsWizard({
         <div className={cardClass} role="status">
           <p className="font-display text-section-title font-bold text-primary">Import Complete</p>
           <ul className="mt-2 flex flex-col gap-1 text-body text-secondary">
-            <li>{summary.linked} linked to existing Locations</li>
+            <li>{summary.linked} {operated ? "existing Locations you manage connected" : "linked to existing Locations"}</li>
             <li>{summary.created} new Locations added (unlisted, for Findmi to review)</li>
-            <li>{summary.updated} existing entries updated</li>
+            {!operated && <li>{summary.updated} existing entries updated</li>}
             <li>{summary.skipped} left out</li>
-            {summary.failed > 0 && <li className="font-semibold text-red-700">{summary.failed} couldn’t be imported</li>}
+            {summary.failed > 0 && <li className="font-semibold text-red-700">{summary.failed} couldn’t be imported{operated ? " — see Import Details for why" : ""}</li>}
           </ul>
-          <p className="mt-2 text-metadata text-muted">Imported places are in Pending Review. Importing the same list again updates them instead of adding duplicates.</p>
+          <p className="mt-2 text-metadata text-muted">
+            {operated
+              ? "New Locations appear publicly once Findmi has reviewed them. Existing places you don’t manage were left out — claim them from their page first."
+              : "Imported places are in Pending Review. Importing the same list again updates them instead of adding duplicates."}
+          </p>
           <Link href={homeHref} className={`${primaryButtonClass} mt-4`}>
-            View Where To Find Us
+            {operated ? "View Our Locations" : "View Where To Find Us"}
           </Link>
           {batchId && (
             <Link href={`/account/business/${businessId}/import-locations/history/${batchId}`} className={`${secondaryButtonClass} mt-2`}>
@@ -316,12 +327,16 @@ function Steps({ step }: { step: Step }) {
   );
 }
 
-function UploadStep({ onFile, homeHref }: { onFile: (file: File | undefined) => void; homeHref: string }) {
+function UploadStep({ onFile, homeHref, operated }: { onFile: (file: File | undefined) => void; homeHref: string; operated: boolean }) {
   return (
     <div className="flex flex-col gap-3">
       <div className={cardClass}>
         <p className="text-body font-semibold text-primary">Upload A CSV</p>
-        <p className="mt-1 text-metadata text-muted">One row per place. Include at least a name, street address, city and state. A source ID column (like a store number) lets you re-import later and update instead of duplicating.</p>
+        <p className="mt-1 text-metadata text-muted">
+          {operated
+            ? "One row per store, office, café or other place your Business operates. Include at least a name, street address, city and state."
+            : "One row per place. Include at least a name, street address, city and state. A source ID column (like a store number) lets you re-import later and update instead of duplicating."}
+        </p>
         <label className="mt-3 flex h-12 w-full cursor-pointer items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 focus-within:ring-2 focus-within:ring-findmi/40">
           Choose CSV File
           <input type="file" accept=".csv,.tsv,text/csv,text/plain" className="sr-only" aria-label="Choose CSV file" onChange={(e) => onFile(e.target.files?.[0])} />

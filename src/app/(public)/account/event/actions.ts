@@ -1,5 +1,6 @@
 "use server";
 
+import { isCreateScheduleMode, parseScheduleDates, resolveCreateSchedule } from "@/lib/event-create-schedule";
 import { cleanOccurrenceDetails } from "@/lib/event-import/occurrence-details";
 import { decideEventCategoryWrite } from "@/lib/event-categories";
 import { existingEventCategoryIds } from "@/lib/event-categories-server";
@@ -202,8 +203,22 @@ export async function createMemberEvent(formData: FormData) {
   // how — only that a rejected submission now round-trips the visitor's
   // own values back into the form.
   const name = str(formData, "name");
-  const startLocal = str(formData, "start_at");
-  const endLocal = str(formData, "end_at");
+  let startLocal = str(formData, "start_at");
+  let endLocal = str(formData, "end_at");
+  // Dates up front (lib/event-create-schedule): Single Date keeps the
+  // start_at / end_at pair above; Date Range / Multiple Dates resolve to the
+  // Primary Date + extra dates, which become event_occurrences through the
+  // SAME bulkGenerateEventDates Event Manager uses (after creation below).
+  const scheduleModeRaw = str(formData, "schedule_mode");
+  const scheduleMode = isCreateScheduleMode(scheduleModeRaw) ? scheduleModeRaw : "single";
+  const scheduleFields = {
+    schedule_mode: scheduleMode === "single" ? null : scheduleMode,
+    range_start: str(formData, "range_start"),
+    range_end: str(formData, "range_end"),
+    daily_start: str(formData, "daily_start"),
+    daily_end: str(formData, "daily_end"),
+    multi_dates: str(formData, "multi_dates"),
+  };
   const marketId = str(formData, "market_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
   const locationHintId = str(formData, "location_id");
@@ -234,6 +249,7 @@ export async function createMemberEvent(formData: FormData) {
     category_id: str(formData, "category_id"),
     // Event Formats V1 — kept (comma-joined) across a validation error.
     format_ids: cleanEventFormatIds(formData.getAll("format_ids")).join(","),
+    ...scheduleFields,
   };
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_EVENT_PATH, message, preservedFields));
@@ -281,6 +297,22 @@ export async function createMemberEvent(formData: FormData) {
 
   if (!name) fail("Event name is required.");
 
+  let extraDates: BulkGenerateDateInput[] = [];
+  if (scheduleMode !== "single") {
+    const resolved = resolveCreateSchedule(scheduleMode, {
+      rangeStart: scheduleFields.range_start,
+      rangeEnd: scheduleFields.range_end,
+      dailyStart: scheduleFields.daily_start,
+      dailyEnd: scheduleFields.daily_end,
+      dates: parseScheduleDates(scheduleFields.multi_dates),
+    });
+    if (!resolved.ok) fail(resolved.error);
+    else {
+      startLocal = resolved.primary.startLocal;
+      endLocal = resolved.primary.endLocal;
+      extraDates = resolved.extraDates;
+    }
+  }
   if (!startLocal) fail("Start date/time is required.");
   if (!endLocal) fail("End date/time is required.");
   const startIso = localDateTimeToIso(startLocal);
@@ -472,6 +504,16 @@ export async function createMemberEvent(formData: FormData) {
     }
   } else if (manualVenue.venue_name || manualVenue.address || manualVenue.city || manualVenue.state || manualVenue.postal_code) {
     await admin.from("events").update(manualVenue).eq("id", eventId);
+  }
+
+  // Dates up front — every other date of a Date Range / Multiple Dates
+  // schedule, through the one existing occurrence generator (same venue
+  // default, calendar-day dedupe against the Primary Date and the seeded
+  // first occurrence, all-dates participation propagation). Best-effort,
+  // like the venue work above: the Event already exists, and Event Manager
+  // shows exactly which dates were created.
+  if (extraDates.length > 0) {
+    await bulkGenerateEventDates(eventId, extraDates, locationHintId ?? null, manualVenue);
   }
 
   // Admin Action Email Notifications V1 — fires exactly once per

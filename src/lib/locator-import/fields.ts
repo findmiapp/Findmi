@@ -154,3 +154,22 @@ export function rowFromCells(cells: readonly string[], mapping: ColumnMapping): 
     relationships: parseImportRelationships(at("relationship", 120)),
   };
 }
+
+// ── Import target — which Business↔Location relationship a batch writes ────
+//
+//   find_us_here   business_location_availability (the original import):
+//                  places carrying / serving / offering the Business, with
+//                  source ids, relationships, products and "Not In This File".
+//   our_locations  business_locations: places the Business owns or operates.
+//                  New places are created and linked exactly like one-at-a-
+//                  time Our Locations creation (pending review, no management
+//                  granted); an EXISTING place links only when the importer
+//                  already manages it (the Connect rule). Never both.
+
+export type ImportTarget = "find_us_here" | "our_locations";
+export const isImportTarget = (v: unknown): v is ImportTarget => v === "find_us_here" || v === "our_locations";
+/** URL form (`?target=our-locations`) → target; anything else is Find Us Here. */
+export const importTargetFromParam = (v: unknown): ImportTarget => (v === "our-locations" || v === "our_locations" ? "our_locations" : "find_us_here");
+export const IMPORT_TARGET_LABELS: Record<ImportTarget, string> = { find_us_here: "Find Us Here", our_locations: "Our Locations" };
+export const ALREADY_OPERATED_ROW = "Already one of your locations.";
+export const NOT_MANAGED_EXISTING_ROW = "This place is already on Findmi but you don’t manage it — claim it from its page, then connect it.";

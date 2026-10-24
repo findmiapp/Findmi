@@ -20,6 +20,7 @@ import {
   type ReviewRow,
 } from "@/lib/locator-import/server";
 import type { MatchStatus } from "@/lib/locator-import/match";
+import { isImportTarget } from "@/lib/locator-import/fields";
 
 /** Import Locations — owner actions. Each call re-verifies, from the caller's
  * own session, that they may manage THIS Business (owner / manager / elevated
@@ -42,10 +43,18 @@ async function authorize(businessId: string) {
 
 const DENIED = { ok: false as const, error: "Only a Business owner or manager can import locations." };
 
-export async function stageImportAction(businessId: string, input: { text: string; label: string | null; mapping: unknown }): Promise<ImportResult<{ batchId: string; counts: ImportCounts }>> {
+export async function stageImportAction(businessId: string, input: { text: string; label: string | null; mapping: unknown; target?: unknown }): Promise<ImportResult<{ batchId: string; counts: ImportCounts }>> {
   const ctx = await authorize(businessId);
   if (!ctx) return DENIED;
-  return stageImport(ctx.admin, businessId, ctx.userId, { sourceId: "csv", text: typeof input.text === "string" ? input.text : "", label: input.label, mapping: input.mapping });
+  return stageImport(ctx.admin, businessId, ctx.userId, {
+    sourceId: "csv",
+    text: typeof input.text === "string" ? input.text : "",
+    label: input.label,
+    mapping: input.mapping,
+    // Which relationship this import writes — Find Us Here unless the owner
+    // started it from Our Locations.
+    target: isImportTarget(input.target) ? input.target : "find_us_here",
+  });
 }
 
 export async function matchImportAction(businessId: string, batchId: string): Promise<ImportResult<{ remaining: number; counts: ImportCounts }>> {

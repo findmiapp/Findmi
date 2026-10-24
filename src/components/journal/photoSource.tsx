@@ -59,43 +59,58 @@ export function usePhotoSource(onFiles: (files: FileList | null) => void, { disa
   return { inputs, canCapture, takePhoto: () => open(cameraRef), choosePhotos: () => open(libraryRef) };
 }
 
-/** The two choices as buttons (empty state / sheets). */
-export function PhotoSourceButtons({ takePhoto, choosePhotos, disabled, compact = false }: { takePhoto: () => void; choosePhotos: () => void; disabled?: boolean; compact?: boolean }) {
-  const base = `flex items-center justify-center gap-2 rounded-2xl text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${compact ? "h-11" : "h-14"}`;
+/** The two choices as compact action-menu rows (icon · label · one quiet
+ * line) — the native "Add Photos" menu, never a permanent block of the
+ * composer. Used inside the "Add Photos" sheet and the section sheet. */
+export function PhotoSourceMenu({ takePhoto, choosePhotos, disabled }: { takePhoto: () => void; choosePhotos: () => void; disabled?: boolean }) {
+  const row = "flex min-h-[52px] w-full items-center gap-3 rounded-xl px-2 text-left transition hover:bg-black/[0.03] active:bg-black/[0.05] disabled:opacity-60";
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <button type="button" onClick={takePhoto} disabled={disabled} className={`${base} bg-findmi text-white hover:bg-findmi-600`}>
-        <CameraGlyph className="h-5 w-5" />
-        {PHOTO_SOURCE_LABELS.camera}
-      </button>
-      <button type="button" onClick={choosePhotos} disabled={disabled} className={`${base} border border-black/10 bg-white text-ink/80 hover:border-findmi/40 hover:text-findmi-700`}>
-        <LibraryGlyph className="h-5 w-5" />
-        {PHOTO_SOURCE_LABELS.library}
-      </button>
-    </div>
+    <ul className="flex flex-col divide-y divide-black/[0.06]">
+      <li>
+        <button type="button" onClick={takePhoto} disabled={disabled} className={row}>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+            <CameraGlyph className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">{PHOTO_SOURCE_LABELS.camera}</span>
+            <span className="block text-xs text-ink/50">Open your camera</span>
+          </span>
+        </button>
+      </li>
+      <li>
+        <button type="button" onClick={choosePhotos} disabled={disabled} className={row}>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+            <LibraryGlyph className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">{PHOTO_SOURCE_LABELS.library}</span>
+            <span className="block text-xs text-ink/50">Pick one or more from your library</span>
+          </span>
+        </button>
+      </li>
+    </ul>
   );
 }
 
-/** "Add Photos" as a small sheet with the two choices (the "+" tiles). */
+/** "Add Photos" as a small bottom sheet (phones/tablets) opened from the
+ * photo strip's own add affordances — the empty "Add Photos" area or the
+ * "+" tile. The photo grid stays the primary UI. */
 export function PhotoSourceSheet({ onClose, takePhoto, choosePhotos }: { onClose: () => void; takePhoto: () => void; choosePhotos: () => void }) {
   return (
-    <MomentSheet
-      title="Add Photos"
-      onClose={onClose}
-      footer={
-        <PhotoSourceButtons
-          compact
-          takePhoto={() => {
-            onClose();
-            takePhoto();
-          }}
-          choosePhotos={() => {
-            onClose();
-            choosePhotos();
-          }}
-        />
-      }
-    />
+    <MomentSheet title="Add Photos" onClose={onClose}>
+      <div className="pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <PhotoSourceMenu
+        takePhoto={() => {
+          onClose();
+          takePhoto();
+        }}
+        choosePhotos={() => {
+          onClose();
+          choosePhotos();
+        }}
+      />
+      </div>
+    </MomentSheet>
   );
 }
 

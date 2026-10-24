@@ -43,6 +43,10 @@ import NavIcon from "@/components/NavIcon";
  * invented nested-redirect parsing. No account_type/role/consumer/
  * business flag is ever written anywhere.
  */
+/** How people use Findmi, and how Businesses do — the same account. */
+const JOIN_PERSON_LOOP = ["Discover", "Save & Follow", "Organize", "Experience", "Capture Moments", "Revisit"] as const;
+const JOIN_BUSINESS_LOOP = ["Create Or Claim", "Publish Your Presence", "Show Where You’re Appearing", "Connect", "Grow"] as const;
+
 export const metadata: Metadata = {
   title: "Join Findmi",
   description: "One Findmi account, multiple ways to use Findmi: discover, follow, save and capture real experiences — and add or claim a Business whenever you're ready.",
@@ -77,7 +81,8 @@ export default async function JoinPage({
           border="border-findmi/30"
           hoverBorder="hover:border-findmi/60"
           title="Discover And Capture"
-          description="Discover Businesses, Brands, Places, Products and experiences. Follow what matters, save what you want to try, and capture real experiences with Moments that build your own history over time."
+          description="Find Businesses, Brands, Places, Products and experiences — then keep and revisit the ones that matter."
+          loop={JOIN_PERSON_LOOP}
         />
         {/* Brand Onboarding V1 — the public Find Your Brand front door:
             look up first, sign in only to claim or create. */}
@@ -88,10 +93,11 @@ export default async function JoinPage({
           border="border-black/10"
           hoverBorder="hover:border-black/20"
           title="Add Or Claim A Business"
-          description="Create or claim your Business presence, add products, publish Events and where you’re showing up, manage your locations and connect with customers and opportunities."
+          description="One Business presence across Findmi: your page, products, locations and the Events you host or appear at."
+          loop={JOIN_BUSINESS_LOOP}
         />
       </div>
-      <p className="mt-3 text-center text-xs text-ink/50">Start with a free account now — you can add or manage a Business anytime.</p>
+      <p className="mt-3 text-center text-xs text-ink/50">One account for both — start personally and add a Business anytime, or manage a Business and still use Findmi for yourself.</p>
 
       <Link
         href="/signup?next=%2Fjoin%2Fstart"
@@ -127,6 +133,7 @@ function ValueCard({
   hoverBorder,
   title,
   description,
+  loop,
 }: {
   href: string;
   icon: React.ReactNode;
@@ -135,6 +142,8 @@ function ValueCard({
   hoverBorder: string;
   title: string;
   description: string;
+  /** The path this way of using Findmi follows, as short steps. */
+  loop?: readonly string[];
 }) {
   return (
     <Link
@@ -145,6 +154,16 @@ function ValueCard({
       <span className="flex-1">
         <span className="block font-display text-base font-bold tracking-tight text-ink">{title}</span>
         <span className="mt-1 block text-sm text-ink/60">{description}</span>
+        {loop && (
+          <span className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] font-semibold text-findmi-700">
+            {loop.map((step, i) => (
+              <span key={step} className="inline-flex items-center gap-1">
+                {i > 0 && <span aria-hidden="true" className="text-ink/25">→</span>}
+                {step}
+              </span>
+            ))}
+          </span>
+        )}
       </span>
       <ChevronGlyph className="mt-1 h-4 w-4 shrink-0 text-ink/30" />
     </Link>

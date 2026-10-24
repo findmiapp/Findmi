@@ -710,7 +710,7 @@ export function EventFormatEditor({
   if (formats.length === 0) return null;
   return (
     <section className={sectionClass}>
-      <EventFormatField formats={formats} defaultSelectedIds={review.formatIds ?? []} onChange={(ids) => set({ formatIds: ids })} />
+      <EventFormatField variant="compact" formats={formats} defaultSelectedIds={review.formatIds ?? []} onChange={(ids) => set({ formatIds: ids })} />
     </section>
   );
 }
@@ -731,6 +731,7 @@ export function EventCategoryEditor({
   return (
     <section className={sectionClass}>
       <CategorySubcategoryField
+        variant="compact"
         categories={categories}
         defaultCategoryId={review.categoryId ?? null}
         emptyText="No Event categories yet."

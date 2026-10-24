@@ -203,3 +203,62 @@ export function orderForYou<T extends { tags: readonly MomentFilterKey[]; follow
   for (const c of cards) (momentMatchesFilter(c, "following", follows) ? fromFollows : more).push(c);
   return { fromFollows, more, personalized };
 }
+
+// ── My Moments: the third mode ─────────────────────────────────────────────
+//
+// /moments has three modes: Explore and For You (discovery over the public
+// network, client-side over one loaded page) and My Moments — the signed-in
+// person's OWN documented history: the same journal_entries records, read
+// owner-scoped and bounded (lib/journal getJournalArchiveEntries with a
+// limit) on the server, with the full calendar archive one tap away at
+// /my-world/journal. Signed out, My Moments explains itself and offers Log
+// In / Create Account that return to it — never a fake empty state.
+
+export type MomentsPageMode = MomentFeedMode | "my-moments";
+export const MOMENTS_PAGE_MODES: readonly MomentsPageMode[] = ["explore", "for-you", "my-moments"];
+export const MOMENTS_PAGE_MODE_LABELS: Record<MomentsPageMode, string> = { ...MOMENT_FEED_MODE_LABELS, "my-moments": "My Moments" };
+
+/** Bounded page of the viewer's own Moments shown on /moments. */
+export const MY_MOMENTS_LIMIT = 48;
+
+export type MyMomentsFilter = "all" | "places" | "brands" | "products" | "events";
+export const MY_MOMENTS_FILTERS: readonly { key: MyMomentsFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "places", label: "Places" },
+  { key: "brands", label: "Brands" },
+  { key: "products", label: "Products" },
+  { key: "events", label: "Events" },
+];
+export const isMyMomentsFilter = (v: unknown): v is MyMomentsFilter => typeof v === "string" && MY_MOMENTS_FILTERS.some((f) => f.key === v);
+
+/** Where each mode lives (deterministic, shareable URLs). */
+export function momentsModeHref(mode: MomentsPageMode, filter?: MyMomentsFilter): string {
+  if (mode === "explore") return "/moments";
+  if (mode === "for-you") return "/moments?mode=for-you";
+  return filter && filter !== "all" ? `/moments?mode=my-moments&filter=${filter}` : "/moments?mode=my-moments";
+}
+
+/** Log In / Create Account links that come straight back to My Moments.
+ * The return target is a fixed same-origin path (getSafeRedirect re-checks
+ * it on arrival), never caller input. */
+export function myMomentsAuthHrefs(): { login: string; signup: string } {
+  const next = encodeURIComponent(momentsModeHref("my-moments"));
+  return { login: `/login?next=${next}`, signup: `/signup?next=${next}` };
+}
+
+/** Board navigation: the next / previous view in a fixed sequence, or null
+ * at either end (a swipe past the end does nothing). */
+export function adjacentBoard<T>(order: readonly T[], current: T, direction: 1 | -1): T | null {
+  const i = order.indexOf(current);
+  if (i === -1) return null;
+  const next = order[i + direction];
+  return next === undefined ? null : next;
+}
+
+/** A completed horizontal swipe? Dominantly horizontal and long enough, so
+ * vertical page scrolling never changes the view by accident. */
+export const BOARD_SWIPE_MIN_PX = 56;
+export function swipeDirection(dx: number, dy: number): 1 | -1 | null {
+  if (Math.abs(dx) < BOARD_SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return null;
+  return dx < 0 ? 1 : -1;
+}

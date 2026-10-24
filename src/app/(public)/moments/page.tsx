@@ -3,12 +3,17 @@ import Link from "next/link";
 import BrandHeading from "@/components/BrandHeading";
 import NavIcon from "@/components/NavIcon";
 import MomentsDiscovery from "@/components/moments/MomentsDiscovery";
-import { getMomentFeed } from "@/lib/moment-discovery";
-import { parseMomentFeedState } from "@/lib/moment-filters";
+import { getMomentFeed, type MomentFeedPage } from "@/lib/moment-discovery";
+import { MY_MOMENTS_LIMIT, isMyMomentsFilter, parseMomentFeedState } from "@/lib/moment-filters";
+import MyMomentsView from "@/components/moments/MyMomentsView";
+import MomentsModeTabs from "@/components/moments/MomentsModeTabs";
+import { getServerSupabase } from "@/lib/supabase/server";
+import { getJournalArchiveEntries, type JournalIndexEntry } from "@/lib/journal";
 
 /** Findmi Moments — the general network Moments destination (homepage
- * Moments action and "See All"). ONE canonical Moments feed with two modes,
- * Explore and For You (see MomentsDiscovery), each with its own category;
+ * Moments action and "See All"). ONE canonical Moments feed in three modes:
+ * Explore and For You (see MomentsDiscovery), each with its own category,
+ * and My Moments (the viewer's own history — MyMomentsView);
  * public browsing needs no account. Every public, published Moment, newest
  * experience first, keyset-paginated with the same "Older Moments" /
  * "Newest" convention as /journal. The per-subject collections stay at
@@ -27,8 +32,19 @@ const ADD_MOMENT_HREF = "/my-world/journal/new";
 export default async function MomentsPage({ searchParams }: { searchParams: Promise<{ cursor?: string; filter?: string; mode?: string; cat?: string }> }) {
   const params = await searchParams;
   const cursor = params.cursor ?? null;
+  // My Moments: the viewer's own Moments — an owner-scoped, bounded read;
+  // the public feed isn't loaded at all in this mode.
+  const myMode = params.mode === "my-moments";
+  let myEntries: JournalIndexEntry[] | null = null;
+  if (myMode) {
+    const supabase = await getServerSupabase();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    myEntries = user ? await getJournalArchiveEntries(user.id, { limit: MY_MOMENTS_LIMIT }) : null;
+  }
   const feedState = parseMomentFeedState(params);
-  const page = await getMomentFeed({ limit: PAGE_SIZE, cursor });
+  const page: MomentFeedPage = myMode ? { cards: [], nextCursor: null } : await getMomentFeed({ limit: PAGE_SIZE, cursor });
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6">
@@ -50,16 +66,21 @@ export default async function MomentsPage({ searchParams }: { searchParams: Prom
       />
       <p className="mt-1 text-sm text-ink/60">Real experiences, shared by people who were there.</p>
       <div className="mt-5">
-        {page.cards.length > 0 || cursor ? (
+        {myMode ? (
+          <MyMomentsView entries={myEntries} filter={isMyMomentsFilter(params.filter) ? params.filter : "all"} />
+        ) : page.cards.length > 0 || cursor ? (
           <MomentsDiscovery cards={page.cards} layout="grid" initialState={feedState} pagination={{ basePath: "/moments", cursor, nextCursor: page.nextCursor }} />
         ) : (
-          <p className="rounded-2xl bg-black/[0.03] px-4 py-6 text-sm text-ink/55">
+          <>
+          <MomentsModeTabs active={feedState.mode} />
+          <p className="mt-4 rounded-2xl bg-black/[0.03] px-4 py-6 text-sm text-ink/55">
             No public Moments yet.{" "}
             <Link href={ADD_MOMENT_HREF} className="font-semibold text-findmi-700 hover:underline">
               Add the first one
             </Link>
             .
           </p>
+          </>
         )}
       </div>
     </div>

@@ -43,10 +43,13 @@ import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage, wit
 
 type ImportMethod = "link" | "text" | "image";
 const METHODS: { key: ImportMethod; label: string }[] = [
-  { key: "link", label: "From Link" },
+  { key: "link", label: "Event Link" },
   { key: "text", label: "Paste Details" },
-  { key: "image", label: "Upload" },
+  { key: "image", label: "Flyer / Image" },
 ];
+
+/** What importing does, in three steps — shown before anything is read. */
+export const IMPORT_STEPS = ["Give Findmi what you already have", "Findmi extracts the Event details", "You review everything before it’s added"] as const;
 const PASTE_MAX = 60000;
 
 const primaryButtonClass =
@@ -54,9 +57,12 @@ const primaryButtonClass =
 const secondaryButtonClass =
   "flex h-11 w-full items-center justify-center rounded-xl border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40";
 
+// Owner-facing intent vocabulary (same as Findmi Here → Add Event). The
+// internal intent keys are unchanged: "participating" stays an Appearance /
+// participation, "hosting" a hosted Event — never silently swapped.
 const INTENT_COPY: Record<EventImportIntent, { title: string; line: string; badge: string }> = {
-  participating: { title: "Where I’ll Be", line: "Add something your Business is participating in.", badge: "Participating" },
-  hosting: { title: "Host an Event", line: "Create something your Business is organizing.", badge: "Hosting" },
+  participating: { title: "Appearing At An Event", line: "Import an Event or experience someone else is hosting that your Business will participate in.", badge: "Appearing" },
+  hosting: { title: "Hosting An Event", line: "Import an Event your Business is organizing.", badge: "Hosting" },
 };
 
 type Step =
@@ -129,7 +135,7 @@ export default function EventImporter({
       <div className="flex flex-col gap-4">
         <header>
           <h1 className="font-display text-page-title font-bold text-primary">Import an Event</h1>
-          <p className="mt-1 text-body text-muted">Add a link, paste the details or upload a flyer, and Findmi fills in the details.</p>
+          <p className="mt-1 text-body text-muted">Give Findmi a link, the details or a flyer — Findmi extracts the Event and you review it before anything is added.</p>
         </header>
         <section aria-labelledby="involvement" className="flex flex-col gap-2">
           <h2 id="involvement" className="text-card-title font-semibold text-primary">
@@ -146,7 +152,7 @@ export default function EventImporter({
                 <NavIcon name={key === "participating" ? "compass" : "calendar"} className="h-6 w-6" />
               </span>
               <span className="min-w-0">
-                <span className="block text-card-title font-semibold text-primary">{INTENT_COPY[key].badge}</span>
+                <span className="block text-card-title font-semibold text-primary">{INTENT_COPY[key].title}</span>
                 <span className="block text-metadata text-muted">
                   {key === "participating" ? "We’re participating in something someone else is organizing." : "We’re organizing or hosting this Event."}
                 </span>
@@ -320,6 +326,15 @@ export default function EventImporter({
     return (
       <div className="flex flex-col gap-4">
         {header}
+        {/* What happens — so the inputs below read as one obvious flow. */}
+        <ol aria-label="How importing works" className="grid grid-cols-3 gap-2">
+          {IMPORT_STEPS.map((stepText, i) => (
+            <li key={stepText} className="flex min-w-0 flex-col items-start gap-1 rounded-xl bg-black/[0.03] px-2.5 py-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-findmi text-[11px] font-bold text-white">{i + 1}</span>
+              <span className="text-[11px] font-semibold leading-snug text-secondary">{stepText}</span>
+            </li>
+          ))}
+        </ol>
         <form onSubmit={analyze} noValidate className={`${sectionClass} flex flex-col gap-3`}>
           <h2 className="text-card-title font-semibold text-primary">Import Event</h2>
           <div role="group" aria-label="How to import" className="grid grid-cols-3 gap-1 rounded-xl bg-black/[0.04] p-1">
@@ -344,7 +359,9 @@ export default function EventImporter({
               <label htmlFor="event-link" className="sr-only">
                 Event Link
               </label>
-              <p className="text-metadata text-muted">Paste the event&rsquo;s page, for example on Eventbrite, Luma or the organizer&rsquo;s website. You&rsquo;ll review everything before it&rsquo;s added.</p>
+              <p className="text-metadata text-muted">
+                Paste the event&rsquo;s page, for example on Eventbrite, Luma or the organizer&rsquo;s website. A calendar or listing page with several Events works too — you&rsquo;ll choose which ones to add.
+              </p>
               <input
                 ref={urlRef}
                 id="event-link"
@@ -382,6 +399,13 @@ export default function EventImporter({
                 aria-describedby={error ? errorId : undefined}
                 disabled={analyzing}
               />
+              {/* The engine's existing several-Events paste format. */}
+              <details className="text-metadata text-muted">
+                <summary className="cursor-pointer font-semibold text-accent [&::-webkit-details-marker]:hidden">Pasting several Events?</summary>
+                <p className="mt-1">
+                  Put each one between <span className="font-mono text-[11px]">EVENT 1</span> and <span className="font-mono text-[11px]">=== END EVENT 1 ===</span> (then EVENT 2, and so on). You&rsquo;ll review each Event before adding.
+                </p>
+              </details>
             </>
           )}
 

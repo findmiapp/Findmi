@@ -184,7 +184,8 @@ test("For You is real ordering from the viewer's own follows — not a cosmetic 
 
 test("Moments UI: mode toggle, per-mode category state, swipeable chip rail with gutter", () => {
   const ui = code(read("src/components/moments/MomentsDiscovery.tsx"));
-  assert.match(ui, /role="tablist" aria-label="Moments feed"/);
+  // Correction pass: the three-mode control (Explore · For You · My Moments).
+  assert.match(ui, /<MomentsModeTabs active=\{mode\} onSelect=\{setMode\} \/>/);
   assert.match(ui, /setCategories\(\(prev\) => \(\{ \.\.\.prev, \[mode\]: c \}\)\)/);
   assert.match(ui, /-mx-4 mt-3 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4/);
   assert.match(ui, /From What You Follow/);
@@ -256,7 +257,7 @@ test("Journal alignment: My Moments ↔ /moments ↔ Saved & Following, same rec
   const mine = read("src/app/(public)/my-world/journal/page.tsx");
   assert.match(mine, /href="\/moments"/);
   assert.match(mine, /href="\/my-world"/);
-  assert.match(read("src/components/moments/MomentsDiscovery.tsx"), /href="\/my-world\/journal"/);
+  assert.match(read("src/components/moments/MomentsDiscovery.tsx"), /href=\{momentsModeHref\("my-moments"\)\}/);
   assert.doesNotMatch(read("src/components/moments/MomentsDiscovery.tsx"), /World Journal|My World/);
 });
 
@@ -264,7 +265,7 @@ test("/join: one account, multiple ways to use Findmi — no passbook framing, n
   const join = code(read("src/app/(public)/join/page.tsx"));
   assert.match(join, /One Findmi Account\. Multiple Ways To Use Findmi\./);
   assert.match(join, /title="Add Or Claim A Business"/);
-  assert.match(join, /capture real experiences with Moments/);
+  assert.match(join, /"Capture Moments"/);
   assert.doesNotMatch(join, /Build your digital passbook/i);
   assert.doesNotMatch(join, /account_type|role=/);
 });
