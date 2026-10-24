@@ -119,16 +119,48 @@ export function mergeContextIntoDraft(draft: GuestMomentDraft, initial: MomentCo
   };
 }
 
+/** Every Business / Event / Location / Product the page opened the
+ * composer with is ALREADY part of the draft — i.e. this is the same
+ * Moment coming back (a reload, the auth round-trip), not a different
+ * context. A cold URL always matches. */
+export function draftContextMatches(draft: GuestMomentDraft, initial: MomentComposerInitial): boolean {
+  if (isColdInitial(initial)) return true;
+  const has = (list: { value: string }[], v: string) => list.some((x) => x.value === v);
+  const locationOk = !initial.location || draft.location?.value === initial.location.value || draft.events.some((e) => e.occurrence?.location_id === initial.location?.value);
+  return (
+    locationOk &&
+    initial.events.every((e) => has(draft.events, e.value)) &&
+    initial.businesses.every((b) => has(draft.businesses, b.value)) &&
+    initial.products.every((p) => has(draft.products, p.value))
+  );
+}
+
+/** The entity a draft is "with", for "Continue your Moment with …?" —
+ * its Location, else Event, else Business, else Product; null when the
+ * draft has no connected entity. */
+export function draftContextLabel(draft: Pick<GuestMomentDraft, "location" | "events" | "businesses" | "products">): string | null {
+  return draft.location?.label ?? draft.events[0]?.label ?? draft.businesses[0]?.label ?? draft.products[0]?.label ?? null;
+}
+
 export type GuestStartupDecision =
   | { kind: "none" }
   | { kind: "restore"; draft: GuestMomentDraft }
   | { kind: "prompt"; draft: GuestMomentDraft }
+  | { kind: "switch"; draft: GuestMomentDraft }
   | { kind: "convert"; draft: GuestMomentDraft };
 
 /** What the composer does with whatever draft it finds on load.
  *
- *  - Signed out: ALWAYS restore (merged with any URL context) — a guest
- *    reloading, or returning to Add Moment, gets their own work back.
+ *  - Signed out, cold URL or the SAME context (draftContextMatches): restore
+ *    it (merged with any URL context it lacks) — a guest reloading, or
+ *    returning to Add Moment, gets their own work back.
+ *  - Signed out, a DIFFERENT context and the draft holds real user content:
+ *    ASK FIRST ("switch" — You Have A Moment In Progress: Continue Moment /
+ *    Start A New Moment). Old photos/copy are never silently mixed with a
+ *    new Business / Location / Event.
+ *  - Signed out, a different context but the draft is only an earlier
+ *    page's prefill (nothing typed or chosen): start clean with the new
+ *    context — there is nothing to lose and nothing to mix.
  *  - Signed in via the deterministic `?resume=1` round-trip from the auth
  *    prompt, on a cold URL: convert it into the real Moment.
  *  - Signed in on a cold URL without the resume signal: OFFER it, never
@@ -137,7 +169,10 @@ export type GuestStartupDecision =
 export function decideGuestStartup(input: { authed: boolean; resume: boolean; initial: MomentComposerInitial; draft: GuestMomentDraft | null }): GuestStartupDecision {
   const { authed, resume, initial, draft } = input;
   if (!draft) return { kind: "none" };
-  if (!authed) return { kind: "restore", draft: mergeContextIntoDraft(draft, initial) };
+  if (!authed) {
+    if (draftContextMatches(draft, initial)) return { kind: "restore", draft: mergeContextIntoDraft(draft, initial) };
+    return draftHasUserContent(draft) ? { kind: "switch", draft } : { kind: "none" };
+  }
   if (!isColdInitial(initial)) return { kind: "none" };
   return resume ? { kind: "convert", draft } : { kind: "prompt", draft };
 }

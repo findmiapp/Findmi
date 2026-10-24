@@ -18,12 +18,14 @@ export interface QuickAction {
   icon: QuickActionIcon;
 }
 
-/** In order: presence, hosting, catalog, tools, places, growth, publishing. */
+/** In order: Events, catalog, tools, places, growth, publishing. ONE Event
+ * action (Where I'll Be and Host an Event are no longer separate): it opens
+ * Findmi Here → Events with "What Are You Adding?" — Hosting An Event or
+ * Appearing At An Event — which routes into the existing workflow. */
 export function businessQuickActions(businessId: string): QuickAction[] {
   const c = businessCreateActions(`/account/business/${businessId}`, businessId);
   return [
-    { key: "where", label: "Where I’ll Be", ariaLabel: "Add Where I’ll Be", href: c.where.href, icon: "compass" },
-    { key: "event", label: "Event", ariaLabel: "Host an Event", href: c.event.href, icon: "calendar" },
+    { key: "event", label: "Event", ariaLabel: "Add an Event — hosting or appearing at", href: managerHref(businessId, "add-event"), icon: "calendar" },
     { key: "product", label: "Product", ariaLabel: "Add a Product", href: c.product.href, icon: "tag" },
     { key: "qr", label: "QR Code", ariaLabel: "Create a QR Code", href: c.qr.href, icon: "qr" },
     { key: "location", label: "Location", ariaLabel: "Add a Location", href: c.location.href, icon: "pin" },

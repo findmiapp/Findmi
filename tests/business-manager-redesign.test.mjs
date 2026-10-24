@@ -253,7 +253,8 @@ test("availability: owner submissions are pending/business-sourced, scoped to th
   assert.match(actions, /membership\.viaAdmin \|\| isManagingRole\(membership\.role\)/);
   const view = read(`${B}/v2/AvailableAtView.tsx`);
   for (const w of ["Where", "How are you there?", "Products", "When?", "Pending Review"]) assert.ok(view.includes(w) || read("src/lib/business-availability-domain.ts").includes(w), w);
-  assert.match(read(`${B}/v2/PresenceViews.tsx`), /key: "find-us", label: "Find Us Here"/);
+  // Findmi Here → Places → Find Us Here (view key unchanged).
+  assert.match(read(`${B}/v2/PresenceViews.tsx`), /"find-us": \{ label: "Find Us Here", body: "Places where customers can find your products or services\." \}/);
   assert.match(read("src/app/admin/(protected)/businesses/availability-actions.ts"), /adminReviewFindUsAt/);
 });
 
@@ -278,7 +279,8 @@ const CA = await import("../src/app/(public)/account/business/[id]/v2/createActi
 
 test("the full + Create sheet keeps every action incl. Add a Moment, plus Opportunities; Home's Quick Actions rail is separate", () => {
   const labels = CA.orderedCreateActions("/b", "x").map((a) => a.label);
-  assert.deepEqual(labels, ["Where I’ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
+  // UX consolidation: ONE Event entry (Hosting / Appearing At chosen next).
+  assert.deepEqual(labels, ["Add An Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
   assert.equal(CA.businessCreateActions("/b", "x").moment.href, "/my-world/journal/new?business=x&postAs=x", "the one existing composer");
   const sheet = read(`${B}/v2/AddToPresence.tsx`);
   assert.match(sheet, /Find An Opportunity/);

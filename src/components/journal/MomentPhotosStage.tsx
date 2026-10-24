@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetSta
 import Image from "next/image";
 import ChevronIcon from "@/components/ChevronIcon";
 import JournalPhotoStrip from "./JournalPhotoStrip";
+import { PhotoSourceButtons, usePhotoSource } from "./photoSource";
 import MomentSheet from "./MomentSheet";
 import type { useJournalPhotoUpload } from "./useJournalPhotoUpload";
 import { createJournalSection, updateJournalSection, reorderJournalSections, deleteJournalSection } from "@/app/(public)/my-world/journal/actions";
@@ -603,7 +604,10 @@ function AssignSheet({
   onUpload: (files: FileList) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const fileRef = useRef<HTMLInputElement>(null);
+  // Same Take Photo / Choose From Photos inputs as the main photo strip.
+  const source = usePhotoSource((files) => {
+    if (files && files.length > 0) onUpload(files);
+  });
   const name = section ? section.title?.trim() || typeLabel(section.section_type) : "This Section";
 
   return (
@@ -623,25 +627,18 @@ function AssignSheet({
               {selected.size === 0 ? "Select Photos" : `Add ${selected.size} Photo${selected.size === 1 ? "" : "s"}`}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="flex h-11 items-center justify-center rounded-2xl border border-black/10 text-sm font-semibold text-ink/70 transition hover:border-findmi/40 hover:text-findmi-700"
-          >
-            Upload New Photos
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="sr-only"
-            aria-label="Upload photos to this section"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) onUpload(e.target.files);
-              e.target.value = "";
-            }}
-          />
+          {source.canCapture ? (
+            <PhotoSourceButtons compact takePhoto={source.takePhoto} choosePhotos={source.choosePhotos} />
+          ) : (
+            <button
+              type="button"
+              onClick={source.choosePhotos}
+              className="flex h-11 items-center justify-center rounded-2xl border border-black/10 text-sm font-semibold text-ink/70 transition hover:border-findmi/40 hover:text-findmi-700"
+            >
+              Upload New Photos
+            </button>
+          )}
+          {source.inputs}
         </>
       }
     >

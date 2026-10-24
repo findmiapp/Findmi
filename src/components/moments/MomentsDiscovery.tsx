@@ -4,13 +4,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { MomentFeedCard } from "@/lib/moment-discovery";
 import {
-  MOMENT_FILTER_LABELS,
-  MORE_MOMENT_FILTERS,
-  PRIMARY_MOMENT_FILTERS,
-  followingEmptyMessage,
+  MOMENT_CATEGORY_KEYS,
+  MOMENT_CATEGORY_LABELS,
+  MOMENT_FEED_MODES,
+  MOMENT_FEED_MODE_LABELS,
   mergeFollowKeys,
-  momentMatchesFilter,
-  type MomentFilterKey,
+  momentFeedQuery,
+  momentInCategory,
+  orderForYou,
+  type MomentCategoryKey,
+  type MomentFeedMode,
+  type MomentFeedState,
   type MomentFollowKeys,
 } from "@/lib/moment-filters";
 import { getFollowedSlugs } from "@/lib/followed";
@@ -22,42 +26,48 @@ import MomentDiscoveryCard from "./MomentDiscoveryCard";
 import { useNearViewport } from "./useNearViewport";
 
 const NO_FOLLOWS: MomentFollowKeys = { businessSlugs: [], eventIds: [], locationIds: [] };
+const DEFAULT_STATE: MomentFeedState = { mode: "explore", categories: { explore: "all", "for-you": "all" } };
 
-/** Findmi Moments discovery — filter chips over a set of public Moment
- * cards, as a snap carousel (homepage) or a responsive feed (/moments).
- * Filtering is over the server-loaded page: category filters use each
- * Moment's real connected categories; "Following" uses the viewer's
- * account follows when signed in (plus this device's legacy lists; guests:
- * the device lists only) — read after mount, so server and client render
- * match. A
- * category chip only appears when at least one loaded Moment matches it —
- * never an empty, decorative filter. */
+/** Findmi Moments discovery — ONE canonical Moments feed in two modes over
+ * the same public cards (lib/moment-filters):
+ *   Explore  the broad Findmi network, newest experience first.
+ *   For You  the viewer's own signals first — Moments connected to what
+ *            they follow (account follows when signed in, plus this
+ *            device's lists; read after mount so server and client render
+ *            match) — then the rest. With no signal it says so and shows
+ *            the network order; it never pretends to personalize.
+ * Each mode keeps its OWN category (switching mode never carries the other
+ * mode's category). Category chips are a horizontally swipeable rail with
+ * the page gutter; a category chip only appears when a loaded Moment
+ * matches it — never an empty, decorative filter. On /moments the URL
+ * tracks the active mode and its category. */
 export default function MomentsDiscovery({
   cards,
   layout,
-  initialFilter = "for-you",
+  initialState = DEFAULT_STATE,
   pagination,
 }: {
   cards: MomentFeedCard[];
   layout: "carousel" | "grid";
-  initialFilter?: MomentFilterKey;
-  /** /moments only: keyset pagination links (filter is carried along). */
+  initialState?: MomentFeedState;
+  /** /moments only: keyset pagination links (mode + category carried along). */
   pagination?: { basePath: string; cursor: string | null; nextCursor: string | null };
 }) {
-  const [filter, setFilter] = useState<MomentFilterKey>(initialFilter);
+  const [mode, setMode] = useState<MomentFeedMode>(initialState.mode);
+  const [categories, setCategories] = useState<Record<MomentFeedMode, MomentCategoryKey>>(initialState.categories);
   const [follows, setFollows] = useState<MomentFollowKeys>(NO_FOLLOWS);
-  // Until the account follows have loaded, Following's empty copy would
-  // guess — so it waits.
+  const [signedIn, setSignedIn] = useState(false);
+  // Until the account follows have loaded, For You's copy would guess — so it waits.
   const [followsReady, setFollowsReady] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(MORE_MOMENT_FILTERS.includes(initialFilter));
 
   useEffect(() => {
     let alive = true;
     const device: MomentFollowKeys = { businessSlugs: getFollowedSlugs(), eventIds: getFollowedEventIds(), locationIds: getFollowedLocationIds() };
     setFollows(device);
     getAccountSession()
-      .then(async (signedIn) => {
-        if (!signedIn) return;
+      .then(async (isSignedIn) => {
+        if (!isSignedIn) return;
+        if (alive) setSignedIn(true);
         const res = await fetch("/api/account/follow-keys");
         if (!res.ok) return;
         const account = (await res.json()) as MomentFollowKeys;
@@ -72,81 +82,124 @@ export default function MomentsDiscovery({
     };
   }, []);
 
-  const hasAny = (key: MomentFilterKey) => cards.some((c) => momentMatchesFilter(c, key, follows));
-  const primary = PRIMARY_MOMENT_FILTERS.filter((k) => k === "for-you" || k === "following" || hasAny(k) || k === filter);
-  const more = MORE_MOMENT_FILTERS.filter((k) => hasAny(k) || k === filter);
-  const visible = useMemo(() => cards.filter((c) => momentMatchesFilter(c, filter, follows)), [cards, filter, follows]);
-
-  const chip = (key: MomentFilterKey) => {
-    const active = key === filter;
-    return (
-      <button
-        key={key}
-        type="button"
-        aria-pressed={active}
-        onClick={() => setFilter(key)}
-        className={`h-8 shrink-0 rounded-full px-3.5 text-metadata font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi focus-visible:ring-offset-1 ${
-          active ? "bg-findmi-600 text-white" : "border border-black/10 bg-white text-ink/65 hover:border-black/20 hover:text-ink"
-        }`}
-      >
-        {MOMENT_FILTER_LABELS[key]}
-      </button>
-    );
-  };
-
-  const empty =
-    filter === "following"
-      ? followsReady
-        ? followingEmptyMessage(follows)
-        : "Loading Moments from the Pages you follow…"
-      : "No Moments here yet — check back soon.";
-
-  const pageHref = (cursor: string | null) => {
+  const category = categories[mode];
+  const hrefFor = (m: MomentFeedMode, c: MomentCategoryKey, cursor: string | null = null) => {
     if (!pagination) return "#";
-    const qs = new URLSearchParams();
-    if (filter !== "for-you") qs.set("filter", filter);
-    if (cursor) qs.set("cursor", cursor);
-    const s = qs.toString();
-    return s ? `${pagination.basePath}?${s}` : pagination.basePath;
+    const q = momentFeedQuery(m, c, cursor);
+    return q ? `${pagination.basePath}?${q}` : pagination.basePath;
   };
+  // /moments: keep the address bar in step (shareable, Back-safe) without a
+  // server round trip — the cards are already loaded.
+  useEffect(() => {
+    if (!pagination || typeof window === "undefined") return;
+    const next = hrefFor(mode, category, pagination.cursor);
+    if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(window.history.state, "", next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, category]);
+
+  const chipCategories = MOMENT_CATEGORY_KEYS.filter((k) => k === "all" || k === category || cards.some((c) => momentInCategory(c, k)));
+  const inCategory = useMemo(() => cards.filter((c) => momentInCategory(c, category)), [cards, category]);
+  const forYou = useMemo(() => orderForYou(inCategory, follows), [inCategory, follows]);
+  const visible = mode === "explore" ? inCategory : [...forYou.fromFollows, ...forYou.more];
+
+  const setCategory = (c: MomentCategoryKey) => setCategories((prev) => ({ ...prev, [mode]: c }));
+
+  const forYouNote =
+    mode !== "for-you" || !followsReady || forYou.personalized
+      ? null
+      : signedIn
+        ? "Follow Businesses, Events and Places to personalize For You. Showing the latest Moments for now."
+        : "Sign in and follow Businesses, Events and Places to personalize For You. Showing the latest Moments for now.";
+
+  const renderCards = (list: MomentFeedCard[]) => (layout === "carousel" ? <MomentCarousel cards={list} /> : <MomentGrid cards={list} />);
 
   return (
     <div>
-      <div
-        role="group"
-        aria-label="Filter Moments"
-        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {primary.map(chip)}
-        {more.length > 0 &&
-          (moreOpen ? (
-            more.map(chip)
-          ) : (
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="tablist" aria-label="Moments feed" className="inline-flex rounded-full bg-black/[0.05] p-1">
+          {MOMENT_FEED_MODES.map((m) => (
             <button
+              key={m}
               type="button"
-              aria-expanded={false}
-              onClick={() => setMoreOpen(true)}
-              className="h-8 shrink-0 rounded-full border border-black/10 bg-white px-3.5 text-metadata font-semibold text-ink/65 hover:border-black/20 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi"
+              role="tab"
+              aria-selected={m === mode}
+              onClick={() => setMode(m)}
+              className={`h-8 rounded-full px-4 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
+                m === mode ? "bg-white text-primary shadow-sm" : "text-muted hover:text-primary"
+              }`}
             >
-              More
+              {MOMENT_FEED_MODE_LABELS[m]}
             </button>
           ))}
+        </div>
       </div>
+
+      <div
+        role="group"
+        aria-label={`Filter ${MOMENT_FEED_MODE_LABELS[mode]} by category`}
+        className="-mx-4 mt-3 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 sm:-mx-6 sm:scroll-px-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {chipCategories.map((key) => {
+          const active = key === category;
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setCategory(key)}
+              className={`h-8 shrink-0 snap-start rounded-full px-3.5 text-metadata font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi focus-visible:ring-offset-1 ${
+                active ? "bg-findmi-600 text-white" : "border border-black/10 bg-white text-ink/65 hover:border-black/20 hover:text-ink"
+              }`}
+            >
+              {MOMENT_CATEGORY_LABELS[key]}
+            </button>
+          );
+        })}
+        <span aria-hidden="true" className="w-2 shrink-0" />
+      </div>
+
+      {forYouNote && <p className="mt-3 text-metadata text-muted">{forYouNote}</p>}
+      {/* Journal alignment: a signed-in viewer's own Moments — their
+          personal history over time — are the same records, one tap away. */}
+      {signedIn && pagination && (
+        <p className="mt-3 text-metadata text-muted">
+          Your own Moments become your personal history in{" "}
+          <Link href="/my-world/journal" className="font-semibold text-findmi-700 hover:underline">
+            My Moments
+          </Link>
+          .
+        </p>
+      )}
 
       <div className="mt-4">
         {visible.length === 0 ? (
-          <p className="rounded-2xl bg-black/[0.03] px-4 py-6 text-sm text-ink/55">{empty}</p>
-        ) : layout === "carousel" ? (
-          <MomentCarousel cards={visible} />
+          <p className="rounded-2xl bg-black/[0.03] px-4 py-6 text-sm text-ink/55">No Moments here yet — check back soon.</p>
+        ) : mode === "for-you" && layout === "grid" && forYou.personalized ? (
+          <div className="flex flex-col gap-8">
+            {forYou.fromFollows.length > 0 ? (
+              <section aria-label="From What You Follow">
+                <h2 className="mb-3 text-card-title font-bold text-primary">From What You Follow</h2>
+                {renderCards(forYou.fromFollows)}
+              </section>
+            ) : (
+              <p className="text-metadata text-muted">Nothing new from what you follow yet — here&rsquo;s what&rsquo;s happening on Findmi.</p>
+            )}
+            {forYou.more.length > 0 && (
+              <section aria-label="More On Findmi">
+                <h2 className="mb-3 text-card-title font-bold text-primary">More On Findmi</h2>
+                {renderCards(forYou.more)}
+              </section>
+            )}
+          </div>
         ) : (
-          <MomentGrid cards={visible} />
+          renderCards(visible)
         )}
       </div>
 
       {pagination && (pagination.nextCursor || pagination.cursor) && (
         <nav className="mt-8 flex items-center justify-between gap-3 text-sm font-semibold">
           {pagination.cursor ? (
-            <Link href={pageHref(null)} className="inline-flex items-center gap-1 text-ink/60 hover:text-ink">
+            <Link href={hrefFor(mode, category)} className="inline-flex items-center gap-1 text-ink/60 hover:text-ink">
               <ChevronIcon direction="left" className="h-3 w-3" />
               Newest
             </Link>
@@ -154,7 +207,7 @@ export default function MomentsDiscovery({
             <span />
           )}
           {pagination.nextCursor && (
-            <Link href={pageHref(pagination.nextCursor)} className="inline-flex items-center gap-1 text-findmi-700 hover:underline">
+            <Link href={hrefFor(mode, category, pagination.nextCursor)} className="inline-flex items-center gap-1 text-findmi-700 hover:underline">
               Older Moments
               <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>

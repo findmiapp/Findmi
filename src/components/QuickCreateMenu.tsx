@@ -95,7 +95,7 @@ export default function QuickCreateMenu({
             href="/my-world/journal/new"
             label="Add Moment"
             description="Capture something you experienced."
-            icon={<PencilGlyph className="h-4 w-4" />}
+            icon={<NavIcon name="moments" className="h-4 w-4" />}
             onNavigate={handleNavigate}
           />
           <MenuLink
@@ -147,16 +147,5 @@ function MenuLink({
         <span className="block text-xs text-ink/55">{description}</span>
       </span>
     </Link>
-  );
-}
-
-// Same pencil silhouette every existing Add Moment entry point uses
-// (NavDesktop, HamburgerMenu), redrawn locally per this codebase's
-// per-file glyph convention.
-function PencilGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M17 3a2.1 2.1 0 013 3L8.5 17.5 4 19l1.5-4.5L17 3z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

@@ -116,14 +116,19 @@ test("a cold URL leaves the draft untouched", () => {
   assert.equal(S.mergeContextIntoDraft(draft, emptyMomentInitial()), draft);
 });
 
-test("startup decisions: guests always restore; signed in converts ONLY on a cold resume round-trip, offers on a cold plain load, leaves a contextual load alone", () => {
+test("startup decisions: guests restore the SAME Moment, are asked before a different context is mixed in; signed in converts ONLY on a cold resume round-trip, offers on a cold plain load, leaves a contextual load alone", () => {
   const draft = draftWith({ title: "d" });
   const cold = emptyMomentInitial();
   const ev = eventInitial();
   const d = (o) => S.decideGuestStartup({ authed: false, resume: false, initial: cold, draft, ...o }).kind;
   assert.equal(d({ draft: null }), "none");
   assert.equal(d({}), "restore", "guest, cold");
-  assert.equal(d({ initial: ev }), "restore", "guest, Event-connected — the Production bug");
+  // UX consolidation: a draft for a different context is never silently
+  // merged with the newly opened Event — the guest chooses.
+  assert.equal(d({ initial: ev }), "switch", "guest, a different (Event) context");
+  // Reloading the Event-connected composer (the original Production bug)
+  // still restores: the draft already carries that Event.
+  assert.equal(d({ initial: ev, draft: draftWith({ title: "d", events: [EVENT] }) }), "restore", "guest, same Event — reload");
   assert.equal(d({ resume: true }), "restore", "a guest never converts");
   assert.equal(d({ authed: true, resume: true }), "convert");
   assert.equal(d({ authed: true }), "prompt");
@@ -132,9 +137,11 @@ test("startup decisions: guests always restore; signed in converts ONLY on a col
 });
 
 test("a restored decision carries the URL context merged in", () => {
-  const out = S.decideGuestStartup({ authed: false, resume: false, initial: eventInitial(), draft: draftWith({ notes: "n", title: "t" }) });
+  // Same Event (an occurrence the draft lacked is filled from the URL).
+  const out = S.decideGuestStartup({ authed: false, resume: false, initial: eventInitial(), draft: draftWith({ notes: "n", title: "t", events: [{ ...EVENT, occurrence: null }] }) });
   assert.equal(out.kind, "restore");
   assert.deepEqual(out.draft.events.map((e) => e.value), ["ev-1"]);
+  assert.equal(out.draft.events[0].occurrence.id, "occ-1");
   assert.equal(out.draft.title, "t");
 });
 

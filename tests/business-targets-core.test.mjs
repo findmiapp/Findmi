@@ -536,10 +536,13 @@ test("the Manager page reads internal notes only for a founder Admin session and
 
 test("Places and By Market keep their exact links; Targets never write Find Us Here", () => {
   const sw = read(`${V2}/MarketFootprintView.tsx`);
-  assert.match(sw, /item\("places", "Places", `\$\{basePath\}\?tab=findmi-here&view=find-us`\)/);
+  assert.match(sw, /item\("places", "All Places", `\$\{basePath\}\?tab=findmi-here&view=find-us`\)/);
   assert.match(sw, /item\("markets", "By Market", `\$\{basePath\}\?tab=findmi-here&view=find-us&fv=markets`\)/);
-  assert.match(sw, /item\("targets", "Targets", `\$\{basePath\}\?tab=findmi-here&view=find-us&fv=targets`\)/);
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
+  // UX consolidation: Targets are Growth-owned intent, no longer a Find Us
+  // Here sub-view; the old URL redirects to Growth → Targets.
+  assert.doesNotMatch(sw, /item\("targets"/);
+  assert.match(page, /rawSearchParams\.fv === "targets"[\s\S]{0,120}redirect\(managerHref\(id, "targets"\)\)/);
   assert.match(page, /const onFindUsPlaces = onFindUs && !onFindUsMarkets && !onFindUsTargets;/);
   for (const f of ["src/lib/business-targets.ts", ACTIONS]) assert.doesNotMatch(read(f), /business_location_availability/);
 });

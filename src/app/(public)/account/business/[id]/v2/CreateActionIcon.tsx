@@ -1,15 +1,15 @@
 import NavIcon from "@/components/NavIcon";
-import { MomentGlyph } from "@/components/opportunities/OpportunityGlyphs";
 import type { BusinessCreateIcon } from "./createActions";
 
 /** The Findmi icon for a Business creation action — NavIcon for presence /
- * Event / Location / Product, plus the established Moment pencil and QR
- * mark. One mapping, used by Business Home, the "+" sheet and the More
+ * Event / Location / Product, the canonical Moments photo (the same glyph as
+ * Moments in the bottom navigation — never a pencil, which means Edit), and
+ * the QR mark. One mapping, used by Business Home, the "+" sheet and the More
  * menu, so the same action always carries the same icon. No hooks: safe
  * in server and client components. */
 export default function CreateActionIcon({ icon, className = "h-5 w-5" }: { icon: BusinessCreateIcon; className?: string }) {
   if (icon === "qr") return <QrGlyph className={className} />;
-  if (icon === "moment") return <MomentGlyph className={className} />;
+  if (icon === "moment") return <NavIcon name="moments" className={className} />;
   return <NavIcon name={icon} className={className} />;
 }
 

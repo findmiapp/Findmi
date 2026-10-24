@@ -1,4 +1,5 @@
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "@/lib/event-range-mirror";
+import NavIcon from "@/components/NavIcon";
 import { publicLocationHref } from "@/lib/location-links";
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
@@ -751,9 +752,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
         </div>
         <Link
           href={`/event/${event.slug}/journal`}
-          className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+          className="inline-flex gap-1.5 h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
         >
-          + Add Moment
+          <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
+          Add Moment
         </Link>
       </div>
       <p className="mt-1.5 max-w-xl text-metadata text-muted">

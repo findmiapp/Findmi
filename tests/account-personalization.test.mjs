@@ -96,7 +96,9 @@ test("follows nothing → follow prompt; follows things with no qualifying Momen
   assert.equal(F.followingEmptyMessage(NONE), "Follow a Business, Event or Location to see its Moments here.");
   assert.equal(F.followingEmptyMessage({ ...NONE, businessIds: [BIZ] }), "Nothing new from the Pages you follow yet — check back soon.");
   const ui = read("src/components/moments/MomentsDiscovery.tsx");
-  assert.match(ui, /followsReady\s*\?\s*followingEmptyMessage\(follows\)/, "the empty copy is decided only after account follows load");
+  // For You (which replaced the Following chip) says "no signal" only after
+  // account follows load — never a guess.
+  assert.match(ui, /mode !== "for-you" \|\| !followsReady \|\| forYou\.personalized/, "the For You note is decided only after account follows load");
   assert.match(ui, /fetch\("\/api\/account\/follow-keys"\)/);
   assert.match(ui, /getAccountSession\(\)/, "guests never call the account endpoint");
 });

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import NavIcon from "@/components/NavIcon";
 import ChevronIcon from "@/components/ChevronIcon";
 import { formatTime } from "@/lib/format";
@@ -23,23 +24,33 @@ export function parsePresenceView(raw: string | undefined): PresenceView {
   return raw === "past" || raw === "locations" || raw === "find-us" ? raw : "upcoming";
 }
 
-export function PresenceHeader({ basePath, view }: { basePath: string; view: PresenceView }) {
-  // Terminology pass — visible labels only ("Happening" includes both
-  // happening-now and upcoming activity, not just currently-live — the
-  // underlying PresenceView key stays "upcoming" and its filtering
-  // semantics are completely unchanged). "Past" and "Locations" are
-  // unchanged.
-  const items: { key: PresenceView; label: string }[] = [
-    { key: "upcoming", label: "Happening" },
-    { key: "find-us", label: "Find Us Here" },
-    { key: "locations", label: "Locations" },
-    { key: "past", label: "Past" },
+/** Findmi Here's top-level lenses, in the owner's words. "Events" holds
+ * both what this Business hosts and what it appears at (the internal
+ * Event / Appearance split never surfaces); "Places" holds Find Us Here
+ * and Our Locations (one lens, two relationships — see PlacesLens); "Past"
+ * is the historical real-world activity. View keys are unchanged
+ * ("upcoming", "find-us" | "locations", "past"), so every existing link
+ * still lands. */
+export function presenceTopTab(view: PresenceView): "events" | "places" | "past" {
+  if (view === "past") return "past";
+  if (view === "find-us" || view === "locations") return "places";
+  return "events";
+}
+
+export function PresenceHeader({ basePath, view, action }: { basePath: string; view: PresenceView; action?: ReactNode }) {
+  const items: { key: "events" | "places" | "past"; label: string; href: string }[] = [
+    { key: "events", label: "Events", href: `${basePath}?tab=findmi-here` },
+    { key: "places", label: "Places", href: `${basePath}?tab=findmi-here&view=find-us` },
+    { key: "past", label: "Past", href: `${basePath}?tab=findmi-here&view=past` },
   ];
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <h1 className="font-display text-page-title-lg font-bold text-primary">Findmi Here</h1>
-        <p className="mt-0.5 text-body text-muted">Manage where your business shows up.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-display text-page-title-lg font-bold text-primary">Findmi Here</h1>
+          <p className="mt-0.5 text-body text-muted">Manage where your business shows up.</p>
+        </div>
+        {action && <div className="shrink-0 pt-1">{action}</div>}
       </div>
       <OptimisticTabs
         ariaLabel="Findmi Here"
@@ -47,11 +58,45 @@ export function PresenceHeader({ basePath, view }: { basePath: string; view: Pre
         linkClass="flex h-9 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full px-2 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 sm:flex-none sm:px-3.5 sm:text-button"
         activeClass="bg-white text-primary shadow-sm"
         inactiveClass="text-muted hover:text-primary"
-        active={view}
-        items={items.map((i) => ({ key: i.key, label: i.label, href: i.key === "upcoming" ? `${basePath}?tab=findmi-here` : `${basePath}?tab=findmi-here&view=${i.key}` }))}
+        active={presenceTopTab(view)}
+        items={items}
       >
         <ScrollActiveIntoView />
       </OptimisticTabs>
+    </div>
+  );
+}
+
+/** Findmi Here → Places: ONE lens over the canonical Location, split by the
+ * Business↔Location RELATIONSHIP — never a second Location model.
+ *   Find Us Here   places that carry / serve / offer this Business
+ *                  (business_location_availability)
+ *   Our Locations  places this Business owns or operates (business_locations)
+ * Each side keeps its own add/import flow, so an import always lands in the
+ * relationship it was started from. */
+export const PLACES_LENS_COPY = {
+  "find-us": { label: "Find Us Here", body: "Places where customers can find your products or services." },
+  locations: { label: "Our Locations", body: "Places your Business owns or operates." },
+} as const;
+
+export function PlacesLens({ basePath, view }: { basePath: string; view: "find-us" | "locations" }) {
+  const item = (key: "find-us" | "locations") => (
+    <Link
+      key={key}
+      href={`${basePath}?tab=findmi-here&view=${key}`}
+      aria-current={view === key ? "page" : undefined}
+      className={`flex h-9 flex-1 items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${view === key ? "bg-findmi text-white shadow-sm" : "text-muted hover:text-primary"}`}
+    >
+      {PLACES_LENS_COPY[key].label}
+    </Link>
+  );
+  return (
+    <div className="flex flex-col gap-1.5">
+      <nav aria-label="Places" className="flex w-full max-w-sm gap-1 rounded-full border border-black/[0.08] bg-white p-1">
+        {item("find-us")}
+        {item("locations")}
+      </nav>
+      <p className="text-metadata text-muted">{PLACES_LENS_COPY[view].body}</p>
     </div>
   );
 }

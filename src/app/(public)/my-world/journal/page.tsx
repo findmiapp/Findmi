@@ -1,4 +1,5 @@
 import Link from "next/link";
+import NavIcon from "@/components/NavIcon";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -247,13 +248,26 @@ export default async function JournalIndexPage({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">My Moments</h1>
-          <p className="mt-1.5 max-w-md text-sm text-ink/60">Document your days, places, brands and experiences.</p>
+          <p className="mt-1.5 max-w-md text-sm text-ink/60">Your personal history of the places, brands and experiences you&rsquo;ve lived.</p>
+          {/* Journal alignment — My Moments is the personal history view of
+              the SAME Moments (journal_entries) that /moments explores and
+              that Saved & Following (intent) leads to; one record, linked
+              both ways, never a second content system. */}
+          <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold">
+            <Link href="/moments" className="text-findmi-700 hover:underline">
+              Explore Moments
+            </Link>
+            <Link href="/my-world" className="text-findmi-700 hover:underline">
+              Saved &amp; Following
+            </Link>
+          </p>
         </div>
         <Link
           href="/my-world/journal/new"
-          className="flex h-9 shrink-0 items-center justify-center rounded-full bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="flex gap-1.5 h-9 shrink-0 items-center justify-center rounded-full bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          + Add Moment
+          <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
+          Add Moment
         </Link>
       </div>
 
@@ -265,8 +279,9 @@ export default async function JournalIndexPage({
           </p>
           <Link
             href="/my-world/journal/new"
-            className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
+            <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
             Add Your First Moment
           </Link>
         </div>
@@ -380,8 +395,9 @@ function EmptyPeriod({ label }: { label: string }) {
   return (
     <div className="rounded-2xl border border-dashed border-black/15 px-5 py-7 text-center">
       <p className="text-sm text-ink/50">{label}</p>
-      <Link href="/my-world/journal/new" className="mt-2 inline-block text-sm font-semibold text-findmi-700 hover:text-findmi-800">
-        + Add Moment
+      <Link href="/my-world/journal/new" className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 hover:text-findmi-800">
+        <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
+        Add Moment
       </Link>
     </div>
   );

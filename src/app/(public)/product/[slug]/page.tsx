@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import ChevronIcon from "@/components/ChevronIcon";
@@ -372,9 +373,10 @@ export default async function ProductPage({
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">{momentsHeading("product", product.name)}</h2>
           <Link
             href={addMomentHref("product", product.id)}
-            className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+            className="inline-flex gap-1.5 h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
           >
-            + Add Moment
+            <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
+            Add Moment
           </Link>
         </div>
         <div className="mt-4">

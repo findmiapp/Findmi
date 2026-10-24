@@ -20,6 +20,9 @@ export interface EventPickerOption {
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 
+/** Characters typed before Search Findmi returns anything. */
+export const EVENT_SEARCH_MIN_CHARS = 2;
+
 const STATUS_LABEL: Record<NonNullable<EventPickerOption["status"]>, string> = {
   invited: "Invited",
   applied: "Request pending",
@@ -52,18 +55,15 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<EventPickerOption | null>(null);
 
+  // Search-first: nothing is listed until the owner has typed something
+  // meaningful (EVENT_SEARCH_MIN_CHARS) — never a default list of random
+  // Events. Matches stay bounded (8) over the server's already-bounded pool.
+  const trimmed = query.trim().toLowerCase();
+  const searching = trimmed.length >= EVENT_SEARCH_MIN_CHARS;
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const pool = q
-      ? options.filter((o) => [o.name, o.dateLabel, o.venueLabel].filter(Boolean).some((v) => v!.toLowerCase().includes(q)))
-      : options;
-    // Trimmed from 8/20 — a composer that opens onto a long scrolling
-    // result list is the exact "too much application UI before a
-    // decision" problem this pass corrects; a shorter default browse set
-    // plus a still-generous searched-match cap keeps it findable without
-    // the list dominating the screen.
-    return pool.slice(0, q ? 8 : 5);
-  }, [query, options]);
+    if (!searching) return [];
+    return options.filter((o) => [o.name, o.dateLabel, o.venueLabel].filter(Boolean).some((v) => v!.toLowerCase().includes(trimmed))).slice(0, 8);
+  }, [searching, trimmed, options]);
 
   if (selected) {
     const isDeclined = selected.status === "declined";
@@ -140,7 +140,9 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
         placeholder="Search events, markets or places…"
         className={inputClass}
       />
-      {results.length > 0 ? (
+      {!searching ? (
+        <p className="mt-2 text-sm text-ink/50">Type an Event, market or place name to search Findmi.</p>
+      ) : results.length > 0 ? (
         <div className="mt-2 flex flex-col divide-y divide-black/[0.06]">
           {results.map((o) => (
             <button
@@ -171,9 +173,7 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
           ))}
         </div>
       ) : (
-        <p className="mt-2 text-sm text-ink/50">
-          No matching events{query ? ` for "${query}"` : ""}. You can add it below instead.
-        </p>
+        <p className="mt-2 text-sm text-ink/50">No matching Events for &ldquo;{query.trim()}&rdquo;. You can import it or add it manually instead.</p>
       )}
     </div>
   );

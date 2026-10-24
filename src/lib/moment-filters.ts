@@ -120,3 +120,86 @@ export function momentMatchesFilter(
   }
   return moment.tags.includes(filter);
 }
+
+// ── Feed modes: Explore vs For You ─────────────────────────────────────────
+//
+// ONE canonical Moments system, two feed modes over the same public cards:
+//
+//   explore   the broad Findmi Moment network, newest experience first —
+//             useful signed in or out.
+//   for-you   personal ordering from the viewer's OWN explicit signals:
+//             Moments connected to a Business / Event / Location they
+//             follow (account follows when signed in, plus this device's
+//             lists) come first. Nothing is inferred or invented; with no
+//             signals, For You says so and falls back to the network order.
+//
+// Each mode owns its own category (Explore → Food & Drink never forces Food
+// & Drink onto For You). The URL carries the active mode and that mode's
+// category (?mode=for-you&cat=pop-ups); the legacy ?filter= param still
+// lands (following → For You, a category → Explore + that category).
+
+export type MomentFeedMode = "explore" | "for-you";
+export type MomentCategoryKey = "all" | keyof typeof MOMENT_CATEGORY_FILTERS;
+
+export const MOMENT_FEED_MODES: readonly MomentFeedMode[] = ["explore", "for-you"];
+export const MOMENT_FEED_MODE_LABELS: Record<MomentFeedMode, string> = { explore: "Explore", "for-you": "For You" };
+export const MOMENT_CATEGORY_KEYS: readonly MomentCategoryKey[] = ["all", "food-drink", "pop-ups", "classes", "outdoors"];
+export const MOMENT_CATEGORY_LABELS: Record<MomentCategoryKey, string> = {
+  all: "All",
+  "food-drink": MOMENT_FILTER_LABELS["food-drink"],
+  "pop-ups": MOMENT_FILTER_LABELS["pop-ups"],
+  classes: MOMENT_FILTER_LABELS.classes,
+  outdoors: MOMENT_FILTER_LABELS.outdoors,
+};
+
+export const isMomentFeedMode = (v: unknown): v is MomentFeedMode => v === "explore" || v === "for-you";
+export const isMomentCategoryKey = (v: unknown): v is MomentCategoryKey => typeof v === "string" && (MOMENT_CATEGORY_KEYS as readonly string[]).includes(v);
+
+export interface MomentFeedState {
+  mode: MomentFeedMode;
+  /** Each mode's own category. */
+  categories: Record<MomentFeedMode, MomentCategoryKey>;
+}
+
+/** URL → feed state. Default: Explore, All. */
+export function parseMomentFeedState(params: { mode?: unknown; cat?: unknown; filter?: unknown }): MomentFeedState {
+  const categories: Record<MomentFeedMode, MomentCategoryKey> = { explore: "all", "for-you": "all" };
+  if (isMomentFeedMode(params.mode)) {
+    if (isMomentCategoryKey(params.cat)) categories[params.mode] = params.cat;
+    return { mode: params.mode, categories };
+  }
+  // Legacy ?filter=
+  if (params.filter === "following") return { mode: "for-you", categories };
+  if (isMomentCategoryKey(params.filter) && params.filter !== "all") return { mode: "explore", categories: { ...categories, explore: params.filter } };
+  return { mode: "explore", categories };
+}
+
+/** Feed state → query string (active mode + its category only). */
+export function momentFeedQuery(mode: MomentFeedMode, category: MomentCategoryKey, cursor?: string | null): string {
+  const qs = new URLSearchParams();
+  if (mode !== "explore") qs.set("mode", mode);
+  if (category !== "all") qs.set("cat", category);
+  if (cursor) qs.set("cursor", cursor);
+  return qs.toString();
+}
+
+/** Is a Moment in a category ("all" = every Moment)? */
+export function momentInCategory(moment: { tags: readonly MomentFilterKey[] }, category: MomentCategoryKey): boolean {
+  return category === "all" || moment.tags.includes(category);
+}
+
+/** For You ordering from the viewer's follows: Moments connected to
+ * something they follow first (network order kept within each group), then
+ * the rest. `personalized` is false when there is no signal at all, so the
+ * UI can say so instead of pretending. */
+export function orderForYou<T extends { tags: readonly MomentFilterKey[]; follow: MomentFollowKeys }>(
+  cards: readonly T[],
+  follows: MomentFollowKeys
+): { fromFollows: T[]; more: T[]; personalized: boolean } {
+  const personalized = followCount(follows) > 0;
+  if (!personalized) return { fromFollows: [], more: [...cards], personalized };
+  const fromFollows: T[] = [];
+  const more: T[] = [];
+  for (const c of cards) (momentMatchesFilter(c, "following", follows) ? fromFollows : more).push(c);
+  return { fromFollows, more, personalized };
+}

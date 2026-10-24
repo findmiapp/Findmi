@@ -10,8 +10,11 @@
 //   event (rollup)              -> ALSO journal_entry_connections.event_occurrence_id
 //                                  for any occurrence of that event (resolved at read
 //                                  time — never a duplicated connection row)
-//   location                    -> journal_entries.location_id, EXACT place only
-//                                  (no manual-location text matching, no descendants)
+//   location                    -> journal_entries.location_id at the place OR a place
+//                                  physically inside it, plus Moments whose connection
+//                                  names an Event date held there (lib/location-moment-
+//                                  scope.ts — no manual-location text matching, never
+//                                  ancestors)
 //
 // Security: reads use the anon client, so RLS alone decides visibility
 // (only visibility='public' AND status='published' rows are readable by
@@ -25,6 +28,8 @@ import { getSupabase } from "./supabase";
 import { NO_MOMENT_DISPLAY, getEntityMomentDisplay, notInList } from "./entity-moment-display";
 import { resolveSignedUrls } from "./journal";
 import { authorColumn, hasMomentAuthorship, resolveMomentAuthors } from "./moment-authorship";
+import { getLocationDescendants } from "./data";
+import { LOCATION_MOMENT_ID_CAP, eligibleLocationEntryIds, locationMomentFilter, locationMomentPlaceIds } from "./location-moment-scope";
 
 export type JournalSubjectType = "business" | "event" | "location" | "product";
 
@@ -144,7 +149,23 @@ export async function getPublicJournalCollection({
     query = query.eq("user_id", subjectId);
     if (await hasMomentAuthorship()) query = query.is("author_business_id", null);
   } else if (subjectType === "location") {
-    query = query.eq("location_id", subjectId);
+    // Capture once, surface on connected places: this place + places inside
+    // it, and Moments tagged to an Event date held at any of them. Both id
+    // sets are bounded (LOCATION_MOMENT_ID_CAP) and resolved in a few small
+    // reads, so keyset pagination and the count stay in ONE entries query.
+    const placeIds = locationMomentPlaceIds(subjectId, (await getLocationDescendants(subjectId)).map((d) => d.id));
+    const { data: occAtPlaces } = await supabase.from("event_occurrences").select("id").in("location_id", placeIds).limit(LOCATION_MOMENT_ID_CAP);
+    const occIds = (occAtPlaces ?? []).map((o) => o.id as string).filter((id) => UUID_RE.test(id));
+    const { data: connAtPlaces } = occIds.length
+      ? await supabase.from("journal_entry_connections").select("journal_entry_id").in("event_occurrence_id", occIds).limit(LOCATION_MOMENT_ID_CAP)
+      : { data: [] as { journal_entry_id: string }[] };
+    // Resolved to one id set (the entries query's own public/published
+    // filters still apply on top), so the cursor's or() stays the only one.
+    const filter = locationMomentFilter(placeIds, (connAtPlaces ?? []).map((c) => c.journal_entry_id as string));
+    const { data: eligible } = filter
+      ? await supabase.from("journal_entries").select("id").eq("visibility", "public").eq("status", "published").or(filter).limit(LOCATION_MOMENT_ID_CAP)
+      : { data: [] as { id: string }[] };
+    query = query.in("id", eligibleLocationEntryIds((eligible ?? []).map((e) => e.id as string)));
   } else if (subjectType === "occurrence") {
     // Public Moment V2 — one specific Event date (a connection's own
     // event_occurrence_id), for "More Findmi Moments" on a Moment page.

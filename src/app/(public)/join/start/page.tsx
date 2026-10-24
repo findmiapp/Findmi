@@ -70,9 +70,9 @@ export default async function JoinStartPage({
           className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-5 shadow-[0_4px_20px_rgba(20,176,188,0.10)] transition hover:border-findmi/60"
         >
           {intent === "passbook" && <SuggestedBadge />}
-          <p className="font-display text-lg font-bold tracking-tight text-ink">Build My Digital Passbook</p>
+          <p className="font-display text-lg font-bold tracking-tight text-ink">Discover And Capture</p>
           <p className="mt-1 text-sm text-ink/60">
-            Discover businesses and events, save what you love, and keep track of everywhere you go.
+            Discover Businesses, Places, Products and experiences, follow what matters, save what you want to try and capture Moments.
           </p>
           <span className="mt-3 flex items-center gap-1 text-sm font-bold text-findmi-700">
             Get Started <ChevronIcon direction="right" className="h-3.5 w-3.5" />

@@ -85,11 +85,13 @@ test("the Start Here doorway's wrapper uses the tight pb-1/pt-2 (sm:pb-2/sm:pt-3
   assert.doesNotMatch(PAGE, /px-4 pb-4 pt-3 sm:px-6 sm:pb-5 sm:pt-5/);
 });
 
-test("the doorway's own content — My Moments / Add Business cards, copy, hrefs — is byte-identical to before the move", () => {
+test("the doorway's own content — Moments / Add Business cards, copy, hrefs — stays in place (Moments now opens /moments)", () => {
   assert.match(PAGE, /Find what you love\. Get discovered\./);
-  assert.match(PAGE, /href="\/my-world\/journal"/);
-  assert.match(PAGE, /My Moments<\/span>/);
-  assert.match(PAGE, /Document your experiences\./);
+  // UX consolidation: the Moments action leads to the general /moments
+  // destination (Explore / For You), useful without login.
+  assert.match(PAGE, /href="\/moments"\s+className="flex items-center gap-2 rounded-2xl/);
+  assert.match(PAGE, />Moments<\/span>/);
+  assert.match(PAGE, /Discover and share real experiences\./);
   assert.match(PAGE, /href="\/join\/brand"/);
   assert.match(PAGE, /Add Business<\/span>/);
   assert.match(PAGE, /Get discovered and grow with Findmi\./);

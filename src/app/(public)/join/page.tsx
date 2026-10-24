@@ -45,7 +45,7 @@ import NavIcon from "@/components/NavIcon";
  */
 export const metadata: Metadata = {
   title: "Join Findmi",
-  description: "One free Findmi account: your Digital Passbook, and the ability to add or claim your brand.",
+  description: "One Findmi account, multiple ways to use Findmi: discover, follow, save and capture real experiences — and add or claim a Business whenever you're ready.",
 };
 
 export default async function JoinPage({
@@ -62,20 +62,22 @@ export default async function JoinPage({
 
   return (
     <div className="mx-auto max-w-lg px-6 py-8 sm:py-12">
+      {/* UX consolidation — current Findmi positioning: ONE account, several
+          ways to use it. No account types: a person can join now and add
+          or claim a Business later from the same account. (The non-binding
+          onboarding `intent` values below are unchanged.) */}
       <h1 className="font-display text-page-title font-bold tracking-tight text-ink">Join Findmi</h1>
-      <p className="mt-1.5 text-sm text-ink/60">
-        Your places, brands, products and experiences — all in one place.
-      </p>
+      <p className="mt-1.5 text-sm font-semibold text-ink/75">One Findmi Account. Multiple Ways To Use Findmi.</p>
 
       <div className="mt-6 flex flex-col gap-3">
         <ValueCard
           href={`/signup?next=${encodeURIComponent("/join/start?intent=passbook")}`}
-          icon={<NavIcon name="bookmark" className="h-5 w-5 text-findmi-700" />}
+          icon={<NavIcon name="moments" className="h-5 w-5 text-findmi-700" />}
           iconBg="bg-findmi-50"
           border="border-findmi/30"
           hoverBorder="hover:border-findmi/60"
-          title="Build your digital passbook"
-          description="Discover what you love, save what you want to do, and document the places, products and experiences that become part of your world."
+          title="Discover And Capture"
+          description="Discover Businesses, Brands, Places, Products and experiences. Follow what matters, save what you want to try, and capture real experiences with Moments that build your own history over time."
         />
         {/* Brand Onboarding V1 — the public Find Your Brand front door:
             look up first, sign in only to claim or create. */}
@@ -85,10 +87,11 @@ export default async function JoinPage({
           iconBg="bg-mist/60"
           border="border-black/10"
           hoverBorder="hover:border-black/20"
-          title="Add or claim your brand"
-          description="Create or claim your business presence, add products, publish where you're showing up and manage your presence on Findmi."
+          title="Add Or Claim A Business"
+          description="Create or claim your Business presence, add products, publish Events and where you’re showing up, manage your locations and connect with customers and opportunities."
         />
       </div>
+      <p className="mt-3 text-center text-xs text-ink/50">Start with a free account now — you can add or manage a Business anytime.</p>
 
       <Link
         href="/signup?next=%2Fjoin%2Fstart"

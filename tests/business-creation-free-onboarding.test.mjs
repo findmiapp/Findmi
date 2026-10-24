@@ -121,9 +121,12 @@ test("11. No Findmi Market/Area selector remains on Business creation — create
 });
 
 test("12. Legitimate factual Business fields remain: name, category, city/state, website, Instagram, short description", () => {
-  for (const name of ["name", "category_id", "website_url", "instagram_url", "short_description"]) {
+  for (const name of ["category_id", "website_url", "instagram_url", "short_description"]) {
     assert.match(NEW_PAGE, new RegExp(`name="${name}"`), `field present: ${name}`);
   }
+  // Business Name is search-first (BusinessNameSearchFirst renders the field).
+  assert.match(NEW_PAGE, /<BusinessNameSearchFirst/);
+  assert.match(readFileSync("src/app/(public)/account/business/new/BusinessNameSearchFirst.tsx", "utf8"), /name="name"/);
   for (const name of ["city", "state"]) {
     assert.match(BIZ_GEO, new RegExp(`name="${name}"`), `field present: ${name}`);
   }

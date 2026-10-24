@@ -125,7 +125,8 @@ test("9. originBack maps each known origin to a fixed destination of the SAME Bu
   assert.deepEqual(L.originBack(BIZ, "targets"), { href: L.managerHref(BIZ, "targets"), label: "Targets" });
   assert.deepEqual(L.originBack(BIZ, "inbox"), { href: L.managerHref(BIZ, "inbox"), label: "Inbox" });
   assert.deepEqual(L.originBack(BIZ, "search"), { href: L.managerHref(BIZ, "search"), label: "Search" });
-  assert.equal(L.originBack(BIZ, "findmi-here").href, `${base}?tab=findmi-here&view=find-us&fv=targets`);
+  // Targets moved out of Find Us Here (Growth owns them): Back lands on the list.
+  assert.equal(L.originBack(BIZ, "findmi-here").href, `${base}?tab=findmi-here&view=find-us`);
   assert.equal(L.originBack(BIZ, "markets").href, `${base}?tab=findmi-here&view=find-us&fv=markets`);
   for (const o of L.MANAGER_ORIGINS) assert.ok(L.originBack(BIZ, o).href.startsWith(base), o);
 });
@@ -228,9 +229,9 @@ test("24. context bar: compact Search + Inbox with accessible names", () => {
 
 const actions = QA.businessQuickActions(BIZ);
 
-test("25. Quick Actions: 6–8 actions in order, starting Where I'll Be · Event · Product · QR · Location · Target", () => {
+test("25. Quick Actions: 6–8 actions in order — ONE Event (Hosting / Appearing At chosen next) · Product · QR · Location · Target · Moment", () => {
   assert.ok(actions.length >= 6 && actions.length <= 8);
-  assert.deepEqual(actions.slice(0, 6).map((a) => a.key), ["where", "event", "product", "qr", "location", "target"]);
+  assert.deepEqual(actions.slice(0, 6).map((a) => a.key), ["event", "product", "qr", "location", "target", "moment"]);
 });
 
 test("26. every Quick Action inherits the active Business (never asks which one)", () => {
@@ -252,7 +253,7 @@ test("28. Target opens Add Target; QR opens New QR Code; destinations are existi
 test("29. rail: thin horizontal swipe list of aqua circles + bold labels, next item peeks", () => {
   const RAIL = read(`${B}/v2/QuickActionsRail.tsx`);
   assert.match(RAIL, /<nav aria-label="Quick Actions"/);
-  assert.match(RAIL, /flex snap-x gap-0.5 overflow-x-auto/);
+  assert.match(RAIL, /flex snap-x scroll-px-4 gap-0.5 overflow-x-auto/);
   assert.match(RAIL, /min-w-\[72px\]/, "≈4–5 per phone row: the next one peeks");
   assert.match(RAIL, /h-11 w-11 items-center justify-center rounded-full bg-findmi-50/);
   assert.match(RAIL, /text-\[12px\] font-bold/);

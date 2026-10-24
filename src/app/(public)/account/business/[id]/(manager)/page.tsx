@@ -29,8 +29,10 @@ import BusinessHome from "../v2/BusinessHome";
 import MoreMenu from "../v2/MoreMenu";
 import { LEGACY_TAB_REDIRECTS, VALID_BUSINESS_TAB_KEYS } from "../v2/business-nav";
 import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "../v2/OpportunitiesView";
-import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "../v2/PresenceViews";
-import AddToPresence from "../v2/AddToPresence";
+import { LocationsPresence, PastPresence, PlacesLens, PresenceHeader, parsePresenceView } from "../v2/PresenceViews";
+import AddEventChooser from "../v2/AddEventChooser";
+import GrowthFootprintBridge from "../v2/GrowthFootprintBridge";
+import { ADD_EVENT_PARAM, eventImportHref, hostEventHref, parseComposeIntent } from "../v2/eventIntent";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
@@ -378,6 +380,14 @@ export default async function ManageBusinessPage({
   if (tab === "opportunities" && rawSearchParams.view === "goals") {
     redirect(`/account/business/${id}?tab=growth${rawSearchParams.goal ? `&goal=${encodeURIComponent(rawSearchParams.goal)}` : ""}`);
   }
+  // A Target is private commercial INTENT, owned by Growth — never current
+  // Find Us Here inventory. The retired Find Us Here → Targets sub-view
+  // (…&view=find-us&fv=targets) lands on Growth → Targets, the same
+  // records and actions; a relationship workspace opened from it still
+  // opens in place.
+  if (tab === "findmi-here" && rawSearchParams.view === "find-us" && rawSearchParams.fv === "targets" && !rawSearchParams.loc && !rawSearchParams.tgt && !rawSearchParams.pt) {
+    redirect(managerHref(id, "targets"));
+  }
 
   // No server-side Suspense on purpose. Entering a destination already paints
   // its skeleton on the tap itself (v2/ManagerNav → ManagerContentFrame), and
@@ -481,7 +491,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // the request waits for the slowest read rather than the sum of them.
   // (The persistent shell's own data is not here at all — see ./layout.tsx.)
   const presenceView = parsePresenceView(viewParam);
-  const composeOpen = composeParam === "1";
+  // Findmi Here → Events: which intent panel is open (Hosting An Event /
+  // Appearing At An Event). compose=1 stays the Appearing composer, so every
+  // existing "Where I'll Be" link still lands on it.
+  const composeIntent = parseComposeIntent(composeParam);
+  const composeOpen = composeIntent === "appearing";
 
   // ?tab=referral only ever existed for a referral partner: a partner lands
   // in Settings, anyone else falls back to Overview (see below).
@@ -2570,7 +2584,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             management below, unchanged) · Past · Locations. */}
         {activeTab === "findmi-here" && (
           <div className="mb-5">
-            <PresenceHeader basePath={basePath} view={presenceView} />
+            <PresenceHeader
+              basePath={basePath}
+              view={presenceView}
+              action={presenceView === "upcoming" || presenceView === "past" ? <AddEventChooser basePath={basePath} initialOpen={addParam === ADD_EVENT_PARAM || addParam === "presence"} /> : undefined}
+            />
           </div>
         )}
         {activeTab === "findmi-here" && presenceView === "past" && (
@@ -2612,8 +2630,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         )}
         {activeTab === "findmi-here" && presenceView === "find-us" && workspaceView}
         {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && (
-          <div className="mb-4">
-            <FindUsViewSwitch basePath={`/account/business/${id}`} active={onFindUsMarkets ? "markets" : onFindUsTargets ? "targets" : "places"} />
+          <div className="mb-4 flex flex-col gap-3">
+            <PlacesLens basePath={`/account/business/${id}`} view="find-us" />
+            <FindUsViewSwitch basePath={`/account/business/${id}`} active={onFindUsMarkets ? "markets" : "places"} />
           </div>
         )}
         {activeTab === "findmi-here" && presenceView === "find-us" && !workspaceView && onFindUsMarkets && !marketKey && <GeographyOverviewView basePath={`/account/business/${id}`} data={marketOverview} />}
@@ -2636,6 +2655,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
           />
         )}
         {activeTab === "findmi-here" && presenceView === "locations" && (
+          <div className="mb-4">
+            <PlacesLens basePath={`/account/business/${id}`} view="locations" />
+          </div>
+        )}
+        {activeTab === "findmi-here" && presenceView === "locations" && (
           <LocationsPresence
             basePath={`/account/business/${id}`}
             businessId={id}
@@ -2650,6 +2674,12 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             notice={locationUpdated ?? null}
           />
         )}
+        {/* Where We Are → Where We Want To Grow: a compact bridge into
+            Growth (the canonical owner of Targets), never a Targets list
+            inside current presence. */}
+        {activeTab === "findmi-here" && (presenceView === "locations" || (presenceView === "find-us" && !workspaceView)) && (isManagingRole(membershipRole) || isAdminElevated) && (
+          <GrowthFootprintBridge businessId={id} />
+        )}
         {activeTab === "findmi-here" && presenceView === "upcoming" && (
           <div className="flex flex-col gap-5 lg:max-w-3xl">
             {/* Business Manager V4 — this is the customer-facing schedule
@@ -2663,10 +2693,31 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                 Add a location sheet; "Go somewhere" lands back here with
                 compose=1, opening the existing request-to-join composer
                 (manual fallback underneath). */}
-            <div className="flex flex-col gap-3">
-              <p className="text-body text-muted">What you&rsquo;re hosting and where you&rsquo;ll be. This is what customers see on your public Findmi profile.</p>
-              <AddToPresence basePath={basePath} businessId={id} initialOpen={addParam === "presence"} />
-            </div>
+            <p className="text-body text-muted">Events you&rsquo;re hosting and Events you&rsquo;re appearing at. This is what customers see on your public Findmi profile.</p>
+
+            {composeIntent === "hosting" && (
+              <div id="add-hosting" className={cardClass}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-card-title font-bold text-primary">Hosting An Event</p>
+                    <p className="mt-0.5 text-metadata text-muted">An Event your Business is organizing.</p>
+                  </div>
+                  <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
+                    Close
+                  </Link>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Link href={eventImportHref(id, "hosting")} className="flex min-h-[56px] flex-col justify-center rounded-xl border border-black/[0.08] px-3.5 py-2.5 transition hover:border-findmi/40 hover:bg-findmi-50/40">
+                    <span className="text-body font-bold text-primary">Import</span>
+                    <span className="text-metadata text-muted">From a link, pasted details or a flyer.</span>
+                  </Link>
+                  <Link href={hostEventHref(id)} className="flex min-h-[56px] flex-col justify-center rounded-xl border border-black/[0.08] px-3.5 py-2.5 transition hover:border-findmi/40 hover:bg-findmi-50/40">
+                    <span className="text-body font-bold text-primary">Create Manually</span>
+                    <span className="text-metadata text-muted">Fill in the details yourself.</span>
+                  </Link>
+                </div>
+              </div>
+            )}
 
             {requestSent && !error && (
               <p role="status" className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
@@ -2683,39 +2734,43 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               <div id="going-somewhere" className={cardClass}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-card-title font-bold text-primary">Where I&rsquo;ll Be</p>
-                    <p className="mt-0.5 text-metadata text-muted">Add something your Business is participating in.</p>
+                    <p className="text-card-title font-bold text-primary">Appearing At An Event</p>
+                    <p className="mt-0.5 text-metadata text-muted">An Event or experience someone else is hosting that your Business will participate in.</p>
                   </div>
                   <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
                     Close
                   </Link>
                 </div>
 
-                {/* Event Import V1 — import-first: a link, pasted details or a
-                    flyer, and Findmi fills in the details (participating context). The
-                    Findmi search and manual entry below stay as they were. */}
-                <Link
-                  href={`/account/business/${id}/import-event?intent=participating`}
-                  className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]"
-                >
-                  Import Event
-                </Link>
-                <p className="mt-1.5 text-center text-microcopy text-subtle">Use a link, pasted details or a flyer. Findmi fills in the details.</p>
-                <p className="mt-4 text-label font-bold uppercase text-subtle">Or Find It on Findmi</p>
-
+                {/* Search Findmi first (search-first: nothing listed until
+                    the owner types), then Import with the Appearing intent
+                    carried through, then manual entry. */}
                 {requestOptions.length > 0 ? (
                   <form action={addFromEvent} className="mt-3">
                     <EventSearchPicker options={requestOptions} />
                   </form>
                 ) : (
-                  <p className="mt-3 text-body text-muted">No upcoming Findmi events available right now.</p>
+                  <p className="mt-3 text-body text-muted">No upcoming Findmi Events to join right now — import it or add it manually.</p>
                 )}
+
+                {/* Event Import V1 — a link, pasted details or a flyer;
+                    Findmi fills in the details (participating context). */}
+                <Link
+                  href={eventImportHref(id, "appearing")}
+                  className="mt-3 flex min-h-[48px] items-center justify-between gap-3 rounded-xl border border-black/[0.08] px-3.5 py-2 transition hover:border-findmi/40 hover:bg-findmi-50/40"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-body font-bold text-primary">Import</span>
+                    <span className="block text-metadata text-muted">From a link, pasted details or a flyer.</span>
+                  </span>
+                  <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+                </Link>
 
                 <AppearanceEditorDetails
                   className="mt-4 border-t border-black/[0.07] pt-3"
                   initialOpen={addHasDraft}
                   summaryClassName="cursor-pointer text-metadata font-semibold text-accent [&::-webkit-details-marker]:hidden"
-                  summary="Can’t find it? Add where you’ll be."
+                  summary="Can’t find it? Add it manually."
                 >
                   <div className="mt-3">
                     <AppearanceFieldsForm

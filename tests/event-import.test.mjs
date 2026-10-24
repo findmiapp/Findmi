@@ -447,7 +447,10 @@ test("HOSTING never takes over someone else's Event; its own existing Event is '
 // ── entry points, copy, Add Another ─────────────────────────────────────
 test("Where I'll Be launches the participating context; Host an Event launches hosting", () => {
   const manage = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(manage, /href=\{`\/account\/business\/\$\{id\}\/import-event\?intent=participating`\}[\s\S]{0,300}Import Event/);
+  // UX consolidation: intent is chosen first (Appearing At / Hosting), then
+  // Import carries it (v2/eventIntent eventImportHref).
+  assert.match(manage, /href=\{eventImportHref\(id, "appearing"\)\}[\s\S]{0,400}>Import</);
+  assert.match(manage, /href=\{eventImportHref\(id, "hosting"\)\}/);
   const host = read("src/app/(public)/account/event/new/page.tsx");
   assert.match(host, /href=\{`\/account\/business\/\$\{businessContext\.id\}\/import-event\?intent=hosting`\}/);
   assert.match(host, /Or Create Manually/, "manual creation preserved");

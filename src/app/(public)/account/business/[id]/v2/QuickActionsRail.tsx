@@ -6,12 +6,18 @@ import { businessQuickActions } from "./quickActions";
  * Business identity: small aqua circles with short bold labels. The next
  * action peeks past the edge so the scroll is discoverable. Every item is a
  * real link with an accessible name; no item is icon-only. `contain:
- * inline-size` keeps the rail from ever widening its container: it scrolls. */
+ * inline-size` keeps the rail from ever widening its container: it scrolls.
+ * Gutter: the rail bleeds to the viewport edge (-mx-4) so swiped items
+ * scroll under it, but the list keeps the Manager's 16px page gutter (px-4)
+ * AND the same scroll-padding (scroll-px-4) — without it, snap-start
+ * aligns the first action to the scrollport's edge (x = 0), so it touched
+ * the viewport edge. The trailing spacer keeps the same gutter after the
+ * last action. */
 export default function QuickActionsRail({ businessId }: { businessId: string }) {
   const actions = businessQuickActions(businessId);
   return (
     <nav aria-label="Quick Actions" className="-mx-4 min-w-0 [contain:inline-size] sm:mx-0">
-      <ul className="flex snap-x gap-0.5 overflow-x-auto px-4 [scrollbar-width:none] sm:px-0 [&::-webkit-scrollbar]:hidden">
+      <ul className="flex snap-x scroll-px-4 gap-0.5 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] sm:scroll-px-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
         {actions.map((a) => (
           <li key={a.key} className="shrink-0 snap-start">
             <Link
@@ -26,6 +32,7 @@ export default function QuickActionsRail({ businessId }: { businessId: string })
             </Link>
           </li>
         ))}
+        <li aria-hidden="true" className="w-3 shrink-0 sm:hidden" />
       </ul>
     </nav>
   );

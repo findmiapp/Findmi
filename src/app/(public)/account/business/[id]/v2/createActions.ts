@@ -59,10 +59,13 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
     },
     event: {
       key: "event",
-      label: "Host an Event",
-      description: "Create something your Business is organizing.",
-      detail: "Create an activation, pop-up, tasting, class, launch or other Event your Business is organizing.",
-      href: `/account/event/new?business_id=${id}`,
+      label: "Add An Event",
+      description: "Something you’re hosting, or an Event you’re appearing at.",
+      detail: "Hosting your own Event, or appearing at a festival, market, pop-up or other Event someone else is hosting.",
+      // Findmi Here → Events with "What Are You Adding?" open: Hosting An
+      // Event routes to Import (hosting) / the Event Manager; Appearing At
+      // An Event to the request-to-join composer. See ./eventIntent.
+      href: `${basePath}?tab=findmi-here&add=event`,
       icon: "calendar",
     },
     location: {
@@ -101,12 +104,14 @@ export function businessCreateActions(basePath: string, businessId: string): Rec
 }
 
 /** Every Business creation action SHOWN in the full "+" Create sheet, in the
- * intentional order. "Add a Moment" is one of them: Moments also have their
+ * intentional order. ONE Event entry ("where" — participation — is reached
+ * through it as "Appearing At An Event"; its own definition stays for the
+ * composer route). "Add a Moment" is one of them: Moments also have their
  * own Business Manager tab, but a tab is a place to browse and manage, not a
  * replacement for global creation — the sheet routes into the same existing
  * Moment composer (no second composer). Business Home's compact Quick Create
  * is a separate, smaller selection of these (see BusinessHome.tsx). */
-export const BUSINESS_CREATE_ORDER: BusinessCreateKey[] = ["where", "event", "location", "product", "moment", "qr"];
+export const BUSINESS_CREATE_ORDER: BusinessCreateKey[] = ["event", "location", "product", "moment", "qr"];
 
 export function orderedCreateActions(basePath: string, businessId: string): BusinessCreateAction[] {
   const a = businessCreateActions(basePath, businessId);

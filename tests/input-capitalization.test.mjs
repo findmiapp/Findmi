@@ -80,7 +80,8 @@ test("admin primitives: explicit override, else name/type semantics; textarea de
 
 // ── Required surfaces ─────────────────────────────────────────────────────
 test("1/7/8. Business + Brand onboarding: name words; descriptions/About sentences; website/Instagram/codes none", () => {
-  assert.equal(byName(NEW_BIZ, "name").cap, "words");
+  // Business Name is search-first: the field lives in BusinessNameSearchFirst.
+  assert.equal(byName("src/app/(public)/account/business/new/BusinessNameSearchFirst.tsx", "name").cap, "words");
   assert.equal(byName(NEW_BIZ, "short_description").cap, "sentences");
   assert.equal(byName(NEW_BIZ, "description").cap, "sentences", "About");
   assert.equal(byName(NEW_BIZ, "website_url").cap, "none");

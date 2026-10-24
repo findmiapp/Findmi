@@ -7,6 +7,7 @@ import { getCategories } from "@/lib/data";
 import BusinessGeographyFields from "@/components/BusinessGeographyFields";
 import { createMemberBusiness } from "../actions";
 import BrandImageInput from "./BrandImageInput";
+import BusinessNameSearchFirst from "./BusinessNameSearchFirst";
 import {
   BRAND_SOURCE,
   SHORT_DESCRIPTION_MAX_LENGTH,
@@ -295,17 +296,16 @@ export default async function AddBusinessPage({
           {brandOnboarding && <input type="hidden" name="source" value={BRAND_SOURCE} />}
           {draft && <input type="hidden" name="draft" value="1" />}
 
-          <label className="block">
-            <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
-            <input autoCapitalize="words"
-              type="text"
-              name="name"
-              required
-              defaultValue={values.name}
-              placeholder="Your business name"
-              className={inputClass}
-            />
-          </label>
+          {/* UX consolidation — Business Name is SEARCH-FIRST: existing
+              Findmi Businesses (Manage / Claim / Request Access) before
+              "Create [typed name]" reveals the rest of this form. A form
+              already in progress (returning submission, Brand onboarding,
+              resume, a prefilled name) opens straight onto the fields. */}
+          <BusinessNameSearchFirst
+            inputClass={inputClass}
+            initialName={values.name}
+            startCreating={Boolean(roundTrip || duplicateSlug || brandOnboarding || fromDraft || resume === "1" || values.name || prefillStatus)}
+          >
 
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Primary category</span>
@@ -510,6 +510,7 @@ export default async function AddBusinessPage({
             resume={resume === "1"}
             className={`mt-2 ${primaryButtonClass}`}
           />
+          </BusinessNameSearchFirst>
         </form>
       </div>
     </div>

@@ -117,13 +117,12 @@ test("sticky section rail: in-page anchors only, no Attention entry (it is a sta
   assert.match(NAV, /if \(lock\) \{[\s\S]*?return;\s*\}/);
 });
 
-test("Create sheet: six actions in the intentional order, each with icon + title + one explanatory line", () => {
+test("Create sheet: five actions in the intentional order (ONE Event entry), each with icon + title + one explanatory line", () => {
   const actions = CA.orderedCreateActions("/account/business/biz", "biz");
-  assert.deepEqual(actions.map((x) => x.label), ["Where I\u2019ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
-  assert.deepEqual(actions.map((x) => x.icon), ["compass", "calendar", "pin", "tag", "moment", "qr"]);
+  assert.deepEqual(actions.map((x) => x.label), ["Add An Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
+  assert.deepEqual(actions.map((x) => x.icon), ["calendar", "pin", "tag", "moment", "qr"]);
   assert.deepEqual(actions.map((x) => x.description), [
-    "Add something your Business is participating in.",
-    "Create something your Business is organizing.",
+    "Something you’re hosting, or an Event you’re appearing at.",
     "Add a place customers can regularly find your Business.",
     "Add something people can discover from your Business.",
     "Document something your Business experienced.",
@@ -140,14 +139,15 @@ test("Create sheet: six actions in the intentional order, each with icon + title
   assert.doesNotMatch(actions.map((a) => a.label).join(" "), /Appearance/);
 });
 
-test("participating vs organizing: Where I'll Be = taking part in someone else's; Host an Event = organizing", () => {
+test("participating vs organizing: ONE Event entry, then Hosting An Event (organizing) / Appearing At An Event (taking part in someone else's)", () => {
   const a = CA.businessCreateActions("/b", "x");
   assert.match(a.where.description + a.where.detail, /participating in/);
   assert.doesNotMatch(a.where.description + a.where.detail, /organiz/);
-  assert.match(a.event.description + a.event.detail, /organizing/);
-  assert.doesNotMatch(a.event.description + a.event.detail, /participat/);
   assert.equal(a.where.detail, "Add a festival, market, retailer sampling, trade show, pop-up or other event your Business is participating in.");
-  assert.equal(a.event.detail, "Create an activation, pop-up, tasting, class, launch or other Event your Business is organizing.");
+  assert.match(a.event.detail, /Hosting your own Event, or appearing at/);
+  const chooser = read(`${B}/v2/AddEventChooser.tsx`);
+  assert.match(chooser, /title: "Hosting An Event", copy: "An Event your Business is organizing\."/);
+  assert.match(chooser, /title: "Appearing At An Event", copy: "An Event or experience someone else is hosting that your Business will participate in\."/);
 });
 
 test("Quick Actions rail: thin swipeable aqua circles from the shared definitions, never asking which Business", () => {
@@ -163,9 +163,10 @@ test("Quick Actions rail: thin swipeable aqua circles from the shared definition
 test("route integrity: every creation destination is an existing Business-scoped flow that reads its params", () => {
   const a = CA.businessCreateActions("/account/business/biz", "biz");
   assert.equal(a.where.href, "/account/business/biz?tab=findmi-here&compose=1");
-  assert.match(PAGE, /const composeOpen = composeParam === "1";/);
+  assert.match(PAGE, /const composeOpen = composeIntent === "appearing";/);
   assert.match(PAGE, /\{\(addHasDraft \|\| composeOpen\) && \(\s*<div id="going-somewhere"/);
-  assert.equal(a.event.href, "/account/event/new?business_id=biz");
+  assert.equal(a.event.href, "/account/business/biz?tab=findmi-here&add=event");
+  assert.match(PAGE, /href=\{hostEventHref\(id\)\}/, "Hosting An Event → Create Manually → the Event Manager");
   assert.match(EVENT_NEW, /business_id: businessIdParam,/);
   assert.match(EVENT_NEW, /<input type="hidden" name="business_id" value=\{businessContext\.id\} \/>/);
   assert.equal(a.location.href, "/account/business/biz?tab=findmi-here&view=locations&add=1");
@@ -179,7 +180,7 @@ test("route integrity: every creation destination is an existing Business-scoped
   assert.equal(a.qr.href, "/account/business/biz/qr/new");
   assert.ok(existsSync(`${B}/qr/new/page.tsx`));
   assert.match(read(`${B}/qr/new/page.tsx`), /await requireBusinessMember\(id\);/);
-  assert.equal(CA.businessCreateActions("/b", "a b").event.href, "/account/event/new?business_id=a%20b");
+  assert.equal(CA.businessCreateActions("/b", "a b").event.href, "/b?tab=findmi-here&add=event");
   for (const tab of ["products", "qr"]) assert.match(PAGE, new RegExp(`\\{activeTab === "${tab}" && \\(`));
 });
 

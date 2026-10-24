@@ -16,6 +16,8 @@ export type ManagerDestination =
   | "products"
   | "add-product"
   | "findmi-here"
+  | "add-event"
+  | "our-locations"
   | "schedule"
   | "find-us"
   | "where-ill-be"
@@ -59,6 +61,12 @@ export function managerHref(businessId: string, d: ManagerDestination): string {
       return `${b}?tab=products&compose=1`;
     case "findmi-here":
       return `${b}?tab=findmi-here`;
+    case "add-event":
+      // Findmi Here → Events with "What Are You Adding?" open (Hosting /
+      // Appearing At) — the one Event entry point.
+      return `${b}?tab=findmi-here&add=event`;
+    case "our-locations":
+      return `${b}?tab=findmi-here&view=locations`;
     case "schedule":
       return `${b}?tab=findmi-here&view=upcoming`;
     case "find-us":
@@ -138,7 +146,9 @@ export function originBack(businessId: string, from: unknown): { href: string; l
   if (!isManagerOrigin(from)) return null;
   const o = ORIGIN_BACK[from];
   const b = managerBase(businessId);
-  const href = o.d ? managerHref(businessId, o.d) : `${b}?tab=findmi-here&view=find-us&fv=${from === "markets" ? "markets" : "targets"}`;
+  // Targets live in Growth (their canonical owner) — Findmi Here's Find Us
+  // Here is current presence only, so its Back lands on that list.
+  const href = o.d ? managerHref(businessId, o.d) : `${b}?tab=findmi-here&view=find-us${from === "markets" ? "&fv=markets" : ""}`;
   return { href, label: o.label };
 }
 

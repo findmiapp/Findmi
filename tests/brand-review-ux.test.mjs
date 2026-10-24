@@ -39,7 +39,8 @@ test("Review field order: Business Name, Primary Category, Website, Instagram, L
     return i;
   };
   const order = [
-    at('name="name"'),
+    // Business Name (search-first component) renders before every other field.
+    at("<BusinessNameSearchFirst"),
     at('name="category_id"'),
     at('name="website_url"'),
     at('name="instagram_url"'),

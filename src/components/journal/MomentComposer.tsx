@@ -29,7 +29,7 @@ import {
   type GuestMomentDraft,
   type GuestMomentIntendedAction,
 } from "@/lib/guest-moment-draft";
-import { decideGuestStartup, shouldPersistSnapshot, snapshotFromInitial, snapshotSignature } from "@/lib/guest-moment-session";
+import { decideGuestStartup, draftContextLabel, shouldPersistSnapshot, snapshotFromInitial, snapshotSignature } from "@/lib/guest-moment-session";
 import { deleteAllGuestMomentMedia, getGuestMomentMedia } from "@/lib/guest-moment-media-db";
 import type { JournalPhotoItem } from "./useJournalPhotoUpload";
 
@@ -102,6 +102,14 @@ export default function MomentComposer({
   // state can never overwrite a stored draft before it has been read.
   const [autosaveReady, setAutosaveReady] = useState(false);
   const [foundDraftPrompt, setFoundDraftPrompt] = useState<GuestMomentDraft | null>(null);
+  // Signed out, a Moment in progress for a DIFFERENT Business / Location /
+  // Event than the one this composer was opened from: ask before anything
+  // is mixed (decideGuestStartup "switch").
+  const [switchDraftPrompt, setSwitchDraftPrompt] = useState<GuestMomentDraft | null>(null);
+  // "Start A New Moment" never destroys the old draft on the spot: it is
+  // replaced only when the new Moment is first saved to this device (its
+  // first autosave), so backing out without typing keeps it.
+  const pendingReplaceRef = useRef<GuestMomentDraft | null>(null);
   const [restoredNotice, setRestoredNotice] = useState<{ missingPhotos: number } | null>(null);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [converting, setConverting] = useState(false);
@@ -481,6 +489,7 @@ export default function MomentComposer({
     if (decision.kind === "none") setAutosaveReady(true);
     else if (decision.kind === "restore") void restoreGuestDraft(decision.draft);
     else if (decision.kind === "convert") void convertGuestDraft(decision.draft);
+    else if (decision.kind === "switch") setSwitchDraftPrompt(decision.draft);
     else setFoundDraftPrompt(decision.draft);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -496,6 +505,14 @@ export default function MomentComposer({
     if (!shouldPersistSnapshot(snapshot, baselineSignatureRef.current, persistedOnceRef.current)) return;
     persistedOnceRef.current = true;
     draftRef.current = snapshot;
+    // Started a new Moment over one in progress: its photos are released
+    // only now, as the new Moment takes the device's one draft slot.
+    const replaced = pendingReplaceRef.current;
+    if (replaced) {
+      pendingReplaceRef.current = null;
+      const keep = new Set(snapshot.media.map((m) => m.localId));
+      void deleteAllGuestMomentMedia(replaced.media.map((m) => m.localId).filter((id) => !keep.has(id)));
+    }
     writeGuestMomentDraft(snapshot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guestMode, autosaveReady, title, notes, entryDate, entryTime, location, manual, events, businesses, products, photos.items]);
@@ -512,6 +529,25 @@ export default function MomentComposer({
    * old draft — it is simply offered again next time. */
   function dismissFoundDraftPrompt() {
     setFoundDraftPrompt(null);
+  }
+
+  /** You Have A Moment In Progress → Continue Moment: the existing draft
+   * comes back with ITS OWN context — the page this composer was opened
+   * from is not merged in. */
+  function continueSwitchDraft() {
+    const draft = switchDraftPrompt;
+    setSwitchDraftPrompt(null);
+    if (draft) void restoreGuestDraft(draft);
+  }
+
+  /** → Start A New Moment: a clean composer with the newly requested
+   * context (the page's own prefill, already in state). The old draft is
+   * kept until this new Moment is first saved (pendingReplaceRef). */
+  function startNewOverSwitchDraft() {
+    const draft = switchDraftPrompt;
+    setSwitchDraftPrompt(null);
+    pendingReplaceRef.current = draft;
+    setAutosaveReady(true);
   }
 
   /** Only the explicit "Start A New Moment" button discards it. */
@@ -821,6 +857,29 @@ export default function MomentComposer({
               </button>
               <button type="button" onClick={() => setConfirmStartOver(false)} className="flex h-11 items-center justify-center text-sm font-semibold text-ink/60 hover:text-ink">
                 Keep My Draft
+              </button>
+            </>
+          }
+        />
+      )}
+
+      {switchDraftPrompt && (
+        <MomentSheet
+          title="You Have A Moment In Progress"
+          description={
+            draftContextLabel(switchDraftPrompt)
+              ? `Continue your Moment with ${draftContextLabel(switchDraftPrompt)}? Starting a new one replaces it on this device.`
+              : "Continue your unfinished Moment? Starting a new one replaces it on this device."
+          }
+          // A required choice: Escape / backdrop never pick for the person.
+          onClose={() => {}}
+          footer={
+            <>
+              <button type="button" onClick={continueSwitchDraft} className={primaryButton}>
+                Continue Moment
+              </button>
+              <button type="button" onClick={startNewOverSwitchDraft} className="flex h-11 items-center justify-center text-sm font-semibold text-ink/60 hover:text-ink">
+                Start A New Moment
               </button>
             </>
           }

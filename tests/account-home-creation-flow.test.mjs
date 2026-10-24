@@ -61,16 +61,19 @@ test("pending Claims read as Pending Review with a useful next action (no Pro up
   assert.doesNotMatch(claims.slice(0, 2500), /Upgrade to Pro/);
 });
 
-test("Create on Findmi: six owner-facing actions (no Appearance; Add a Moment restored); each maps to an existing flow", () => {
+test("Create on Findmi: five owner-facing actions — ONE Event entry (Hosting / Appearing At chosen next), no Appearance; each maps to an existing flow", () => {
   const actions = CA.orderedCreateActions("/account/business/biz", "biz");
-  assert.deepEqual(actions.map((a) => a.label), ["Where I’ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
+  assert.deepEqual(actions.map((a) => a.label), ["Add An Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
   assert.ok(!actions.some((a) => /Appearance/i.test(a.label)), "Appearance is never a Create on Findmi label");
   // Add a Moment routes into the one existing composer (no second composer).
   assert.equal(CA.businessCreateActions("/account/business/biz", "biz").moment.href, "/my-world/journal/new?business=biz&postAs=biz");
   assert.ok(existsSync("src/app/(public)/my-world/journal/new/page.tsx") && existsSync("src/app/(public)/my-world/journal/page.tsx"));
   const by = Object.fromEntries(actions.map((a) => [a.key, a.href]));
-  assert.equal(by.where, "/account/business/biz?tab=findmi-here&compose=1", "Where I'll Be → the existing participation composer (Appearance entity underneath)");
-  assert.equal(by.event, "/account/event/new?business_id=biz");
+  // UX consolidation: Where I'll Be and Host an Event became ONE Event entry
+  // that asks Hosting / Appearing At first. The participation composer
+  // definition is kept (reached as "Appearing At An Event").
+  assert.equal(CA.businessCreateActions("/account/business/biz", "biz").where.href, "/account/business/biz?tab=findmi-here&compose=1");
+  assert.equal(by.event, "/account/business/biz?tab=findmi-here&add=event");
   assert.equal(by.location, "/account/business/biz?tab=findmi-here&view=locations&add=1");
   assert.equal(by.product, "/account/business/biz?tab=products&compose=1");
   assert.equal(by.moment, "/my-world/journal/new?business=biz&postAs=biz");
@@ -93,6 +96,6 @@ test("the sheet renders every action from the shared definitions; Home's Quick A
   assert.match(home, /<QuickActionsRail businessId=\{businessId\} \/>/);
   assert.match(read("src/app/(public)/account/business/[id]/v2/quickActions.ts"), /businessCreateActions\(`\/account\/business\/\$\{businessId\}`, businessId\)/);
   assert.match(CARD, /<AddToPresence[^>]*label="Create on Findmi"/);
-  assert.equal(CA.BUSINESS_CREATE_ORDER.length, 6);
-  assert.deepEqual(CA.BUSINESS_CREATE_ORDER, ["where", "event", "location", "product", "moment", "qr"]);
+  assert.equal(CA.BUSINESS_CREATE_ORDER.length, 5);
+  assert.deepEqual(CA.BUSINESS_CREATE_ORDER, ["event", "location", "product", "moment", "qr"]);
 });

@@ -125,7 +125,8 @@ export default function MomentsView({
           <p className="mt-1 text-body text-muted">Everything connected to your Business — what you post, and what others share about you.</p>
         </div>
         {canPost && (
-          <Link href={newMomentHref(businessId)} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
+          <Link href={newMomentHref(businessId)} className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
+            <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4" /></span>
             Add A Moment
           </Link>
         )}
