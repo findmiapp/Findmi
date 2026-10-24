@@ -402,10 +402,11 @@ test("From Pages You Follow has no misleading See All; Upcoming Events stays fol
   assert.match(HOME, /getPersonalUpcoming\(\s*\{\s*savedEvents: \[\],/);
 });
 
-test("Personal nav: no operator 'Schedule'; the route and the Business More link remain", () => {
+test("Personal nav: no operator 'Schedule'; the route remains and Business More keeps a Schedule entry", () => {
   const shell = read("src/app/(public)/account/PersonalAppShell.tsx");
   assert.doesNotMatch(shell, /key: "schedule"/);
   assert.match(shell, /grid max-w-lg grid-cols-4/);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/MoreMenu.tsx"), /\/account\/schedule/);
+  // Business Manager Flow pass: More's Schedule is this Business's own schedule.
+  assert.match(read("src/app/(public)/account/business/[id]/v2/MoreMenu.tsx"), /href: to\("schedule"\), label: "Schedule"/);
   assert.ok(read("src/app/(public)/account/schedule/page.tsx").length > 0);
 });

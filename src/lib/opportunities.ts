@@ -1422,6 +1422,9 @@ export interface ConversationThread {
   /** conversations.subject_type — lets the thread view apply the
    * communication policy (lib/communication-policy.ts). */
   subjectType: string | null;
+  /** conversations.subject_id — what the thread is about (an Inquiry, an
+   * Opportunity recipient, a product…), for the thread's source link. */
+  subjectId: string | null;
 }
 
 /** The conversation thread view's one data source — chronological
@@ -1440,10 +1443,10 @@ export async function getConversationThread(
 
   const { data: conversationRow } = await admin
     .from("conversations")
-    .select("guest_name, guest_email, guest_phone, subject_type")
+    .select("guest_name, guest_email, guest_phone, subject_type, subject_id")
     .eq("id", conversationId)
     .maybeSingle();
-  const guest = conversationRow as { guest_name: string | null; guest_email: string | null; guest_phone: string | null; subject_type: string | null } | null;
+  const guest = conversationRow as { guest_name: string | null; guest_email: string | null; guest_phone: string | null; subject_type: string | null; subject_id: string | null } | null;
 
   const { data: participantRows } = await admin
     .from("conversation_participants")
@@ -1522,6 +1525,7 @@ export async function getConversationThread(
     guestEmail: guest?.guest_email ?? null,
     guestPhone: guest?.guest_phone ?? null,
     subjectType: guest?.subject_type ?? null,
+    subjectId: guest?.subject_id ?? null,
   };
 }
 
@@ -1552,6 +1556,10 @@ export interface ConversationListItem {
   productName: string | null;
   /** This viewer hasn't opened the thread since someone else last wrote. */
   unread: boolean;
+  /** Every one of the viewer's own identities taking part ("business:<id>",
+   * "personal:<uid>", "event:<id>", "location:<id>") — what Inbox scopes
+   * filter on (lib/inbox.ts). */
+  myKeys: string[];
 }
 
 /** The Messages/Inbox entry point's one data source — every Conversation
@@ -1683,6 +1691,7 @@ export async function listConversationsForUser(
         parties.filter((p) => p.user_id === userId),
         messagesByConversation.get(conversationId) ?? []
       ),
+      myKeys: [...new Set(parties.map((p) => labelKey(p.entity_type, p.entity_id, p.user_id)).filter((k) => myEntityKeys.has(k)))],
     });
   }
 

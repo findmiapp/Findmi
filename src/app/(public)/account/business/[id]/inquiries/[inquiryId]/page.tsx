@@ -14,6 +14,7 @@ import { getInquiryForBusiness } from "@/lib/commercial-inquiries";
 import { INQUIRY_STATUS_LABELS, INQUIRY_STATUS_TONE, inquiryActionsFor, intentLabel } from "@/lib/commercial-inquiries-domain";
 import { formatDateShort, formatTime } from "@/lib/format";
 import { MEDIATION_LINE, relationshipHref, relationshipRefFor } from "@/lib/relationship-links";
+import { originBack } from "@/lib/manager-links";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +23,9 @@ export const dynamic = "force-dynamic";
  * been said, and the actions that party may take. The sender's private Target
  * is never shown to the other side (getInquiryForBusiness gives the Target id
  * to the sender only, for its own way back). */
-export default async function InquiryDetailPage({ params }: { params: Promise<{ id: string; inquiryId: string }> }) {
+export default async function InquiryDetailPage({ params, searchParams }: { params: Promise<{ id: string; inquiryId: string }>; searchParams: Promise<{ from?: string }> }) {
   const { id, inquiryId } = await params;
+  const { from } = await searchParams;
   const { membership, shell } = await loadBusinessShell(id, `/account/business/${id}/inquiries/${inquiryId}`);
   const admin = getAdminSupabase();
   if (!admin) notFound();
@@ -42,7 +44,9 @@ export default async function InquiryDetailPage({ params }: { params: Promise<{ 
       ? relationshipHref(id, relationshipRefFor(inquiry.counterparty.kind, { targetId: inquiry.targetId, locationId: inquiry.counterparty.kind === "location" ? inquiry.counterparty.id : null }))
       : null;
   const open = inquiry.status === "sent" || inquiry.status === "responded";
-  const back = inquiry.role === "sender" ? (targetHref ?? `${shell.basePath}?tab=growth&view=targets`) : `${shell.basePath}#home-requests`;
+  // Opened from the Inbox / Search / Opportunities: Back returns there (validated origin).
+  const origin = originBack(id, from);
+  const back = origin?.href ?? (inquiry.role === "sender" ? (targetHref ?? `${shell.basePath}?tab=growth&view=targets`) : `${shell.basePath}#home-requests`);
 
   return (
     <BusinessAppShell {...shell} activeSection={inquiry.role === "sender" ? "growth" : "home"}>
@@ -50,7 +54,7 @@ export default async function InquiryDetailPage({ params }: { params: Promise<{ 
       <div className="flex max-w-3xl flex-col gap-4">
         <Link href={back} className="flex w-fit items-center gap-1 text-metadata font-semibold text-accent hover:underline">
           <ChevronIcon direction="left" className="h-3 w-3" />
-          {inquiry.role === "sender" ? (targetHref ? "Relationship" : "Targets") : "Home"}
+          {origin?.label ?? (inquiry.role === "sender" ? (targetHref ? "Relationship" : "Targets") : "Home")}
         </Link>
 
         {/* Simple hierarchy: who → what and where it stands → who's helping →

@@ -79,12 +79,12 @@ const navLabel = (tab: string): string => BUSINESS_NAV.find((n) => n.tab === tab
 /** Destinations listed in the More menu (everything not in the primary
  * navigation), with their existing labels. */
 export const BUSINESS_MORE_TABS = {
-  profile: { label: "Business Profile", description: "Identity, photos, contact & links" },
+  profile: { label: "Public Profile", description: "What people see: details, photos, Public Actions and Announcement" },
   performance: { label: navLabel("performance"), description: "Views, actions and how people find you" },
   products: { label: "Products", description: "Your catalog, and where each product is available" },
-  growth: { label: "Growth", description: "Goals, preferences and Opportunity matches" },
+  growth: { label: "Growth", description: "Goals, Targets, Opportunities and Ideas" },
   qr: { label: "QR Codes", description: "Create, manage and track QR codes" },
-  inquiries: { label: "Inquiry Settings", description: "How customers can contact you" },
+  inquiries: { label: "Inquiry Settings", description: "How customer inquiries work: on or off, and topics" },
   orders: { label: "Orders", description: "Marketplace orders to fulfill" },
   settings: { label: "Plan & Settings", description: "Findmi Pro, areas and business settings" },
 } as const;

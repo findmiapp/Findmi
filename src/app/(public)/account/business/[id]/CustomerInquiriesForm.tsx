@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { setBusinessInquirySettings } from "../inquiries-actions";
 import { BUSINESS_INQUIRY_TOPIC_LABELS, BUSINESS_INQUIRY_TOPIC_VALUES, type BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
+import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 
 /** Business-Controlled Inquiry Settings pass, corrected — the original
  * CSS-only `group-has-[...]:block` reveal never worked: Tailwind's
@@ -44,6 +45,7 @@ export default function CustomerInquiriesForm({
 
   return (
     <form action={setBusinessInquirySettings.bind(null, businessId)} className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+      <UnsavedChangesGuard />
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Customer Inquiries</p>
       <p className="mt-1 text-xs text-ink/50">
         How inquiries work. To show an Inquire button on your profile, add a General Inquiry in{" "}

@@ -101,7 +101,7 @@ export function buildBusinessRequests({
       title: i.eventName,
       meta: "Event Invitation · Response Requested",
       detail: [i.occurrenceStartAt ? day(i.occurrenceStartAt) : null, i.occurrenceLocationName].filter(Boolean).join(" · ") || null,
-      href: "/account/messages?filter=opportunities",
+      href: `${basePath}/inbox?view=invitations`,
       actionLabel: "Review Invitation",
     });
   }

@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { isPlainLeftClick } from "@/app/(public)/account/business/[id]/v2/ManagerNav";
+import { switchBusinessHref } from "@/lib/manager-links";
 import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import SignOutConfirm from "@/components/SignOutConfirm";
@@ -184,6 +187,16 @@ function SwitcherMenu({
   resolvedSlug: string | null;
   onNavigate: () => void;
 }) {
+  const router = useRouter();
+  // Inside a Business Manager, switching keeps the logical destination
+  // (Home, a tab, a Growth view, Inbox, Search) for the other Business, and
+  // drops anything record-specific (lib/manager-links switchBusinessHref).
+  const switchTo = (e: React.MouseEvent<HTMLAnchorElement>, businessId: string) => {
+    onNavigate();
+    if (current.kind !== "business" || current.id === businessId || !isPlainLeftClick(e)) return;
+    e.preventDefault();
+    router.push(switchBusinessHref(window.location.pathname, window.location.search, current.id, businessId));
+  };
   return (
     <div className="flex flex-col gap-0.5">
       <p className="px-2.5 pb-1 pt-1.5 text-label font-bold uppercase text-subtle">Switch To</p>
@@ -202,7 +215,7 @@ function SwitcherMenu({
       {businesses.map((b) => {
         const isCurrent = current.kind === "business" && current.id === b.id;
         return (
-          <Link key={b.id} href={`/account/business/${b.id}`} onClick={onNavigate} className={rowClass(isCurrent)}>
+          <Link key={b.id} href={`/account/business/${b.id}`} onClick={(e) => switchTo(e, b.id)} className={rowClass(isCurrent)}>
             {b.logoUrl ? (
               <SupabaseImage
                 src={b.logoUrl}
@@ -233,6 +246,13 @@ function SwitcherMenu({
 
       <div className="my-1 border-t border-black/[0.06]" />
 
+      {current.kind === "business" && (
+        <Link href="/account" onClick={onNavigate} className={utilityRowClass}>
+          <ExitGlyph className="h-4 w-4 shrink-0 text-ink/50" />
+          Exit Business Manager
+        </Link>
+      )}
+
       {current.kind === "business" && resolvedSlug && (
         <Link href={`/business/${resolvedSlug}`} onClick={onNavigate} className={utilityRowClass}>
           <EyeGlyph className="h-4 w-4 shrink-0 text-ink/50" />
@@ -251,6 +271,14 @@ function SwitcherMenu({
         Sign Out
       </SignOutConfirm>
     </div>
+  );
+}
+
+function ExitGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M14 4.5H6.5a2 2 0 00-2 2v11a2 2 0 002 2H14M10 12h10m0 0l-3.5-3.5M20 12l-3.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

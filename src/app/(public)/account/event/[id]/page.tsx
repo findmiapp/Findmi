@@ -52,6 +52,7 @@ import { weekdayIndexOf } from "@/lib/schedule-dates";
 import { findCoveringOccurrenceId, primaryDateId } from "@/lib/data";
 import type { EventParticipationStatus } from "@/lib/types";
 import ParticipationScopeEditor from "./ParticipationScopeEditor";
+import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 
 export const metadata: Metadata = {
   title: "Manage Event",
@@ -644,6 +645,7 @@ export default async function ManageEventPage({
               />
             )}
             <form action={updateMemberEventDetails.bind(null, id)} className="flex flex-col gap-4">
+              <UnsavedChangesGuard />
               <div>
                 <p className="text-label font-bold uppercase text-subtle">Identity</p>
                 <label className="mt-2 block">
@@ -833,6 +835,7 @@ export default async function ManageEventPage({
                       </form>
 
                       <form action={updateMemberEventLocation.bind(null, id)} className="flex flex-col gap-3 border-t border-black/10 pt-4">
+                        <UnsavedChangesGuard />
                         <p className="text-metadata font-medium text-muted">
                           Location: search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
                         </p>

@@ -199,7 +199,9 @@ export default function TargetsView({
   discoverHref?: string;
 }) {
   const { href, go, navPending } = useTargetNav();
-  const [adding, setAdding] = useState(false);
+  const searchParams = useSearchParams();
+  // Quick Actions → Target (…&add=1) opens straight into Add Target.
+  const [adding, setAdding] = useState(() => canEdit && searchParams.get("add") === "1");
   const [query, setQuery] = useState(filter.q);
   const filtered = !isEmptyTargetFilter(filter);
   const pages = Math.max(1, Math.ceil(total / pageSize));

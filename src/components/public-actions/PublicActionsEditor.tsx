@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useUnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { TargetKind } from "@/lib/commercial-intents";
@@ -53,6 +54,10 @@ export default function PublicActionsEditor({
   const [nextKey, setNextKey] = useState(initial.length);
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
+  // What was last saved, to tell unsaved edits apart (keys aside).
+  const snapshot = (rs: Draft[]) => JSON.stringify(rs.map(({ key: _key, ...r }) => r));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(rows));
+  useUnsavedChangesGuard(snapshot(rows) !== savedSnapshot);
   const types = PUBLIC_ACTIONS_BY_KIND[kind].filter((t) => t !== "opportunity" || opportunities.length > 0);
 
   const update = (key: number, patch: Partial<Draft>) => setRows((r) => r.map((x) => (x.key === key ? { ...x, ...patch } : x)));
@@ -84,6 +89,7 @@ export default function PublicActionsEditor({
         rows.map((r) => ({ type: r.type, label: r.label, enabled: r.enabled, opportunityListingId: r.type === "opportunity" ? r.opportunityListingId : null }))
       );
       if (!res.ok) return setStatus({ tone: "error", text: res.error });
+      setSavedSnapshot(snapshot(rows));
       setStatus({ tone: "ok", text: "Saved. Your page shows these now." });
       router.refresh();
     });

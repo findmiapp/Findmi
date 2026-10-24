@@ -866,8 +866,9 @@ export async function sendReply(
   return { conversationId };
 }
 
-function threadPath(conversationId: string): string {
-  return `/account/messages/${conversationId}`;
+function threadPath(conversationId: string, managerBusinessId?: string): string {
+  // Answered from inside a Business Manager's Inbox: stay in that Manager.
+  return managerBusinessId ? `/account/business/${managerBusinessId}/inbox/${conversationId}` : `/account/messages/${conversationId}`;
 }
 
 /** Business-side Accept/Decline on an EVENT INVITATION card inside the
@@ -877,8 +878,10 @@ function threadPath(conversationId: string): string {
  * (the Conversation thread instead of the Manager tab), so the invitation
  * and its resolution stay visible in the same place the conversation
  * happened (Section 6). */
-export async function respondToInvitationInThread(conversationId: string, opportunityId: string, businessId: string, response: "accepted" | "declined") {
-  const redirectPath = threadPath(conversationId);
+export async function respondToInvitationInThread(conversationId: string, opportunityId: string, businessId: string, response: "accepted" | "declined", inManager: boolean) {
+  // The invited Business is the one answering, so its Manager is the only
+  // place this can return to (requireBusinessMember below authorizes it).
+  const redirectPath = threadPath(conversationId, inManager ? businessId : undefined);
   try {
     await requireBusinessMember(businessId);
   } catch (err) {

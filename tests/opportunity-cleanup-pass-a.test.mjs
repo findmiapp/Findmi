@@ -105,7 +105,7 @@ test("the credits_eligible column and the admin form control are untouched (dorm
 // ---------------------------------------------------------------- 6. Inbox terminology
 test("the Inbox's Event-invitations filter is no longer labeled Opportunities (route/query value unchanged)", () => {
   assert.match(INBOX, /type InboxFilter = "all" \| "customers" \| "opportunities";/, "query value unchanged");
-  assert.match(INBOX, /href=\{f === "all" \? "\/account\/messages" : `\/account\/messages\?filter=\$\{f\}`\}/, "route unchanged");
+  assert.match(INBOX, /\.\.\.\(f === "all" \? \{\} : \{ filter: f \}\)/, "route unchanged (?filter=<value>, now also keeping the Inbox scope)");
   assert.equal(/: "Opportunities"/.test(INBOX), false, "no literal 'Opportunities' pill label remains");
   assert.match(INBOX, /"Event Invitations"/);
   assert.equal(/No opportunities right now\./.test(INBOX), false);
@@ -131,7 +131,8 @@ test("Home's Event Invitation Request routes to the Inbox's Event destination, n
   assert.ok(at > -1, "invitation Request present");
   const item = REQUESTS.slice(at, REQUESTS.indexOf("});", at));
   assert.match(item, /meta: "Event Invitation · Response Requested"/);
-  assert.match(item, /href: "\/account\/messages\?filter=opportunities"/);
+  // Business Manager Flow pass: the Business Inbox's Event Invitations view, inside the Manager.
+  assert.match(item, /href: `\$\{basePath\}\/inbox\?view=invitations`/);
   assert.equal(/tab=opportunities/.test(item), false);
 });
 

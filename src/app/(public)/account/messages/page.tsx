@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { listConversationsForUser, getPendingInvitationsForBusiness, getApplicationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
-import { conversationContextLabel } from "@/lib/admin/conversations";
+import { loadInboxView } from "@/lib/inbox-server";
+import { parseInboxScope } from "@/lib/inbox";
+import { managerHref } from "@/lib/manager-links";
+import InboxScopeMenu, { type InboxScopeOption } from "@/components/inbox/InboxScopeMenu";
+import InboxThreadList from "@/components/inbox/InboxThreadList";
 import { CUSTOMER_SUBJECT_TYPES } from "@/lib/dashboard";
 import { formatDateShort } from "@/lib/format";
 import { respondToEventInvitation } from "../business/actions";
@@ -39,9 +43,9 @@ type InboxFilter = "all" | "customers" | "opportunities";
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; scope?: string }>;
 }) {
-  const { filter: filterParam } = await searchParams;
+  const { filter: filterParam, scope: scopeParam } = await searchParams;
   const filter: InboxFilter = filterParam === "customers" || filterParam === "opportunities" ? filterParam : "all";
 
   const supabase = await getServerSupabase();
@@ -55,14 +59,6 @@ export default async function InboxPage({
     admin ? listConversationsForUser(admin, user.id) : Promise.resolve([]),
     getPersonalDisplayName(supabase, user.id),
   ]);
-  // 'opportunity'-subject_type Conversations (created only when a note is
-  // attached to an invitation/application — see lib/opportunities.ts's
-  // own createOpportunity) are deliberately excluded from BOTH lists
-  // below: that same interaction is already represented, without
-  // duplication, by the structured Opportunity row itself further down.
-  const conversations = allConversations.filter((c) => c.subjectType !== "opportunity");
-  const customerConversations = conversations.filter((c) => CUSTOMER_SUBJECT_TYPES.has(c.subjectType));
-
   const { data: businessMemberships } = await supabase.from("business_members").select("business_id, businesses(name)").eq("user_id", user.id);
   type Row = { business_id: string; businesses: { name: string } | { name: string }[] | null };
   const businesses = ((businessMemberships ?? []) as Row[])
@@ -71,6 +67,21 @@ export default async function InboxPage({
       return b ? { id: m.business_id, name: b.name } : null;
     })
     .filter((b): b is { id: string; name: string } => Boolean(b));
+
+  // Unified Inbox — one Conversation list, scoped (lib/inbox). Here: All or
+  // Personal; a Business scope opens that Business's Manager Inbox so its
+  // context (and shell) stays. 'opportunity'-subject_type Conversations (a
+  // note on an invitation/application) are excluded inside loadInboxView:
+  // the structured Opportunity row below already represents them.
+  const scope = parseInboxScope(scopeParam, []);
+  const inbox = admin ? await loadInboxView(admin, allConversations, scope, businesses.map((b) => b.id)) : { rows: [], total: 0, counts: { all: 0, personal: 0, business: {} as Record<string, number> } };
+  const conversations = inbox.rows;
+  const customerConversations = conversations.filter((c) => CUSTOMER_SUBJECT_TYPES.has(c.subjectType));
+  const scopes: InboxScopeOption[] = [
+    { key: "all", label: "All", kind: "Everything you can see", href: "/account/messages", unread: inbox.counts.all },
+    { key: "personal", label: "Personal", kind: "Just you", href: "/account/messages?scope=personal", unread: inbox.counts.personal },
+    ...businesses.map((b) => ({ key: `business:${b.id}`, label: b.name, kind: "Business", href: managerHref(b.id, "inbox"), unread: inbox.counts.business[b.id] ?? 0 })),
+  ];
 
   let invitations: OpportunityListItem[] = [];
   let applications: OpportunityListItem[] = [];
@@ -85,9 +96,9 @@ export default async function InboxPage({
   const opportunities = [...invitations, ...applications].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const showConversations = filter !== "opportunities";
-  const showOpportunities = filter !== "customers";
+  const showOpportunities = filter !== "customers" && scope.kind === "all";
   const conversationRows = filter === "customers" ? customerConversations : conversations;
-  const unreadCount = conversations.filter((c) => c.unread).length;
+  const unreadCount = scope.kind === "personal" ? inbox.counts.personal : inbox.counts.all;
   const totalCount = (showConversations ? conversationRows.length : 0) + (showOpportunities ? opportunities.length : 0);
 
   return (
@@ -97,12 +108,15 @@ export default async function InboxPage({
         {unreadCount > 0 && <span className="ml-2 align-middle text-label font-bold uppercase text-findmi-700">{unreadCount} Unread</span>}
       </h1>
       <p className="mt-1.5 text-body text-muted">Customers, organizers and event invitations that need your attention.</p>
+      <div className="mt-4">
+        <InboxScopeMenu current={scope.kind === "personal" ? "personal" : "all"} options={scopes} />
+      </div>
 
       <div className="mt-5 flex gap-1.5">
         {(["all", "customers", "opportunities"] as const).map((f) => (
           <Link
             key={f}
-            href={f === "all" ? "/account/messages" : `/account/messages?filter=${f}`}
+            href={`/account/messages?${new URLSearchParams({ ...(f === "all" ? {} : { filter: f }), ...(scope.kind === "personal" ? { scope: "personal" } : {}) }).toString()}`}
             className={`rounded-full px-3.5 py-2 text-label font-bold uppercase transition ${
               filter === f ? "bg-ink text-white" : "bg-black/[0.04] text-muted hover:bg-black/[0.07]"
             }`}
@@ -127,24 +141,14 @@ export default async function InboxPage({
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-black/[0.06]">
-            {showConversations &&
-              conversationRows.map((c) => (
-                <li key={c.id} className="py-3 first:pt-0 last:pb-0">
-                  <Link href={`/account/messages/${c.id}`} className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-1.5 truncate text-body font-semibold text-primary">
-                        {c.unread && <span aria-label="Unread" className="h-2 w-2 shrink-0 rounded-full bg-findmi" />}
-                        <span className="truncate">{c.otherPartyLabel}</span>
-                      </p>
-                      <p className="mt-0.5 truncate text-metadata text-muted">
-                        {[conversationContextLabel(c.subjectType), c.myEntityLabel, c.productName].filter(Boolean).join(" · ")}
-                      </p>
-                      <p className="mt-0.5 truncate text-metadata text-muted">{c.lastMessageBody || "No messages yet"}</p>
-                    </div>
-                    <span className="shrink-0 text-microcopy text-subtle">{formatDateShort(c.lastActivityAt)}</span>
-                  </Link>
-                </li>
-              ))}
+            {showConversations && conversationRows.length > 0 && (
+              <li className="py-0">
+                <InboxThreadList
+                  rows={conversationRows.map((c) => ({ ...c, href: `/account/messages/${c.id}`, viaLabel: [c.myEntityLabel, c.productName].filter(Boolean).join(" · ") || null }))}
+                  empty=""
+                />
+              </li>
+            )}
 
             {showOpportunities &&
               opportunities.map((o) => (

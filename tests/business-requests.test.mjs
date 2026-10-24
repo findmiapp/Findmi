@@ -61,7 +61,7 @@ test("a pending Event invitation is a Request with its date and place → the In
   assert.equal(r.title, "Jersey City Night Market");
   assert.equal(r.meta, "Event Invitation · Response Requested");
   assert.equal(r.detail, "Sun, Oct 25 · Grove Street PATH Plaza", "app time zone (6 PM New York)");
-  assert.equal(r.href, "/account/messages?filter=opportunities");
+  assert.equal(r.href, `${BASE}/inbox?view=invitations`, "the Business Inbox's Event Invitations view, inside the Manager");
 });
 
 test("an application this Business sent, and accepted / declined invitations, are not Requests", () => {
@@ -152,7 +152,7 @@ test("zero Requests render nothing; 1–3 stack; more than 3 shows the first 3 +
 });
 
 test("Home order: Needs Attention → Requests → Follow-Ups → Happening Now → Coming Up → … ", () => {
-  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<MomentsStrip", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="quick-create"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
+  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', "<MomentsStrip", 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -175,7 +175,8 @@ test("Growth counts, Coming Up and Follow-Ups are unchanged", () => {
   const view = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx");
   assert.match(view, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length,/);
   assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
-  assert.match(HOME, /comingUp\.map\(\(item\) => \(/);
+  assert.match(HOME, /const comingUpGroups = groupComingUp\(comingUp\);/);
+  assert.match(HOME, /g\.items\.map\(\(item\) => \(/);
   assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\}/);
   assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, targets: followUpTargets, today: followUpToday\(\) \}\)/);
   assert.match(HOME, /<FollowUpsSection basePath=\{basePath\} items=\{followUps\} expanded=\{followUpsExpanded\} \/>/);

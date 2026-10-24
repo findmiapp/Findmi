@@ -39,9 +39,11 @@ const NavContext = createContext<NavState | null>(null);
  * leave the highlight stuck on the wrong item. */
 const PENDING_TIMEOUT_MS = 8000;
 
-export function ManagerNavProvider({ fixedSection, children }: { fixedSection?: BusinessSection; children: ReactNode }) {
+export function ManagerNavProvider({ fixedSection: fixedProp, children }: { fixedSection?: BusinessSection; children: ReactNode }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  // The Manager's own sub-routes listed in More (Inbox, Search) highlight More.
+  const fixedSection = fixedProp ?? (/\/account\/business\/[^/]+\/(inbox|search)(\/|$)/.test(pathname) ? "more" : undefined);
   const urlTab = canonicalTab(searchParams.get("tab"));
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

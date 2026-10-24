@@ -25,16 +25,19 @@ export function Panel({
   meta,
   padded = true,
   className = "",
+  id,
   children,
 }: {
   title?: ReactNode;
   meta?: ReactNode;
   padded?: boolean;
   className?: string;
+  /** A stable in-page anchor (deep links land exactly here). */
+  id?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={`rounded-xl border border-black/[0.07] bg-white ${className}`}>
+    <section id={id} className={`rounded-xl border border-black/[0.07] bg-white ${id ? "scroll-mt-24" : ""} ${className}`}>
       {title && (
         <div className={`flex items-center justify-between gap-3 border-b border-black/[0.06] ${padded ? "px-4 py-3" : "px-4 py-2.5"}`}>
           <h2 className="font-display text-section-title font-semibold text-primary">{title}</h2>

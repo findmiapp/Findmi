@@ -1,6 +1,6 @@
 // In-memory fake of the Supabase service-role client — the PostgREST subset the
 // discovery / Target readers use: embeds (incl. !inner, nested), dotted filters on
-// embeds, eq/neq/is/in/not/gte/contains, or() with ilike/eq/is/gte/and(), limit,
+// embeds, eq/neq/ilike/is/in/not/gte/contains, or() with ilike/eq/in/is/gte/and(), limit,
 // insert (business_targets' unique key emulated), update. Shared by tests only.
 
 const FK = { locations: "location_id", opportunity_listings: "listing_id", markets: "market_id", market_areas: "market_area_id", categories: "category_id", businesses: "business_id", events: "event_id" };
@@ -50,6 +50,7 @@ function orTerm(term) {
   const [col, op, ...rest] = term.split(".");
   const val = rest.join(".");
   if (op === "ilike") { const needle = val.replace(/%/g, "").toLowerCase(); return (r) => String(r[col] ?? "").toLowerCase().includes(needle); }
+  if (op === "in") { const vals = val.replace(/^\(|\)$/g, "").split(","); return (r) => vals.includes(String(r[col])); }
   if (op === "is") return (r) => (r[col] ?? null) === null;
   if (op === "eq") return (r) => String(r[col]) === val;
   if (op === "gte") return (r) => r[col] != null && String(r[col]) >= val;
@@ -70,6 +71,7 @@ export function fakeDb(tables, newId = "00000099-0000-4000-8000-000000000000") {
         select(cols) { if (call.op === "select") call.select = cols; else returning = true; return chain; },
         eq: (c, v) => pred("eq", c, (x) => x === v),
         neq: (c, v) => pred("neq", c, (x) => x !== v),
+        ilike: (c, v) => { const needle = String(v).replace(/^%|%$/g, "").replace(/\\(.)/g, "$1").toLowerCase(); return pred("ilike", c, (x) => String(x ?? "").toLowerCase().includes(needle)); },
         is: (c, v) => pred("is", c, (x) => (x ?? null) === v),
         in: (c, vals) => pred("in", c, (x) => vals.includes(x)),
         not: (c, op, v) => pred("not", c, (x) => (x ?? null) !== v),

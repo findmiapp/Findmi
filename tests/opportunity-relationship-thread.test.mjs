@@ -42,7 +42,9 @@ const ADMIN_PAGE = read("src/app/admin/(protected)/opportunities/[id]/thread/[re
 const BIZ_ACTIONS = read("src/app/(public)/account/business/[id]/opportunities/actions.ts");
 const BIZ_PAGE = read("src/app/(public)/account/business/[id]/opportunities/[recipientId]/page.tsx");
 const INBOX = read("src/app/(public)/account/messages/page.tsx");
-const THREAD_PAGE = read("src/app/(public)/account/messages/[id]/page.tsx");
+const THREAD_PAGE = read("src/app/(public)/account/messages/[id]/ConversationThreadView.tsx");
+const THREAD_LIST = read("src/components/inbox/InboxThreadList.tsx");
+const INBOX_SERVER = read("src/lib/inbox-server.ts");
 const MIGRATION = read("supabase/migrations/20261105000000_opportunity_relationship_thread.sql");
 const fn = (src, name) => {
   const start = src.indexOf(`export async function ${name}`);
@@ -328,15 +330,15 @@ test("20–21. opening marks read for that viewer only; unread is per participan
   assert.equal(O.isConversationUnread(rowsFor("u-manager"), msgs()), true, "the co-manager hasn't opened it");
   assert.equal(O.isConversationUnread([{ id: "x", last_read_at: null }], [{ kind: "system", sender_participant_id: null, created_at: "2026-10-01" }]), false);
   assert.equal(O.isConversationUnread([{ id: "x", last_read_at: null }], [{ kind: "text", sender_participant_id: "x", created_at: "2026-10-01" }]), false, "own message");
-  assert.match(THREAD_PAGE, /await markConversationRead\(\s*admin,\s*id,\s*user\.id,/);
+  assert.match(THREAD_PAGE, /await markConversationRead\(\s*admin,\s*id,\s*userId,/);
   assert.match(ADMIN_PAGE, /if \(conversation\) await markFindmiRead\(admin, conversation\.id\);/);
   assert.match(MIGRATION, /add column if not exists last_read_at timestamptz;/);
 });
 
 test("22. the Inbox shows an unread dot per thread and a small unread count", () => {
-  assert.match(INBOX, /const unreadCount = conversations\.filter\(\(c\) => c\.unread\)\.length;/);
+  assert.match(INBOX, /const unreadCount = scope\.kind === "personal" \? inbox\.counts\.personal : inbox\.counts\.all;/);
   assert.match(INBOX, /\{unreadCount\} Unread/);
-  assert.match(INBOX, /\{c\.unread && <span aria-label="Unread"/);
+  assert.match(THREAD_LIST, /\{c\.unread && <span aria-label="Unread"/);
   assert.match(read("src/lib/opportunities.ts"), /unread: isConversationUnread\(/);
 });
 
@@ -372,7 +374,7 @@ test("26. event participation threads are unchanged: own subject, Findmi never a
   const orgs = [{ entityType: "business", entityId: "a" }, { entityType: "business", entityId: "b" }];
   assert.equal(P.canSendInThread({ subjectType: "direct", hasOpportunity: false, parties: orgs }, orgs[0], false), false, "paused org-to-org stays paused");
   assert.equal(P.canSendInThread({ subjectType: "opportunity", hasOpportunity: true, parties: orgs }, orgs[0], false), true, "event Opportunity threads still reply");
-  assert.match(read("src/app/(public)/account/messages/page.tsx"), /allConversations\.filter\(\(c\) => c\.subjectType !== "opportunity"\)/);
+  assert.match(INBOX_SERVER, /all\.filter\(\(c\) => c\.subjectType !== "opportunity"\)/, "every Inbox scope still leaves Event participation note threads to their Opportunity rows");
   assert.match(BIZ_PAGE, /openOpportunityThread\.bind\(null, id, view\.recipientId\)/);
   assert.match(BIZ_ACTIONS, /result = await openBusinessOpportunityThread\(\{ businessId, recipientId \}\);/);
 });

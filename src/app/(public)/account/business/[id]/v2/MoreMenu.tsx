@@ -6,12 +6,14 @@ import ChevronIcon from "@/components/ChevronIcon";
 import SignOutConfirm from "@/components/SignOutConfirm";
 import { signOut } from "@/app/(public)/account/profile/actions";
 import { BUSINESS_MORE_TABS as T } from "./business-nav";
+import { managerHref } from "@/lib/manager-links";
 import { SparkGlyph } from "./BusinessAppShell";
 
-/** /account V2, Pass 1 — "More": every secondary destination that no longer
- * competes for primary navigation, grouped by job. Only real, existing
- * destinations are listed (each is an existing ?tab= view or /account
- * route) — nothing here is new functionality. */
+/** More — the complete, predictable Business Manager directory, grouped by
+ * job: MANAGE (what this Business shows and offers), WORK (communication and
+ * things to handle), TOOLS, BUSINESS (plan), then the person's own account.
+ * Every row is an existing destination of THIS Business (lib/manager-links),
+ * so nothing here leaves the Business Manager except "Your Account". */
 
 type MoreLink = {
   href: string;
@@ -23,50 +25,35 @@ type MoreLink = {
 };
 
 export default function MoreMenu({
-  basePath,
+  businessId,
   businessSlug,
   ordersRelevant,
 }: {
-  basePath: string;
+  businessId: string;
   businessSlug: string | null;
   ordersRelevant: boolean;
 }) {
-  const yourBusiness: MoreLink[] = [
-    { href: `${basePath}?tab=profile`, label: T.profile.label, description: T.profile.description, icon: <NavIcon name="storefront" className="h-5 w-5" /> },
-    // Products and Growth have no bottom-bar slot on phones (Performance
-    // and Moments do), so they are reached here; the desktop rail already
-    // lists both.
-    { href: `${basePath}?tab=products`, label: T.products.label, description: T.products.description, icon: <NavIcon name="tag" className="h-5 w-5" />, desktopHidden: true },
-    { href: `${basePath}?tab=growth`, label: T.growth.label, description: T.growth.description, icon: <SparkGlyph className="h-5 w-5" />, desktopHidden: true },
-    ...(businessSlug
-      ? [{ href: `/business/${businessSlug}`, label: "View Public Page", icon: <NavIcon name="compass" className="h-5 w-5" /> }]
-      : []),
+  const to = (d: Parameters<typeof managerHref>[1]) => managerHref(businessId, d);
+  const manage: MoreLink[] = [
+    { href: to("profile"), label: T.profile.label, description: T.profile.description, icon: <NavIcon name="storefront" className="h-5 w-5" /> },
+    { href: to("products"), label: T.products.label, description: T.products.description, icon: <NavIcon name="tag" className="h-5 w-5" />, desktopHidden: true },
+    { href: to("schedule"), label: "Schedule", description: "Your upcoming appearances and Events", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
+    { href: to("find-us"), label: "Findmi Here", description: "Where customers can find you, and the places you track", icon: <NavIcon name="pin" className="h-5 w-5" /> },
+    { href: to("growth"), label: T.growth.label, description: T.growth.description, icon: <SparkGlyph className="h-5 w-5" />, desktopHidden: true },
+    ...(businessSlug ? [{ href: `/business/${businessSlug}`, label: "View Public Page", description: "Open your profile as visitors see it", icon: <NavIcon name="compass" className="h-5 w-5" /> }] : []),
+  ];
+  const work: MoreLink[] = [
+    { href: to("inbox"), label: "Inbox", description: "Conversations with customers, Businesses, organizers and Findmi", icon: <InboxGlyph className="h-5 w-5" /> },
+    { href: to("opportunities"), label: "Opportunities", description: "Commercial opportunities for your Business", icon: <SparkGlyph className="h-5 w-5" /> },
+    ...(ordersRelevant ? [{ href: to("orders"), label: T.orders.label, description: T.orders.description, icon: <NavIcon name="cart" className="h-5 w-5" /> }] : []),
+    { href: to("inquiry-settings"), label: T.inquiries.label, description: T.inquiries.description, icon: <ChatGlyph className="h-5 w-5" /> },
   ];
   const tools: MoreLink[] = [
-    { href: `${basePath}?tab=qr`, label: T.qr.label, description: T.qr.description, icon: <QrGlyph className="h-5 w-5" /> },
-    { href: `${basePath}?tab=inquiries`, label: T.inquiries.label, description: T.inquiries.description, icon: <ChatGlyph className="h-5 w-5" /> },
-    ...(ordersRelevant
-      ? [{ href: `${basePath}?tab=orders`, label: T.orders.label, description: T.orders.description, icon: <NavIcon name="cart" className="h-5 w-5" /> }]
-      : []),
-    { href: "/account/messages", label: "Inbox", description: "Messages and opportunities", icon: <InboxGlyph className="h-5 w-5" /> },
-    // The operator schedule of the Pages you manage (not a personal
-    // destination — see PersonalAppShell), so it stays a Manager tool.
-    { href: "/account/schedule", label: "Schedule", description: "Appearances, Events and Locations you manage", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
+    { href: to("qr"), label: T.qr.label, description: T.qr.description, icon: <QrGlyph className="h-5 w-5" /> },
+    { href: to("search"), label: "Search", description: "Find anything in this Business", icon: <SearchGlyph className="h-5 w-5" /> },
   ];
-  // Business Account Correction Pass (#12) — this group used to be one
-  // "Account" bucket mixing Business-context destinations (Plan &
-  // settings, Referral program) with genuinely personal ones, which read
-  // as "which account am I even in?" Split by actual context instead:
-  // Business-plan destinations stay with Tools/Your business; everything
-  // under /account's shared personal shell (PersonalAppShell) — Personal
-  // account, Saved, Following, Your purchases, Your profile & sign out —
-  // moves to its own group. Schedule looks Business-ish by name, but its
-  // own page (account/schedule/page.tsx) renders inside PersonalAppShell
-  // and aggregates Business appearances + organized Events + managed
-  // Locations together — it's the unified personal view, not a
-  // Business-scoped one, so it belongs here too. No route/data change.
-  const businessPlan: MoreLink[] = [
-    { href: `${basePath}?tab=settings`, label: T.settings.label, description: T.settings.description, icon: <GearGlyph className="h-5 w-5" /> },
+  const business: MoreLink[] = [
+    { href: to("settings"), label: T.settings.label, description: T.settings.description, icon: <GearGlyph className="h-5 w-5" /> },
   ];
   // Personal destinations (Saved, Following, Purchases, Profile & Sign Out)
   // live in the personal account shell — one clear entry, not five links.
@@ -77,9 +64,10 @@ export default function MoreMenu({
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <h1 className="font-display text-page-title-lg font-bold text-primary">More</h1>
-      <MoreGroup title="Your Business" links={yourBusiness} />
+      <MoreGroup title="Manage" links={manage} />
+      <MoreGroup title="Work" links={work} />
       <MoreGroup title="Tools" links={tools} />
-      <MoreGroup title="Business Plan" links={businessPlan} />
+      <MoreGroup title="Business" links={business} />
       <MoreGroup title="Your Account" links={yourAccount} />
       {/* A direct Sign Out — the same confirm-then-signOut action every
           other sign-out trigger uses; no separate auth flow. */}
@@ -109,7 +97,7 @@ function MoreGroup({ title, links }: { title: string; links: MoreLink[] }) {
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.04] text-ink/60">{l.icon}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-card-title font-semibold text-primary">{l.label}</span>
-                {l.description && <span className="block truncate text-metadata text-muted">{l.description}</span>}
+                {l.description && <span className="line-clamp-2 block text-metadata text-muted">{l.description}</span>}
               </span>
               <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/25" />
             </Link>
@@ -147,6 +135,15 @@ function GearGlyph({ className }: { className?: string }) {
         strokeWidth="1.8"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function SearchGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

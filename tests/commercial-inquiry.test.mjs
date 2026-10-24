@@ -36,7 +36,8 @@ const V2 = "src/app/(public)/account/business/[id]/v2";
 const ACTIONS = "src/app/(public)/account/inquiry-actions.ts";
 const PAGE = "src/app/(public)/account/business/[id]/(manager)/page.tsx";
 const DETAIL = "src/app/(public)/account/business/[id]/inquiries/[inquiryId]/page.tsx";
-const MESSAGES = "src/app/(public)/account/messages/[id]/page.tsx";
+// The shared thread view (personal /account/messages/[id] and the Business Inbox thread).
+const MESSAGES = "src/app/(public)/account/messages/[id]/ConversationThreadView.tsx";
 const strip = (s) => s.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "");
 
 // ── Ids ────────────────────────────────────────────────────────────────────

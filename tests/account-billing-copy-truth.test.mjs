@@ -31,8 +31,8 @@ const INQUIRIES_ACTIONS = readFileSync("src/app/(public)/account/business/inquir
 test("the More menu's inquiry-settings nav entry is labeled accurately, not as an inbox", () => {
   assert.match(BUSINESS_NAV_DEF, /inquiries: \{ label: "Inquiry Settings"/, "the ?tab=inquiries nav entry must describe itself as settings, not as an inbox destination");
   assert.doesNotMatch(MORE_MENU + BUSINESS_NAV_DEF, /label: "Customer Inquiries"/, "the misleading inbox-sounding label must be gone");
-  // The real inbox destination, right alongside it, is untouched.
-  assert.match(MORE_MENU, /href: "\/account\/messages", label: "Inbox"/);
+  // The real Inbox, right alongside it — this Business's scope of the unified Inbox.
+  assert.match(MORE_MENU, /href: to\("inbox"\), label: "Inbox"/);
 });
 
 test("the Business Overview status row for inquiry settings is labeled accurately", () => {
@@ -40,11 +40,11 @@ test("the Business Overview status row for inquiry settings is labeled accuratel
   assert.doesNotMatch(BUSINESS_PAGE, /label="Customer Inquiries"/, "no remaining nav/status label should still say the misleading name");
 });
 
-test("the ?tab=inquiries surface still links out to the real Inbox at /account/messages, unchanged", () => {
+test("the ?tab=inquiries surface links out to the real Inbox (this Business's scope, inside the Manager)", () => {
   const tabStart = BUSINESS_PAGE.indexOf('{activeTab === "inquiries" && (');
   assert.ok(tabStart !== -1, "expected the inquiries tab render block");
   const tabBlock = BUSINESS_PAGE.slice(tabStart, tabStart + 4500);
-  assert.match(tabBlock, /href="\/account\/messages"/, "must still point the owner at the real Inbox for actual conversations");
+  assert.match(tabBlock, /href=\{managerHref\(id, "inbox"\)\}/, "must still point the owner at the real Inbox for actual conversations");
   assert.match(tabBlock, /View customer conversations in your Inbox/);
 });
 

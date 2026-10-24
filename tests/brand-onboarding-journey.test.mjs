@@ -219,7 +219,7 @@ test("createMemberBusiness: source=brand ignores plan_choice; every creation (Br
 
 test("Profile tab shows the created confirmation; Overview keeps its own", () => {
   const profile = MANAGER.slice(MANAGER.indexOf('{activeTab === "profile" && ('));
-  assert.match(profile.slice(0, 1200), /\{created && \(\s*<p[^>]*>\s*Business created!/);
+  assert.match(profile.slice(0, 3000), /\{created && \(\s*<p[^>]*>\s*Business created!/);
   assert.match(MANAGER, /Business created! You can start building your profile below\./, "Overview banner unchanged");
 });
 

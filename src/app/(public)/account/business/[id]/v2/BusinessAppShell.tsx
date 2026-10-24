@@ -7,6 +7,7 @@ import type { AccountBusinessContext } from "@/lib/accountContext";
 import { Chip } from "../../../owner-ui";
 import { BUSINESS_NAV, sectionForTab, type BusinessSection } from "./business-nav";
 import { ManagerBottomBar, ManagerContentFrame, ManagerNavProvider, ManagerRail, type ManagerNavItem } from "./ManagerNav";
+import { managerHref } from "@/lib/manager-links";
 
 /** /account V2, Pass 1 — the Business app shell. One persistent Business
  * context (logo + name + switcher) and one navigation model:
@@ -147,6 +148,21 @@ function BusinessContextBar({
         trigger={identity}
         triggerClassName="min-w-0 flex-1"
       />
+      {/* One tap from anywhere in this Manager: Search this Business, and its Inbox. */}
+      <div className="flex shrink-0 items-center gap-1">
+        <Link href={managerHref(business.id, "search")} aria-label={`Search ${business.name}`} title="Search" className="flex h-10 w-10 items-center justify-center rounded-full text-ink/60 transition hover:bg-black/[0.04] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-[22px] w-[22px]">
+            <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </Link>
+        <Link href={managerHref(business.id, "inbox")} aria-label={`${business.name} Inbox`} title="Inbox" className="flex h-10 w-10 items-center justify-center rounded-full text-ink/60 transition hover:bg-black/[0.04] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-[22px] w-[22px]">
+            <path d="M4 13l2.5-7.5h11L20 13v5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18v-5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+            <path d="M4 13h4.5l1.5 2.5h4l1.5-2.5H20" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          </svg>
+        </Link>
+      </div>
     </div>
   );
 }

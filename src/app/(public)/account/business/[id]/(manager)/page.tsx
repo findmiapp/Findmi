@@ -60,6 +60,7 @@ import { getCommercialDiscovery } from "@/lib/discovery/commercial-server";
 import { getInboundInquiryRequests, getTargetInquiries } from "@/lib/commercial-inquiries";
 import { contextualOpportunities } from "@/lib/relationship-context";
 import { isCommercialIntent } from "@/lib/commercial-intents";
+import { managerHref, originBack } from "@/lib/manager-links";
 import PublicActionsEditor from "@/components/public-actions/PublicActionsEditor";
 import { getPublicActionsEditorData } from "@/lib/public-actions";
 import { getProductSets } from "@/lib/business-product-sets";
@@ -134,6 +135,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import ChevronIcon from "@/components/ChevronIcon";
 import type { EventParticipationStatus } from "@/lib/types";
 import { imageVariantUrl } from "@/lib/image-variants";
+import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 
 const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
   invited: "Invited",
@@ -335,6 +337,8 @@ type ManagerSearchParams = {
     tgt?: string;
     /** Arriving from a public action: open the Inquiry composer on this intent. */
     inquire?: string;
+    // Where a deep screen was opened from (lib/manager-links MANAGER_ORIGINS).
+    from?: string;
     pt?: string;
     /** By Market: an Area inside the Market (fa), and the relationship workspace's place (loc). */
     fa?: string;
@@ -1507,9 +1511,12 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // Arriving from a public action (…&inquire=<intent>): the composer opens on that intent.
   const inquireIntent = typeof rawSearchParams.inquire === "string" && isCommercialIntent(rawSearchParams.inquire) ? rawSearchParams.inquire : null;
   // One relationship workspace for every door; Back returns to the lens it was opened from.
+  // A validated origin (?from=discover / search / inbox…) wins over the lens.
+  const workspaceOrigin = originBack(id, rawSearchParams.from);
   const workspaceBack = (() => {
+    if (workspaceOrigin) return workspaceOrigin.href;
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt" && k !== "tgt" && k !== "inquire") q.set(k, v);
+    for (const [k, v] of Object.entries(rawSearchParams)) if (typeof v === "string" && k !== "loc" && k !== "pt" && k !== "tgt" && k !== "inquire" && k !== "from") q.set(k, v);
     return `/account/business/${id}?${q.toString()}`;
   })();
   const workspaceView = workspace?.kind === "target" ? (
@@ -1525,7 +1532,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       opportunities={workspace.opportunities}
       initialInquiryIntent={inquireIntent}
       backHref={workspaceBack}
-      backLabel="Targets"
+      backLabel={workspaceOrigin?.label ?? "Targets"}
     />
   ) : workspace ? (
     <RelationshipWorkspace
@@ -1539,7 +1546,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       initialInquiryIntent={inquireIntent}
       senderName={business.name}
       backHref={workspaceBack}
-      backLabel={onTargets ? "Targets" : onFindUsMarkets ? (workspace.scopeLabel ?? "By Market") : "Places"}
+      backLabel={workspaceOrigin ? workspaceOrigin.label : onTargets ? "Targets" : onFindUsMarkets ? (workspace.scopeLabel ?? "By Market") : "Places"}
       products={products.map((p) => ({ id: p.id, name: p.name }))}
       productSets={productSetsData.sets}
       productSetsAvailable={productSetsData.available}
@@ -1982,7 +1989,31 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
           <div className="flex flex-col gap-4 lg:max-w-5xl">
-          <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Business Profile</h1>
+          {/* Public Profile — the ONE place to manage what people see when they
+              find this Business: details, Public Actions, Announcement,
+              photos and links. How inquiries work stays in Inquiry Settings. */}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Public Profile</h1>
+            {business.slug && (
+              <Link href={`/business/${business.slug}`} className="flex min-h-10 items-center gap-1 text-metadata font-bold text-accent hover:underline">
+                View Public Page
+                <ChevronIcon direction="right" className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
+          <nav aria-label="Public Profile sections" className="-mt-1 flex flex-wrap gap-x-4 gap-y-1 text-metadata font-semibold">
+            {[
+              ["#details", "Details"],
+              ["#public-actions", "Public Actions"],
+              ["#gallery", "Photos"],
+              ["#links", "Contact & Links"],
+              ["#announcement", "Announcement"],
+            ].map(([href, label]) => (
+              <a key={href} href={href} className="flex min-h-10 items-center text-accent hover:underline">
+                {label}
+              </a>
+            ))}
+          </nav>
           {/* ?tab=profile&created=1 shows the same confirmation the
               Overview shows (Brand onboarding now completes on Account
               Home — /account?created=<id>, VCL A2). */}
@@ -1991,8 +2022,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               Business created! Add your logo, photos and links below to finish your profile.
             </p>
           )}
-          <Panel title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
+          <Panel id="details" title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
             <form action={profileAction} className="flex flex-col gap-4">
+              <UnsavedChangesGuard />
               <label className="block">
                 <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
                 <input autoCapitalize="words" type="text" name="name" required defaultValue={business.name} className={inputClass} />
@@ -2157,7 +2189,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               of stacking full-width, real grouping rather than one long
               scroll — no change to either form's fields or action. */}
           <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
-            <Panel title="Gallery">
+            <Panel id="gallery" title="Gallery">
               <form action={galleryAction} className="flex flex-col gap-4">
                 <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
                 <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
@@ -2165,8 +2197,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                 </button>
               </form>
             </Panel>
-            <Panel title="Contact & Links">
+            <Panel id="links" title="Contact & Links">
               <form action={linksAction} className="flex flex-col gap-4">
+                <UnsavedChangesGuard />
                 {/* Free Basic Profile Editing pass — Website/Instagram
                     moved to the Business Basics section above (both tiers
                     edit them there now); this section keeps the rest of
@@ -2208,7 +2241,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                   </label>
                 </div>
 
-                <p className="mt-2 text-label font-bold uppercase text-subtle">Announcement</p>
+                <p id="announcement" className="mt-2 scroll-mt-24 text-label font-bold uppercase text-subtle">Announcement</p>
                 <p className="-mt-2 text-metadata text-muted">Share a temporary update on your profile. Buttons visitors can tap are set in Public Actions.</p>
                 {/* Announcement Form Consistency (#16) — when "Show
                     announcement" is off, the fields below used to look
@@ -2381,8 +2414,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                     const status = productDisplayStatus(p);
                     const priceLine = p.price != null ? `$${p.price}` : p.price_label || null;
                     return (
-                      <li key={p.id} className="px-4 py-3 first:pt-0 last:pb-0">
-                        <details>
+                      <li key={p.id} id={`product-${p.id}`} className="scroll-mt-24 px-4 py-3 first:pt-0 last:pb-0">
+                        <details open={editing === p.id}>
                           {/* Business Manager V4 — a real table-like row at
                               desktop (image, name, price, status, Edit as
                               distinct columns you can scan down), the same
@@ -3259,7 +3292,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             )}
 
             <Link
-              href="/account/messages"
+              href={managerHref(id, "inbox")}
               className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
             >
               <span className="text-body font-semibold text-primary">View customer conversations in your Inbox</span>
@@ -3479,7 +3512,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
 
         {/* ── /account V2 — More (secondary destinations) ───────────── */}
         {activeTab === "more" && (
-          <MoreMenu basePath={basePath} businessSlug={business.slug} ordersRelevant={ordersRelevant} />
+          <MoreMenu businessId={id} businessSlug={business.slug} ordersRelevant={ordersRelevant} />
         )}
 
         {/* Referral now renders inside Settings (?tab=settings) —

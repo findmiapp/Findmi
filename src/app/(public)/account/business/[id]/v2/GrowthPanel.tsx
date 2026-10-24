@@ -41,7 +41,7 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
       {!summary.hasSignal ? (
         <p className="mt-2 text-metadata text-muted">
           {GROWTH_SETUP_COPY.body}{" "}
-          <Link href={`${basePath}/brand-audit`} className="font-semibold text-accent hover:underline">
+          <Link href={`${basePath}/brand-audit?step=goals`} className="font-semibold text-accent hover:underline">
             {GROWTH_SETUP_COPY.cta}
           </Link>
         </p>

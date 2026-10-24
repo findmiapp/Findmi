@@ -178,13 +178,13 @@ test("paused: the profile CTA is removed, never swapped for Invite/Apply", () =>
   }
   assert.match(button, /\{MESSAGING && mode === "message" && \(/);
   assert.match(button, /const entryMode: Mode = MESSAGING \? "message" : targetType === "event" \? "apply" : "invite";/);
-  const threadPage = read("src/app/(public)/account/messages/[id]/page.tsx");
+  const threadPage = read("src/app/(public)/account/messages/[id]/ConversationThreadView.tsx");
   assert.match(threadPage, /replyPaused \? \(/);
   assert.match(threadPage, /const messagingEnabled = isDirectBusinessMessagingEnabled\(\);/);
   const inquire = read("src/components/InquireButton.tsx");
   assert.match(inquire, /Your request goes to\s+Findmi, not directly to \{targetName\}/);
   assert.match(inquire, /Request sent to Findmi/);
-  for (const f of ["src/components/InquireButton.tsx", "src/components/MessageButton.tsx", "src/lib/communication-policy.ts", "src/app/(public)/account/messages/[id]/page.tsx"]) {
+  for (const f of ["src/components/InquireButton.tsx", "src/components/MessageButton.tsx", "src/lib/communication-policy.ts", "src/app/(public)/account/messages/[id]/ConversationThreadView.tsx"]) {
     // Rendered copy only — historical code comments may still say "FINDMI".
     const code = read(f).split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
     assert.doesNotMatch(code, /FindMi|FINDMI/, f);

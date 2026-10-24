@@ -133,9 +133,9 @@ test("zero follow-ups render nothing — no heading, no empty state; the generic
   assert.doesNotMatch(HOME + PAGE, /business-next|NextSection|nextExpanded/);
 });
 
-test("Home order is unchanged around Follow-Ups", () => {
+test("Home order around Follow-Ups: Requests → Follow-Ups → Schedule", () => {
   const at = (m) => HOME.indexOf(m);
-  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<MomentsStrip", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="quick-create"', 'aria-labelledby="findmi-link"'].map(at);
+  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', "<MomentsStrip", 'aria-labelledby="findmi-link"'].map(at);
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -180,12 +180,12 @@ test("Needs Attention is unchanged: exceptions only, never Target follow-ups, hi
   assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /if \(items\.length === 0\) return null;/);
 });
 
-test("Growth Opportunity counts and Coming Up / Growth / Performance / Quick Create are unchanged", () => {
+test("Growth Opportunity counts and Coming Up / Growth / Performance / Quick Actions are unchanged", () => {
   const view = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx");
   assert.match(view, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length,/);
   assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
-  assert.match(HOME, /comingUp\.map\(\(item\) => \(/);
+  assert.match(HOME, /g\.items\.map\(\(item\) => \(/);
   assert.match(HOME, /<GrowthPanel basePath=\{basePath\} summary=\{growth\} \/>/);
   assert.match(HOME, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
-  assert.match(HOME, /const quick = \[create\.where, create\.event, create\.product, create\.qr\];/);
+  assert.match(HOME, /<QuickActionsRail businessId=\{businessId\} \/>/);
 });

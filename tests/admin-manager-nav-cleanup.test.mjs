@@ -98,7 +98,8 @@ test("Business More: personal destinations sit behind one Your Account entry; Ma
   const more = read(`${B}/v2/MoreMenu.tsx`);
   assert.match(more, /href: "\/account", label: "Your Account"/);
   for (const gone of ["/account/saved", "/account/following", "/account/orders", "/account/profile"]) assert.ok(!more.includes(`"${gone}"`), gone);
-  for (const kept of ["/account/schedule", "/account/messages", "?tab=orders", "?tab=qr", "?tab=settings", "?tab=inquiries"]) assert.ok(more.includes(kept), kept);
+  // Manager tools resolve through lib/manager-links, so they stay inside this Business.
+  for (const kept of ['to("schedule")', 'to("inbox")', 'to("orders")', 'to("qr")', 'to("settings")', 'to("inquiry-settings")']) assert.ok(more.includes(kept), kept);
   const personal = read("src/app/(public)/account/PersonalAppShell.tsx");
   for (const dest of ["/account/saved", "/account/following", "/account/orders", "/account/profile"]) assert.ok(personal.includes(`"${dest}"`), `${dest} still reachable from the personal shell`);
 });
@@ -109,5 +110,5 @@ test("Business More ends with a direct Sign Out that reuses the existing confirm
   assert.match(more, /import \{ signOut \} from "@\/app\/\(public\)\/account\/profile\/actions";/);
   assert.match(more, /<SignOutConfirm\s+action=\{signOut\}/);
   assert.ok(more.indexOf('title="Your Account"') < more.indexOf("<SignOutConfirm"), "Sign Out sits below Your Account, at the bottom");
-  assert.ok(more.includes('href: "/account", label: "Your Account"') && more.includes("/account/schedule"), "Your Account and Schedule kept");
+  assert.ok(more.includes('href: "/account", label: "Your Account"') && more.includes('to("schedule")'), "Your Account and Schedule kept");
 });

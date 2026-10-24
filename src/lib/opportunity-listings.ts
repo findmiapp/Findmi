@@ -714,5 +714,6 @@ export async function openBusinessOpportunityThread(args: {
   if (membership.viaAdmin) return { ok: true, href: `/admin/opportunities/${row.listing_id}/thread/${row.id}` };
   const thread = await ensureRecipientThread(admin, row.id);
   if (!thread) return { ok: false, error: "Couldn't open this conversation. Please try again." };
-  return { ok: true, href: `/account/messages/${thread.conversationId}` };
+  // Opened from this Business's Manager: the thread opens in its Inbox there.
+  return { ok: true, href: `/account/business/${args.businessId}/inbox/${thread.conversationId}` };
 }

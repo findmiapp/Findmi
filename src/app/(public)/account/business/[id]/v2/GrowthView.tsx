@@ -92,9 +92,10 @@ export function GrowthGoalsView({
   manageNote: string | null;
   notice: string | null;
 }) {
-  const setupHref = `${basePath}/brand-audit`;
   const answered = GROWTH_PROFILE_SECTIONS.filter((s) => summary.sections[s.key]).length;
   const cta = !canManage ? "Review Growth Setup" : audit ? auditActionLabel(audit) : GROWTH_SETUP_COPY.cta;
+  // "Set Your Goals" opens the Goals step itself, not the start of setup.
+  const setupHref = cta === GROWTH_SETUP_COPY.cta ? `${basePath}/brand-audit?step=goals` : `${basePath}/brand-audit`;
   return (
     <div className="flex flex-col gap-6 lg:max-w-3xl">
       <Header basePath={basePath} summary={summary} />
@@ -198,7 +199,7 @@ export function GrowthIdeasView({
               : "Completing your Growth Profile helps Findmi suggest Ideas that fit your Business. Ideas Findmi picks just for you show up here as soon as they exist."}
           </p>
           {!summary.hasSignal && (
-            <Link href={`${basePath}?tab=growth`} className="mt-3 inline-flex h-10 items-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600">
+            <Link href={`${basePath}/brand-audit?step=goals`} className="mt-3 inline-flex h-10 items-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600">
               {GROWTH_SETUP_COPY.cta}
             </Link>
           )}

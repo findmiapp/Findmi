@@ -64,9 +64,26 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
       <div className="flex min-h-10 items-center justify-between gap-3">
-        <Link href={targetsHref} className="inline-flex min-h-10 items-center text-metadata font-semibold text-accent hover:underline">
-          ← Targets
-        </Link>
+        <div className="flex min-w-0 flex-col">
+          <nav aria-label="You are here" className="text-microcopy font-semibold text-subtle">
+            <ol className="flex items-center gap-1">
+              <li>Growth</li>
+              <li aria-hidden="true">/</li>
+              <li>
+                <Link href={targetsHref} className="hover:underline">
+                  Targets
+                </Link>
+              </li>
+              <li aria-hidden="true">/</li>
+              <li aria-current="page" className="text-secondary">
+                Discover
+              </li>
+            </ol>
+          </nav>
+          <Link href={targetsHref} className="inline-flex min-h-10 items-center text-metadata font-semibold text-accent hover:underline">
+            ← Back to Targets
+          </Link>
+        </div>
         <span className="inline-flex shrink-0 items-center gap-1 text-microcopy text-subtle" title="Only your team sees what you search and target here.">
           <LockIcon className="h-3 w-3" /> Private
         </span>
@@ -216,7 +233,8 @@ const VIEW_LABEL = { location: "View Place", business: "View Business", event: "
  * never sends an Inquiry). */
 function ResultRow({ businessId, result: r, entity, canEdit }: { businessId: string; result: CommercialResult; entity: CommercialEntity; canEdit: boolean }) {
   const kind = TARGET_KIND_FOR_ENTITY[entity];
-  const openHref = r.target ? relationshipHref(businessId, relationshipRefFor(kind, { targetId: r.target.id, locationId: kind === "location" ? r.id : null })) : null;
+  // Tagged with its origin, so the relationship's Back returns to Discover.
+  const openHref = r.target ? `${relationshipHref(businessId, relationshipRefFor(kind, { targetId: r.target.id, locationId: kind === "location" ? r.id : null }))}&from=discover` : null;
   const opps = r.opportunityCount;
 
   return (

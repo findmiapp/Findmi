@@ -39,6 +39,7 @@ import {
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
 import { QrCampaignContextualPanel } from "../../business/[id]/QrCampaignCreator";
+import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 
 export const metadata: Metadata = {
   title: "Manage Location",
@@ -716,6 +717,7 @@ export default async function ManageLocationPage({
                 conceptual Photos heading. */}
             <div className="border-t border-black/5 pt-6">
               <form action={updateMemberLocationDetails.bind(null, id)} className="flex flex-col gap-4">
+                <UnsavedChangesGuard />
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
                   <label className="mt-2 block">
@@ -757,6 +759,7 @@ export default async function ManageLocationPage({
             <div className="border-t border-black/5 pt-6">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
               <form action={updateMemberLocationContact.bind(null, id)} className="mt-3 flex flex-col gap-4">
+                <UnsavedChangesGuard />
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">
                     Website <span className="font-normal text-ink/40">(optional)</span>

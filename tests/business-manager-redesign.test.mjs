@@ -39,8 +39,8 @@ test("mobile bottom nav: Home · Moments · Findmi Here (center) · Performance 
   const desktop = NAV.BUSINESS_NAV.map((n) => n.label);
   assert.ok(desktop.includes("Products") && desktop.includes("Growth"), "the desktop rail keeps both");
   const more = read(`${B}/v2/MoreMenu.tsx`);
-  assert.match(more, /tab=products/);
-  assert.match(more, /tab=growth/);
+  assert.match(more, /to\("products"\)/);
+  assert.match(more, /to\("growth"\)/);
   // Deep links keep working: Opportunities, QR and the old keys stay valid.
   for (const k of ["opportunities", "qr", "products", "growth", "moments", "performance"]) assert.ok(NAV.VALID_BUSINESS_TAB_KEYS.has(k), k);
 });
@@ -276,7 +276,7 @@ test("availability migration (first draft guards) — superseded by the audited 
 const QV2 = await import("../src/lib/qr-v2.ts");
 const CA = await import("../src/app/(public)/account/business/[id]/v2/createActions.ts");
 
-test("the full + Create sheet keeps every action incl. Add a Moment, plus Opportunities; Home's Quick Create is separate", () => {
+test("the full + Create sheet keeps every action incl. Add a Moment, plus Opportunities; Home's Quick Actions rail is separate", () => {
   const labels = CA.orderedCreateActions("/b", "x").map((a) => a.label);
   assert.deepEqual(labels, ["Where I’ll Be", "Host an Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
   assert.equal(CA.businessCreateActions("/b", "x").moment.href, "/my-world/journal/new?business=x&postAs=x", "the one existing composer");
@@ -284,7 +284,7 @@ test("the full + Create sheet keeps every action incl. Add a Moment, plus Opport
   assert.match(sheet, /Find An Opportunity/);
   assert.match(sheet, /Tell Findmi Your Goals/);
   assert.doesNotMatch(sheet, /journal\/new/, "no second composer / no re-typed route in the sheet");
-  assert.match(read(`${B}/v2/BusinessHome.tsx`), /const quick = \[create\.where, create\.event, create\.product, create\.qr\];/);
+  assert.match(read(`${B}/v2/BusinessHome.tsx`), /<QuickActionsRail businessId=\{businessId\} \/>/);
 });
 
 test("no user-facing 'Brand Audit' wording remains (routes, tables and code names are unchanged)", () => {
