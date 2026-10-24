@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
 import {
-  uploadJournalPhoto,
   removeJournalPhoto,
   saveJournalMediaLayout,
   setJournalCover,
@@ -123,8 +122,7 @@ export interface JournalBatchPerf {
    * that went through client-side preprocessing. */
   prepSpanMs: number;
   /** earliest uploadStart -> latest uploadEnd — covers both the direct-
-   * to-Storage PUT for a normal photo and the whole legacy Server Action
-   * call for a HEIC/HEIF one (see runHeicItem's own note). */
+   * to-Storage PUT, HEIC/HEIF originals included. */
   uploadSpanMs: number;
   /** earliest finalizeStart -> latest finalizeEnd, across every chunk's
    * batch finalization call. */
@@ -133,12 +131,12 @@ export interface JournalBatchPerf {
    * or errored, order persisted). */
   totalMs: number;
   /** Sum of each direct-upload item's post-preprocessing file size, plus
-   * each HEIC item's original (un-preprocessed — that path never resizes
+   * each HEIC item's original (un-preprocessed — it is converted server-side,
    * client-side) file size. A rough "how much actually went over the
    * wire" figure for QA, not a precise compression ratio. */
   compressedBytes: number;
-  /** How many of this batch's photos went through the legacy per-photo
-   * Server Action path (HEIC/HEIF) rather than direct-to-Storage — a
+  /** How many of this batch's photos were HEIC/HEIF, staged as-is and
+   * converted server-side during finalize — a
    * batch where this unexpectedly equals `count` means every photo took
    * the slow path, the single most useful signal this readout can give
    * for diagnosing an unexplained slow batch. */
@@ -179,6 +177,11 @@ function isActiveStatus(status: JournalPhotoStatus): boolean {
   return status === "local" || status === "preparing" || status === "uploading" || status === "saving";
 }
 
+/** The Storage path extension a selected file is uploaded under. */
+function stagingExtension(file: File): "jpg" | "png" | "heic" {
+  return isHeicLike(file) ? "heic" : isPng(file) ? "png" : "jpg";
+}
+
 function chunkArray<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -200,11 +203,14 @@ function chunkArray<T>(items: T[], size: number): T[][] {
  * transfer instead of forcing the whole 32-photo batch through one phase
  * before the next can start.
  *
- * HEIC/HEIF still goes through the existing server-side heic-convert
- * Server Action (uploadJournalPhoto) unchanged — reliable client-side HEIC
- * decoding isn't available, so that binary still has to transit the
- * server; it shares the same upload concurrency budget as everything else
- * but never the chunked authorize/finalize pipeline.
+ * HEIC/HEIF rides the SAME signed-URL upload: the original is staged at a
+ * `.heic` path and finalizeJournalPhotoBatch converts it from Storage
+ * (reliable client-side HEIC decoding isn't available). It used to go
+ * through its own Server Action carrying the full original as the request
+ * body — the one multi-MB request in a batch, subject to the platform's
+ * request-size cap and queued behind every other Server Action — and on
+ * Android that request failed before it ever reached the server, leaving
+ * the photo on Retry.
  *
  * Guest-First Experience Completion pass — `guestMode` (stable for the
  * whole mount, never toggled mid-session — see MomentComposer's own
@@ -232,12 +238,15 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
   // delete the now-real row) rather than resurrecting it.
   const removedRef = useRef<Set<string>>(new Set());
 
+  // itemsRef is the synchronous source of truth: every update is applied
+  // to it immediately and then handed to React. (Updating it from inside a
+  // setItems updater left it stale whenever React deferred that updater —
+  // e.g. a draft conversion's batch — so positions read during the upload
+  // pipeline came back wrong and every photo was sent as display_order 0.)
   const updateItems = useCallback((updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) => {
-    setItems((prev) => {
-      const next = updater(prev);
-      itemsRef.current = next;
-      return next;
-    });
+    const next = updater(itemsRef.current);
+    itemsRef.current = next;
+    setItems(next);
   }, []);
 
   // Object URL Lifecycle — revoke every remaining local preview on
@@ -392,59 +401,6 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     [updateItems]
   );
 
-  /** HEIC/HEIF — unchanged legacy path: the full file goes through the
-   * server-side heic-convert Server Action, exactly as it always has.
-   * Timed as one "upload" span (no separate client preprocessing step
-   * exists for this path, so preprocessStart/End are never set for these
-   * items — see JournalBatchPerf's own note on why a batch where
-   * legacyCount equals the batch size means every photo went slow here,
-   * not through the fast direct-upload pipeline). */
-  const runHeicItem = useCallback(
-    async (entryId: string, localId: string, originalFile: File, onSettle?: () => void) => {
-      try {
-        if (removedRef.current.has(localId)) return;
-        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
-        if (removedRef.current.has(localId)) return;
-        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "uploading" } : it)));
-
-        const timing = timingRef.current.get(localId);
-        if (timing) {
-          timing.uploadStart = performance.now();
-          timing.preparedBytes = originalFile.size;
-        }
-        const formData = new FormData();
-        formData.set("file", originalFile);
-        formData.set("displayOrder", String(currentPosition(localId)));
-        const sectionId = itemsRef.current.find((it) => it.localId === localId)?.sectionId;
-        if (sectionId) formData.set("sectionId", sectionId);
-        const result = await uploadLimit(() => uploadJournalPhoto(entryId, formData));
-        if (timing) timing.uploadEnd = performance.now();
-        if ("error" in result) throw new Error(result.error);
-        const { id: mediaId, url, isCover } = result;
-
-        if (removedRef.current.has(localId)) {
-          await removeJournalPhoto(entryId, mediaId);
-          return;
-        }
-        updateItems((prev) =>
-          prev.map((it) => {
-            if (it.localId !== localId) return it;
-            if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
-            return { ...it, status: "complete", mediaId, previewUrl: url, isObjectUrl: false, errorMessage: undefined, isCover };
-          })
-        );
-      } catch (err) {
-        if (removedRef.current.has(localId)) return;
-        const message = err instanceof Error ? err.message : "Couldn't upload that photo.";
-        console.error("[journal] HEIC photo upload failed", { localId, message });
-        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: message } : it)));
-      } finally {
-        onSettle?.();
-      }
-    },
-    [currentPosition, updateItems, uploadLimit]
-  );
-
   /** Processes one chunk of the direct-upload pipeline: preprocess (shared,
    * bounded concurrency) in parallel with ONE batch authorization request
    * — authorization never needs the preprocessed bytes, only each file's
@@ -457,7 +413,9 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
    * retry (fresh authorization, fresh path — see retryItem's own note). */
   const processChunk = useCallback(
     async (entryId: string, chunkItems: JournalPhotoItem[], onSettle: (localId: string) => void) => {
-      const extensions = chunkItems.map((item) => ({ localId: item.localId, extension: isPng(item.file as File) ? ("png" as const) : ("jpg" as const) }));
+      // HEIC/HEIF is staged as-is ("heic") and converted server-side from
+      // Storage by finalize — the same signed-URL upload as every photo.
+      const extensions = chunkItems.map((item) => ({ localId: item.localId, extension: stagingExtension(item.file as File) }));
 
       const [authResult, preparedByLocalId] = await Promise.all([
         authorizeJournalPhotoUploadBatch(entryId, extensions),
@@ -555,14 +513,16 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
 
   /** `options.sectionId` (Moments V2) uploads the selection straight into
    * one of this Moment's sections; omitted = unsectioned, exactly as
-   * before. */
+   * before. `options.sectionIds` sets it per file instead (a converted
+   * guest draft, whose photos may each sit in a different section).
+   * Resolves the new photos' localIds, in selection order. */
   const handleFiles = useCallback(
-    async (files: FileList | null, options?: { sectionId?: string | null }) => {
-      if (!files || files.length === 0) return;
+    async (files: FileList | File[] | null, options?: { sectionId?: string | null; sectionIds?: (string | null)[] }): Promise<string[]> => {
+      if (!files || files.length === 0) return [];
       // The Add Photos control stays protected from overlapping, uncontrolled
       // batches — JournalPhotoStrip also disables the trigger while any photo
       // is active, so this is the double-submit guard, not the only one.
-      if (hasActiveUploads) return;
+      if (hasActiveUploads) return [];
       setError(null);
       setBatchPerf(null);
 
@@ -575,15 +535,16 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       // which for a brand-new entry is a real network round trip) ever
       // runs. A preview must never wait on preprocessing, authorization,
       // upload, finalization, or the entry id itself.
-      const newItems: JournalPhotoItem[] = fileArray.map((file) => ({
+      const newItems: JournalPhotoItem[] = fileArray.map((file, index) => ({
         localId: crypto.randomUUID(),
         status: "local",
         previewUrl: URL.createObjectURL(file),
         isObjectUrl: true,
         file,
         isCover: false,
-        sectionId: options?.sectionId ?? null,
+        sectionId: options?.sectionIds?.[index] ?? options?.sectionId ?? null,
       }));
+      const newLocalIds = newItems.map((item) => item.localId);
       updateItems((prev) => [...prev, ...newItems]);
       const previewsReadyAt = performance.now();
 
@@ -617,7 +578,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         if (stillErroredLocally > 0) {
           setError(`${stillErroredLocally} photo${stillErroredLocally === 1 ? "" : "s"} couldn't be saved. Tap Retry on ${stillErroredLocally === 1 ? "it" : "any of them"}.`);
         }
-        return;
+        return newLocalIds;
       }
 
       timingRef.current.clear();
@@ -628,28 +589,21 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         // The previews above already rendered — don't leave them stuck in
         // "local" forever with no way to tell the owner why nothing is
         // happening; Retry re-attempts ensureEntryId through its own path.
-        const newLocalIds = new Set(newItems.map((item) => item.localId));
+        const pending = new Set(newLocalIds);
         updateItems((prev) =>
-          prev.map((it) => (newLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: "Couldn't start this Moment. Tap Retry." } : it))
+          prev.map((it) => (pending.has(it.localId) ? { ...it, status: "error", errorMessage: "Couldn't start this Moment. Tap Retry." } : it))
         );
-        return;
+        return newLocalIds;
       }
 
       // Current-Batch Progress — this call's own selection only, never
       // mixed with photos already persisted before it or added after it.
-      // Every item in the batch settles exactly once, whichever pipeline
-      // (direct-upload chunk or legacy HEIC) it goes through.
+      // Every item in the batch settles exactly once, through its chunk.
       setBatchProgress({ completed: 0, total: newItems.length });
       const onSettle = () => setBatchProgress((prev) => (prev ? { ...prev, completed: prev.completed + 1 } : prev));
 
-      const heicItems = newItems.filter((item) => isHeicLike(item.file as File));
-      const directItems = newItems.filter((item) => !isHeicLike(item.file as File));
-      const chunks = chunkArray(directItems, AUTH_FINALIZE_CHUNK_SIZE);
-
-      await Promise.all([
-        ...chunks.map((c) => processChunk(entryId, c, onSettle)),
-        ...heicItems.map((item) => runHeicItem(entryId, item.localId, item.file as File, onSettle)),
-      ]);
+      const chunks = chunkArray(newItems, AUTH_FINALIZE_CHUNK_SIZE);
+      await Promise.all(chunks.map((c) => processChunk(entryId, c, onSettle)));
 
       setBatchProgress(null);
 
@@ -683,15 +637,16 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         finalizeSpanMs: spanOf("finalizeStart", "finalizeEnd"),
         totalMs: Math.round(finalizeDoneAt - batchStart),
         compressedBytes,
-        legacyCount: heicItems.length,
+        legacyCount: newItems.filter((item) => isHeicLike(item.file as File)).length,
       });
 
       const stillErrored = itemsRef.current.filter((it) => it.status === "error").length;
       if (stillErrored > 0) {
         setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
       }
+      return newLocalIds;
     },
-    [hasActiveUploads, ensureEntryId, updateItems, processChunk, runHeicItem, persistOrder, ensureCover, guestMode]
+    [hasActiveUploads, ensureEntryId, updateItems, processChunk, persistOrder, ensureCover, guestMode]
   );
 
   // Mobile QA Repair pass — these are invoked once per photo tile
@@ -718,8 +673,14 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         return;
       }
 
+      // Claimed before anything async, so a second tap on Retry can't start
+      // a duplicate attempt for the same photo.
+      updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
       const entryId = await ensureEntryId();
-      if (!entryId) return;
+      if (!entryId) {
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: "Couldn't start this Moment. Tap Retry." } : it)));
+        return;
+      }
       setError(null);
 
       if (item.storagePath) {
@@ -736,8 +697,6 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         } else {
           result.results.forEach((r) => applyFinalizeResult(entryId, r));
         }
-      } else if (isHeicLike(item.file)) {
-        await runHeicItem(entryId, localId, item.file);
       } else {
         // Full pipeline retry — fresh authorization (a brand-new Storage
         // path), since no earlier attempt for this item ever got far
@@ -747,7 +706,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       await persistOrder(entryId);
       await ensureCover(entryId);
     },
-    [ensureEntryId, currentPosition, applyFinalizeResult, runHeicItem, processChunk, persistOrder, ensureCover, updateItems, guestMode]
+    [ensureEntryId, currentPosition, applyFinalizeResult, processChunk, persistOrder, ensureCover, updateItems, guestMode]
   );
 
   const handleRemove = useCallback(

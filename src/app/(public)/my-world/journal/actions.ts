@@ -12,6 +12,7 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
 import { getAllOccurrencesForEvent } from "@/lib/data";
 import { canGenerateVariants, mapLimit, storePrivateVariants, variantPathsFor } from "@/lib/image-variants-server";
+import { normalizeStagedImage } from "@/lib/imageUploadValidation";
 import { isVariantPath } from "@/lib/image-variants";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { calendarDate } from "@/lib/event-time";
@@ -400,10 +401,13 @@ export interface JournalBatchAuthItem {
  * Each file's signed-URL request is caught independently (never one
  * unguarded Promise.all whose single rejection would fail the whole
  * chunk) — one photo's authorization failure can never take down its
- * chunk-mates, the exact bug the previous direct-upload attempt had. */
+ * chunk-mates, the exact bug the previous direct-upload attempt had.
+ *
+ * "heic" stages a HEIC/HEIF original at a `.heic` path; it is never a
+ * stored photo — finalizeJournalPhotoBatch converts it from Storage. */
 export async function authorizeJournalPhotoUploadBatch(
   entryId: string,
-  files: { localId: string; extension: "jpg" | "png" }[]
+  files: { localId: string; extension: "jpg" | "png" | "heic" }[]
 ): Promise<{ results: JournalBatchAuthItem[] } | { error: string }> {
   const perfStart = Date.now();
   try {
@@ -417,7 +421,7 @@ export async function authorizeJournalPhotoUploadBatch(
     const results = await Promise.all(
       files.map(async (f): Promise<JournalBatchAuthItem> => {
         try {
-          const ext = f.extension === "png" ? "png" : "jpg";
+          const ext = f.extension === "png" ? "png" : f.extension === "heic" ? "heic" : "jpg";
           const path = `journal/${userId}/${entryId}/${randomUUID()}.${ext}`;
           const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUploadUrl(path);
           if (error || !data) throw new Error(error?.message ?? "Couldn't authorize that upload.");
@@ -446,6 +450,14 @@ export async function authorizeJournalPhotoUploadBatch(
     return { error: message };
   }
 }
+
+/** A HEIC/HEIF original staged by authorizeJournalPhotoUploadBatch
+ * ("heic") — converted in finalize, never stored as a photo itself. */
+const isStagedHeicPath = (path: string) => /\.hei[cf]$/i.test(path);
+const stagedBase = (path: string) => path.replace(/\.hei[cf]$/i, "");
+/** Every path a staged original can end up stored at (see
+ * normalizeStagedImage) — used to recognize one already finalized. */
+const stagedFinalCandidates = (path: string) => ["jpg", "png", "webp", "gif"].map((ext) => `${stagedBase(path)}.${ext}`);
 
 export interface JournalBatchFinalizeItem {
   localId: string;
@@ -533,9 +545,61 @@ export async function finalizeJournalPhotoBatch(
     const pathValidationMs = Date.now() - pathValidationStart;
     if (safeItems.length === 0) return { results };
 
+    // HEIC/HEIF — the browser staged the original straight into this
+    // private namespace (authorize "heic"); it never rides a request body.
+    // Each is normalized here from Storage (normalizeStagedImage: the real
+    // bytes decide) into a sibling `<same uuid>.<ext>` object, which is the
+    // photo actually stored. A sibling that's already recorded (a retried
+    // finalize) is reused, never converted twice; a failed conversion
+    // leaves the staged original in place so Retry can try again.
+    const convertStart = Date.now();
+    const finalPathByLocalId = new Map<string, string>();
+    const stagedSources = new Map<string, string>(); // final path -> staged original
+    const staged = safeItems.filter((it) => isStagedHeicPath(it.storagePath));
+    if (staged.length > 0) {
+      const candidates = staged.flatMap((it) => stagedFinalCandidates(it.storagePath));
+      const { data: recorded } = await admin.from("journal_entry_media").select("storage_path").eq("journal_entry_id", entryId).in("storage_path", candidates);
+      const recordedPaths = new Set((recorded ?? []).map((r) => r.storage_path as string));
+      await mapLimit(staged, 2, async (item) => {
+        const already = stagedFinalCandidates(item.storagePath).find((p) => recordedPaths.has(p));
+        if (already) {
+          finalPathByLocalId.set(item.localId, already);
+          stagedSources.set(already, item.storagePath);
+          return;
+        }
+        const fail = (errorMessage: string) => results.push({ localId: item.localId, ok: false, errorMessage });
+        const { data: blob, error: downloadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).download(item.storagePath);
+        if (downloadError || !blob) {
+          console.error("[journal] finalizeJournalPhotoBatch staged read failed", { entryId, localId: item.localId, message: downloadError?.message });
+          return fail("Couldn't read that photo. Tap Retry.");
+        }
+        const normalized = await normalizeStagedImage(Buffer.from(await blob.arrayBuffer()));
+        if ("error" in normalized) return fail(normalized.error);
+        const finalPath = `${stagedBase(item.storagePath)}.${normalized.extension}`;
+        const { error: uploadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).upload(finalPath, normalized.buffer, {
+          contentType: normalized.contentType,
+          upsert: false,
+          cacheControl: "31536000",
+        });
+        // An earlier attempt may have stored the converted object before
+        // its row was written — that object is exactly what we'd store now.
+        if (uploadError && !/exist|duplicate/i.test(uploadError.message)) {
+          console.error("[journal] finalizeJournalPhotoBatch converted upload failed", { entryId, localId: item.localId, message: uploadError.message });
+          return fail("Couldn't save that photo.");
+        }
+        finalPathByLocalId.set(item.localId, finalPath);
+        stagedSources.set(finalPath, item.storagePath);
+      });
+    }
+    const convertMs = Date.now() - convertStart;
+    const readyItems = safeItems
+      .filter((it) => !isStagedHeicPath(it.storagePath) || finalPathByLocalId.has(it.localId))
+      .map((it) => ({ ...it, storagePath: finalPathByLocalId.get(it.localId) ?? it.storagePath }));
+    if (readyItems.length === 0) return { results };
+
     // Idempotency check — see this function's own header note.
     const idempotencyStart = Date.now();
-    const paths = safeItems.map((it) => it.storagePath);
+    const paths = readyItems.map((it) => it.storagePath);
     const { data: existingRows } = await admin
       .from("journal_entry_media")
       .select("id, storage_path, is_cover")
@@ -546,7 +610,7 @@ export async function finalizeJournalPhotoBatch(
     const idempotencyMs = Date.now() - idempotencyStart;
 
     const insertStart = Date.now();
-    const needsInsert = safeItems.filter((it) => !mediaIdByPath.has(it.storagePath));
+    const needsInsert = readyItems.filter((it) => !mediaIdByPath.has(it.storagePath));
     if (needsInsert.length > 0) {
       // Moments V2 — explicit cover: only the position-0 photo of a Moment
       // that has NO cover yet claims it (see uploadJournalPhoto's note).
@@ -584,14 +648,19 @@ export async function finalizeJournalPhotoBatch(
     // lib/journal.ts's resolveSignedUrls) — ONE createSignedUrls call for
     // however many photos just got confirmed, never one per photo.
     const signedUrlStart = Date.now();
-    const confirmedPaths = safeItems.filter((it) => mediaIdByPath.has(it.storagePath)).map((it) => it.storagePath);
+    const confirmedPaths = readyItems.filter((it) => mediaIdByPath.has(it.storagePath)).map((it) => it.storagePath);
     const { data: signedUrls } = confirmedPaths.length > 0
       ? await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrls(confirmedPaths, 60 * 60)
       : { data: [] };
     const urlByPath = new Map((signedUrls ?? []).filter((s) => s.signedUrl && !s.error).map((s) => [s.path as string, s.signedUrl as string]));
     const signedUrlMs = Date.now() - signedUrlStart;
 
-    for (const item of safeItems) {
+    // A staged HEIC original is dropped only once its converted photo is
+    // recorded — never before, so a failed insert can still be retried.
+    const doneSources = confirmedPaths.map((p) => stagedSources.get(p)).filter((p): p is string => Boolean(p));
+    if (doneSources.length > 0) after(() => admin.storage.from(JOURNAL_MEDIA_BUCKET).remove(doneSources));
+
+    for (const item of readyItems) {
       const mediaId = mediaIdByPath.get(item.storagePath);
       if (!mediaId) continue; // already pushed an error result above
       results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(item.storagePath) ?? "", isCover: coverIds.has(mediaId) });
@@ -602,6 +671,8 @@ export async function finalizeJournalPhotoBatch(
       itemCount: items.length,
       ownMs,
       pathValidationMs,
+      stagedCount: staged.length,
+      convertMs,
       idempotencyMs,
       insertMs,
       signedUrlMs,

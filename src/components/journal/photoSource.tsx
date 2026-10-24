@@ -61,22 +61,13 @@ export function usePhotoSource(onFiles: (files: FileList | null) => void, { disa
 
 /** The two choices as compact action-menu rows (icon · label · one quiet
  * line) — the native "Add Photos" menu, never a permanent block of the
- * composer. Used inside the "Add Photos" sheet and the section sheet. */
+ * composer. Choose From Photos first (the common case, multiple
+ * selection), Take Photo second. Used inside the "Add Photos" sheet and
+ * the section sheet. */
 export function PhotoSourceMenu({ takePhoto, choosePhotos, disabled }: { takePhoto: () => void; choosePhotos: () => void; disabled?: boolean }) {
   const row = "flex min-h-[52px] w-full items-center gap-3 rounded-xl px-2 text-left transition hover:bg-black/[0.03] active:bg-black/[0.05] disabled:opacity-60";
   return (
     <ul className="flex flex-col divide-y divide-black/[0.06]">
-      <li>
-        <button type="button" onClick={takePhoto} disabled={disabled} className={row}>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-            <CameraGlyph className="h-5 w-5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-ink">{PHOTO_SOURCE_LABELS.camera}</span>
-            <span className="block text-xs text-ink/50">Open your camera</span>
-          </span>
-        </button>
-      </li>
       <li>
         <button type="button" onClick={choosePhotos} disabled={disabled} className={row}>
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
@@ -85,6 +76,17 @@ export function PhotoSourceMenu({ takePhoto, choosePhotos, disabled }: { takePho
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-ink">{PHOTO_SOURCE_LABELS.library}</span>
             <span className="block text-xs text-ink/50">Pick one or more from your library</span>
+          </span>
+        </button>
+      </li>
+      <li>
+        <button type="button" onClick={takePhoto} disabled={disabled} className={row}>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+            <CameraGlyph className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">{PHOTO_SOURCE_LABELS.camera}</span>
+            <span className="block text-xs text-ink/50">Open your camera</span>
           </span>
         </button>
       </li>

@@ -11,6 +11,7 @@
 // never destroys it — it simply isn't offered to resume until the person
 // returns to the plain, context-free Add Moment entry point.
 import type { JournalManualLocationState, MomentEventPick, MomentPick } from "./moment-composer";
+import type { JournalEntrySectionRow } from "./journal-sections";
 
 export const GUEST_MOMENT_DRAFT_VERSION = 1;
 const KEY = "findmi_guest_moment_draft_v1";
@@ -22,6 +23,21 @@ export interface GuestMomentMediaRef {
   localId: string;
   isCover: boolean;
   caption: string | null;
+  /** One of the draft's own `sections` ids, or null/absent = no section. */
+  sectionId?: string | null;
+}
+
+/** A photo section composed before sign-in — the same fields a real
+ * journal_entry_sections row carries, in the draft's section order. */
+export interface GuestMomentSectionRef {
+  /** Draft-local id (`local-…`), referenced by media `sectionId`. */
+  id: string;
+  sectionType: string;
+  title: string | null;
+  notes: string | null;
+  /** Set once conversion has created the real section, so a retried
+   * conversion never creates it twice. */
+  serverId?: string | null;
 }
 
 export interface GuestMomentDraft {
@@ -40,6 +56,9 @@ export interface GuestMomentDraft {
   products: MomentPick[];
   /** Ordered — this array's order IS the photo order. */
   media: GuestMomentMediaRef[];
+  /** Ordered photo sections. Optional: drafts saved before sections were
+   * composable signed out simply have none. */
+  sections?: GuestMomentSectionRef[];
   /** Set only once the person presses a final action (Save & Publish /
    * Save Without Publishing) — null while still composing. */
   intendedAction: GuestMomentIntendedAction | null;
@@ -143,7 +162,33 @@ export function emptyGuestMomentDraft(): GuestMomentDraft {
     businesses: [],
     products: [],
     media: [],
+    sections: [],
     intendedAction: null,
     serverEntryId: null,
   };
+}
+
+/** A section created while the Moment exists only as a local draft — the
+ * same row shape the composer holds for a saved section, under a
+ * draft-local id until conversion creates the real one. */
+export function newLocalSectionRow(sectionType: string, existing: { display_order: number }[]): JournalEntrySectionRow {
+  const now = new Date().toISOString();
+  return {
+    id: `local-${newGuestMomentDraftId()}`,
+    journal_entry_id: "",
+    section_type: sectionType,
+    title: null,
+    notes: null,
+    display_order: existing.reduce((max, s) => Math.max(max, s.display_order + 1), 0),
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export function sectionRefsFromRows(rows: JournalEntrySectionRow[], previous: GuestMomentSectionRef[] = []): GuestMomentSectionRef[] {
+  return rows.map((r) => ({ id: r.id, sectionType: r.section_type, title: r.title, notes: r.notes, serverId: previous.find((p) => p.id === r.id)?.serverId ?? null }));
+}
+
+export function sectionRowsFromRefs(refs: GuestMomentSectionRef[] | undefined): JournalEntrySectionRow[] {
+  return (refs ?? []).map((r, i) => ({ id: r.id, journal_entry_id: "", section_type: r.sectionType, title: r.title, notes: r.notes, display_order: i, created_at: "", updated_at: "" }));
 }

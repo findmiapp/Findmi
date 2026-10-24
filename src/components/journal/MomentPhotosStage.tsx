@@ -20,6 +20,7 @@ import {
   type JournalSectionType,
 } from "@/lib/journal-sections";
 import { canReorder, filterBySection, type MomentSectionFilter } from "@/lib/moment-media-order";
+import { newLocalSectionRow } from "@/lib/guest-moment-draft";
 
 type PhotoState = ReturnType<typeof useJournalPhotoUpload>;
 
@@ -48,19 +49,16 @@ function typeLabel(type: string): string {
  * are filters over that same order (relative order kept), and reordering
  * is locked while one is active so a filtered view can never rewrite it.
  *
- * Guest-First Experience Completion pass — `guestMode` hides Organize
- * Your Photos/sections entirely (sections live in THIS component, called
- * directly against the real createJournalSection/updateJournalSection/
- * reorderJournalSections/deleteJournalSection Server Actions below, never
- * through the photos hook's own guest/authenticated branching) rather
- * than letting a guest tap into a control that would otherwise silently
- * fail. `sections` is always `[]` for a guest in practice (nothing here
- * ever adds to it while guestMode is true), so this is a defense-in-depth
- * presentation choice, not the only thing preventing it. Everything else
- * on this stage (Add Photos, reorder, Make Cover, Add A Note, Remove)
- * already works for a guest through the photos hook itself — deferred
- * exactly as the task's own Section 10 allows for one optional function,
- * never the whole stage. */
+ * Photo composition belongs to the Moment draft, not to sign-in: a
+ * signed-out composer (`guestMode`) gets exactly this stage — Organize
+ * Your Photos, sections, notes, cover, reorder, remove. Only where an
+ * edit is KEPT differs, the same split the photos hook makes: with no
+ * Moment row yet, a section lives in the composer's draft under a
+ * draft-local id (newLocalSectionRow) and travels in the local guest draft;
+ * MomentComposer creates the real sections when the draft is converted
+ * after sign-in. Signed in, every section edit goes straight to the
+ * createJournalSection/updateJournalSection/reorderJournalSections/
+ * deleteJournalSection Server Actions below. */
 export default function MomentPhotosStage({
   photos,
   sections,
@@ -126,8 +124,7 @@ export default function MomentPhotosStage({
     addingRef.current = true;
     setBusy(true);
     onError(null);
-    const entryId = await ensureEntryId();
-    const result = entryId ? await createJournalSection(entryId, { sectionType: type }) : { error: "Couldn't start this Moment." };
+    const result = guestMode ? { section: newLocalSectionRow(type, sections) } : await createSection(type);
     setBusy(false);
     addingRef.current = false;
     if ("error" in result) {
@@ -140,7 +137,27 @@ export default function MomentPhotosStage({
     setSheet(hasLoose ? { kind: "assign", sectionId: result.section.id } : null);
   }
 
+  async function createSection(type: JournalSectionType) {
+    const entryId = await ensureEntryId();
+    return entryId ? await createJournalSection(entryId, { sectionType: type }) : { error: "Couldn't start this Moment." };
+  }
+
   async function patchSection(sectionId: string, patch: { sectionType?: string; title?: string | null; notes?: string | null }) {
+    if (guestMode) {
+      setSections((prev) =>
+        prev.map((s) =>
+          s.id === sectionId
+            ? {
+                ...s,
+                ...(patch.sectionType !== undefined ? { section_type: patch.sectionType } : {}),
+                ...(patch.title !== undefined ? { title: patch.title } : {}),
+                ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+              }
+            : s
+        )
+      );
+      return;
+    }
     const entryId = await ensureEntryId();
     if (!entryId) return;
     const result = await updateJournalSection(entryId, sectionId, patch);
@@ -158,6 +175,7 @@ export default function MomentPhotosStage({
     const next = [...sections];
     [next[index], next[target]] = [next[target], next[index]];
     setSections(next);
+    if (guestMode) return;
     const entryId = await ensureEntryId();
     if (!entryId) return;
     const result = await reorderJournalSections(entryId, next.map((s) => s.id));
@@ -168,6 +186,12 @@ export default function MomentPhotosStage({
   }
 
   async function removeSection(sectionId: string) {
+    if (guestMode) {
+      setSheet(null);
+      setSections((prev) => prev.filter((s) => s.id !== sectionId));
+      photos.releaseSection(sectionId);
+      return;
+    }
     setBusy(true);
     const entryId = await ensureEntryId();
     const result = entryId ? await deleteJournalSection(entryId, sectionId) : { error: "Couldn't delete that section." };
@@ -262,7 +286,7 @@ export default function MomentPhotosStage({
           + Add Section
         </button>
       )}
-      {!grouped && !guestMode && savedCount > 0 && (
+      {!grouped && savedCount > 0 && (
         <section aria-label="Organize Your Photos" className="flex flex-col gap-3 rounded-2xl border border-findmi/25 bg-findmi-50/50 p-4">
           <div>
             <h3 className="font-display text-base font-bold tracking-tight text-ink">Organize Your Photos</h3>

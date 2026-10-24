@@ -81,6 +81,36 @@ function looksLikeHeicContainer(header: Uint8Array): boolean {
   return false;
 }
 
+/** Upper bound for a HEIC/HEIF original the browser stages straight into
+ * private Storage for server-side conversion (Moment photos — see
+ * finalizeJournalPhotoBatch). It never rides a request body, so it isn't
+ * held to MAX_UPLOAD_BYTES; it is still bounded so one decode stays well
+ * inside a function's memory. */
+export const MAX_STAGED_HEIC_BYTES = 30 * 1024 * 1024;
+
+/** Normalizes bytes the browser staged in Storage under a HEIC/HEIF name.
+ * The real bytes decide, never the staged name: a genuine HEIC/HEIF
+ * container is fully decoded and re-encoded to JPEG (the decode is the
+ * authority); bytes that are actually JPEG/PNG/WEBP/GIF (a picker that
+ * already transcoded, a mislabeled file) are kept as that format; anything
+ * else is rejected. */
+export async function normalizeStagedImage(bytes: Buffer): Promise<{ buffer: Buffer; extension: string; contentType: string } | { error: string }> {
+  if (bytes.length === 0) return { error: "That photo was empty." };
+  if (bytes.length > MAX_STAGED_HEIC_BYTES) return { error: "That photo is too large." };
+  const header = new Uint8Array(bytes.subarray(0, 32));
+  if (looksLikeHeicContainer(header)) {
+    try {
+      const jpeg = (await convertHeic({ buffer: bytes, format: "JPEG", quality: 0.85 })) as Buffer;
+      return { buffer: Buffer.from(jpeg), extension: "jpg", contentType: "image/jpeg" };
+    } catch {
+      return { error: "That HEIC/HEIF photo couldn't be converted. Please try again, or use a JPG or PNG instead." };
+    }
+  }
+  const detected = detectRasterFormat(header);
+  if (!detected) return { error: "That file doesn't look like a supported image (JPG, PNG, WEBP, or GIF)." };
+  return { buffer: bytes, ...detected };
+}
+
 export interface ImageValidationResult {
   /** The REAL, byte-detected format's extension — never the claimed/
    * filename one. For an accepted upload, always paired with the

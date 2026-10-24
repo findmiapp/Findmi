@@ -65,7 +65,7 @@ test("conversion is idempotency-guarded (once per mount) and anchors the server-
   const fn = COMPOSER.slice(COMPOSER.indexOf("async function convertGuestDraft("), COMPOSER.indexOf("// Runs once per mount."));
   assert.match(fn, /if \(conversionStartedRef\.current\) return;\s*\n\s*conversionStartedRef\.current = true;/);
   assert.match(fn, /if \(draft\.serverEntryId\) \{/);
-  assert.match(fn, /writeGuestMomentDraft\(\{ \.\.\.draft, serverEntryId: id \}\);/);
+  assert.match(fn, /let anchored: GuestMomentDraft = \{ \.\.\.draft, serverEntryId: id \};\s*\n\s*if \(draft\.serverEntryId !== id\) writeGuestMomentDraft\(anchored\);/);
   // Full success only — never clears the draft on a partial/failed attempt.
   assert.match(fn, /clearGuestMomentDraft\(\);/);
   assert.match(fn, /void deleteAllGuestMomentMedia\(draft\.media\.map\(\(m\) => m\.localId\)\);/);
@@ -73,7 +73,7 @@ test("conversion is idempotency-guarded (once per mount) and anchors the server-
 
 test("conversion reuses the EXACT authenticated upload pipeline (photos.handleFiles) rather than a parallel upload implementation", () => {
   const fn = COMPOSER.slice(COMPOSER.indexOf("async function convertGuestDraft("), COMPOSER.indexOf("// Runs once per mount."));
-  assert.match(fn, /await photos\.handleFiles\(files as unknown as FileList\);/);
+  assert.match(fn, /await photos\.handleFiles\(\s*staged\.map\(\(x\) => x\.file\),/);
   assert.match(fn, /await persistAll\(id\);/, "Context/Your Moment persist through the same function every authenticated save already uses");
 });
 
@@ -131,9 +131,10 @@ test("guest Remove/Retry/reorder/Make Cover/Add Note all branch to a local-only 
 
 // ── Sections stay identity-gated, cleanly, not by silent failure ─────────
 
-test("MomentPhotosStage hides Organize Your Photos/sections for a guest rather than letting a tap silently fail against ensureEntryId", () => {
+test("MomentPhotosStage shows Organize Your Photos/sections to a guest too — sign-in never decides which photo tools render", () => {
   assert.match(PHOTOS_STAGE, /guestMode\?: boolean;/);
-  assert.match(PHOTOS_STAGE, /\{!grouped && !guestMode && savedCount > 0 && \(/);
+  assert.match(PHOTOS_STAGE, /\{!grouped && savedCount > 0 && \(/);
+  assert.doesNotMatch(PHOTOS_STAGE, /!guestMode && savedCount/);
 });
 
 // ── Entry point + search support ─────────────────────────────────────────

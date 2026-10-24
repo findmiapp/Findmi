@@ -11,7 +11,7 @@
 // load, URL context only fills what the draft is missing, and a draft is
 // only written once there is something worth keeping.
 import { manualLocationHasText, type JournalManualLocationState, type MomentComposerInitial, type MomentEventPick, type MomentPick } from "./moment-composer";
-import type { GuestMomentDraft, GuestMomentMediaRef } from "./guest-moment-draft";
+import type { GuestMomentDraft, GuestMomentMediaRef, GuestMomentSectionRef } from "./guest-moment-draft";
 
 /** The composer fields a guest draft carries — one shape for "what the
  * composer shows right now" and "what the page started it with". */
@@ -26,6 +26,7 @@ export interface ComposerSnapshot {
   businesses: MomentPick[];
   products: MomentPick[];
   media: GuestMomentMediaRef[];
+  sections?: GuestMomentSectionRef[];
 }
 
 /** A cold, context-free start: no Event/Business/Location/Product prefill
@@ -68,7 +69,8 @@ export function snapshotSignature(s: ComposerSnapshot): string {
     s.events.map((e) => [e.value, e.occurrence?.id ?? null]),
     s.businesses.map((b) => b.value),
     s.products.map((p) => p.value),
-    s.media.map((m) => [m.localId, m.isCover, m.caption]),
+    s.media.map((m) => [m.localId, m.isCover, m.caption, m.sectionId ?? null]),
+    (s.sections ?? []).map((x) => [x.id, x.sectionType, x.title, x.notes]),
   ]);
 }
 
@@ -84,8 +86,8 @@ export function shouldPersistSnapshot(current: ComposerSnapshot, baselineSignatu
 
 /** The guest has actually written/chosen something (as opposed to a draft
  * that is only page prefill). */
-export function draftHasUserContent(d: Pick<GuestMomentDraft, "title" | "notes" | "media" | "manual">): boolean {
-  return Boolean(d.title.trim() || d.notes.trim() || d.media.length > 0 || manualLocationHasText(d.manual));
+export function draftHasUserContent(d: Pick<GuestMomentDraft, "title" | "notes" | "media" | "manual" | "sections">): boolean {
+  return Boolean(d.title.trim() || d.notes.trim() || d.media.length > 0 || (d.sections?.length ?? 0) > 0 || manualLocationHasText(d.manual));
 }
 
 const unionByValue = <T extends { value: string }>(a: T[], b: T[]): T[] => [...a, ...b.filter((x) => !a.some((y) => y.value === x.value))];

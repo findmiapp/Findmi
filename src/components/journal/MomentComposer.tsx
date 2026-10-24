@@ -16,6 +16,7 @@ import {
   publishJournalEntry,
   saveJournalAsDraft,
   setJournalAuthor,
+  createJournalSection,
   type JournalOccurrenceOption,
 } from "@/app/(public)/my-world/journal/actions";
 import type { JournalOccurrenceRef } from "@/lib/journal";
@@ -25,6 +26,8 @@ import {
   clearGuestMomentDraft,
   emptyGuestMomentDraft,
   readGuestMomentDraftStatus,
+  sectionRefsFromRows,
+  sectionRowsFromRefs,
   writeGuestMomentDraft,
   type GuestMomentDraft,
   type GuestMomentIntendedAction,
@@ -269,9 +272,10 @@ export default function MomentComposer({
 
   /** The current composer state as a serializable draft, carrying
    * forward whatever identity (draftId/createdAt/serverEntryId) the
-   * in-flight draft already has. Photo order/cover/caption come from the
-   * photos hook's own live items (already in the guest's chosen order),
-   * never a second, separately-tracked copy. */
+   * in-flight draft already has. Photo order/cover/caption/section come
+   * from the photos hook's own live items (already in the guest's chosen
+   * order), and sections from the composer's one `sections` state — never
+   * a second, separately-tracked copy. */
   function currentDraftSnapshot(intendedAction: GuestMomentIntendedAction | null): GuestMomentDraft {
     const base = draftRef.current;
     return {
@@ -287,7 +291,8 @@ export default function MomentComposer({
       products,
       media: photos.items
         .filter((it) => it.guestStaged)
-        .map((it) => ({ localId: it.localId, isCover: it.isCover, caption: it.caption ?? null })),
+        .map((it) => ({ localId: it.localId, isCover: it.isCover, caption: it.caption ?? null, sectionId: it.sectionId ?? null })),
+      sections: sectionRefsFromRows(sections, base.sections),
       intendedAction,
     };
   }
@@ -304,8 +309,10 @@ export default function MomentComposer({
    * converting a draft after authentication. Text/context state is set
    * synchronously; photos come back from IndexedDB (previews rebuilt as
    * fresh object URLs — they are per-page-load by nature). Resolves the
-   * number of photos whose bytes were no longer on this device. */
-  async function hydrateFromDraft(draft: GuestMomentDraft): Promise<number> {
+   * number of photos whose bytes were no longer on this device.
+   * Conversion passes `withPhotos: false`: there the photos are uploaded
+   * for real and come back into the grid through the upload itself. */
+  async function hydrateFromDraft(draft: GuestMomentDraft, { withPhotos = true }: { withPhotos?: boolean } = {}): Promise<number> {
     draftRef.current = draft;
     setTitle(draft.title);
     setTitleTouched(Boolean(draft.title));
@@ -319,8 +326,10 @@ export default function MomentComposer({
     setEvents(draft.events);
     setBusinesses(draft.businesses);
     setProducts(draft.products);
+    const restoredSections = sectionRowsFromRefs(draft.sections);
+    setSections(restoredSections);
     let missing = 0;
-    if (draft.media.length > 0) {
+    if (withPhotos && draft.media.length > 0) {
       const restored: JournalPhotoItem[] = [];
       for (const m of draft.media) {
         const file = await getGuestMomentMedia(m.localId);
@@ -338,6 +347,7 @@ export default function MomentComposer({
           guestStaged: true,
           isCover: m.isCover,
           caption: m.caption,
+          sectionId: m.sectionId && restoredSections.some((x) => x.id === m.sectionId) ? m.sectionId : null,
         });
       }
       photos.hydrateGuestItems(restored);
@@ -382,6 +392,7 @@ export default function MomentComposer({
     setEvents(initial.events);
     setBusinesses(initial.businesses);
     setProducts(initial.products);
+    setSections(initial.sections);
     photos.hydrateGuestItems([]);
     setError(null);
     setGuestAuthPrompt(null);
@@ -389,11 +400,10 @@ export default function MomentComposer({
   }
 
   /** The real, authenticated conversion: creates (or reuses) the actual
-   * journal_entries row, uploads every staged photo through the exact
-   * same pipeline a signed-in composer already uses, carries the
-   * guest's chosen cover/caption onto the resulting real photos by
-   * position (a brand-new Moment has no pre-existing photos, so the
-   * upload's resulting order exactly matches `draft.media`'s), persists
+   * journal_entries row, creates the draft's sections, uploads every
+   * staged photo (into its section) through the exact same pipeline a
+   * signed-in composer already uses, carries the guest's chosen
+   * cover/notes onto the resulting real photos, persists
    * Context/Your Moment, and finishes with whatever action the guest
    * originally pressed. The server-assigned entryId is written back into
    * the still-live local draft BEFORE anything else, so a failure or a
@@ -404,7 +414,7 @@ export default function MomentComposer({
     conversionStartedRef.current = true;
     setConverting(true);
     setError(null);
-    await hydrateFromDraft(draft);
+    await hydrateFromDraft(draft, { withPhotos: false });
 
     if (draft.serverEntryId) {
       entryIdRef.current = draft.serverEntryId;
@@ -416,24 +426,52 @@ export default function MomentComposer({
       setError("Couldn't save your Moment. Please try again.");
       return;
     }
-    if (draft.serverEntryId !== id) writeGuestMomentDraft({ ...draft, serverEntryId: id });
+    let anchored: GuestMomentDraft = { ...draft, serverEntryId: id };
+    if (draft.serverEntryId !== id) writeGuestMomentDraft(anchored);
 
-    if (draft.media.length > 0) {
-      const files: File[] = [];
-      for (const m of draft.media) {
-        const file = await getGuestMomentMedia(m.localId);
-        if (file) files.push(file);
-      }
-      if (files.length > 0) {
-        await photos.handleFiles(files as unknown as FileList);
-        const uploaded = photos.liveItems().filter((it) => it.status === "complete" && it.mediaId && !it.guestStaged);
-        const newOnes = uploaded.slice(Math.max(0, uploaded.length - files.length));
-        for (let i = 0; i < newOnes.length && i < draft.media.length; i++) {
-          const meta = draft.media[i];
-          const real = newOnes[i];
-          if (meta.caption) await photos.saveCaption(real.localId, meta.caption);
-          if (meta.isCover) await photos.makeCover(real.localId);
+    // Sections first, so every photo is uploaded straight into its real
+    // section. Each created id is written back into the still-live draft
+    // at once, so a retried conversion reuses it instead of adding another.
+    const realSectionId = new Map<string, string>();
+    for (const ref of anchored.sections ?? []) {
+      let serverId = ref.serverId ?? null;
+      if (!serverId) {
+        const result = await createJournalSection(id, { sectionType: ref.sectionType, title: ref.title, notes: ref.notes });
+        if ("error" in result) {
+          setConverting(false);
+          setError(result.error);
+          return;
         }
+        serverId = result.section.id;
+        anchored = { ...anchored, sections: (anchored.sections ?? []).map((r) => (r.id === ref.id ? { ...r, serverId } : r)) };
+        writeGuestMomentDraft(anchored);
+      }
+      realSectionId.set(ref.id, serverId);
+    }
+    setSections(sectionRowsFromRefs(anchored.sections).map((row, i) => ({ ...row, id: realSectionId.get(row.id) ?? row.id, journal_entry_id: id, display_order: i })));
+
+    // Photos go through the exact same upload pipeline a signed-in composer
+    // uses, in the draft's order, each into its section; the guest's notes
+    // and cover are then carried onto the resulting real photos by identity
+    // (the upload reports each new photo's localId) — never by position, so
+    // a photo missing from this device or one that fails to upload can't
+    // shift another photo's note or cover onto the wrong picture.
+    const staged: { meta: GuestMomentDraft["media"][number]; file: File }[] = [];
+    for (const m of draft.media) {
+      const file = await getGuestMomentMedia(m.localId);
+      if (file) staged.push({ meta: m, file });
+    }
+    if (staged.length > 0) {
+      const newIds = await photos.handleFiles(
+        staged.map((x) => x.file),
+        { sectionIds: staged.map((x) => (x.meta.sectionId ? realSectionId.get(x.meta.sectionId) ?? null : null)) }
+      );
+      const live = photos.liveItems();
+      for (let i = 0; i < staged.length && i < newIds.length; i++) {
+        const real = live.find((it) => it.localId === newIds[i]);
+        if (!real || real.status !== "complete") continue;
+        if (staged[i].meta.caption) await photos.saveCaption(real.localId, staged[i].meta.caption as string);
+        if (staged[i].meta.isCover) await photos.makeCover(real.localId);
       }
     }
 
@@ -515,7 +553,7 @@ export default function MomentComposer({
     }
     writeGuestMomentDraft(snapshot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guestMode, autosaveReady, title, notes, entryDate, entryTime, location, manual, events, businesses, products, photos.items]);
+  }, [guestMode, autosaveReady, title, notes, entryDate, entryTime, location, manual, events, businesses, products, photos.items, sections]);
 
   /** Signed in, cold URL, a leftover guest draft, no resume signal: the
    * person chooses. Continue converts it into a real Moment. */
