@@ -525,27 +525,13 @@ export default async function EditBusinessPage({
               </div>
             </div>
 
-            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Inquire Button</p>
+            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Inquiries</p>
             <div className="rounded-2xl border border-black/10 p-4">
               <p className="mb-3 text-xs text-ink/45">
-                Button text only — the destination is always the native Findmi inquiry form now (a real
-                Conversation, never an external URL/email). The owner controls whether Inquire shows at all and
-                which topics it offers below; this is the same configuration their own Business Manager edits, not
-                a separate admin-only setting.
+                How inquiries work (capability and topics). Whether an Inquire button shows on the profile is set by
+                the Business&rsquo;s Public Actions (a General Inquiry action), not here.
               </p>
-              <TextField
-                label="Button Text"
-                name="inquiry_cta_label"
-                defaultValue={business.inquiry_cta_label}
-                placeholder="Inquire"
-                hint="Defaults to “Inquire” when blank."
-              />
-              {/* inquiry_cta_url stays in the schema (harmless, unread —
-                  see BusinessPublicView's own note) rather than dropped
-                  from the form outright; no input for it here anymore
-                  since nothing reads it. */}
-
-              <div className="mt-4 border-t border-black/5 pt-4">
+              <div>
                 <CheckboxField
                   label="Accept inquiries"
                   name="accepts_inquiries"
@@ -567,25 +553,6 @@ export default async function EditBusinessPage({
                     </label>
                   ))}
                 </div>
-              </div>
-            </div>
-
-            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Business CTA Buttons</p>
-            <div className="rounded-2xl border border-black/10 p-4">
-              <p className="mb-3 text-xs text-ink/45">
-                Up to three additional buttons shown below the business description. Each is independent — off by
-                default even when a label/URL is filled in.
-              </p>
-              <div className="flex flex-col gap-4">
-                {([1, 2, 3] as const).map((n) => (
-                  <div key={n} className="flex flex-col gap-2 rounded-xl border border-black/[0.06] p-3">
-                    <CheckboxField label={`CTA ${n} Enabled`} name={`cta_${n}_enabled`} defaultChecked={business[`cta_${n}_enabled` as const]} />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <TextField label="Label" name={`cta_${n}_label`} defaultValue={business[`cta_${n}_label` as const]} placeholder="Book Us" />
-                      <TextField label="URL" name={`cta_${n}_url`} type="url" defaultValue={business[`cta_${n}_url` as const]} placeholder="https://…" />
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
 

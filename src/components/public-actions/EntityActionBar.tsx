@@ -10,6 +10,7 @@ import type { BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
 import type { TargetKind } from "@/lib/commercial-intents";
 import type { PublicActionView } from "@/lib/public-actions";
 import { actionBarLayout, actionTitle, type PublicActionType } from "@/lib/public-actions-domain";
+import { trackEvent } from "@/lib/analytics/track";
 import {
   getPublicActionContextAction,
   openEntityOpportunitiesAction,
@@ -79,31 +80,22 @@ export default function EntityActionBar({
   const base = compact
     ? "flex h-12 w-full min-w-0 items-center justify-center rounded-2xl px-1.5 text-center text-[11px] font-bold uppercase leading-tight tracking-normal [text-wrap:balance] transition"
     : "flex h-12 w-full min-w-0 items-center justify-center rounded-2xl px-3 text-center text-sm font-bold uppercase leading-tight tracking-wide [text-wrap:balance] transition";
-  const primary = `${base} bg-findmi text-white hover:bg-findmi-600`;
-  const secondary = `${base} border border-findmi/40 bg-white text-findmi-700 hover:bg-findmi-50`;
+  // One treatment for every slot (the Native Rose outlined INQUIRE): no
+  // action is promoted over another.
+  const cls = `${base} border border-findmi/40 bg-white text-findmi-700 hover:bg-findmi-50`;
+  // One analytics event family: canonical type + slot, never the label.
+  const track = (a: PublicActionView) =>
+    trackEvent({ event_name: "click_public_action", subject_type: kind, subject_id: entityId, [`${kind}_id`]: entityId, page_path: pagePath, metadata: { action_type: a.type, slot: a.slot } });
 
   return (
     <div className={className}>
       {actions.length > 0 && (
         <div className={`grid ${grid} gap-2`} data-public-actions={actions.length}>
-          {actions.map((a, i) => {
-            const cls = i === 0 ? primary : secondary;
-            if (a.route === "general_inquiry")
-              return <InquireButton key={a.slot} targetType={kind} targetId={entityId} targetName={entityName} label={a.label} topics={kind === "business" ? inquiryTopics : undefined} className={cls} />;
-            if (a.route === "event_participation")
-              return <MessageButton key={a.slot} targetType="event" targetId={entityId} targetName={entityName} label={a.label} eventOccurrences={eventOccurrences} triggerClassName={cls} />;
-            if (a.route === "website" && a.href)
-              return (
-                <a key={a.slot} href={a.href} target="_blank" rel="noreferrer" className={cls}>
-                  {a.label}
-                </a>
-              );
-            return (
-              <button key={a.slot} type="button" onClick={() => setSheet({ slot: a.slot, type: a.type })} className={cls}>
-                {a.label}
-              </button>
-            );
-          })}
+          {actions.map((a) => (
+            <div key={a.slot} className="flex min-w-0" onClickCapture={() => track(a)}>
+              {renderAction(a)}
+            </div>
+          ))}
         </div>
       )}
       {opportunityCount > 0 && (
@@ -117,6 +109,24 @@ export default function EntityActionBar({
       {sheet && <ActionSheet kind={kind} entityId={entityId} entityName={entityName} pagePath={pagePath} sheet={sheet} onClose={() => setSheet(null)} />}
     </div>
   );
+
+  function renderAction(a: PublicActionView) {
+    if (a.route === "general_inquiry")
+      return <InquireButton targetType={kind} targetId={entityId} targetName={entityName} label={a.label} topics={kind === "business" ? inquiryTopics : undefined} className={cls} />;
+    if (a.route === "event_participation")
+      return <MessageButton targetType="event" targetId={entityId} targetName={entityName} label={a.label} eventOccurrences={eventOccurrences} triggerClassName={cls} />;
+    if (a.route === "website" && a.href)
+      return (
+        <a href={a.href} target="_blank" rel="noreferrer" className={cls}>
+          {a.label}
+        </a>
+      );
+    return (
+      <button type="button" onClick={() => setSheet({ slot: a.slot, type: a.type })} className={cls}>
+        {a.label}
+      </button>
+    );
+  }
 }
 
 function ActionSheet({

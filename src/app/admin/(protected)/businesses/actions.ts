@@ -126,23 +126,12 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     processing_fee_payer: str(formData, "processing_fee_payer") ?? "vendor",
     payout_method: str(formData, "payout_method") ?? "manual",
     // Business Profile V2 polish pass, item 4/5.
-    inquiry_cta_label: str(formData, "inquiry_cta_label"),
-    inquiry_cta_url: str(formData, "inquiry_cta_url"),
     // Business-Controlled Inquiry Settings pass — same underlying
     // columns the member editor's Customer Inquiries card writes
     // (account/business/inquiries-actions.ts's setBusinessInquirySettings)
     // — one Business configuration, not a competing admin-only model.
     accepts_inquiries: bool(formData, "accepts_inquiries"),
     inquiry_topics: sanitizeBusinessInquiryTopics(formData.getAll("inquiry_topics").map(String)),
-    cta_1_label: str(formData, "cta_1_label"),
-    cta_1_url: str(formData, "cta_1_url"),
-    cta_1_enabled: bool(formData, "cta_1_enabled"),
-    cta_2_label: str(formData, "cta_2_label"),
-    cta_2_url: str(formData, "cta_2_url"),
-    cta_2_enabled: bool(formData, "cta_2_enabled"),
-    cta_3_label: str(formData, "cta_3_label"),
-    cta_3_url: str(formData, "cta_3_url"),
-    cta_3_enabled: bool(formData, "cta_3_enabled"),
     // Final refinement pass, item 4; label/url added in the Business
     // Profile polish pass. bulletin_url was already validated above.
     bulletin_enabled: bool(formData, "bulletin_enabled"),
@@ -303,23 +292,12 @@ export async function saveBusinessProfile(id: string, formData: FormData) {
     ...geoFields,
     country: str(formData, "country") ?? "US",
     service_radius_miles: num(formData, "service_radius_miles"),
-    inquiry_cta_label: str(formData, "inquiry_cta_label"),
-    inquiry_cta_url: str(formData, "inquiry_cta_url"),
     // Business-Controlled Inquiry Settings pass — same underlying
     // columns the member editor's Customer Inquiries card writes
     // (account/business/inquiries-actions.ts's setBusinessInquirySettings)
     // — one Business configuration, not a competing admin-only model.
     accepts_inquiries: bool(formData, "accepts_inquiries"),
     inquiry_topics: sanitizeBusinessInquiryTopics(formData.getAll("inquiry_topics").map(String)),
-    cta_1_label: str(formData, "cta_1_label"),
-    cta_1_url: str(formData, "cta_1_url"),
-    cta_1_enabled: bool(formData, "cta_1_enabled"),
-    cta_2_label: str(formData, "cta_2_label"),
-    cta_2_url: str(formData, "cta_2_url"),
-    cta_2_enabled: bool(formData, "cta_2_enabled"),
-    cta_3_label: str(formData, "cta_3_label"),
-    cta_3_url: str(formData, "cta_3_url"),
-    cta_3_enabled: bool(formData, "cta_3_enabled"),
     bulletin_enabled: bool(formData, "bulletin_enabled"),
     bulletin_label: str(formData, "bulletin_label"),
     bulletin_heading: str(formData, "bulletin_heading"),

@@ -45,6 +45,13 @@ export default function CustomerInquiriesForm({
   return (
     <form action={setBusinessInquirySettings.bind(null, businessId)} className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Customer Inquiries</p>
+      <p className="mt-1 text-xs text-ink/50">
+        How inquiries work. To show an Inquire button on your profile, add a General Inquiry in{" "}
+        <a href={`/account/business/${businessId}?tab=profile#public-actions`} className="font-semibold text-findmi-700 underline">
+          Public Actions
+        </a>
+        .
+      </p>
       <label className="mt-3 flex items-start gap-3">
         <input
           type="checkbox"
@@ -79,7 +86,7 @@ export default function CustomerInquiriesForm({
             ))}
           </div>
           {showZeroTopicWarning && (
-            <p className="mt-2 text-xs text-red-600">Choose at least one inquiry type, or customers won&rsquo;t see an Inquire button.</p>
+            <p className="mt-2 text-xs text-red-600">Choose at least one inquiry type, or your General Inquiry action can&rsquo;t be used.</p>
           )}
         </div>
       )}

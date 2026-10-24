@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { TargetKind } from "@/lib/commercial-intents";
 import {
@@ -19,8 +20,10 @@ import { savePublicActionsAction } from "@/app/(public)/account/public-actions-a
 type Draft = { key: number; type: PublicActionType; label: string; enabled: boolean; opportunityListingId: string | null };
 
 /** Public Actions settings — up to three buttons visitors see under this
- * page's identity. The action type decides what happens; the label only
- * changes the words. Compact on purpose: add, reorder, relabel, switch off. */
+ * profile's identity, and the ONLY thing that shows them. The action type
+ * decides what happens; the label only changes the words. Compact on
+ * purpose: add, reorder, relabel, switch off. Saving never changes another
+ * setting (e.g. it never turns Inquiries on) — a dependency is explained. */
 export default function PublicActionsEditor({
   kind,
   entityId,
@@ -28,7 +31,8 @@ export default function PublicActionsEditor({
   ready,
   opportunities,
   unavailable = {},
-  defaultNote,
+  defaultNote = "No actions yet, so visitors see no buttons. Add one to give them a clear way to reach you.",
+  inquirySettingsHref,
 }: {
   kind: TargetKind;
   entityId: string;
@@ -39,8 +43,10 @@ export default function PublicActionsEditor({
   opportunities: { id: string; title: string }[];
   /** Types saved but not shown right now, with why (e.g. Inquiries off). */
   unavailable?: Partial<Record<PublicActionType, string>>;
-  /** Shown when nothing is saved yet (e.g. the existing Inquire button). */
+  /** Shown when nothing is configured. */
   defaultNote?: string;
+  /** Where Inquiry settings live (linked from the General Inquiry dependency). */
+  inquirySettingsHref?: string;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Draft[]>(() => initial.map((a, i) => ({ key: i, type: a.type, label: a.label ?? "", enabled: a.enabled, opportunityListingId: a.opportunityListingId })));
@@ -66,7 +72,7 @@ export default function PublicActionsEditor({
     const v = validateActionLabel(r.label);
     return v.ok ? null : v.error;
   });
-  const shown = rows.filter((r) => r.enabled);
+  const shown = rows.filter((r) => r.enabled && !unavailable[r.type]);
   const { cols, compact } = actionBarLayout(shown.length);
 
   const save = () =>
@@ -86,7 +92,7 @@ export default function PublicActionsEditor({
   return (
     <section id="public-actions" className="scroll-mt-24 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Public Actions</p>
-      <p className="mt-1 text-sm text-ink/60">Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your page.</p>
+      <p className="mt-1 text-sm text-ink/60">Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your profile.</p>
       {!ready && <p className="mt-3 rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-sm text-ink/60">Public Actions are almost ready. Check back soon.</p>}
       {ready && !rows.length && defaultNote && <p className="mt-3 text-sm text-ink/60">{defaultNote}</p>}
 
@@ -150,10 +156,19 @@ export default function PublicActionsEditor({
               </label>
             )}
             {labelErrors[i] && <p className="text-xs font-semibold text-red-700">{labelErrors[i]}</p>}
-            {unavailable[r.type] && <p className="text-xs text-ink/50">{unavailable[r.type]}</p>}
+            {unavailable[r.type] && (
+              <p className="text-xs font-semibold text-amber-700">
+                {unavailable[r.type]}{" "}
+                {r.type === "general_inquiry" && inquirySettingsHref && (
+                  <Link href={inquirySettingsHref} className="text-findmi-700 underline">
+                    Inquiry Settings
+                  </Link>
+                )}
+              </p>
+            )}
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" checked={r.enabled} onChange={(e) => update(r.key, { enabled: e.target.checked })} className="h-4 w-4 accent-findmi" />
-              Show on my page
+              Visible
             </label>
           </li>
         ))}
@@ -169,13 +184,13 @@ export default function PublicActionsEditor({
         <div className="mt-4">
           <p className="text-xs font-semibold text-ink/60">Preview</p>
           <div className={`mt-1.5 grid gap-2 ${cols === 3 ? "grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-            {shown.map((r, i) => {
+            {shown.map((r) => {
               const v = validateActionLabel(r.label);
               const text = (v.ok ? v.value : null) ?? PUBLIC_ACTION_DEFAULT_LABELS[r.type];
               return (
                 <span
                   key={r.key}
-                  className={`flex h-12 min-w-0 items-center justify-center rounded-2xl text-center font-bold uppercase leading-tight [text-wrap:balance] ${compact ? "px-1.5 text-[11px] tracking-normal" : "px-3 text-sm tracking-wide"} ${i === 0 ? "bg-findmi text-white" : "border border-findmi/40 bg-white text-findmi-700"}`}
+                  className={`flex h-12 min-w-0 items-center justify-center rounded-2xl border border-findmi/40 bg-white text-center font-bold uppercase leading-tight text-findmi-700 [text-wrap:balance] ${compact ? "px-1.5 text-[11px] tracking-normal" : "px-3 text-sm tracking-wide"}`}
                 >
                   {text}
                 </span>

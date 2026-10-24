@@ -636,11 +636,10 @@ export default async function ManageEventPage({
                 ready={publicActionsEditor.ready}
                 opportunities={publicActionsEditor.opportunities}
                 initial={publicActionsEditor.configured}
-                defaultNote="Nothing is shown yet. Add an action — like Apply To Participate or Sponsor — so visitors know how to take part."
                 unavailable={{
-                  ...(event.contact_enabled ? {} : { general_inquiry: "Shows once Contact Organizer is on." }),
-                  ...(event.vendor_applications_enabled ? {} : { event_participation: "Shows while participation applications are open." }),
-                  ...(event.external_url ? {} : { website: "Shows once you add an event website." }),
+                  ...(event.contact_enabled ? {} : { general_inquiry: "Turn on Contact Organizer to use this action." }),
+                  ...(event.vendor_applications_enabled && !(event.vendor_application_deadline && new Date(event.vendor_application_deadline) < new Date()) ? {} : { event_participation: "Open participation applications to use this action." }),
+                  ...(event.external_url ? {} : { website: "Add an event website to use this action." }),
                 }}
               />
             )}

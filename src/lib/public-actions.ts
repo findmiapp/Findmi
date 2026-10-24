@@ -152,28 +152,25 @@ export interface PublicActionView {
 export interface PublicActionAvailability {
   /** The existing public Inquire / Contact form is available for this entity. */
   generalInquiry: boolean;
-  /** Business only: its existing Inquire label (inquiry_cta_label) for the
-   * legacy button when nothing is configured. */
-  legacyInquireLabel?: string | null;
   /** Event only: participation applications are open. */
   participation?: boolean;
   /** The entity's own saved, safe website. */
   website?: string | null;
 }
 
-/** The buttons to render, in order. Configured actions that can't truthfully
- * route right now (Inquiries off, applications closed, Opportunity no longer
- * open, no website) are skipped — never a dead button. With nothing
- * configured, a Business keeps its existing Inquire button; Locations and
- * Events show none (nothing is fabricated). */
+/** The buttons to render, in order — ONLY the entity's configured, enabled
+ * Public Actions. Nothing else ever adds a button: not Accept Inquiries or
+ * inquiry topics, not the retired CTA 1/2/3 columns, not Pro, not Opportunity
+ * existence. A configured action that can't truthfully route right now
+ * (Inquiries off, applications closed, Opportunity no longer open, no website)
+ * is skipped — never a dead button. Capability is not visibility. */
 export function resolvePublicActions(
   kind: TargetKind,
   configured: readonly PublicActionConfig[] | null,
   available: PublicActionAvailability,
   openOpportunityIds: readonly string[]
 ): PublicActionView[] {
-  const list: readonly PublicActionConfig[] =
-    configured ?? (kind === "business" && available.generalInquiry ? [{ type: "general_inquiry", label: available.legacyInquireLabel?.trim() || null, enabled: true, opportunityListingId: null }] : []);
+  const list: readonly PublicActionConfig[] = configured ?? [];
   const out: PublicActionView[] = [];
   list.forEach((a, i) => {
     if (!a.enabled || !isActionCompatible(kind, a.type)) return;

@@ -72,9 +72,7 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "website_url, instagram_url, facebook_url, tiktok_url, city, " +
   "state, country, service_radius_miles, verified, founding_member, " +
   "created_at, updated_at, is_demo, commerce_enabled, " +
-  "publication_status, is_featured, inquiry_cta_label, inquiry_cta_url, " +
-  "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
-  "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
+  "publication_status, is_featured, bulletin_enabled, " +
   "bulletin_heading, bulletin_body, bulletin_label, bulletin_url, " +
   "native_inquiries_enabled, market_area_id, is_pro_member, " +
   "accepts_inquiries, inquiry_topics, featured_event_id, featured_appearance_id";

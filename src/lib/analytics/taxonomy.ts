@@ -49,6 +49,10 @@ export const ANALYTICS_EVENT_NAMES = [
   "search_result_open",
   "relationship_set",
   "relationship_unset",
+  // Public Actions — a tap on a profile's action bar. metadata.action_type is
+  // the canonical type and metadata.slot its position; never the custom
+  // label (presentation only).
+  "click_public_action",
 ] as const;
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
 

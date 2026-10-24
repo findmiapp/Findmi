@@ -28,7 +28,7 @@ import { getPersonalDisplayName } from "@/lib/personalGraph";
  * grant, so this is only ever read through the service-role client, and only
  * once `requireBusinessMember` has passed (see `getManagerCore`). */
 export const BUSINESS_COLUMNS =
-  "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, inquiry_cta_label, market_area_id, featured_appearance_id";
+  "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id, featured_appearance_id";
 
 export const getManagerCore = cache(async (id: string) => {
   const user = await getCurrentUser();

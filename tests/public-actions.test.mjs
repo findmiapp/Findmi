@@ -131,7 +131,7 @@ test("19. Event Participation → the existing participation application, never 
   assert.equal(D.actionIntent("event_participation"), null);
   assert.equal(S.resolvePublicActions("event", [cfg("event_participation")], { ...ALL, participation: false }, []).length, 0, "only while applications are open");
   const bar = read(BAR);
-  assert.match(bar, /if \(a\.route === "event_participation"\)\s*return <MessageButton key=\{a\.slot\} targetType="event"/);
+  assert.match(bar, /if \(a\.route === "event_participation"\)\s*return <MessageButton targetType="event"/);
   assert.match(read("src/components/MessageButton.tsx"), /applyToEventPublic/);
   assert.match(read(EVT), /participation: Boolean\(event\.vendor_applications_enabled && !vendorDeadlinePassed\)/);
 });
@@ -150,7 +150,8 @@ test("20. Opportunity → one specific existing listing, only while it's open an
 test("website → the entity's own saved, safe site only (never a free URL)", () => {
   assert.equal(S.resolvePublicActions("business", [cfg("website")], { ...ALL, website: null }, []).length, 0);
   assert.equal(S.resolvePublicActions("business", [cfg("website")], ALL, [])[0].href, "https://example.com");
-  assert.doesNotMatch(read(MIGRATION), /_url\b/, "no URL column");
+  const sql = read(MIGRATION);
+  assert.doesNotMatch(sql.slice(sql.indexOf("create table"), sql.indexOf(");", sql.indexOf("create table"))), /_url\b/, "no free-URL column in the table");
 });
 
 // ── Signed out, acting Business, relationships (21–30) ─────────────────────
@@ -219,24 +220,90 @@ test("30. no automatic Inquiry send — the composer opens; the person writes an
 
 // ── Native Rose / legacy Inquire (31, 32) ──────────────────────────────────
 
-test("31. The Native Rose's INQUIRE is preserved: with nothing configured, a Business keeps its Inquire button", () => {
-  const out = S.resolvePublicActions("business", null, { generalInquiry: true, legacyInquireLabel: null }, []);
-  assert.deepEqual(out.map((a) => [a.type, a.route, a.label]), [["general_inquiry", "general_inquiry", "Inquire"]]);
-  assert.equal(S.resolvePublicActions("business", null, { generalInquiry: true, legacyInquireLabel: "Book a Tasting" }, [])[0].label, "Book a Tasting");
-  assert.deepEqual(S.resolvePublicActions("business", null, { generalInquiry: false }, []), [], "Inquiries off → nothing fabricated");
-  assert.deepEqual(S.resolvePublicActions("location", null, ALL, []), [], "Locations / Events: nothing fabricated");
-  assert.deepEqual(S.resolvePublicActions("event", null, ALL, []), []);
+test("1–4/60. visibility: nothing configured = no bar — capability, Pro, topics and legacy CTAs never add a button", () => {
+  for (const kind of ["business", "location", "event"]) {
+    assert.deepEqual(S.resolvePublicActions(kind, null, ALL, [O_SOHO]), [], kind);
+    assert.deepEqual(S.resolvePublicActions(kind, [], ALL, [O_SOHO]), [], kind);
+  }
+  const lib = strip(read("src/lib/public-actions.ts"));
+  assert.match(lib, /const list: readonly PublicActionConfig\[\] = configured \?\? \[\];/);
+  assert.doesNotMatch(lib, /legacy|inquiry_cta|cta_[123]|accepts_inquiries|plan_tier/);
+  const biz = strip(read(BIZ));
+  assert.doesNotMatch(biz, /cta_[123]_|inquiry_cta_label|BusinessCtaRow|hasCtas|<InquireButton/, "no other button renderer on the page");
+  assert.match(read(BAR), /if \(!actions\.length && !opportunityCount\) return null;/, "zero actions → nothing (only a compact Opportunity signal can show)");
 });
 
-test("32. Native Rose canonical flow: General Inquiry is the same existing Inquire form (topics, guest, Findmi routing)", () => {
+test("5. a disabled Public Action is hidden", () => {
+  assert.deepEqual(S.resolvePublicActions("business", [cfg("booking", { enabled: false }), cfg("wholesale")], ALL, []).map((a) => a.type), ["wholesale"]);
+});
+
+test("16/17/46. General Inquiry = the existing Inquire form (guests welcome, topics, Findmi routing); capability gates it", () => {
   const bar = read(BAR);
-  assert.match(bar, /if \(a\.route === "general_inquiry"\)\s*return <InquireButton key=\{a\.slot\} targetType=\{kind\} targetId=\{entityId\} targetName=\{entityName\} label=\{a\.label\} topics=\{kind === "business" \? inquiryTopics : undefined\}/);
+  assert.match(bar, /if \(a\.route === "general_inquiry"\)\s*return <InquireButton targetType=\{kind\} targetId=\{entityId\} targetName=\{entityName\} label=\{a\.label\} topics=\{kind === "business" \? inquiryTopics : undefined\}/);
+  assert.equal(D.actionNeedsBusiness("general_inquiry"), false, "no Business or sign-in needed");
+  assert.doesNotMatch(read("src/components/InquireButton.tsx"), /getCurrentUser|useBusinesses|login/, "the form works for guests");
   const biz = read(BIZ);
-  assert.match(biz, /generalInquiry: canInquire,\s*legacyInquireLabel: business\.inquiry_cta_label,/);
-  assert.match(biz, /const canInquire = pro && business\.accepts_inquiries && enabledInquiryTopics\.length > 0;/, "same gate as before");
-  assert.match(biz, /inquiryTopics=\{enabledInquiryTopics\}/);
-  assert.doesNotMatch(biz, /<InquireButton/, "one Inquire entry point on the page — the action bar");
+  assert.match(biz, /generalInquiry: canInquire,/);
+  assert.match(biz, /const canInquire = pro && business\.accepts_inquiries && enabledInquiryTopics\.length > 0;/, "same capability rule as before");
+  assert.equal(S.resolvePublicActions("business", [cfg("general_inquiry")], { generalInquiry: false }, []).length, 0, "configured but capability off → not shown");
   assert.match(read("src/app/(public)/connect/actions.ts"), /if \(input\.targetType === "business" && isCommercialInquiryTopic\(rawTopic\)\)/, "its commercial topics still go to Findmi");
+});
+
+test("57. The Native Rose: backfilled to one General Inquiry action by the exact visible-Inquire rule", () => {
+  const sql = read(MIGRATION);
+  assert.match(sql, /insert into public\.entity_public_actions \(business_id, action_type, custom_label, enabled, display_order\)\s*select b\.id, 'general_inquiry', null, true, 1/);
+  assert.match(sql, /where b\.plan_tier in \('pro', 'pro_seller'\)\s*and \(b\.plan_expires_at is null or b\.plan_expires_at > now\(\)\)\s*and b\.accepts_inquiries\s*and b\.inquiry_topics && array\['general', 'product_order', 'wholesale', 'catering_booking', 'event_popup', 'collaboration', 'other'\]::text\[\]/, "mirrors isBusinessPro + accepts + a valid topic");
+  assert.match(sql, /and not exists \(select 1 from public\.entity_public_actions a where a\.business_id = b\.id\);/, "idempotent; never overwrites");
+  const topics = read("src/lib/business-inquiry-topics.ts").match(/BUSINESS_INQUIRY_TOPIC_VALUES = \[([\s\S]*?)\] as const/)[1].match(/"([a-z_]+)"/g).map((x) => x.slice(1, -1));
+  assert.deepEqual(topics, ["general", "product_order", "wholesale", "catering_booking", "event_popup", "collaboration", "other"], "the SQL topic list matches the app's");
+  assert.deepEqual(S.resolvePublicActions("business", [cfg("general_inquiry")], { generalInquiry: true }, []).map((a) => [a.type, a.label]), [["general_inquiry", "Inquire"]], "after cutover it shows because of its Public Action");
+});
+
+test("51–56. legacy CTA 1/2/3: none live (disabled test values only) → nothing migrated; a live one STOPS the migration", () => {
+  const sql = read(MIGRATION);
+  for (const n of [1, 2, 3]) assert.ok(sql.includes(`(cta_${n}_enabled and btrim(coalesce(cta_${n}_label, '')) <> '' and cta_${n}_url ~* '^https?://')`), `CTA ${n} checked`);
+  assert.match(sql, /raise exception 'Public Actions: live legacy CTA buttons need review before cutover: %', live;/);
+  assert.doesNotMatch(sql, /insert into public\.entity_public_actions[^;]*cta_/, "blank / disabled / malformed CTAs are never migrated");
+  assert.match(sql, /comment on column public\.businesses\.cta_1_url is 'DEPRECATED/);
+  assert.match(sql, /comment on column public\.businesses\.inquiry_cta_label is 'DEPRECATED/);
+});
+
+test("58/59. legacy renderer and manager controls removed", () => {
+  assert.doesNotMatch(read(BIZ), /function BusinessCtaRow/);
+  for (const f of ["src/app/admin/(protected)/businesses/[id]/page.tsx", "src/app/admin/(protected)/businesses/BusinessForm.tsx", "src/app/admin/(protected)/businesses/actions.ts"]) {
+    assert.doesNotMatch(read(f), /cta_[123]_|cta_\$\{n\}|inquiry_cta_label|inquiry_cta_url|Business CTA Buttons/, f);
+  }
+  assert.doesNotMatch(read("src/lib/data.ts"), /cta_1_label|inquiry_cta_label/, "not even selected");
+  assert.doesNotMatch(read("src/lib/types.ts"), /^\s*cta_1_label:/m);
+});
+
+test("61/62/70. Announcements stay content (one optional link on the card), separate from actions", () => {
+  const m = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
+  assert.match(m, /Share a temporary update on your profile\. Buttons visitors can tap are set in Public Actions\./);
+  assert.match(read(BIZ), /\{hasBulletin && \(/, "the Announcement still renders");
+  assert.doesNotMatch(read("src/components/Bulletin.tsx"), /<button[^>]*>\s*\{?[A-Z]/, "no action buttons inside it");
+});
+
+test("69. Inquiry settings say how inquiries work — visibility lives in Public Actions", () => {
+  const f = read("src/app/(public)/account/business/[id]/CustomerInquiriesForm.tsx");
+  assert.match(f, /How inquiries work\. To show an Inquire button on your profile, add a General Inquiry in/);
+  assert.match(f, /tab=profile#public-actions/);
+  const m = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
+  const inq = m.slice(m.indexOf('{activeTab === "inquiries" && ('), m.indexOf('{activeTab === "inquiries" && (') + 4000);
+  assert.doesNotMatch(inq, /PublicActionsEditor/, "not configured from Inquiries");
+});
+
+test("37. analytics: one event family — canonical type + slot, never the label", () => {
+  assert.match(read("src/lib/analytics/taxonomy.ts"), /"click_public_action",/);
+  const bar = read(BAR);
+  assert.match(bar, /trackEvent\(\{ event_name: "click_public_action", subject_type: kind, subject_id: entityId, \[`\$\{kind\}_id`\]: entityId, page_path: pagePath, metadata: \{ action_type: a\.type, slot: a\.slot \} \}\)/);
+  assert.doesNotMatch(bar.slice(bar.indexOf("const track"), bar.indexOf("const track") + 300), /label/);
+});
+
+test("16. outlined treatment for every action — nothing auto-promoted to filled", () => {
+  const bar = read(BAR);
+  assert.match(bar, /const cls = `\$\{base\} border border-findmi\/40 bg-white text-findmi-700 hover:bg-findmi-50`;/);
+  assert.doesNotMatch(bar, /bg-findmi text-white[^"]*"\s*\}?\s*;?\s*\n\s*const secondary|i === 0 \?/);
 });
 
 test("Business page order: identity → short bio → action bar → Featured Appearance → tabs", () => {
@@ -289,11 +356,15 @@ test("manager configuration: owners / managers only, in each entity's existing s
   assert.match(a, /const membership = kind === "business" \? await requireBusinessMember\(entityId\) : kind === "location" \? await requireLocationMember\(entityId\) : await requireEventMember\(entityId\);/);
   assert.match(a, /if \(!membership\.viaAdmin && !isPageManagerRole\(membership\.role\)\) return \{ ok: false, error: "Only an owner or manager can change Public Actions\." \};/);
   assert.match(a, /const checked = validatePublicActions\(kind, items\);/);
-  assert.match(read("src/app/(public)/account/business/[id]/(manager)/page.tsx"), /<PublicActionsEditor\s+kind="business"/);
+  const m = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
+  assert.match(m, /const publicActionsEditor = onProfile && admin \? await getPublicActionsEditorData\(admin, "business", id\) : null;/, "Business: Profile");
+  assert.ok(m.indexOf("<PublicActionsEditor") > m.indexOf('{activeTab === "profile" && (') && m.indexOf("<PublicActionsEditor") < m.indexOf("Announcement</p>"), "in Profile, above the Announcement");
   assert.match(read("src/app/(public)/account/location/[id]/page.tsx"), /tab === "profile" && canActForLocation && admin \? await getPublicActionsEditorData\(admin, "location", id\)/);
   assert.match(read("src/app/(public)/account/event/[id]/page.tsx"), /tab === "details" && canManageEventPage \? await getPublicActionsEditorData\(admin!, "event", id\)/);
   const e = read(EDITOR);
-  for (const m of ["Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your page.", "Button Label", "Show on my page", "+ Add Action", "Preview", 'aria-label="Move up"', "Remove"]) assert.ok(e.includes(m), m);
+  for (const m of ["Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your profile.", "Button Label", "Visible", "+ Add Action", "Preview", 'aria-label="Move up"', 'aria-label="Move down"', "Remove", "No actions yet, so visitors see no buttons."]) assert.ok(e.includes(m), m);
+  assert.match(m, /general_inquiry: "Turn on Inquiries to use this action\."/, "dependency explained, never auto-enabled");
+  assert.doesNotMatch(strip(read(ACTIONS)), /accepts_inquiries|inquiry_topics/, "saving never changes other settings");
   assert.match(e, /maxLength=\{PUBLIC_ACTION_LABEL_MAX\}/);
   assert.match(e, /autoCapitalize="words"/);
 });
@@ -304,7 +375,7 @@ test("schema: one generalized table, one typed entity, server-only, additive", (
   assert.match(sql, /alter table public\.entity_public_actions enable row level security;/);
   assert.match(sql, /revoke all on public\.entity_public_actions from public, anon, authenticated;/);
   assert.doesNotMatch(sql, /\bdrop\b|alter table public\.(businesses|locations|events)\b/i);
-  assert.match(read("src/lib/public-actions.ts"), /if \(!isMissingPublicActionsTable\(error\)\) console\.error/, "until applied, pages keep their existing behavior");
+  assert.match(read("src/lib/public-actions.ts"), /if \(!isMissingPublicActionsTable\(error\)\) console\.error/, "until applied, pages render no action bar (no error)");
 });
 
 // ── Growth / Inquiry corrections (34–37) ───────────────────────────────────

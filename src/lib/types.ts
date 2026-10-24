@@ -208,25 +208,10 @@ export interface Business {
   // content). A real business created via membership onboarding stays
   // non-public until a founder approves it, regardless of payment status.
   publication_status: PublicationStatus;
-  // Business Profile + Event Detail V2 polish pass, item 4 — an optional
-  // direct external URL for the primary Inquire action, with its own
-  // label. Checked ahead of the existing Form Manager/Tally resolution
-  // (lib/forms.ts's resolveBusinessInquiryForm) — null/empty falls through
-  // to that unchanged existing behavior.
-  inquiry_cta_label: string | null;
-  inquiry_cta_url: string | null;
-  // Item 5 — up to three additional, independently toggleable CTA buttons
-  // below the profile description. Flat per-slot columns, same convention
-  // as events' own fixed action slots (tickets_url/rsvp_url/etc).
-  cta_1_label: string | null;
-  cta_1_url: string | null;
-  cta_1_enabled: boolean;
-  cta_2_label: string | null;
-  cta_2_url: string | null;
-  cta_2_enabled: boolean;
-  cta_3_label: string | null;
-  cta_3_url: string | null;
-  cta_3_enabled: boolean;
+  // inquiry_cta_label / inquiry_cta_url and cta_1..3_{label,url,enabled}
+  // remain in the database but are DEPRECATED and unread: Public Actions
+  // (entity_public_actions) are the one source of a profile's action
+  // buttons and their labels. Deliberately not part of this type.
   // Final refinement pass, item 4 — optional Bulletin/Announcement module.
   // Shared pattern with events (see the Bulletin component) — enabled +
   // body must both be truthy for it to render publicly; heading is

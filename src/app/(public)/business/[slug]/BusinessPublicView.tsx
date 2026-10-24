@@ -390,12 +390,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Unify Site-Wide Communications pass — Inquire no longer resolves to
   // any external URL/Form Manager form/mailto (all of which either
   // exposed the business's private email or left the thread outside
-  // Findmi entirely). It's now always the native InquireButton below,
-  // which creates a real Conversation (subject_type='business_inquiry')
-  // — see components/InquireButton.tsx and
-  // lib/opportunities.ts's createInquiryConversation. inquiry_cta_url
-  // stays in the schema, simply unread now (inquiry_cta_label is still
-  // the button's own founder-editable label).
+  // Findmi entirely). It's now always the native InquireButton, opened
+  // from a General Inquiry Public Action, which creates a real Conversation
+  // (subject_type='business_inquiry') — see components/InquireButton.tsx
+  // and lib/opportunities.ts's createInquiryConversation. inquiry_cta_url
+  // and inquiry_cta_label stay in the schema, unread (deprecated): the
+  // button's words now come from its Public Action.
   //
   // Business-Controlled Inquiry Settings pass — Pro alone no longer
   // shows INQUIRE (that was the actual bug this pass fixes — see its own
@@ -403,14 +403,14 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Inquiries (accepts_inquiries) AND selected at least one inquiry
   // topic; neither is inferred from Pro status, existing contact info,
   // or any legacy CTA field. No business was bulk-enabled.
-  const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
   const enabledInquiryTopics = sanitizeBusinessInquiryTopics(business.inquiry_topics);
   const canInquire = pro && business.accepts_inquiries && enabledInquiryTopics.length > 0;
-  // Public Actions — the entity action bar under identity. With nothing
-  // configured, the existing Inquire button carries over as its one action.
+  // Public Actions — the ONE source of the action bar under identity: only
+  // the actions this Business's managers configured and enabled. Accept
+  // Inquiries / topics are capability only (they decide whether a General
+  // Inquiry action can work), never visibility.
   const publicActions = await loadPublicActions(getAdminSupabase(), "business", business.id, {
     generalInquiry: canInquire,
-    legacyInquireLabel: business.inquiry_cta_label,
     website: isSafeExternalUrl(business.website_url) ? business.website_url : null,
   });
   const showMessageButton = await shouldShowMessageButton("business", business.id);
@@ -450,16 +450,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // purely "is there any contact/social action to show."
   const hasContactActions = Boolean(contact.phone || contact.email || detailsSocialLinks.length > 0);
 
-  // Free Tier Entitlement Reset V1 — computed ahead of render (mirroring
-  // BusinessCtaRow's own filter and Bulletin's own empty check) so the
-  // wrapping spacing `<div>` around each is only ever rendered alongside
-  // real content — never an empty div contributing a stray margin gap for
-  // a business with no CTAs/no bulletin configured.
-  const hasCtas = [
-    { label: business.cta_1_label, url: business.cta_1_url, enabled: business.cta_1_enabled },
-    { label: business.cta_2_label, url: business.cta_2_url, enabled: business.cta_2_enabled },
-    { label: business.cta_3_label, url: business.cta_3_url, enabled: business.cta_3_enabled },
-  ].some((c) => c.enabled && Boolean(c.label?.trim()) && isSafeExternalUrl(c.url));
+  // Computed ahead of render so the Announcement's wrapping spacing `<div>`
+  // only renders alongside real content. (The legacy CTA 1/2/3 link row was
+  // retired by Public Actions — those columns are no longer read.)
   const hasBulletin = Boolean(business.bulletin_enabled && business.bulletin_body?.trim());
 
   const canonicalUrl = await resolveCanonicalUrl(business.id, business.slug);
@@ -900,21 +893,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               Find Us At. Nothing renders with none. */}
           <FindUsAt businessName={business.name} locations={findUsAt.items} />
 
-          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin.
-              Free Tier Entitlement Reset V1 — both are core "distribute
-              your real presence" features now, public for both tiers; the
-              previous Pro-only gate is removed. Each wrapping div is only
-              rendered alongside real content (see hasCtas/hasBulletin
-              above), so a business with neither never gets a stray empty-
-              margin gap. BusinessCtaRow's own top margin only applies when
-              Findmi Here actually rendered above it; otherwise (no
-              upcoming appearances) it reverts to being this column's own
-              first item, exactly as before this pass. */}
-          {hasCtas && (
-            <div className={scheduleAppearances.length > 0 ? "mt-8" : ""}>
-              <BusinessCtaRow business={business} />
-            </div>
-          )}
+          {/* The optional Announcement (Bulletin) — profile content, not an
+              action; the visitor actions live in the Public Actions bar. */}
           {hasBulletin && (
             <div className="mt-8">
               <Bulletin
@@ -1090,57 +1070,6 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         </div>
       </div>
     </div>
-  );
-}
-
-/** Business Profile V2 polish pass, item 5 — up to three founder-editable
- * CTA buttons (cta_1/2/3 _label/_url/_enabled on businesses), each
- * independently toggleable. Never renders a slot that's disabled, unlabeled,
- * or missing a safe external URL — and renders nothing at all (no divider
- * either) when none qualify, same "never empty" rule as every other
- * optional section on this page.
- *
- * Business Profile polish pass — restyled from large uppercase pills to
- * compact utility boxes (white, thin border, modest rounded corners,
- * smaller dark-gray text) so up to 3 read as secondary actions, not
- * competing with Inquire. Still natural-width in a wrapping flex row
- * (never centered, never stretched/equal-width) — 1 or 2 sit left-aligned
- * at their own content width, and 3 reasonable labels stay on one row at
- * common mobile widths since each button is now meaningfully narrower;
- * `flex-wrap` only breaks a button to its own line when the actual text
- * genuinely can't fit. */
-function BusinessCtaRow({ business }: { business: Business }) {
-  const ctas = [
-    { label: business.cta_1_label, url: business.cta_1_url, enabled: business.cta_1_enabled },
-    { label: business.cta_2_label, url: business.cta_2_url, enabled: business.cta_2_enabled },
-    { label: business.cta_3_label, url: business.cta_3_url, enabled: business.cta_3_enabled },
-  ].filter(
-    (c): c is { label: string; url: string; enabled: true } =>
-      c.enabled && Boolean(c.label?.trim()) && isSafeExternalUrl(c.url)
-  );
-
-  if (ctas.length === 0) return null;
-
-  // No top divider here anymore (final refinement pass, item 2 moved this
-  // row from "below the description, with a divider separating it from
-  // About" to the top of the main content column) — a border with nothing
-  // above it in that column read as a stray floating line.
-  return (
-    <section className="mb-8">
-      <div className="flex flex-wrap gap-2">
-        {ctas.map((cta, i) => (
-          <a
-            key={i}
-            href={cta.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center justify-center rounded-xl border border-black/10 bg-white px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-ink"
-          >
-            {cta.label}
-          </a>
-        ))}
-      </div>
-    </section>
   );
 }
 

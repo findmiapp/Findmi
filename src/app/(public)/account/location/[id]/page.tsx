@@ -689,10 +689,9 @@ export default async function ManageLocationPage({
                 ready={publicActionsEditor.ready}
                 opportunities={publicActionsEditor.opportunities}
                 initial={publicActionsEditor.configured}
-                defaultNote="Nothing is shown yet. Add an action to give visitors a clear way to work with this Place."
                 unavailable={{
-                  ...(location.email ? {} : { general_inquiry: "Shows once this Place has a contact email (Contact & Links)." }),
-                  ...(location.website_url ? {} : { website: "Shows once you add a website (Contact & Links)." }),
+                  ...(location.email ? {} : { general_inquiry: "Add a contact email in Contact & Links to use this action." }),
+                  ...(location.website_url ? {} : { website: "Add a website in Contact & Links to use this action." }),
                 }}
               />
             )}

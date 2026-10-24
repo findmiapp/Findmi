@@ -13,10 +13,26 @@
 -- the database enforces length and no surrounding whitespace). At most three
 -- per entity: display_order is 1..3 and unique per entity.
 --
+-- Public Actions become the ONE source of a profile's action buttons: no
+-- configured + enabled action = no button. Accept Inquiries / inquiry topics
+-- stay as capability only; the legacy CTA 1/2/3 and Inquire-label columns are
+-- retired (left in place, unread, commented as deprecated below).
+--
+-- Backfill (deterministic, idempotent, never more than one row per entity):
+--   * every Business whose Inquire button is visible today — the exact public
+--     rule: Pro (pro / pro_seller, not expired) AND accepts_inquiries AND at
+--     least one valid inquiry topic — gets ONE enabled General Inquiry action
+--     in slot 1 with the default label, only if it has no Public Actions yet.
+--     In production at audit time that is exactly The Native Rose.
+--   * legacy CTA 1/2/3: none is live in production (only disabled test values
+--     exist), so nothing is migrated. If any CTA becomes live before this runs,
+--     the migration STOPS (raises) instead of silently losing it.
+--   * Locations / Events: no legacy configurable action rendered through this
+--     bar, so nothing is created for them.
+--
 -- Additive only. RLS on with no client policies; service_role only (the same
 -- server-access convention as business_targets and commercial_inquiries).
--- No existing row changes; no data is backfilled (an entity with no rows keeps
--- its existing behavior — e.g. a Business's Inquire button).
+-- No existing row is changed or removed.
 
 create table if not exists public.entity_public_actions (
   id                      uuid primary key default gen_random_uuid(),
@@ -66,3 +82,44 @@ grant select, insert, update, delete on public.entity_public_actions to service_
 
 comment on table public.entity_public_actions is
   'Public Actions: up to three entity-controlled buttons on a public Business / Location / Event page. action_type decides behavior; custom_label is presentation only. Server-only (RLS on, no client policies).';
+
+-- ── Guard: a live legacy CTA can't be mapped without an external-link action
+-- (none exists in production at audit time). Stop rather than lose it.
+do $$
+declare
+  live text;
+begin
+  select string_agg(slug, ', ' order by slug) into live
+  from public.businesses
+  where (cta_1_enabled and btrim(coalesce(cta_1_label, '')) <> '' and cta_1_url ~* '^https?://')
+     or (cta_2_enabled and btrim(coalesce(cta_2_label, '')) <> '' and cta_2_url ~* '^https?://')
+     or (cta_3_enabled and btrim(coalesce(cta_3_label, '')) <> '' and cta_3_url ~* '^https?://');
+  if live is not null then
+    raise exception 'Public Actions: live legacy CTA buttons need review before cutover: %', live;
+  end if;
+end
+$$;
+
+-- ── Backfill: today's visible Inquire buttons become General Inquiry actions.
+insert into public.entity_public_actions (business_id, action_type, custom_label, enabled, display_order)
+select b.id, 'general_inquiry', null, true, 1
+from public.businesses b
+where b.plan_tier in ('pro', 'pro_seller')
+  and (b.plan_expires_at is null or b.plan_expires_at > now())
+  and b.accepts_inquiries
+  and b.inquiry_topics && array['general', 'product_order', 'wholesale', 'catering_booking', 'event_popup', 'collaboration', 'other']::text[]
+  and not exists (select 1 from public.entity_public_actions a where a.business_id = b.id);
+
+-- ── Retired (unread) legacy columns.
+comment on column public.businesses.cta_1_label is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_1_url is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_1_enabled is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_2_label is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_2_url is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_2_enabled is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_3_label is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_3_url is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.cta_3_enabled is 'DEPRECATED: retired by Public Actions (entity_public_actions); unread.';
+comment on column public.businesses.inquiry_cta_label is 'DEPRECATED: the Inquire button label now comes from its General Inquiry Public Action; unread.';
+comment on column public.businesses.inquiry_cta_url is 'DEPRECATED: unread.';
+comment on column public.businesses.accepts_inquiries is 'Inquiry capability (with inquiry_topics). Does NOT show a button by itself: a General Inquiry Public Action does.';
