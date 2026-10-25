@@ -43,15 +43,13 @@ alter table public.privacy_preferences enable row level security;
 
 drop policy if exists privacy_preferences_select_own on public.privacy_preferences;
 create policy privacy_preferences_select_own on public.privacy_preferences
-  for select to authenticated using (auth.uid() = user_id);
+  for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists privacy_preferences_insert_own on public.privacy_preferences;
 create policy privacy_preferences_insert_own on public.privacy_preferences
-  for insert to authenticated with check (auth.uid() = user_id);
+  for insert to authenticated with check ((select auth.uid()) = user_id);
 drop policy if exists privacy_preferences_update_own on public.privacy_preferences;
 create policy privacy_preferences_update_own on public.privacy_preferences
-  for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-grant select, insert, update on public.privacy_preferences to authenticated;
+  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 -- ── 2. legal_acceptances ───────────────────────────────────────────────
 create table if not exists public.legal_acceptances (
@@ -81,9 +79,7 @@ alter table public.legal_acceptances enable row level security;
 
 drop policy if exists legal_acceptances_select_own on public.legal_acceptances;
 create policy legal_acceptances_select_own on public.legal_acceptances
-  for select to authenticated using (auth.uid() = user_id);
-
-grant select on public.legal_acceptances to authenticated;
+  for select to authenticated using ((select auth.uid()) = user_id);
 
 -- ── 3. privacy_requests ────────────────────────────────────────────────
 create table if not exists public.privacy_requests (
@@ -130,6 +126,7 @@ create table if not exists public.content_reports (
 
 create index if not exists content_reports_status_idx on public.content_reports (status, created_at desc);
 create index if not exists content_reports_entity_idx on public.content_reports (entity_type, entity_id);
+create index if not exists content_reports_reporter_idx on public.content_reports (reporter_user_id) where reporter_user_id is not null;
 
 alter table public.content_reports enable row level security;
 
@@ -147,9 +144,7 @@ alter table public.conversation_blocks enable row level security;
 
 drop policy if exists conversation_blocks_select_own on public.conversation_blocks;
 create policy conversation_blocks_select_own on public.conversation_blocks
-  for select to authenticated using (auth.uid() = user_id);
-
-grant select on public.conversation_blocks to authenticated;
+  for select to authenticated using ((select auth.uid()) = user_id);
 
 -- ── 6. admin_audit_events ──────────────────────────────────────────────
 create table if not exists public.admin_audit_events (
@@ -194,6 +189,18 @@ create table if not exists public.entity_provenance (
 );
 
 alter table public.entity_provenance enable row level security;
+
+-- ── Access boundaries ──────────────────────────────────────────────────
+-- Supabase's default privileges grant anon/authenticated full table rights
+-- on every new public table. Revoke them all, then grant back only what
+-- each table needs. service_role keeps full access (server code only).
+revoke all on public.privacy_preferences, public.legal_acceptances, public.privacy_requests,
+  public.content_reports, public.conversation_blocks, public.admin_audit_events,
+  public.entity_provenance from anon, authenticated;
+
+grant select, insert, update on public.privacy_preferences to authenticated;
+grant select on public.legal_acceptances to authenticated;
+grant select on public.conversation_blocks to authenticated;
 
 -- ── updated_at maintenance ─────────────────────────────────────────────
 -- Reuses the project's existing public.set_updated_at() trigger function.
