@@ -361,7 +361,7 @@ test("availability migration (audited): live-only public policies, integrity tri
   assert.doesNotMatch(sql, /grant (insert|update|delete|all)[^;]*\b(anon|authenticated)\b/i, "writes stay service-role only");
   assert.doesNotMatch(sql, /\bdrop\s+(table|column)\b|\bdelete\s+from\b|\btruncate\b/i);
   const ls = readdirSync("supabase/migrations").sort();
-  assert.equal(ls.at(-1), "20261110000000_location_import_target.sql", "ordered after every existing migration");
+  assert.equal(ls.at(-1), "20261111000000_trust_privacy_foundation.sql", "ordered after every existing migration");
 });
 
 test("QR occurrence authority: all-dates participation → every date; selected dates → only approved ones; Appearance-only → its date", () => {
@@ -387,7 +387,9 @@ test("QR integrity wiring: occurrence must belong to the Event AND be an allowed
   assert.match(actions, /let eventOccurrenceId: string \| null = null;/, "whole-Event QRs store null, exactly as before");
   const mgr = read("src/lib/qr-manager.ts");
   assert.match(mgr, /getBusinessQrAllowedOccurrences\(admin, businessId, rawByEvent\)/, "options only list allowed dates");
-  const q = read("src/app/q/[code]/route.ts");
+  // Privacy Choices (Phase 2A) moved the one qr_scan writer into
+  // lib/analytics/qrScan.ts (shared by /q/[code] and the deferred arrival).
+  const q = read("src/app/q/[code]/route.ts") + read("src/lib/analytics/qrScan.ts");
   assert.match(q, /event_occurrence_id: row\.event_occurrence_id/, "qr_scan keeps event + occurrence attribution");
   assert.match(q, /subjectType: "event_occurrence"/);
 });

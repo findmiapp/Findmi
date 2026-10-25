@@ -112,5 +112,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261110000000_location_import_target.sql");
+  assert.equal(files.at(-1), "20261111000000_trust_privacy_foundation.sql");
 });

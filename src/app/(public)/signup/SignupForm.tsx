@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import PasswordField from "@/components/PasswordField";
-import { normalizeUsPhone } from "@/lib/phone";
 import SubmitButton from "./SubmitButton";
 
 const inputClass =
@@ -35,11 +34,9 @@ const EMAIL_SYNTAX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * per-field helper/error state as the visitor types/blurs, in addition to
  * the existing submit-time guard (kept as a defense-in-depth fallback,
  * e.g. for a fast Enter-key submit before React re-renders). None of this
- * is, or calls, a new account/phone-existence lookup: every check here
- * is pure client-side syntax/format/match logic (normalizeUsPhone() is
- * the exact same pure function actions.ts uses server-side — no second
- * normalization system), never a network request, and never reveals
- * whether a given email/phone already has a FindMi account. Server-side
+ * is, or calls, a new account-existence lookup: every check here
+ * is pure client-side syntax/format/match logic, never a network request,
+ * and never reveals whether a given email already has a FindMi account. Server-side
  * validation in actions.ts remains completely unchanged and authoritative
  * — this file only makes the known-bad cases it already re-checks visible
  * sooner, so a submission doesn't have to round-trip to the server to
@@ -50,13 +47,11 @@ export default function SignupForm({
   next,
   defaultDisplayName,
   defaultEmail,
-  defaultPhone,
 }: {
   action: (formData: FormData) => void;
   next: string;
   defaultDisplayName?: string;
   defaultEmail?: string;
-  defaultPhone?: string;
 }) {
   const [displayName, setDisplayName] = useState(defaultDisplayName ?? "");
   const [displayNameTouched, setDisplayNameTouched] = useState(false);
@@ -66,9 +61,6 @@ export default function SignupForm({
 
   const [confirmEmail, setConfirmEmail] = useState("");
   const [confirmEmailTouched, setConfirmEmailTouched] = useState(false);
-
-  const [phone, setPhone] = useState(defaultPhone ?? "");
-  const [phoneTouched, setPhoneTouched] = useState(false);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -85,9 +77,6 @@ export default function SignupForm({
   const showConfirmEmailError = confirmEmailTouched && confirmEmail.length > 0 && confirmEmailMismatch;
   const showConfirmEmailValid =
     confirmEmailTouched && confirmEmail.length > 0 && !confirmEmailMismatch && emailSyntaxOk;
-
-  const phoneNormalized = phone.trim().length > 0 ? normalizeUsPhone(phone) : null;
-  const showPhoneError = phoneTouched && phone.trim().length > 0 && !phoneNormalized;
 
   // The one real, deterministic, client-checkable password rule — matches
   // both PasswordField's own minLength={8} and signUp()'s own
@@ -109,7 +98,6 @@ export default function SignupForm({
   const hasBlockingIssue =
     (emailTrimmed.length > 0 && !emailSyntaxOk) ||
     (confirmEmail.length > 0 && confirmEmailMismatch) ||
-    (phone.trim().length > 0 && !phoneNormalized) ||
     (password.length > 0 && !passwordLengthOk) ||
     (confirmPassword.length > 0 && confirmPasswordMismatch);
 
@@ -117,11 +105,6 @@ export default function SignupForm({
     if (emailTrimmed !== confirmEmail.trim()) {
       e.preventDefault();
       setClientError("Email addresses don't match.");
-      return;
-    }
-    if (phone.trim().length > 0 && !normalizeUsPhone(phone)) {
-      e.preventDefault();
-      setClientError("Enter a valid U.S. or Canada cell number.");
       return;
     }
     if (password !== confirmPassword) {
@@ -177,23 +160,6 @@ export default function SignupForm({
         />
         {showConfirmEmailError && <p className={errorTextClass}>Email addresses don&rsquo;t match.</p>}
         {!showConfirmEmailError && showConfirmEmailValid && <p className={validTextClass}>Emails match.</p>}
-      </label>
-      <label className="block">
-        <span className="mb-1.5 block text-sm font-medium text-ink">Cell Number</span>
-        <input autoCapitalize="none"
-          type="tel"
-          name="phone"
-          required
-          inputMode="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          onBlur={() => setPhoneTouched(true)}
-          autoComplete="tel"
-          placeholder="(917) 555-1234"
-          className={inputClass}
-        />
-        <span className="mt-1 block text-xs text-ink/45">Used for important account updates, never shared publicly.</span>
-        {showPhoneError && <p className={errorTextClass}>Enter a valid U.S. or Canada cell number.</p>}
       </label>
 
       <div>

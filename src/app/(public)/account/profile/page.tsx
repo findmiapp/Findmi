@@ -65,7 +65,7 @@ export default async function ProfilePage({
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-body font-medium text-primary">Cell Number</span>
+              <span className="mb-1.5 block text-body font-medium text-primary">Cell Number (optional)</span>
               <input autoCapitalize="none"
                 type="tel"
                 name="phone"
@@ -77,8 +77,8 @@ export default async function ProfilePage({
               />
               <span className="mt-1 block text-metadata text-subtle">
                 {profile?.phone
-                  ? "Used for important account updates, never shared publicly."
-                  : "Add a cell number for important account updates, never shared publicly."}
+                  ? "Private to your account and never shown publicly. Clear this field and save to remove it."
+                  : "Optional. Findmi doesn't need a phone number for your account."}
               </span>
             </label>
             <label className="block">

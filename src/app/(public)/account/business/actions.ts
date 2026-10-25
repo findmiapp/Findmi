@@ -1,5 +1,8 @@
 "use server";
 
+import { recordContextAcceptance } from "@/lib/legal/acceptance";
+import { recordProvenance } from "@/lib/provenance";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -1474,6 +1477,10 @@ export async function createMemberBusiness(formData: FormData) {
 
   const businessId = (created as { id: string }).id;
   revalidatePath("/account");
+  // Legal acceptance (no-op until Phase 2B) + listing provenance: a
+  // Business its own owner created is organization-provided.
+  await recordContextAcceptance(admin, user.id, "business_creation", { type: "business", id: businessId });
+  await recordProvenance(admin, { entityType: "business", entityId: businessId, sourceKind: "organization", sourceMethod: "owner_created" });
 
   // Brand Onboarding V1.1B — create_owned_business() doesn't take a
   // description, so the optional short_description is written right after

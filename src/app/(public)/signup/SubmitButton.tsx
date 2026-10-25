@@ -10,7 +10,7 @@ import { useFormStatus } from "react-dom";
  *
  * Signup/Email Confirmation Hardening pass — `disabled` is an additional,
  * optional flag SignupForm.tsx sets while a KNOWN, already-typed value
- * conflicts (mismatched emails/passwords, an unmistakably invalid phone) —
+ * conflicts (mismatched emails/passwords) —
  * pure UX, never the authoritative check (signUp() in actions.ts still
  * re-validates everything server-side regardless of this button's state).
  */

@@ -7,6 +7,7 @@ import {
   round2,
 } from "./fees";
 import { allocateProportionally } from "./processingFee";
+import { ADDRESS_FULFILLMENT_UNAVAILABLE_REASON, isCheckoutSupportedMethod } from "./fulfillment-support";
 import type { CartLine, CartLineQuote, CartQuote } from "./types";
 import type { AppliedFeeSource, FulfillmentStatus } from "./types";
 import type { Business, FulfillmentMethod, ProcessingFeePayer, Product } from "@/lib/types";
@@ -95,14 +96,15 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
   const productById = new Map<string, ProductRow>();
   for (const p of (products ?? []) as ProductRow[]) productById.set(p.id, p);
 
-  const { data: fulfillmentOptions } = await supabase
+  const { data: rawFulfillmentOptions } = await supabase
     .from("product_fulfillment_options")
     .select("*")
     .in("product_id", productIds)
     .eq("enabled", true);
+  const fulfillmentOptions = (rawFulfillmentOptions ?? []).filter((o) => isCheckoutSupportedMethod(o.method));
 
   const appearanceIds = Array.from(
-    new Set((fulfillmentOptions ?? []).map((o) => o.appearance_id).filter(Boolean))
+    new Set(fulfillmentOptions.map((o) => o.appearance_id).filter(Boolean))
   ) as string[];
   const { data: appearances } = appearanceIds.length
     ? await supabase.from("appearances").select("*").in("id", appearanceIds)
@@ -117,7 +119,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
   // selectable, freshly re-checked server-side on every quote/checkout
   // call rather than trusted from the product page's own filtering.
   function optionsForProduct(productId: string) {
-    return (fulfillmentOptions ?? [])
+    return fulfillmentOptions
       .filter((o) => o.product_id === productId)
       .filter((o) => {
         if (o.method !== "event_pickup") return true;
@@ -210,7 +212,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
       continue;
     }
 
-    const options = (fulfillmentOptions ?? []).filter((o) => o.product_id === product.id);
+    const options = fulfillmentOptions.filter((o) => o.product_id === product.id);
     const matchedOption =
       line.fulfillmentMethod === "event_pickup"
         ? options.find((o) => o.method === "event_pickup" && o.appearance_id === line.appearanceId)
@@ -233,7 +235,9 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
         eventId: null,
         processingFeePayer: "vendor",
         available: false,
-        unavailableReason: "The selected fulfillment option is no longer offered. Please choose another.",
+        unavailableReason: isCheckoutSupportedMethod(line.fulfillmentMethod)
+          ? "The selected fulfillment option is no longer offered. Please choose another."
+          : ADDRESS_FULFILLMENT_UNAVAILABLE_REASON,
         availableFulfillmentOptions: optionsForProduct(product.id),
       } as CartLineQuote);
       continue;

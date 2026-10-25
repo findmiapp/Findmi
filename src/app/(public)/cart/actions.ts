@@ -6,6 +6,7 @@ import { getStripe } from "@/lib/commerce/stripe";
 import { computeOrderDraft } from "@/lib/commerce/quote";
 import { createPendingOrder } from "@/lib/commerce/createOrder";
 import { getPublicOrigin } from "@/lib/site-url";
+import { recordContextAcceptance } from "@/lib/legal/acceptance";
 import type { CartLine, CartQuote } from "@/lib/commerce/types";
 
 /** Re-prices the cart server-side for display — the /cart page never
@@ -53,6 +54,10 @@ export async function startCheckout(
     userId: user?.id ?? null,
   });
   if ("error" in order) return order;
+  // Legal acceptance (lib/legal): no-op until Phase 2B publishes the
+  // marketplace buyer terms; guests have no account to record against.
+  const legalAdmin = getAdminSupabase();
+  if (legalAdmin && user) await recordContextAcceptance(legalAdmin, user.id, "marketplace_checkout", { type: "order", id: order.orderId });
 
   const siteUrl = getPublicOrigin();
 

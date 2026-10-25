@@ -16,9 +16,9 @@ export const dynamic = "force-dynamic";
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string; display_name?: string; email?: string; phone?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; display_name?: string; email?: string }>;
 }) {
-  const { error, next, display_name: displayName, email, phone } = await searchParams;
+  const { error, next, display_name: displayName, email } = await searchParams;
   const safeNext = getSafeRedirect(next);
 
   // Authenticated Signup Gateway fix — an already-signed-in visitor (e.g.
@@ -47,7 +47,7 @@ export default async function SignupPage({
       )}
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-        <SignupForm action={signUp} next={safeNext} defaultDisplayName={displayName} defaultEmail={email} defaultPhone={phone} />
+        <SignupForm action={signUp} next={safeNext} defaultDisplayName={displayName} defaultEmail={email} />
       </div>
 
       <p className="mt-6 text-center text-sm text-ink/50">

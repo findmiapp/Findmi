@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { isCheckoutSupportedMethod } from "./commerce/fulfillment-support";
 import { buildVisibleAreaTree } from "./area-visibility";
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
@@ -3515,6 +3516,7 @@ export async function getFulfillmentOptionsForProduct(
   return ((data ?? []) as Row[])
     .map((row) => {
       const appearance = Array.isArray(row.appearances) ? row.appearances[0] : row.appearances;
+      if (!isCheckoutSupportedMethod(row.method)) return null; // needs a delivery address checkout can't collect yet
       if (row.method === "event_pickup" && !appearance) return null; // stale/removed appearance
       if (row.method === "event_pickup" && appearance && !isAppearanceStillAvailable(appearance)) return null; // expired
       // formatAppearanceDateRange shows "Time TBD" instead of a formatted

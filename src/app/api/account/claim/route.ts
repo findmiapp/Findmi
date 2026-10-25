@@ -1,3 +1,4 @@
+import { recordContextAcceptance } from "@/lib/legal/acceptance";
 import { NextResponse, type NextRequest } from "next/server";
 import { businessManagementState, type BusinessManagementState } from "@/lib/moment-author";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -313,6 +314,11 @@ export async function POST(request: NextRequest) {
     actionLabel: "Review Claims",
     actionUrl: `/admin/claims?status=pending&type=${type}`,
   });
+
+  // Legal acceptance (lib/legal): no-op until Phase 2B publishes the
+  // documents that apply to a claim.
+  const legalAdmin = getAdminSupabase();
+  if (legalAdmin && type === "business") await recordContextAcceptance(legalAdmin, user.id, "business_claim", { type: "business", id: entityId });
 
   // Both claim types are now free — straight to founder review, no
   // payment step for either.
