@@ -48,6 +48,26 @@ export async function recordAccessEvents(admin: SupabaseClient, events: AccessEv
   } catch {
     // History is best-effort by design.
   }
+  // Trust & Privacy Phase 2A: the same access changes, when an admin made
+  // them, also appear in the privileged-action audit log.
+  // (Written inline rather than through lib/admin/audit so this module
+  // keeps no runtime imports; same columns, ids only, no free text.)
+  const adminEvents = events.filter((e) => e.actor.kind === "admin");
+  if (adminEvents.length === 0) return;
+  try {
+    await admin.from("admin_audit_events").insert(
+      adminEvents.map((e) => ({
+        action: e.action,
+        actor_kind: "admin",
+        actor_user_id: null,
+        target_type: e.entityType,
+        target_id: e.entityId,
+        detail: { subject_user: e.subjectUserId ?? null },
+      }))
+    );
+  } catch {
+    // best-effort
+  }
 }
 
 export interface AccessEventRow {

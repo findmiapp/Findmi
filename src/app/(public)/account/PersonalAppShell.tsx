@@ -69,6 +69,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "following", label: "Following", href: "/account/following", icon: <NavIcon name="person" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/following"), primary: false },
   { key: "orders", label: "Purchases", href: "/account/orders", icon: <NavIcon name="cart" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/orders"), primary: false },
   { key: "profile", label: "Profile", href: "/account/profile", icon: <NavIcon name="person" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/profile"), primary: false },
+  { key: "privacy", label: "Privacy & Data", href: "/account/privacy", icon: <ShieldGlyph className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/account/privacy"), primary: false },
 ];
 
 export default function PersonalAppShell({ displayName, children }: { displayName: string | null; children: ReactNode }) {
@@ -291,6 +292,15 @@ function MorePanel({
         </div>
       </div>
     </div>
+  );
+}
+
+function ShieldGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M12 3.5l7 2.8v5.2c0 4.3-2.9 7.6-7 9-4.1-1.4-7-4.7-7-9V6.3l7-2.8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

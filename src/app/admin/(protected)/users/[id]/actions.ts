@@ -6,6 +6,9 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getUserDependencySummary } from "@/lib/admin/user-dependencies";
+import { recordAdminAudit } from "@/lib/admin/audit";
+import { variantPathsFor } from "@/lib/image-variants-server";
+import { JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
 
 // Admin Users Pass 2 — user-detail actions. Every write here is scoped to
 // the one FindMi account this page manages, gated by requireAdminSupabase()
@@ -41,32 +44,15 @@ export async function sendPasswordResetEmail(userId: string) {
     redirect(errorRedirectUrl(path, "Couldn't send the reset email. Please try again."));
   }
 
+  await recordAdminAudit(supabase, { action: "password_reset_sent", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   revalidatePath(path);
   redirect(`${path}?password_action=reset_sent`);
 }
 
-/** Admin-entered temporary/replacement password. Write-only: this action
- * never reads back or displays a password, and updateUserById() is the
- * only place it's ever handed to. */
-export async function setUserPassword(userId: string, formData: FormData) {
-  const supabase = await requireAdminSupabase();
-  const path = userPath(userId);
-
-  // Raw, not trimmed — matches signup/actions.ts and reset-password/
-  // actions.ts's existing convention for password values.
-  const password = String(formData.get("password") ?? "");
-  if (!password || password.length < 8) {
-    redirect(errorRedirectUrl(path, "New password must be at least 8 characters."));
-  }
-
-  const { error } = await supabase.auth.admin.updateUserById(userId, { password });
-  if (error) {
-    redirect(errorRedirectUrl(path, "Couldn't set that password. Please try again."));
-  }
-
-  revalidatePath(path);
-  redirect(`${path}?password_action=set`);
-}
+// Trust & Privacy Phase 2A: the admin "set this user's password" action
+// was removed. An admin must never be able to choose the password of an
+// existing account (it is an account takeover). Use the reset email above,
+// which lets the person set their own password.
 
 // ── Business access ──────────────────────────────────────────────────────
 // Same insert/delete shape as admin/businesses/actions.ts's
@@ -100,6 +86,7 @@ export async function assignUserToBusiness(userId: string, formData: FormData) {
   }
 
   revalidatePath(path);
+  await recordAdminAudit(supabase, { action: "business_access_granted", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   redirect(`${path}?access_updated=1`);
 }
 
@@ -125,6 +112,7 @@ export async function removeUserBusinessAccess(userId: string, memberId: string)
   }
 
   revalidatePath(path);
+  await recordAdminAudit(supabase, { action: "business_access_removed", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   redirect(`${path}?access_updated=1`);
 }
 
@@ -157,6 +145,7 @@ export async function assignUserToEvent(userId: string, formData: FormData) {
   }
 
   revalidatePath(path);
+  await recordAdminAudit(supabase, { action: "event_access_granted", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   redirect(`${path}?access_updated=1`);
 }
 
@@ -178,6 +167,7 @@ export async function removeUserEventAccess(userId: string, memberId: string) {
   }
 
   revalidatePath(path);
+  await recordAdminAudit(supabase, { action: "event_access_removed", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   redirect(`${path}?access_updated=1`);
 }
 
@@ -214,6 +204,7 @@ export async function assignUserToLocation(userId: string, formData: FormData) {
   }
 
   revalidatePath(path);
+  await recordAdminAudit(supabase, { action: "location_access_granted", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   redirect(`${path}?access_updated=1`);
 }
 
@@ -235,6 +226,7 @@ export async function removeUserLocationAccess(userId: string, memberId: string)
   }
 
   revalidatePath(path);
+  await recordAdminAudit(supabase, { action: "location_access_removed", actor: { kind: "admin" }, targetType: "user", targetId: userId });
   redirect(`${path}?access_updated=1`);
 }
 
@@ -263,10 +255,35 @@ export async function deleteUserAccount(userId: string, formData: FormData) {
     redirect(errorRedirectUrl(path, `Not deleted: ${summary!.blockers[0]}`));
   }
 
+  // Trust & Privacy Phase 2A — before the account row goes: collect the
+  // private photo files of the Moments that will cascade away (their rows
+  // disappear with the account, the files would otherwise stay behind).
+  const { data: entryRows } = await supabase.from("journal_entries").select("id").eq("user_id", userId);
+  const entryIds = ((entryRows ?? []) as { id: string }[]).map((r) => r.id);
+  const { data: mediaRows } = entryIds.length
+    ? await supabase.from("journal_entry_media").select("storage_path").in("journal_entry_id", entryIds)
+    : { data: [] as { storage_path: string }[] };
+  const mediaPaths = ((mediaRows ?? []) as { storage_path: string }[]).flatMap((m) => [m.storage_path, ...variantPathsFor(m.storage_path)]);
+
   const { error } = await supabase.auth.admin.deleteUser(userId);
   if (error) {
     redirect(errorRedirectUrl(path, "Couldn't delete the account. Nothing was changed."));
   }
+
+  // After the account is gone: remove those files, and de-identify
+  // first-party analytics (rows keep their aggregate value; the link to
+  // this person is removed). Best-effort; the deletion already happened.
+  for (let i = 0; i < mediaPaths.length; i += 100) {
+    await supabase.storage.from(JOURNAL_MEDIA_BUCKET).remove(mediaPaths.slice(i, i + 100)).then(() => undefined, () => undefined);
+  }
+  await supabase.from("analytics_events").update({ user_id: null }).eq("user_id", userId).then(() => undefined, () => undefined);
+  await recordAdminAudit(supabase, {
+    action: "account_deleted",
+    actor: { kind: "admin" },
+    targetType: "user",
+    targetId: userId,
+    detail: { moments_removed: entryIds.length, photo_files_removed: mediaPaths.length },
+  });
 
   revalidatePath("/admin/users");
   redirect("/admin/users?deleted=1");

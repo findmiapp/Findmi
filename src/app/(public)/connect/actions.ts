@@ -36,6 +36,7 @@ import {
   createInquiryConversation,
   createOpportunity,
   entityHasRecipient,
+  getConversationBlockers,
   getEntityDisplayName,
   findOpportunityConversation,
   getOrCreateConversation,
@@ -909,6 +910,13 @@ export async function sendReply(
     return { error: DIRECT_MESSAGING_PAUSED_MESSAGE };
   }
 
+  // Message safety (Phase 2A): a conversation a participant closed takes
+  // no new messages from anyone until they reopen it.
+  const blockers = await getConversationBlockers(admin, conversationId);
+  if (blockers.length > 0) {
+    return { error: blockers.includes(userId) ? "You closed this conversation. Reopen it to reply." : "This conversation is closed to new messages." };
+  }
+
   await sendTextMessage(admin, conversationId, userId, actingEntityType, actingEntityId, text);
   // Commercial Inquiry: the first reply from the other side moves Sent → Responded.
   if (facts.subjectType === COMMERCIAL_INQUIRY_SUBJECT) await recordInquiryReply(admin, conversationId, { entityType: actingEntityType, entityId: actingEntityId });
@@ -1039,4 +1047,25 @@ export async function respondToApplicationInThread(conversationId: string, event
   }
 
   redirect(`${redirectPath}?updated=1`);
+}
+
+/** Message safety (Trust & Privacy Phase 2A): a participant closes a
+ * conversation to new messages (and stops its notifications), or reopens
+ * it. History stays readable for everyone. Findmi can still see it, and
+ * a closed conversation can still be reported. */
+export async function setConversationClosed(conversationId: string, closed: boolean, returnPath: string): Promise<void> {
+  const safeReturn = returnPath.startsWith("/account/") ? returnPath : `/account/messages/${conversationId}`;
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(safeReturn)}`);
+  const admin = getAdminSupabase();
+  if (!admin || !(await isAuthorizedForConversation(admin, conversationId, user!.id))) redirect(`${safeReturn}?error=${encodeURIComponent("You don't have access to this conversation.")}`);
+  if (closed) {
+    await admin!.from("conversation_blocks").upsert({ conversation_id: conversationId, user_id: user!.id }, { onConflict: "conversation_id,user_id", ignoreDuplicates: true });
+  } else {
+    await admin!.from("conversation_blocks").delete().eq("conversation_id", conversationId).eq("user_id", user!.id);
+  }
+  redirect(safeReturn);
 }

@@ -122,6 +122,17 @@ export async function entityHasRecipient(admin: SupabaseClient, entityType: "bus
   return (hostCount ?? 0) > 0;
 }
 
+/** Message safety (Trust & Privacy Phase 2A): user ids who closed this
+ * conversation to new messages (conversation_blocks). */
+export async function getConversationBlockers(admin: SupabaseClient, conversationId: string): Promise<string[]> {
+  try {
+    const { data } = await admin.from("conversation_blocks").select("user_id").eq("conversation_id", conversationId);
+    return ((data ?? []) as { user_id: string }[]).map((r) => r.user_id);
+  } catch {
+    return [];
+  }
+}
+
 export async function addEntityParticipants(
   admin: SupabaseClient,
   conversationId: string,
@@ -412,7 +423,8 @@ export async function notifyNewMessage(
   if (senderEntityType !== "findmi" && rows.some((r) => r.entity_type === "findmi")) {
     await notifyFindmiOfMessage(admin, conversationId, senderEntityType, senderEntityId, body, senderNameOverride);
   }
-  const recipientUserIds = [...new Set(rows.map((row) => row.user_id))].filter((id): id is string => Boolean(id) && id !== senderUserId);
+  const blockers = new Set(await getConversationBlockers(admin, conversationId));
+  const recipientUserIds = [...new Set(rows.map((row) => row.user_id))].filter((id): id is string => Boolean(id) && id !== senderUserId && !blockers.has(id as string));
   if (recipientUserIds.length === 0) return;
   const emails = await Promise.all(recipientUserIds.map((id) => getAccountEmail(admin, id)));
   const to = dedupeEmails(emails);

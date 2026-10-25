@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  getConversationBlockers,
   getConversationThread,
   getUserManagedEntities,
   markConversationRead,
@@ -13,6 +14,8 @@ import { formatDateShort, formatTime } from "@/lib/format";
 import ChevronIcon from "@/components/ChevronIcon";
 import { respondToApplicationInThread, respondToInvitationInThread } from "@/app/(public)/connect/actions";
 import ReplyComposer from "./ReplyComposer";
+import TrustActions from "@/components/trust/TrustActions";
+import { setConversationClosed } from "@/app/(public)/connect/actions";
 import { DIRECT_MESSAGING_PAUSED_MESSAGE, canSendInThread, isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import { COMMERCIAL_INQUIRY_SUBJECT, INQUIRY_STATUS_LABELS, inquiryActionsFor, intentLabel } from "@/lib/commercial-inquiries-domain";
 import { getInquiryByConversation, inquiryActorForEntity } from "@/lib/commercial-inquiries";
@@ -82,6 +85,9 @@ export default async function ConversationThreadView({
   // no participant at all for the guest side (see createInquiryConversation),
   // so otherParties is empty; fall back to the guest's own name rather
   // than the generic "Conversation".
+  const blockers = await getConversationBlockers(admin, id);
+  const closedByMe = blockers.includes(userId);
+  const threadReturnPath = managerBusinessId ? `/account/business/${managerBusinessId}/inbox/${id}` : `/account/messages/${id}`;
   const isFindmiPageQuestion = thread.subjectType === "findmi_page_inquiry";
   const isFindmiRequest = thread.subjectType === "findmi_commercial_request" || isFindmiPageQuestion;
   const messagingEnabled = isDirectBusinessMessagingEnabled();
@@ -183,7 +189,11 @@ export default async function ConversationThreadView({
       </div>
 
       <div className="mt-6">
-        {replyPaused ? (
+        {blockers.length > 0 ? (
+          <p className="rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-metadata leading-relaxed text-secondary">
+            {closedByMe ? "You closed this conversation. Nobody can send new messages until you reopen it." : "This conversation is closed to new messages."}
+          </p>
+        ) : replyPaused ? (
           <p className="rounded-xl bg-findmi-50 px-3.5 py-2.5 text-metadata leading-relaxed text-findmi-700">
             {DIRECT_MESSAGING_PAUSED_MESSAGE} This conversation stays here for your records.
           </p>
@@ -201,6 +211,19 @@ export default async function ConversationThreadView({
         ) : (
           <p className="text-metadata text-subtle">You can view this conversation, but none of your current identities can reply here.</p>
         )}
+      </div>
+
+      {/* Message safety (Trust & Privacy Phase 2A). Messages aren't end-to-end
+          encrypted: Findmi can access conversations to operate the service
+          and review reports. */}
+      <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-black/5 pt-4">
+        <form action={setConversationClosed.bind(null, id, !closedByMe, threadReturnPath)}>
+          <button type="submit" className="min-h-9 text-metadata font-semibold text-ink/55 underline-offset-2 transition hover:text-ink hover:underline">
+            {closedByMe ? "Reopen Conversation" : "Close Conversation"}
+          </button>
+        </form>
+        <TrustActions entityType="conversation" entityId={id} entityName={title} />
+        <p className="w-full text-metadata text-subtle">Closing stops new messages and notifications in this thread. Findmi can see reported conversations.</p>
       </div>
     </>
   );

@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getCurrentUser, getServerSupabase } from "@/lib/supabase/server";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { recordAdminAudit } from "@/lib/admin/audit";
+import { headers } from "next/headers";
 
 export type MemberRole = "owner" | "manager" | "staff";
 
@@ -51,6 +53,21 @@ export interface Membership {
  * requireEventMember() (directly, or via a local wrapper like
  * requireBusinessMemberWithDetails) inherits Manage-As for free, with no
  * other code needing to change. */
+async function auditManageAsWrite(table: string, entityId: string): Promise<void> {
+  try {
+    const h = await headers();
+    if (!h.get("next-action")) return; // page render, not a write
+    await recordAdminAudit(getAdminSupabase(), {
+      action: "manage_as_write",
+      actor: { kind: "admin" },
+      targetType: table.replace(/_members$/, ""),
+      targetId: entityId,
+    });
+  } catch {
+    // never block the action on logging
+  }
+}
+
 async function requireMembership(
   table: "business_members" | "event_members" | "location_members",
   column: "business_id" | "event_id" | "location_id",
@@ -79,6 +96,10 @@ async function requireMembership(
   }
 
   if (await isAdminSession()) {
+    // Trust & Privacy Phase 2A: an admin acting as this entity in a
+    // Server Action (a write, never a page read) is recorded in the audit
+    // log. The shared admin password means "Admin", not a person.
+    await auditManageAsWrite(table, entityId);
     return { id: "admin-override", role: "owner", viaAdmin: true };
   }
 

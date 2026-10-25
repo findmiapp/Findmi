@@ -12,7 +12,6 @@ import { getUserDependencySummary } from "@/lib/admin/user-dependencies";
 import { formatDateShort } from "@/lib/format";
 import { formatUsPhone } from "@/lib/phone";
 import { RelationField } from "@/components/admin/RelationPicker";
-import SetPasswordForm from "./SetPasswordForm";
 import {
   assignUserToBusiness,
   assignUserToEvent,
@@ -22,7 +21,6 @@ import {
   removeUserEventAccess,
   removeUserLocationAccess,
   sendPasswordResetEmail,
-  setUserPassword,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +32,6 @@ const CREATED_LABEL: Record<string, string> = {
 
 const PASSWORD_ACTION_LABEL: Record<string, string> = {
   reset_sent: "Password reset email sent.",
-  set: "New password set.",
 };
 
 export default async function AdminUserDetailPage({
@@ -62,7 +59,6 @@ export default async function AdminUserDetailPage({
   const assignEvent = assignUserToEvent.bind(null, id);
   const assignLocation = assignUserToLocation.bind(null, id);
   const sendReset = sendPasswordResetEmail.bind(null, id);
-  const setPassword = setUserPassword.bind(null, id);
   const deleteAccount = deleteUserAccount.bind(null, id);
   const confirmPhrase = account.email ?? "DELETE";
 
@@ -130,7 +126,7 @@ export default async function AdminUserDetailPage({
       <section className="mt-4 rounded-2xl border border-black/10 bg-mist/40 p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Password &amp; Account Access</p>
         <p className="mt-1 text-xs text-ink/45">
-          Findmi never stores or displays this user&rsquo;s password. Choose one of the two options below.
+          Findmi never stores or displays this user&rsquo;s password.
         </p>
 
         <div className="mt-3 flex flex-col gap-4">
@@ -148,9 +144,9 @@ export default async function AdminUserDetailPage({
             </p>
           </div>
 
-          <div className="border-t border-black/10 pt-4">
-            <SetPasswordForm action={setPassword} />
-          </div>
+          <p className="border-t border-black/10 pt-4 text-xs text-ink/45">
+            Admins can&rsquo;t set or choose a password for an existing account. The reset email above lets the person set their own.
+          </p>
         </div>
       </section>
 

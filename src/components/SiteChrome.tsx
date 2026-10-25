@@ -104,6 +104,7 @@ export default function SiteChrome({
       "/account/following",
       "/account/orders",
       "/account/profile",
+      "/account/privacy",
       "/account/messages",
       "/account/business",
     ]);

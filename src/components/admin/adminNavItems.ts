@@ -128,6 +128,14 @@ export const ADMIN_SECTIONS: AdminSection[] = [
         ],
       },
       {
+        label: "Trust & Privacy",
+        items: [
+          { href: "/admin/reports", label: "Reports", hint: "Corrections, removal requests, reports, copyright and trademark" },
+          { href: "/admin/privacy-requests", label: "Privacy Requests", hint: "Account deletion, access and other privacy requests" },
+          { href: "/admin/audit", label: "Audit Log", hint: "Privileged actions" },
+        ],
+      },
+      {
         label: "Communications",
         items: [
           { href: "/admin/conversations", label: "Communications", hint: "Direct & opportunity messages — Inquiries and Sales Inquiries below" },
