@@ -2,11 +2,18 @@
 // Findmi may ask someone to accept, the version currently in force, and
 // where acceptance applies. Pure (tests/legal-acceptance.test.mjs).
 //
-// Phase 2A builds the infrastructure only. Every `currentVersion` is null
-// until Phase 2B publishes the final document: a null version means "not
-// published", so nothing is required, nothing blocks an existing flow and
-// no acceptance is recorded. Publishing a document later is a one-line
-// version change here plus the UI notice for its contexts; no migration.
+// A null `currentVersion` means "not published": nothing is required,
+// nothing blocks an existing flow and no acceptance is recorded. Publishing
+// a document is a one-line version change here plus the UI notice for its
+// contexts; no migration.
+//
+// Published (Oct 2026): the Terms of Service and the Privacy Policy, both
+// at signup only. The version is the page's "Last updated" date
+// (lib/legal/published.ts). Signup shows "By creating an account, you
+// agree to Findmi's Terms of Service and acknowledge the Privacy Policy",
+// so the Privacy Policy is recorded as an acknowledgement, not agreement.
+// Nothing reads outstanding documents to gate a flow, so existing accounts
+// are never blocked or sent through a reacceptance step.
 
 export const LEGAL_DOCUMENT_IDS = [
   "terms",
@@ -45,8 +52,8 @@ export interface LegalDocument {
 }
 
 export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
-  terms: { id: "terms", title: "Terms of Service", path: "/terms", currentVersion: null, contexts: ["signup", "reacceptance"] },
-  privacy_acknowledgement: { id: "privacy_acknowledgement", title: "Privacy Policy", path: "/privacy", currentVersion: null, contexts: ["signup", "reacceptance"] },
+  terms: { id: "terms", title: "Terms of Service", path: "/terms", currentVersion: "2026-10-25", contexts: ["signup", "reacceptance"] },
+  privacy_acknowledgement: { id: "privacy_acknowledgement", title: "Privacy Policy", path: "/privacy", currentVersion: "2026-10-25", contexts: ["signup", "reacceptance"] },
   business_terms: { id: "business_terms", title: "Business Terms", path: "/legal/business", currentVersion: null, contexts: ["business_claim", "business_creation", "reacceptance"] },
   marketplace_buyer_terms: { id: "marketplace_buyer_terms", title: "Marketplace Buyer Terms", path: "/legal/marketplace-buyers", currentVersion: null, contexts: ["marketplace_checkout"] },
   marketplace_seller_terms: { id: "marketplace_seller_terms", title: "Marketplace Seller Terms", path: "/legal/marketplace-sellers", currentVersion: null, contexts: ["seller_onboarding", "reacceptance"] },

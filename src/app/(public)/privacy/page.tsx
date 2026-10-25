@@ -180,7 +180,7 @@ const SECTIONS: LegalSection[] = [
           "With the people you contact: messages and inquiries go to their recipients. When a page isn't managed yet, or for commercial requests, they go to Findmi.",
           "With sellers: when you place an order, each seller gets what it needs to fulfill its items, such as your name, contact details and what you bought.",
           "Publicly: content you publish, as described above.",
-          "With service providers that help Findmi run, under agreements that limit how they use the information: hosting (Vercel), database, sign-in and file storage (Supabase), payments (Stripe), email delivery (Resend), AI-assisted processing for the import tools described above (Anthropic) and form collection when Findmi uses forms (Tally).",
+          "With service providers that help Findmi run, under agreements that limit how they use the information: hosting (Vercel), database, sign-in and file storage (Supabase), payments (Stripe), AI-assisted processing for the import tools described above (Anthropic), and an email delivery provider that sends Findmi's service emails.",
           "For legal reasons: when Findmi believes in good faith that it's required by law, or needed to protect the rights, safety or property of people or Findmi.",
           "In a business change: if Findmi is involved in a reorganization, merger or sale, information may transfer as part of it, under this policy's protections.",
           "With your direction or consent.",

@@ -107,8 +107,12 @@ test("Privacy Policy is the substantive rewrite and describes the system that ex
   assert.doesNotMatch(copyOf(PRIVACY), /deleted after \d+ days|retained for \d+ (days|months)/i);
   // The old false claim stays gone.
   assert.doesNotMatch(PRIVACY, /notify you when a business you follow posts a new appearance/);
-  // Only processors confirmed in the codebase are named.
-  for (const name of ["Vercel", "Supabase", "Stripe", "Resend", "Anthropic", "Tally"]) assert.match(PRIVACY, new RegExp(name));
+  // Only providers verified as processing data in production today are
+  // named (Vercel, Supabase, Stripe, Anthropic); dormant or unverified
+  // integrations are not (Tally isn't in use; email delivery is unnamed).
+  for (const name of ["Vercel", "Supabase", "Stripe", "Anthropic"]) assert.match(PRIVACY, new RegExp(name));
+  for (const name of ["Tally", "Resend"]) assert.doesNotMatch(copyOf(PRIVACY), new RegExp(`\\b${name}\\b`));
+  assert.match(PRIVACY, /an email delivery provider that sends Findmi's service emails/);
   for (const name of ["Google Analytics", "Meta", "Facebook", "Mixpanel", "Segment", "Hotjar", "Amplitude"]) assert.doesNotMatch(copyOf(PRIVACY), new RegExp(`\\b${name}\\b`));
 });
 

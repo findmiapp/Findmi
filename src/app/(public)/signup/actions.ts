@@ -7,6 +7,7 @@ import { getPublicOrigin } from "@/lib/site-url";
 import { errorRedirectUrlWithFields } from "@/lib/admin/form-helpers";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { recordContextAcceptance } from "@/lib/legal/acceptance";
+import { LEGAL_DOCUMENTS } from "@/lib/legal/documents";
 
 function confirmationRedirectUrl(next: string): string {
   // `type=signup` lets /auth/callback distinguish a failed signup
@@ -139,10 +140,15 @@ export async function signUp(formData: FormData) {
   // this branch is inert — the very next line (unchanged Check Email
   // redirect) is what actually runs. This activates automatically, with
   // no further code change, the moment that project setting changes.
-  // Legal acceptance (lib/legal): records the published documents that
-  // apply at signup. A no-op until Phase 2B publishes them.
+  // Legal acceptance (lib/legal): pressing Create Account under the
+  // signup notice is the assent. Recorded only when the submitted form
+  // carried the notice for the Terms version in force (a page loaded
+  // before the notice existed records nothing).
+  const shownTermsVersion = String(formData.get("terms_version") ?? "");
   const admin = getAdminSupabase();
-  if (admin && data.user?.id) await recordContextAcceptance(admin, data.user.id, "signup");
+  if (admin && data.user?.id && shownTermsVersion !== "" && shownTermsVersion === LEGAL_DOCUMENTS.terms.currentVersion) {
+    await recordContextAcceptance(admin, data.user.id, "signup");
+  }
 
   if (data.session) {
     redirect(next);

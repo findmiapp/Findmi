@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import PasswordField from "@/components/PasswordField";
+import Link from "next/link";
+import { LEGAL_DOCUMENTS } from "@/lib/legal/documents";
 import SubmitButton from "./SubmitButton";
 
 const inputClass =
@@ -196,6 +198,18 @@ export default function SignupForm({
       )}
 
       <div className="mt-1">
+        <input type="hidden" name="terms_version" value={LEGAL_DOCUMENTS.terms.currentVersion ?? ""} />
+        <p className="mb-3 text-xs leading-relaxed text-ink/60">
+          By creating an account, you agree to Findmi&rsquo;s{" "}
+          <Link href="/terms" className="font-medium text-ink underline underline-offset-2">
+            Terms of Service
+          </Link>{" "}
+          and acknowledge the{" "}
+          <Link href="/privacy" className="font-medium text-ink underline underline-offset-2">
+            Privacy Policy
+          </Link>
+          .
+        </p>
         <SubmitButton disabled={hasBlockingIssue} />
       </div>
     </form>
