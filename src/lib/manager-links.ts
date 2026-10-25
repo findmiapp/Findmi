@@ -37,6 +37,7 @@ export type ManagerDestination =
   | "settings"
   | "inbox"
   | "search"
+  | "map"
   | "more";
 
 /** The exact href for a Manager destination of one Business. */
@@ -105,6 +106,8 @@ export function managerHref(businessId: string, d: ManagerDestination): string {
       return `${b}/inbox`;
     case "search":
       return `${b}/search`;
+    case "map":
+      return `${b}/map`;
     case "more":
       return `${b}?tab=more`;
   }

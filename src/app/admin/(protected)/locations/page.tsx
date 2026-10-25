@@ -51,6 +51,12 @@ export default async function AdminLocationsPage({
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Locations</h1>
         <div className="flex flex-wrap items-center justify-end gap-2">
         <Link
+          href="/admin/locations/geocode"
+          className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:border-black/20"
+        >
+          Map Placement
+        </Link>
+        <Link
           href="/admin/locations/import"
           className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:border-black/20"
         >

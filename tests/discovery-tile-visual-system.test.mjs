@@ -46,7 +46,9 @@ test("TopicTile shows an uploaded image with a readable overlay, object-cover cr
 });
 
 test("Discovery topic queries and routing are untouched by this pass — no change to query.ts/engine.ts's resolution logic", () => {
-  assert.match(QUERY, /export const DISCOVERY_WHEN = \["now", "today", "tonight", "tomorrow", "week", "weekend", "upcoming"\] as const;/);
+  // Discovery Engine + Map V1 later extended the vocabulary (Up Next, Next
+  // Week, This Month, Next Month); the original windows are unchanged.
+  assert.match(QUERY, /export const DISCOVERY_WHEN = \["now", "upnext", "today", "tonight", "tomorrow", "week", "weekend", "next_week", "month", "next_month", "upcoming"\] as const;/);
   assert.match(ENGINE, /export function windowDates\(when: DiscoveryWhen, now: Date = new Date\(\)\): \{ from: string; to: string \} \| null \{/);
   assert.match(ENGINE, /export function matchesWhen\(i: DiscoveryItem, when: DiscoveryWhen, now: Date = new Date\(\)\): boolean \{/);
 });

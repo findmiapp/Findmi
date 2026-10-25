@@ -43,7 +43,7 @@ export function ManagerNavProvider({ fixedSection: fixedProp, children }: { fixe
   const searchParams = useSearchParams();
   const pathname = usePathname();
   // The Manager's own sub-routes listed in More (Inbox, Search) highlight More.
-  const fixedSection = fixedProp ?? (/\/account\/business\/[^/]+\/(inbox|search)(\/|$)/.test(pathname) ? "more" : undefined);
+  const fixedSection = fixedProp ?? (/\/account\/business\/[^/]+\/(inbox|search|map)(\/|$)/.test(pathname) ? "more" : undefined);
   const urlTab = canonicalTab(searchParams.get("tab"));
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

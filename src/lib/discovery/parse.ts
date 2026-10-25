@@ -12,13 +12,23 @@
 
 import { normalizeSearch } from "../geo/census-format";
 import { STATE_BY_NAME, STATE_BY_USPS } from "../geo/states";
-import type { DiscoveryQuery, DiscoveryWhen } from "./query";
+import type { EntryMode, EventAudience, EventBenefit } from "./attributes";
+import type { DiscoveryQuery, DiscoveryWhen, TimeOfDay } from "./query";
 
 export interface ParseVocabulary {
   topics: { slug: string; name: string; aliases?: string[] }[];
   taxonomy: { slug: string; name: string; kind: "event" | "event_format" }[];
   areas: { slug: string; name: string; market: string; marketName?: string }[];
   markets: { slug: string; name: string }[];
+  /** Canonical Businesses whose names appear in the text (the server
+   * pre-resolves candidates by exact name — never a fuzzy guess). */
+  brands?: { slug: string; name: string }[];
+}
+
+export interface ParseOptions {
+  /** For weekday / month phrases ("Saturday", "November"). */
+  now?: Date;
+  timezone?: string;
 }
 
 export type Recognized =
@@ -29,7 +39,17 @@ export type Recognized =
   | { kind: "area"; value: string; market: string; text: string }
   | { kind: "market"; value: string; text: string }
   | { kind: "state"; value: string; text: string }
-  | { kind: "zip"; value: string; text: string };
+  | { kind: "zip"; value: string; text: string }
+  | { kind: "benefit"; value: EventBenefit; text: string }
+  | { kind: "freebies"; value: "any"; text: string }
+  | { kind: "tod"; value: TimeOfDay; text: string; today?: boolean }
+  | { kind: "date"; value: string; text: string }
+  | { kind: "month"; value: string; text: string }
+  | { kind: "year"; value: string; text: string }
+  | { kind: "audience"; value: EventAudience; text: string }
+  | { kind: "entry"; value: EntryMode; text: string }
+  | { kind: "paid"; value: "paid"; text: string }
+  | { kind: "brand"; value: string; name: string; text: string };
 
 export interface ParsedSearch {
   query: DiscoveryQuery;
@@ -51,7 +71,36 @@ const WHEN_PHRASES: [string, DiscoveryWhen][] = [
   ["today", "today"], ["tomorrow", "tomorrow"],
   ["this weekend", "weekend"], ["weekend", "weekend"],
   ["this week", "week"], ["upcoming", "upcoming"], ["coming up", "upcoming"],
+  ["up next", "upnext"], ["starting soon", "upnext"], ["next week", "next_week"],
+  ["this month", "month"], ["next month", "next_month"],
 ];
+/** Structured benefits. "Free Food" is never "Free" (admission): each
+ * phrase names exactly the benefit(s) it says. */
+const BENEFIT_PHRASES: [string, EventBenefit[]][] = [
+  ["free food and drink", ["free_food", "free_drinks"]], ["free food and drinks", ["free_food", "free_drinks"]],
+  ["free food", ["free_food"]], ["free eats", ["free_food"]], ["free snacks", ["free_food"]],
+  ["free drinks", ["free_drinks"]], ["free drink", ["free_drinks"]], ["open bar", ["free_drinks"]],
+  ["free samples", ["free_samples"]], ["free sample", ["free_samples"]], ["samples", ["free_samples"]], ["tastings", ["free_samples"]],
+  ["free products", ["free_products"]], ["free gifts", ["free_products"]],
+  ["giveaways", ["giveaways"]], ["giveaway", ["giveaways"]], ["swag", ["swag"]], ["goodie bags", ["swag"]], ["gift bags", ["swag"]],
+  ["free admission", ["free_admission"]], ["free entry", ["free_admission"]], ["free to attend", ["free_admission"]],
+  ["discounts", ["discounts"]], ["discount", ["discounts"]], ["deals", ["discounts"]], ["prizes", ["prizes"]],
+];
+const TOD_PHRASES: [string, TimeOfDay, boolean][] = [
+  ["this morning", "morning", true], ["morning", "morning", false], ["mornings", "morning", false],
+  ["this afternoon", "afternoon", true], ["afternoon", "afternoon", false], ["afternoons", "afternoon", false],
+  ["evening", "evening", false], ["evenings", "evening", false], ["late night", "late_night", false], ["after dark", "late_night", false],
+];
+const AUDIENCE_PHRASES: [string, EventAudience][] = [
+  ["all ages", "all_ages"], ["21 and over", "21_plus"], ["21 plus", "21_plus"], ["21", "21_plus"], ["21 up", "21_plus"],
+  ["adults only", "adults"], ["adults", "adults"], ["for professionals", "professional"], ["professionals", "professional"],
+];
+const ENTRY_PHRASES: [string, EntryMode][] = [["walk in", "walk_in"], ["walk ins", "walk_in"], ["no reservation", "walk_in"], ["reservations", "reservation"], ["invite only", "invite"]];
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const WEEKDAY_SHORT: Record<string, number> = { mon: 1, tue: 2, tues: 2, wed: 3, thu: 4, thurs: 4, fri: 5, sat: 6 };
+// "May" / "March" read as verbs too often to be safe as bare month names.
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const BARE_MONTH_UNSAFE = new Set(["may", "march"]);
 const FLAG_PHRASES: [string, "free" | "family" | "rsvp" | "tickets" | "near_me"][] = [
   ["near me", "near_me"], ["nearby", "near_me"], ["around me", "near_me"], ["close to me", "near_me"],
   ["free", "free"], ["no cover", "free"],
@@ -85,7 +134,30 @@ function variants(name: string): string[] {
   return [...out].filter(Boolean);
 }
 
-function buildDictionary(v: ParseVocabulary): Map<string, Entry[]> {
+function dateEntries(now: Date, tz: string): [string, Entry][] {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }).formatToParts(now);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const today = `${g("year")}-${g("month")}-${g("day")}`;
+  const [y, m, d] = today.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const dayAt = (offset: number) => new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
+  const out: [string, Entry][] = [];
+  WEEKDAYS.forEach((name, wd) => {
+    const value = dayAt((wd - dow + 7) % 7);
+    for (const p of [name, `${name}s`, `this ${name}`, `on ${name}`]) out.push([p, { kind: "date", value, text: p, rank: 0 }]);
+  });
+  for (const [short, wd] of Object.entries(WEEKDAY_SHORT)) out.push([short, { kind: "date", value: dayAt((wd - dow + 7) % 7), text: short, rank: 0 }]);
+  MONTHS.forEach((name, i) => {
+    const year = i + 1 >= m ? y : y + 1;
+    const value = `${year}-${String(i + 1).padStart(2, "0")}`;
+    const phrases = [`in ${name}`, `this ${name}`, `${name} ${year}`];
+    if (!BARE_MONTH_UNSAFE.has(name)) phrases.push(name);
+    for (const p of phrases) out.push([p, { kind: "month", value, text: p, rank: 0 }]);
+  });
+  return out;
+}
+
+function buildDictionary(v: ParseVocabulary, opts: ParseOptions = {}): Map<string, Entry[]> {
   const dict = new Map<string, Entry[]>();
   const put = (phrase: string, e: Entry) => {
     if (!phrase) return;
@@ -95,6 +167,15 @@ function buildDictionary(v: ParseVocabulary): Map<string, Entry[]> {
   };
   for (const [p, value] of WHEN_PHRASES) put(p, { kind: "when", value, text: p, rank: 0 });
   for (const [p, value] of FLAG_PHRASES) put(p, { kind: "flag", value, text: p, rank: 0 });
+  put("paid", { kind: "paid", value: "paid", text: "paid", rank: 0 });
+  // ("Free things to do" means free to attend — that's the Free flag.)
+  for (const p of ["freebies", "freebie", "free swag and samples"]) put(p, { kind: "freebies", value: "any", text: p, rank: 0 });
+  for (const [p, values] of BENEFIT_PHRASES) for (const value of values) put(p, { kind: "benefit", value, text: p, rank: 0 });
+  for (const [p, value, today] of TOD_PHRASES) put(p, { kind: "tod", value, today, text: p, rank: 0 });
+  for (const [p, value] of AUDIENCE_PHRASES) put(p, { kind: "audience", value, text: p, rank: 0 });
+  for (const [p, value] of ENTRY_PHRASES) put(p, { kind: "entry", value, text: p, rank: 0 });
+  if (opts.now) for (const [p, e] of dateEntries(opts.now, opts.timezone ?? "America/New_York")) put(p, e);
+  for (const b of v.brands ?? []) for (const p of variants(b.name)) put(p, { kind: "brand", value: b.slug, name: b.name, text: p, rank: 1.5 });
   for (const t of v.topics) for (const n of [t.name, ...(t.aliases ?? [])]) for (const p of variants(n)) put(p, { kind: "topic", value: t.slug, text: p, rank: 1 });
   for (const t of v.taxonomy) for (const p of [...variants(t.name), normalizeSearch(t.slug.replace(/-/g, " "))]) put(p, { kind: t.kind === "event" ? "category" : "format", value: t.slug, text: p, rank: 2 });
   for (const a of v.areas) for (const p of [normalizeSearch(a.name), ...(AREA_NICKNAMES[a.slug] ?? [])]) put(p, { kind: "area", value: a.slug, market: a.market, text: p, rank: 3 });
@@ -105,8 +186,8 @@ function buildDictionary(v: ParseVocabulary): Map<string, Entry[]> {
 
 const MAX_PHRASE = 5;
 
-export function parseSearch(raw: string, vocab: ParseVocabulary): ParsedSearch {
-  const dict = buildDictionary(vocab);
+export function parseSearch(raw: string, vocab: ParseVocabulary, opts: ParseOptions = {}): ParsedSearch {
+  const dict = buildDictionary(vocab, opts);
   const rawTokens = raw.slice(0, 200).split(/[\s,]+/).filter(Boolean);
   const tokens = rawTokens.map((t) => normalizeSearch(t)).map((t, i) => ({ t, raw: rawTokens[i] })).filter((x) => x.t);
   // normalizeSearch can split a token ("SoHo/NoHo") — flatten.
@@ -127,6 +208,12 @@ export function parseSearch(raw: string, vocab: ParseVocabulary): ParsedSearch {
 
   for (let i = 0; i < flat.length; ) {
     const tok = flat[i];
+    if (/^20\d{2}$/.test(tok.t) && !dict.has(flat.slice(Math.max(0, i - 1), i + 1).map((x) => x.t).join(" "))) {
+      flush();
+      recognized.push({ kind: "year", value: tok.t, text: tok.t });
+      i++;
+      continue;
+    }
     if (/^\d{5}$/.test(tok.t)) {
       flush();
       zip ??= tok.t;
@@ -191,6 +278,22 @@ export function parseSearch(raw: string, vocab: ParseVocabulary): ParsedSearch {
       query.area ??= r.value;
       query.market ??= r.market;
     } else if (r.kind === "market") query.market ??= r.value;
+    else if (r.kind === "benefit") query.benefits = [...new Set([...(query.benefits ?? []), r.value])];
+    else if (r.kind === "freebies") {
+      query.benefits = [...new Set([...(query.benefits ?? []), "free_samples", "free_products", "giveaways", "swag"] as EventBenefit[])];
+      query.benefitMode = "any";
+    } else if (r.kind === "tod") {
+      query.tod ??= r.value;
+      if (r.today) query.when ??= "today";
+    } else if (r.kind === "date") query.date ??= r.value;
+    else if (r.kind === "month") query.month ??= r.value;
+    else if (r.kind === "year") query.year ??= r.value;
+    else if (r.kind === "audience") query.audience = [...new Set([...(query.audience ?? []), r.value])];
+    else if (r.kind === "entry") query.entry = [...new Set([...(query.entry ?? []), r.value])];
+    else if (r.kind === "paid") query.paid = true;
+    else if (r.kind === "brand") query.brands = [...new Set([...(query.brands ?? []), r.value])];
   }
+  // A month named with a year ("November 2026") is that month, not the year.
+  if (query.month && query.year && query.month.startsWith(query.year)) delete query.year;
   return { query, recognized, phrases, zip, stateUsps, nearMe: recognized.some((r) => r.kind === "flag" && r.value === "near_me"), ambiguous };
 }

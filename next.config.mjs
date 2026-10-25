@@ -1,6 +1,19 @@
 /** JerseyCity.guide host match (apex + www) — see redirects/rewrites. */
 const jcHost = { type: "host", value: "(?:www\\.)?jerseycity\\.guide" };
 
+/** Discovery Map — the basemap style/tile/glyph host (MapLibre GL). The
+ * default is OpenFreeMap's keyless public "positron" style; set
+ * NEXT_PUBLIC_MAP_STYLE_URL to switch providers. Its origin (and only its
+ * origin) is allowed for map fetches below. Mirrors src/lib/map-config.ts. */
+const MAP_STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/positron";
+const mapOrigin = (() => {
+  try {
+    return new URL(MAP_STYLE_URL).origin;
+  } catch {
+    return "https://tiles.openfreemap.org";
+  }
+})();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -86,7 +99,13 @@ const nextConfig = {
       // the device: the signed-URL mint still succeeds server-side (it's a
       // Server Action), so every photo looked "authorized" but the actual
       // upload never happened, landing every tile straight in Retry.
-      "connect-src 'self' https://*.supabase.co",
+      // Discovery Map: MapLibre fetches its style, vector tiles, sprites and
+      // glyphs from the map provider's origin (mapOrigin above) — no
+      // personal data is sent there, only tile coordinates.
+      `connect-src 'self' https://*.supabase.co ${mapOrigin}`,
+      // MapLibre GL decodes tiles in Web Workers it creates from a blob:
+      // URL of its own bundled worker code (same-origin script).
+      "worker-src 'self' blob:",
       // Tally forms are embedded via <iframe> in two places (FormAction
       // .tsx for business/event/product form assignments, OnboardingCta
       // .tsx for the paid-membership "Build My Profile" step) — the only

@@ -17,6 +17,7 @@
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.45.4",
     "heic-convert": "^2.1.0",
+    "maplibre-gl": "5.24.0",
     "next": "15.5.25",
     "parse5": "^8.0.1",
     "qrcode": "^1.5.4",

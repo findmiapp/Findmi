@@ -215,7 +215,8 @@ test("22. Inbox and Search live in the (manager) route group (persistent shell)"
 });
 
 test("23. Inbox / Search highlight More in the persistent nav", () => {
-  assert.match(read(`${B}/v2/ManagerNav.tsx`), /\(inbox\|search\)\(\\\/\|\$\)/);
+  // Discovery Engine + Map V1 added the Manager Map sub-route (also in More).
+  assert.match(read(`${B}/v2/ManagerNav.tsx`), /\(inbox\|search\|map\)\(\\\/\|\$\)/);
 });
 
 test("24. context bar: compact Search + Inbox with accessible names", () => {

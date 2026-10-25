@@ -112,5 +112,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261113000000_revoke_legacy_follow_rpcs.sql");
+  assert.equal(files.at(-1), "20261114000000_discovery_engine_map_v1.sql");
 });

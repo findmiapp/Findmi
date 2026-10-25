@@ -51,6 +51,7 @@ export default function MoreMenu({
   const tools: MoreLink[] = [
     { href: to("qr"), label: T.qr.label, description: T.qr.description, icon: <QrGlyph className="h-5 w-5" /> },
     { href: to("search"), label: "Search", description: "Find anything in this Business", icon: <SearchGlyph className="h-5 w-5" /> },
+    { href: to("map"), label: "Map", description: "Your places, Targets, Conversations and Opportunities on the map", icon: <NavIcon name="pin" className="h-5 w-5" /> },
   ];
   const business: MoreLink[] = [
     { href: to("settings"), label: T.settings.label, description: T.settings.description, icon: <GearGlyph className="h-5 w-5" /> },

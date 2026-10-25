@@ -75,7 +75,10 @@ export default function SiteChrome({
   // footer and lost Moment context, not the header, and this route isn't
   // an app shell with its own nav to avoid doubling up with.
   const isJournalComposer = pathname === "/my-world/journal/new" || /^\/my-world\/journal\/[^/]+\/edit$/.test(pathname);
-  if (isJournalComposer) {
+  // Discovery Map — a full-bleed app surface: the map fills the viewport
+  // under the normal headers, so no footer below it.
+  const isMap = pathname === "/map";
+  if (isJournalComposer || isMap) {
     return (
       <>
         {adminToolbar}

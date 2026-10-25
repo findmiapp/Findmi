@@ -14,6 +14,7 @@ import SubmitBar from "@/components/admin/SubmitBar";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
 import EventFormatField from "@/components/admin/EventFormatField";
 import EventFormSections from "./EventFormSections";
+import EventDiscoveryFields from "@/components/admin/EventDiscoveryFields";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import { RelationField } from "@/components/admin/RelationPicker";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
@@ -476,6 +477,11 @@ export default function EventForm({
                 </div>
               </>
             ),
+          },
+          {
+            id: "discovery",
+            label: "Discovery Details",
+            content: <EventDiscoveryFields event={event as unknown as Record<string, unknown> | null} />,
           },
           {
             id: "publishing",

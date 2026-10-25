@@ -1,5 +1,6 @@
 "use server";
 
+import { eventAttributesFromForm } from "@/lib/discovery/attributes";
 import { recordProvenance } from "@/lib/provenance";
 import { decideEventCategoryWrite } from "@/lib/event-categories";
 import { decideEventFormatWrite } from "@/lib/event-formats";
@@ -284,6 +285,21 @@ export async function saveEvent(id: string | null, formData: FormData) {
     if (formData.has("location_visibility")) extras.location_visibility = parseLocationVisibility(str(formData, "location_visibility"));
     const { error: extrasError } = await supabase.from("events").update(extras).eq("id", eventId);
     if (extrasError) console.warn("[admin events] attendance/location extras not saved", { eventId, reason: extrasError.message });
+  }
+
+  // Discovery Details (Discovery Engine V1) — structured, explicitly-set
+  // facts. is_free / family_friendly already exist; benefits / audience /
+  // ages / entry_modes are newer columns, so they go in their own
+  // best-effort update (this save keeps working before that migration).
+  if (eventId && formData.has("discovery_fields")) {
+    const freeValue = str(formData, "is_free");
+    const { error: basicError } = await supabase
+      .from("events")
+      .update({ is_free: freeValue === "free" ? true : freeValue === "paid" ? false : null, family_friendly: formData.get("family_friendly") === "on" ? true : null })
+      .eq("id", eventId);
+    if (basicError) console.warn("[admin events] free/family not saved", { eventId, reason: basicError.message });
+    const { error: attrError } = await supabase.from("events").update(eventAttributesFromForm(formData)).eq("id", eventId);
+    if (attrError) console.warn("[admin events] discovery attributes not saved", { eventId, reason: attrError.message });
   }
 
   // Consumer Area Picker + Market Requests V1, extended by Market ->

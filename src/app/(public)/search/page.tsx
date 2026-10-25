@@ -3,7 +3,7 @@ import Link from "next/link";
 import { DiscoveryGrid } from "@/components/discovery/DiscoveryTile";
 import DiscoverySignal from "@/components/discovery/DiscoverySignal";
 import RelationshipButton from "@/components/discovery/RelationshipButton";
-import { paramsToQuery, searchHref, WHEN_LABELS, type DiscoveryQuery } from "@/lib/discovery/query";
+import { mapHref, paramsToQuery, searchHref, WHEN_LABELS, type DiscoveryQuery } from "@/lib/discovery/query";
 import { getVocabulary, interpretSearch, runDiscovery } from "@/lib/discovery/server";
 
 export const metadata: Metadata = {
@@ -82,7 +82,13 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         {soloTopic && <RelationshipButton entityType="topic" entityId={soloTopic.id} relation="like" label="Like" activeLabel="Liked" />}
       </div>
       {soloTopic?.description && <p className="mt-1 text-sm text-ink/60">{soloTopic.description}</p>}
-      <p className="mt-1 text-sm text-ink/50">{result.total === 1 ? "1 Result" : `${result.total} Results`}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <p className="text-sm text-ink/50">{result.total === 1 ? "1 Result" : `${result.total} Results`}</p>
+        {/* The same structured query on the Map (Discovery Engine V1). */}
+        <Link href={mapHref(query)} className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-bold text-ink/75 hover:border-findmi hover:text-findmi-700">
+          View On Map
+        </Link>
+      </div>
 
       {chips.length > 0 && (
         <ul className="mt-4 flex flex-wrap gap-2" aria-label="Your Search">

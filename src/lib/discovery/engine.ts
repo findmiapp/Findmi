@@ -7,6 +7,7 @@
 
 import { APP_TIMEZONE, dateKeyInZone } from "../format";
 import { hasEnded, isHappeningNow, occursWithinDates, todayIn } from "../event-time";
+import { namedWindowDates, UP_NEXT_HOURS } from "./time";
 import { WHEN_LABELS, entitiesFor, searchHref, type DiscoveryEntity, type DiscoveryQuery, type DiscoveryWhen } from "./query";
 
 export interface DiscoveryItem {
@@ -63,6 +64,10 @@ export interface GeoScope {
  * (follows, saves, relationships, Topic/Area opens). Bounded; optional. */
 export interface PersonalContext {
   relatedIds?: Set<string>;
+  /** The same ids split by what the viewer did, for honest explanations
+   * ("From a brand you follow" / "Saved by you"). */
+  followedIds?: Set<string>;
+  savedIds?: Set<string>;
   topicSlugs?: Set<string>;
   areaSlugs?: Set<string>;
   dislikedIds?: Set<string>;
@@ -102,39 +107,12 @@ export interface DiscoveryResult {
 
 // ------------------------------------------------------------ time windows
 
-const addDays = (date: string, n: number) => {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-};
-const weekday = (date: string) => {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sun
-};
-
-/** Calendar range [from, to] for a date-shaped window (Findmi's locked
- * definitions: This Week runs through Sunday; This Weekend is Fri–Sun and
- * never reaches back into a Friday already past). */
+/** Calendar range [from, to] for a date-shaped window — the shared
+ * definitions in ./time (Findmi's locked rules: This Week runs through
+ * Sunday; This Weekend is Fri–Sun and never reaches back into a Friday
+ * already past). */
 export function windowDates(when: DiscoveryWhen, now: Date = new Date()): { from: string; to: string } | null {
-  const today = todayIn(undefined, now);
-  const dow = weekday(today);
-  switch (when) {
-    case "today":
-    case "tonight":
-    case "now":
-      return { from: today, to: today };
-    case "tomorrow":
-      return { from: addDays(today, 1), to: addDays(today, 1) };
-    case "week":
-      return { from: today, to: addDays(today, (7 - dow) % 7) };
-    case "weekend": {
-      const already = dow === 5 || dow === 6 || dow === 0;
-      const fri = already ? 0 : (5 - dow + 7) % 7;
-      const sun = already ? (dow === 6 ? 1 : dow === 5 ? 2 : 0) : fri + 2;
-      return { from: addDays(today, fri), to: addDays(today, sun) };
-    }
-    default:
-      return null;
-  }
+  return namedWindowDates(when, now);
 }
 
 /** Local wall-clock instant in APP_TIMEZONE for today at hh:mm. */
@@ -157,6 +135,7 @@ export function matchesWhen(i: DiscoveryItem, when: DiscoveryWhen, now: Date = n
   if (when === "upcoming") return true;
   // Here Now is reserved for genuinely live: real start AND end around now.
   if (when === "now") return isHappeningNow(i, now);
+  if (when === "upnext") return Boolean(i.start_at) && Date.parse(i.start_at!) > now.getTime() && Date.parse(i.start_at!) <= now.getTime() + UP_NEXT_HOURS * 3_600_000;
   if (when === "tonight") {
     // Timed items only — a date with no published time is never "tonight".
     if (!i.start_at) return false;

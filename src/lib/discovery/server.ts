@@ -131,7 +131,7 @@ export const getVocabulary = cache(async (): Promise<Vocabulary> => {
 type Row = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 
-async function taxonomyFor(eventIds: string[], vocab: Vocabulary): Promise<Map<string, { categories: string[]; formats: string[] }>> {
+export async function taxonomyFor(eventIds: string[], vocab: Vocabulary): Promise<Map<string, { categories: string[]; formats: string[] }>> {
   const out = new Map<string, { categories: string[]; formats: string[] }>();
   const supabase = getSupabase();
   if (!supabase || eventIds.length === 0) return out;
@@ -346,6 +346,8 @@ export const getPersonalContext = cache(async (): Promise<PersonalContext | null
       for (const s of [...(t.query.categories ?? []), ...(t.query.formats ?? [])]) topicSlugs.add(s);
     }
     return {
+      followedIds: new Set([...ids(fb, "business_id"), ...ids(fe, "event_id"), ...ids(fl, "location_id")]),
+      savedIds: new Set([...ids(sb, "business_id"), ...ids(se, "event_id"), ...ids(sl, "location_id")]),
       relatedIds: new Set([...ids(fb, "business_id"), ...ids(fe, "event_id"), ...ids(fl, "location_id"), ...ids(sb, "business_id"), ...ids(se, "event_id"), ...ids(sl, "location_id"), ...positive.filter((r) => ["event", "business", "location"].includes(r.entity_type)).map((r) => r.entity_id)]),
       topicSlugs,
       areaSlugs: new Set(positive.filter((r) => r.entity_type === "area").map((r) => areaSlug.get(r.entity_id)).filter((s): s is string => Boolean(s))),
@@ -421,9 +423,37 @@ export interface SearchInterpretation {
 
 /** Text → structured query. Findmi vocabulary first, then a ZIP / State /
  * Census Place lookup for what's left; anything still unresolved is text. */
-export async function interpretSearch(text: string, base: DiscoveryQuery = {}): Promise<SearchInterpretation> {
-  const vocab = await getVocabulary();
-  const parsed = parseSearch(text, vocab);
+/** Canonical Businesses whose exact name (case-insensitive) is one of the
+ * unmatched phrases or a contiguous run of up to four of their words —
+ * "Lavazza", "LEGO", "Nike" resolve to the real Business; nothing fuzzy.
+ * Public Businesses only (listed + live). */
+export async function brandCandidates(phrases: string[]): Promise<{ slug: string; name: string }[]> {
+  const supabase = getSupabase();
+  if (!supabase || phrases.length === 0) return [];
+  const runs = new Set<string>();
+  for (const p of phrases) {
+    const w = p.split(" ").filter(Boolean).slice(0, 10);
+    for (let i = 0; i < w.length; i++) for (let n = 1; n <= 4 && i + n <= w.length; n++) runs.add(w.slice(i, i + n).join(" "));
+  }
+  const safe = [...runs].filter((r) => r.length >= 2 && /^[a-z0-9 ]+$/.test(r)).slice(0, 40);
+  if (safe.length === 0) return [];
+  const { data } = await supabase
+    .from("businesses")
+    .select("slug, name")
+    .eq("is_demo", false)
+    .eq("publication_status", "live")
+    .or(safe.map((r) => `name.ilike."${r}"`).join(","))
+    .limit(12);
+  return ((data ?? []) as { slug: string; name: string }[]).filter((b) => b.slug && b.name);
+}
+
+export async function interpretSearch(text: string, base: DiscoveryQuery = {}, opts: { now?: Date; brands?: boolean } = {}): Promise<SearchInterpretation> {
+  const baseVocab = await getVocabulary();
+  const parseOpts = { now: opts.now };
+  const first = parseSearch(text, baseVocab, parseOpts);
+  const brands = opts.brands ? await brandCandidates(first.phrases) : [];
+  const vocab = brands.length ? { ...baseVocab, brands } : baseVocab;
+  const parsed = brands.length ? parseSearch(text, vocab, parseOpts) : first;
   const query: DiscoveryQuery = mergeQueries(base, parsed.query);
   const mappings = await getProductMappings();
   let geo: SearchInterpretation["geo"] = null;

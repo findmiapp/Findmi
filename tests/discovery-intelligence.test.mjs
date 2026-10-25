@@ -181,7 +181,9 @@ test("States, ZIPs and leftover place names are recognized for Census resolution
   const n = parse("free food and drink in Nashville, TN tonight");
   assert.deepEqual(n.phrases, ["nashville"]);
   assert.equal(n.stateUsps, "TN");
-  assert.deepEqual({ free: n.query.free, when: n.query.when, categories: n.query.categories }, { free: true, when: "tonight", categories: ["food-drink"] });
+  // Discovery Engine + Map V1: "free food and drink" now resolves to the
+  // structured Free Food + Free Drinks benefits — never to Free (admission).
+  assert.deepEqual({ free: n.query.free, when: n.query.when, benefits: n.query.benefits }, { free: undefined, when: "tonight", benefits: ["free_food", "free_drinks"] });
   assert.equal(parse("Nashville Tennessee").stateUsps, "TN");
   assert.equal(parse("pizza in Nashville in").stateUsps, null, "lower-case 'in' is not Indiana");
   assert.equal(parse("pop ups near me").nearMe, true);

@@ -159,7 +159,12 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <SearchFilterAnalytics pageType="discover" filterParams={["category", "market", "area", "when"]} />
-      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
+        <Link href="/map" className="inline-flex min-h-9 items-center rounded-full border border-black/10 bg-white px-3.5 text-xs font-bold text-ink/75 hover:border-findmi hover:text-findmi-700">
+          View On Map
+        </Link>
+      </div>
       <p className="mt-1.5 text-sm text-ink/60 sm:text-base">Find what&rsquo;s happening around you.</p>
 
       {/* Mobile Discover Composition pass — replaces the old, stacked
