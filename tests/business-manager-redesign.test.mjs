@@ -361,7 +361,7 @@ test("availability migration (audited): live-only public policies, integrity tri
   assert.doesNotMatch(sql, /grant (insert|update|delete|all)[^;]*\b(anon|authenticated)\b/i, "writes stay service-role only");
   assert.doesNotMatch(sql, /\bdrop\s+(table|column)\b|\bdelete\s+from\b|\btruncate\b/i);
   const ls = readdirSync("supabase/migrations").sort();
-  assert.equal(ls.at(-1), "20261112000000_opportunity_service_model.sql", "ordered after every existing migration");
+  assert.equal(ls.at(-1), "20261113000000_revoke_legacy_follow_rpcs.sql", "ordered after every existing migration");
 });
 
 test("QR occurrence authority: all-dates participation → every date; selected dates → only approved ones; Appearance-only → its date", () => {

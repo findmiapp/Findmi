@@ -10,6 +10,7 @@ import { createHmac, createHash } from "node:crypto";
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 import { resolve as resolvePath } from "node:path";
+import { readFileSync as readSrc } from "node:fs";
 
 const js = (src) => ({ url: `data:text/javascript,${encodeURIComponent(src)}`, shortCircuit: true });
 registerHooks({
@@ -160,6 +161,49 @@ test("tally: a bad signature is still rejected before any write", async () => {
   const res = await POST({ text: async () => body, headers: { get: (h) => (h === "tally-signature" ? "forged" : null) } });
   assert.equal(res.status, 401);
   assert.equal(globalThis.__db.writes.length, 0);
+});
+
+test("tally: with no secret configured, every submission is refused before any write (fails closed)", async () => {
+  const saved = process.env.TALLY_WEBHOOK_SECRET;
+  try {
+    for (const unset of [undefined, "", "   "]) {
+      if (unset === undefined) delete process.env.TALLY_WEBHOOK_SECRET;
+      else process.env.TALLY_WEBHOOK_SECRET = unset;
+      for (const fields of [[field("membership_id", "m1"), field("Business Name", "Unsigned Co")], [field("claim_id", "c1")]]) {
+        globalThis.__db = fakeDb(world({}));
+        const body = JSON.stringify({ data: { fields } });
+        for (const sig of [null, "anything", createHmac("sha256", "").update(body).digest("base64")]) {
+          const res = await POST({ text: async () => body, headers: { get: (h) => (h === "tally-signature" ? sig : null) } });
+          assert.equal(res.status, 503, `secret=${JSON.stringify(unset)} sig=${sig}`);
+          assert.equal(JSON.stringify(res.body).includes("test-secret"), false, "never echoes a secret");
+        }
+        assert.equal(globalThis.__db.writes.length, 0);
+      }
+    }
+  } finally {
+    process.env.TALLY_WEBHOOK_SECRET = saved;
+  }
+});
+
+test("tally: a missing signature, or one made with another key, is refused for both branches", async () => {
+  for (const fields of [[field("membership_id", "m1")], [field("claim_id", "c1")]]) {
+    globalThis.__db = fakeDb(world({}));
+    const body = JSON.stringify({ data: { fields } });
+    for (const sig of [null, "", createHmac("sha256", "wrong-secret").update(body).digest("base64"), createHmac("sha256", "test-secret").update(body + " ").digest("base64")]) {
+      const res = await POST({ text: async () => body, headers: { get: (h) => (h === "tally-signature" ? sig : null) } });
+      assert.equal(res.status, 401, String(sig));
+    }
+    assert.equal(globalThis.__db.writes.length, 0);
+  }
+});
+
+test("tally: the signature check runs before parsing, and no fail-open path remains in the route", () => {
+  const src = readSrc("src/app/api/webhooks/tally/route.ts", "utf8");
+  const post = src.slice(src.indexOf("export async function POST"));
+  assert.ok(post.indexOf("checkTallySignature(") < post.indexOf("JSON.parse("), "verified before the body is parsed");
+  assert.doesNotMatch(src, /if \(!secret\) return true/);
+  assert.equal((src.match(/process\.env\.TALLY_WEBHOOK_SECRET/g) ?? []).length, 1, "one shared check");
+  assert.doesNotMatch(src, /console\.\w+\([^)]*secret/i, "the secret is never logged");
 });
 
 // ---------------------------------------------------------------- event participation

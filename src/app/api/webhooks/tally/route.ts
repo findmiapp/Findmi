@@ -9,8 +9,8 @@ import { notifyFounderOfPaidClaim } from "@/lib/notifications/claimNotification"
 //   - membership_id  -> vendor onboarding intake (Path A/B, unchanged
 //     below — see that section's own comment).
 //   - claim_id       -> the $20 claim listing-activation payment (new,
-//     see "Claim payment" section below). A SEPARATE, stricter signature
-//     check applies to this branch — see claimPaymentSignatureOk().
+//     see "Claim payment" section below).
+// Both branches require a verified signature (checkTallySignature).
 
 // Vendor onboarding intake — handles BOTH membership paths (see CLAUDE.md
 // onboarding pass, Parts 7/8/12): Path A (founder-invited, comped) and
@@ -26,40 +26,25 @@ import { notifyFounderOfPaidClaim } from "@/lib/notifications/claimNotification"
 // never publishes: publication_status is always set to pending_review,
 // left for founder approval in /admin/onboarding.
 
-// Tally's optional webhook signing — verified only when configured
-// (Settings -> Webhooks -> Signing secret on the Tally form). If unset,
-// submissions are still processed (documented as a manual-config gap in
-// the final report) rather than silently dropping all vendor intake.
-// Used ONLY by the vendor-onboarding branch below — the claim-payment
-// branch uses its own, deliberately stricter check (see
-// claimPaymentSignatureOk) since that path moves real money and must
-// never fail open.
-function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
-  const secret = process.env.TALLY_WEBHOOK_SECRET;
-  if (!secret) return true;
-  if (!signatureHeader) return false;
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
-  try {
-    return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected));
-  } catch {
-    return false;
-  }
-}
+// Tally webhook signing (Settings -> Webhooks -> Signing secret on each
+// Tally form, stored as TALLY_WEBHOOK_SECRET). Every branch of this
+// webhook FAILS CLOSED: with no secret configured nothing is accepted
+// (503), and a missing or wrong signature is refused (401), before the
+// body is even parsed. (Trust & Privacy Phase 2A: the vendor-onboarding
+// branch used to accept unsigned submissions when no secret was set.)
+// The secret is only ever used as the HMAC key; it is never logged or
+// returned.
+type TallySignatureCheck = "ok" | "unconfigured" | "invalid";
 
-/** Claim payment signature check — unlike verifySignature() above, this
- * NEVER fails open. A claim payment event moves real $20 and must never
- * be accepted without a verified signature: no secret configured means no
- * claim payment is ever accepted, full stop, regardless of what the
- * request body claims. */
-function claimPaymentSignatureOk(rawBody: string, signatureHeader: string | null): boolean {
+function checkTallySignature(rawBody: string, signatureHeader: string | null): TallySignatureCheck {
   const secret = process.env.TALLY_WEBHOOK_SECRET;
-  if (!secret) return false;
-  if (!signatureHeader) return false;
+  if (!secret || !secret.trim()) return "unconfigured";
+  if (!signatureHeader) return "invalid";
   const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
   try {
-    return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected));
+    return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected)) ? "ok" : "invalid";
   } catch {
-    return false;
+    return "invalid";
   }
 }
 
@@ -289,6 +274,14 @@ async function handleClaimPaymentSubmission(fields: TallyField[]): Promise<NextR
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
+  const signatureCheck = checkTallySignature(rawBody, request.headers.get("tally-signature"));
+  if (signatureCheck === "unconfigured") {
+    return NextResponse.json({ error: "Webhook signing is not configured." }, { status: 503 });
+  }
+  if (signatureCheck !== "ok") {
+    return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
+  }
+
   let payload: { data?: { fields?: TallyField[] } };
   try {
     payload = JSON.parse(rawBody);
@@ -300,22 +293,8 @@ export async function POST(request: NextRequest) {
   const byLabel = new Map<string, TallyField>();
   for (const f of fields) byLabel.set(normalizeLabel(f.label ?? ""), f);
 
-  // Route by identifier before touching the signature check, so the
-  // claim-payment branch can use its own stricter (never-fail-open)
-  // verification instead of the vendor-intake branch's.
   const claimId = findValue(byLabel, ["claim_id"]);
-  if (claimId) {
-    const signature = request.headers.get("tally-signature");
-    if (!claimPaymentSignatureOk(rawBody, signature)) {
-      return NextResponse.json({ error: "Invalid or unverifiable signature." }, { status: 401 });
-    }
-    return handleClaimPaymentSubmission(fields);
-  }
-
-  const signature = request.headers.get("tally-signature");
-  if (!verifySignature(rawBody, signature)) {
-    return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
-  }
+  if (claimId) return handleClaimPaymentSubmission(fields);
 
   // Hidden fields — see lib/tally.ts's documented required hidden-field keys.
   const membershipId = findValue(byLabel, ["membership_id"]);
