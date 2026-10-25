@@ -684,6 +684,13 @@ export default function MomentComposer({
       <button type="button" onClick={() => void finish("draft")} disabled={busy || uploading} className={secondaryButton}>
         {saving === "draft" ? "Saving…" : "Save Without Publishing"}
       </button>
+      {/* Trust & Privacy Phase 2A: say plainly who sees a published Moment.
+          Published Moment pages are not marked noindex (nor listed in the
+          sitemap), so search engines can still find and show them. */}
+      <p className="px-1 text-center text-metadata leading-relaxed text-ink/50">
+        Published Moments are public. Anyone can see them on Findmi, including the Businesses, Events and Places you connect, and search engines may show
+        them. Photo location data is removed. You can unpublish anytime.
+      </p>
     </>
   );
 

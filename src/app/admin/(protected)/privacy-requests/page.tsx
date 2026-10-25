@@ -2,7 +2,8 @@ import Link from "next/link";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getAdminPrivacyRequests } from "@/lib/admin/trust-queries";
 import { formatDateShort } from "@/lib/format";
-import { updatePrivacyRequest } from "./actions";
+import { applyAnalyticsRetention, updatePrivacyRequest } from "./actions";
+import { parseAnalyticsRetentionDays } from "@/lib/analytics/retention";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,9 @@ const STATUSES = [
  * requests from Account, Privacy & Data. Self-service downloads appear as
  * completed exports. Deletion is completed from the account's own Admin,
  * Users page, after checking what must be kept. */
-export default async function AdminPrivacyRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; saved?: string }> }) {
-  const { status, error, saved } = await searchParams;
+export default async function AdminPrivacyRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; saved?: string; retained?: string }> }) {
+  const { status, error, saved, retained } = await searchParams;
+  const retentionDays = parseAnalyticsRetentionDays(process.env.ANALYTICS_RETENTION_DAYS);
   const active = status === "all" ? undefined : status ?? "received";
   const admin = getAdminSupabase();
   const requests = admin ? await getAdminPrivacyRequests(admin, { status: active }) : [];
@@ -34,7 +36,28 @@ export default async function AdminPrivacyRequestsPage({ searchParams }: { searc
         from Users, then mark the request completed. Never mark a deletion completed before it happened.
       </p>
       {error && <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</p>}
-      {saved && !error && <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">Saved.</p>}
+      {saved && !error && (
+        <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          {retained !== undefined ? `Retention applied. ${Number(retained).toLocaleString()} analytics rows de-identified.` : "Saved."}
+        </p>
+      )}
+      <section className="mt-4 rounded-2xl border border-black/5 bg-white p-4">
+        <h2 className="text-sm font-semibold text-ink">Analytics Retention</h2>
+        {retentionDays === null ? (
+          <p className="mt-1 text-sm text-ink/50">
+            Not configured. Set ANALYTICS_RETENTION_DAYS (whole days, at least 30) to enable it. Findmi sets no default period.
+          </p>
+        ) : (
+          <form action={applyAnalyticsRetention} className="mt-1 flex flex-wrap items-center gap-3">
+            <p className="flex-1 text-sm text-ink/50">
+              Analytics older than {retentionDays} days lose their account link, referrer and session id. Totals are kept. This can&rsquo;t be undone.
+            </p>
+            <button type="submit" className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-black/[0.03]">
+              Apply Retention
+            </button>
+          </form>
+        )}
+      </section>
       <div className="mt-4 flex flex-wrap gap-2">
         {[...STATUSES.map(([v, l]) => [v, l] as const), ["all", "All"] as const].map(([v, l]) => (
           <Link

@@ -23,6 +23,7 @@ import { brandSeedEntries, sanitizeBrandSeed, type BrandSeed } from "@/lib/brand
 import { buildBrandProfile } from "./actions";
 import BuildProfileButton from "./BuildProfileButton";
 import AutoBuild from "./AutoBuild";
+import AutomatedToolsNotice from "@/components/trust/AutomatedToolsNotice";
 
 export const metadata: Metadata = {
   title: "Find Your Brand",
@@ -254,6 +255,7 @@ function ResultView({
         )}
         <SecondaryLink href={addHref} label="Add It Myself" />
         <SecondaryLink href="/join/brand" label="Search Again" subtle />
+        <AutomatedToolsNotice className="mt-4" />
       </StateBlock>
     );
   }

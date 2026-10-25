@@ -7,6 +7,7 @@ import { parseEventImportIntent } from "@/lib/event-import/types";
 import ChevronIcon from "@/components/ChevronIcon";
 import { getAllCategories } from "@/lib/admin/queries";
 import EventImporter from "./EventImporter";
+import AutomatedToolsNotice from "@/components/trust/AutomatedToolsNotice";
 
 export const dynamic = "force-dynamic";
 // Upload reads a flyer / screenshot with the multimodal AI step (up to 30s).
@@ -60,6 +61,7 @@ export default async function ImportEventPage({
         categories={eventCategories}
         formats={eventFormats}
       />
+      <AutomatedToolsNotice />
     </div>
   );
 }
