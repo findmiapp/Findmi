@@ -23,6 +23,7 @@ import {
   matchesMapItem,
   rankMapItem,
   relaxationCandidates,
+  taxonomyTerms,
   type Bbox,
   type MapBrand,
   type MapFeature,
@@ -62,7 +63,7 @@ export const PAGE_SIZE = 24;
 type Row = Record<string, unknown>;
 type Client = NonNullable<ReturnType<typeof getSupabase>>;
 
-const LOCATION_COLS = "id, name, slug, latitude, longitude, city, state, is_demo, logo_url, cover_image_url, market_area_id, market_id, hours, parent_location_id";
+const LOCATION_COLS = "id, name, slug, latitude, longitude, city, state, is_demo, logo_url, cover_image_url, market_area_id, market_id, hours, parent_location_id, category_id";
 
 async function inChunks<T>(ids: string[], run: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
   const out: T[] = [];
@@ -172,6 +173,22 @@ async function publicBrands(supabase: Client, ids: string[]): Promise<Map<string
     return (data ?? []) as Row[];
   });
   return new Map(rows.map((r) => [r.id as string, { id: r.id as string, slug: r.slug as string, name: r.name as string, logo: (r.logo_url as string) ?? null }]));
+}
+
+/** Category names behind Location categories and Brand (business)
+ * categories — the canonical subject of a Place or Brand ("Café / Coffee
+ * Shop", "Coffee, Tea & Beverages"), searchable as text. */
+async function categoryNames(supabase: Client, locationCategoryIds: string[], brandIds: string[]): Promise<{ name: Map<string, string>; ofBrand: Map<string, string[]> }> {
+  const links = await inChunks([...new Set(brandIds)], async (c) => ((await supabase.from("business_categories").select("business_id, category_id").in("business_id", c)).data ?? []) as Row[]);
+  const ids = [...new Set([...locationCategoryIds, ...links.map((l) => l.category_id as string)])].filter(Boolean);
+  const rows = await inChunks(ids, async (c) => ((await supabase.from("categories").select("id, name").in("id", c)).data ?? []) as Row[]);
+  const name = new Map(rows.map((r) => [r.id as string, r.name as string]));
+  const ofBrand = new Map<string, string[]>();
+  for (const l of links) {
+    const n = name.get(l.category_id as string);
+    if (n) ofBrand.set(l.business_id as string, [...(ofBrand.get(l.business_id as string) ?? []), n]);
+  }
+  return { name, ofBrand };
 }
 
 export interface LoadedItems {
@@ -287,6 +304,14 @@ export async function loadMapItems(q: DiscoveryQuery, now: Date): Promise<Loaded
     const b = one(r.business as Row | Row[]);
     if (b && b.is_demo === false && b.publication_status === "live") brands.set(b.id as string, { id: b.id as string, slug: b.slug as string, name: b.name as string, logo: (b.logo_url as string) ?? null });
   }
+  // ---- Searchable text (canonical relationships only — never inferred).
+  const rawLocations = [...occRows.map((r) => one(r.location as Row | Row[])), ...appRows.map((r) => one(r.location as Row | Row[])), ...placeRows];
+  const cats = await categoryNames(supabase, rawLocations.map((l) => (l?.category_id as string) ?? "").filter(Boolean), [...brands.keys()]);
+  const taxNames = new Map([...vocab.taxonomyById.values()].map((t) => [t.slug, t.name]));
+  const locCategory = (raw: Row | null) => (raw?.category_id ? (cats.name.get(raw.category_id as string) ?? null) : null);
+  const brandTerms = (bs: MapBrand[]) => bs.flatMap((x) => [x.name, ...(cats.ofBrand.get(x.id) ?? [])]);
+  const taxTerms = (t: { categories: string[]; formats: string[] } | undefined) => (t ? taxonomyTerms(t.categories, t.formats, taxNames, vocab.topicRows) : []);
+
   const brandsOfEvent = new Map<string, string[]>();
   for (const l of [...eventLinks].sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0))) {
     if (l.participation_scope === "selected_dates") continue;
@@ -349,7 +374,7 @@ export async function loadMapItems(q: DiscoveryQuery, now: Date): Promise<Loaded
       tickets: Boolean(ev.tickets_enabled && ev.tickets_url),
       featured: Boolean(ev.is_featured),
       created_at: (ev.created_at as string) ?? null,
-      haystack: haystackOf(ev.name as string, ev.venue_name as string, ev.organizer_name as string, loc.name, loc.city, ...b.map((x) => x.name)),
+      haystack: haystackOf(ev.name as string, ev.venue_name as string, ev.organizer_name as string, loc.name, loc.city, ...brandTerms(b), ...taxTerms(t)),
     });
   }
 
@@ -388,7 +413,7 @@ export async function loadMapItems(q: DiscoveryQuery, now: Date): Promise<Loaded
       tickets: false,
       featured: false,
       created_at: (r.created_at as string) ?? null,
-      haystack: haystackOf(r.title as string, brand.name, loc.name, loc.city),
+      haystack: haystackOf(r.title as string, loc.name, loc.city, ...brandTerms([brand]), ...taxTerms(t)),
     });
   }
 
@@ -422,7 +447,7 @@ export async function loadMapItems(q: DiscoveryQuery, now: Date): Promise<Loaded
       tickets: false,
       featured: false,
       created_at: null,
-      haystack: haystackOf(loc.name, loc.city, ...b.map((x) => x.name)),
+      haystack: haystackOf(loc.name, loc.city, locCategory(r), ...brandTerms(b)),
     });
   }
   return { items, truncated };

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { paramsToQuery, queryToParams, type DiscoveryQuery } from "@/lib/discovery/query";
-import { interpretSearch } from "@/lib/discovery/server";
+import { getVocabulary, interpretSearch } from "@/lib/discovery/server";
+import { isTaxonomyTopic } from "@/lib/discovery/map-core";
+import { subjectWordsAsText } from "@/lib/discovery/search-state";
 import { getMapPersonalSignals, runMapDiscovery } from "@/lib/discovery/map-server";
 
 export const dynamic = "force-dynamic";
@@ -33,9 +35,13 @@ export async function GET(req: NextRequest) {
   if (nl) {
     const { text: _text, ...structured } = query;
     const i = await interpretSearch(nl, structured, { now, brands: true });
-    query = { ...i.query, ...(structured.bbox ? { bbox: structured.bbox } : {}) };
-    // A named area / city replaces the viewport it was typed over.
-    if (i.geo || query.area || query.market || query.census) delete query.bbox;
+    const vocab = await getVocabulary();
+    query = subjectWordsAsText(i.query, i.parsed.recognized, structured, vocab.topicRows, isTaxonomyTopic);
+    if (structured.bbox) query.bbox = structured.bbox;
+    // A place named in the text replaces the viewport it was typed over;
+    // otherwise text never changes the geography it was typed in.
+    const typedPlace = i.geo || (query.area && query.area !== structured.area) || (query.market && query.market !== structured.market) || (query.census && query.census !== structured.census);
+    if (typedPlace) delete query.bbox;
     interpretation = {
       params: queryToParams(query).toString(),
       choices: i.choices.map((c) => ({ text: c.text, options: c.options.map((o) => ({ label: o.label, params: queryToParams(o.query).toString() })) })),

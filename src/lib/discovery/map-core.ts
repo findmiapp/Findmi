@@ -169,6 +169,35 @@ const norm = (s: string | null | undefined) =>
     .trim();
 export const haystackOf = (...parts: (string | null | undefined)[]) => ` ${norm(parts.filter(Boolean).join(" "))} `;
 
+/** Free-text relevance: every typed word must begin a word of the item's
+ * searchable text (case-, accent- and spacing-insensitive; "baby" finds
+ * "Babylist", "tabli" finds "Tabli"). Text never decides geography, time
+ * or any structured filter — those are separate dimensions. */
+export function matchesText(haystack: string, text: string | null | undefined): boolean {
+  const words = norm(text).split(" ").filter(Boolean);
+  return words.every((w) => haystack.includes(` ${w}`));
+}
+
+type TopicLike = { name: string; aliases?: string[] | null; query: { [k: string]: unknown; categories?: string[]; formats?: string[] } };
+
+/** A Topic that only names Event Categories / Formats ("Food + Drink",
+ * "Pop-Ups") — subject matter, not time or eligibility. */
+export const isTaxonomyTopic = (t: TopicLike) =>
+  Boolean(t.query.categories?.length || t.query.formats?.length) && Object.keys(t.query).every((k) => k === "categories" || k === "formats" || k === "catMode");
+
+/** The searchable words an item's own Event taxonomy carries: its Category
+ * and Format names, plus the name and aliases of every subject Topic whose
+ * stored query names one of them (the canonical Topic → taxonomy link). */
+export function taxonomyTerms(categories: readonly string[], formats: readonly string[], names: ReadonlyMap<string, string>, topics: readonly TopicLike[]): string[] {
+  if (!categories.length && !formats.length) return [];
+  const out = [...categories, ...formats].map((s) => names.get(s) ?? "");
+  for (const t of topics) {
+    if (!isTaxonomyTopic(t)) continue;
+    if (t.query.categories?.some((c) => categories.includes(c)) || t.query.formats?.some((f) => formats.includes(f))) out.push(t.name, ...(t.aliases ?? []));
+  }
+  return out.filter(Boolean);
+}
+
 const some = <T>(want: readonly T[], has: (v: T) => boolean) => want.some(has);
 const every = <T>(want: readonly T[], has: (v: T) => boolean) => want.every(has);
 const combine = <T>(mode: "any" | "all" | undefined, fallback: "any" | "all", want: readonly T[], has: (v: T) => boolean) =>
@@ -224,10 +253,7 @@ export function matchesMapItem(i: MapItem, q: DiscoveryQuery, ctx: MatchContext)
     if (q.access?.length && !q.access.some((a) => (a === "rsvp" ? i.rsvp || i.entry.includes("rsvp") : i.tickets || i.entry.includes("ticket")))) return false;
   }
   if (q.brands?.length && !combine(q.brandMode, "any", q.brands, (s) => i.brands.some((b) => b.slug === s))) return false;
-  if (q.text) {
-    const words = norm(q.text).split(" ").filter(Boolean);
-    if (words.length && !words.every((w) => i.haystack.includes(` ${w}`))) return false;
-  }
+  if (q.text && !matchesText(i.haystack, q.text)) return false;
   return true;
 }
 

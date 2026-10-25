@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { bboxAround, type Bbox, type MapFeature } from "@/lib/discovery/map-core";
 import type { MapResponse, MapResultCard as Card } from "@/lib/discovery/map-server";
 import { mapHref, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, type DiscoveryWhen } from "@/lib/discovery/query";
+import { clearedQuery, derivedFrom, hasGeo } from "@/lib/discovery/search-state";
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
 import MapFilterSheet, { type FilterOptions } from "./MapFilterSheet";
@@ -99,7 +100,15 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const [notice, setNotice] = useState<string | null>(nearRequested ? "near" : null);
   const [fit, setFit] = useState<{ bbox: Bbox; key: number } | null>(null);
   const [focus, setFocus] = useState<{ lng: number; lat: number; key: number } | null>(null);
-  const skipKey = useRef<string | null>(initialData ? queryKey({ ...initialQuery, offset: undefined }) : null);
+  // Which query the rendered results belong to. The fetch effect compares
+  // against it (not a one-shot "skip" flag), so returning to a query whose
+  // results aren't on screen always re-fetches.
+  const dataKey = useRef<string | null>(initialData ? queryKey({ ...initialQuery, offset: undefined }) : null);
+  // Filters the last typed search contributed (cleared with the search).
+  const derived = useRef<Partial<DiscoveryQuery>>({});
+  const mounted = useRef(false);
+  // Bumped by every search and every Clear: only the latest one may land.
+  const searchSeq = useRef(0);
   const ctl = useRef<AbortController | null>(null);
   const counts = useRef(new Map<string, number>());
   const listRef = useRef<HTMLDivElement>(null);
@@ -144,6 +153,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   });
 
   const key = queryKey({ ...query, offset: undefined });
+  const keyRef = useRef(key);
+  keyRef.current = key;
 
   // What covers the map: on phones the top controls and the bottom sheet,
   // so a selected marker is panned into the part that's actually visible.
@@ -157,9 +168,13 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
 
   // ---- fetch: one request per distinct query (never on map movement)
   useEffect(() => {
-    if (skipKey.current === key) {
-      skipKey.current = null;
-      if (!query.bbox && data?.features.length) {
+    const first = !mounted.current;
+    mounted.current = true;
+    if (dataKey.current === key) {
+      ctl.current?.abort();
+      setLoading(false);
+      // Server-rendered Area / place results: fit the map to them once.
+      if (first && !query.bbox && data?.features.length) {
         awaitingFit.current = true;
         setFit({ bbox: bboxOf(data.features)!, key: Date.now() });
       }
@@ -174,6 +189,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         .then((r) => (r.ok ? r.json() : null))
         .then((d: MapResponse | null) => {
           if (!d || c.signal.aborted) return;
+          dataKey.current = key;
           setData(d);
           setResults(d.results);
           counts.current.set(key, d.total);
@@ -235,7 +251,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         fetch(`/api/discovery/map?${queryToParams({ ...query, offset: undefined }).toString()}&focus=${f.locationId}`)
           .then((r) => (r.ok ? r.json() : null))
           .then((d: MapResponse | null) => {
-            if (!d) return;
+            if (!d || keyRef.current !== key) return;
             const mine = d.results.filter((c) => f.keys.includes(c.key));
             setFocusCards(mine.length ? mine : d.results);
           })
@@ -248,7 +264,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         .catch(() => undefined);
       document.querySelector(`[data-result-key="${CSS.escape(f.keys[0] ?? "")}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     },
-    [featureById, results, query]
+    [featureById, results, query, key]
   );
   const selectCard = (card: Card) => {
     selectFeature(card.featureId);
@@ -276,29 +292,46 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   );
 
   // ---- search (natural language → the same structured query)
+  // Clear removes the text AND whatever that text resolved into (a Brand,
+  // "free", "today"…); geography, the viewer's time lens and their own
+  // filters stay exactly as they were.
+  const clearSearch = () => {
+    searchSeq.current++;
+    setText("");
+    if (query.text === undefined && Object.keys(derived.current).length === 0) return;
+    const next = clearedQuery(query, derived.current);
+    derived.current = {};
+    apply(next);
+  };
   const onSearch = async (e: FormEvent) => {
     e.preventDefault();
-    const nl = text.trim();
+    const nl = text.trim().replace(/\s+/g, " ");
     if (!nl) {
-      const { text: _t, ...rest } = query;
-      apply(rest);
+      clearSearch();
       return;
     }
-    const { text: _t, ...structured } = query;
+    // A new search replaces the previous one — its derived filters too —
+    // and runs inside the geography already queried (text never moves it).
+    const seq = ++searchSeq.current;
+    const base = clearedQuery(query, derived.current);
+    const bbox = base.bbox ?? (hasGeo(base) ? undefined : (queriedBounds.current ?? viewport));
     ctl.current?.abort();
     const c = new AbortController();
     ctl.current = c;
     setLoading(true);
     try {
-      const r = await fetch(`/api/discovery/map?${queryToParams({ ...structured, bbox: structured.bbox ?? viewport, offset: undefined }).toString()}&nl=${encodeURIComponent(nl)}`, { signal: c.signal });
+      const r = await fetch(`/api/discovery/map?${queryToParams({ ...base, bbox, offset: undefined }).toString()}&nl=${encodeURIComponent(nl)}`, { signal: c.signal });
+      if (!r.ok) throw new Error(String(r.status));
       const d = (await r.json()) as MapResponse & { interpretation?: { params: string } };
-      const next: DiscoveryQuery = d.interpretation ? paramsToQuery(new URLSearchParams(d.interpretation.params)) : structured;
-      skipKey.current = queryKey({ ...next, offset: undefined });
+      if (c.signal.aborted || seq !== searchSeq.current) return;
+      const next: DiscoveryQuery = d.interpretation ? paramsToQuery(new URLSearchParams(d.interpretation.params)) : base;
+      derived.current = derivedFrom(next, base);
+      dataKey.current = queryKey({ ...next, offset: undefined });
       setSelected(null);
       setData(d);
       setResults(d.results);
       setQuery(next);
-      setText(next.text ?? "");
+      setText(nl);
       setShowSearchArea(false);
       if (next.bbox) queriedBounds.current = next.bbox as Bbox;
       if (!next.bbox) {
@@ -311,9 +344,9 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       (document.activeElement as HTMLElement | null)?.blur?.();
       setSheet("browse");
     } catch {
-      /* aborted */
+      /* aborted, or superseded by a newer request */
     } finally {
-      setLoading(false);
+      if (ctl.current === c) setLoading(false);
     }
   };
 
@@ -351,10 +384,12 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
 
   const loadMore = () => {
     if (data?.nextOffset == null) return;
+    const forKey = key;
     fetch(`/api/discovery/map?${queryToParams({ ...query, offset: data.nextOffset }).toString()}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: MapResponse | null) => {
-        if (!d) return;
+        // A page of an older query never lands in a newer result set.
+        if (!d || keyRef.current !== forKey || dataKey.current !== forKey) return;
         setResults((prev) => [...prev, ...d.results.filter((c) => !prev.some((p) => p.key === c.key))]);
         setData((prev) => (prev ? { ...prev, nextOffset: d.nextOffset } : d));
       })
@@ -399,14 +434,23 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         <input
           type="search"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            // Emptying the field (backspace, the native clear control) clears the search.
+            if (!e.target.value.trim() && (query.text !== undefined || Object.keys(derived.current).length)) clearSearch();
+          }}
           placeholder="What do you want to find?"
           enterKeyHint="search"
           autoCapitalize="none"
           autoComplete="off"
           maxLength={200}
-          className="min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink/40 focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink/40 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
         />
+        {text && (
+          <button type="button" onClick={clearSearch} aria-label="Clear search" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink/45 hover:text-ink">
+            <Icon d={CLOSE} className="h-4 w-4" />
+          </button>
+        )}
         {loading && <span aria-hidden className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-findmi/30 border-t-findmi motion-reduce:animate-none" />}
       </label>
       <button type="button" onClick={() => setFiltersOpen(true)} aria-label={filterCount ? `Filters, ${filterCount} on` : "Filters"} className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white text-ink shadow-[0_4px_18px_rgba(0,0,0,0.08)] hover:border-black/20">
@@ -439,7 +483,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         );
       })}
       {serverChips.map((c) => (
-        <button key={c.key} type="button" onClick={() => applyHref(c.href)} aria-label={`Remove ${c.label}`} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-findmi/40 bg-findmi-50 px-3.5 text-[13px] font-semibold text-findmi-700 shadow-sm hover:border-findmi">
+        <button key={c.key} type="button" onClick={() => (c.key === "text" ? clearSearch() : applyHref(c.href))} aria-label={`Remove ${c.label}`} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-findmi/40 bg-findmi-50 px-3.5 text-[13px] font-semibold text-findmi-700 shadow-sm hover:border-findmi">
           {c.label}
           <Icon d={CLOSE} className="h-3 w-3" />
         </button>
