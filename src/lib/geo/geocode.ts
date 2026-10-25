@@ -5,6 +5,7 @@ import {
   geocodeQueryFor,
   MAX_GEOCODE_ATTEMPTS,
   MAX_GEOCODE_BATCH,
+  isDue,
   normalizedAddressKey,
   timezoneFor,
   type GeocodeCandidate,
@@ -23,9 +24,11 @@ import {
 // key is set, else census. Only the Location's own public address is sent
 // — never anything about a person.
 //
-// The runner is the ONLY writer of geocoded coordinates: bounded batches
-// (≤ 25), sequential with a pause between requests, never at request time
-// and never from a migration.
+// The drain (drainGeocodeQueue) is the ONLY writer of geocoded coordinates:
+// bounded batches (≤ 25), sequential with a pause between requests, run
+// after a Location write (lib/geo/geocode-auto.ts) or by the cron safety net
+// (/api/cron/geocode) — never during a public page request, never from a
+// migration.
 
 export interface Provider {
   source: Exclude<GeocodeSource, "manual" | "import">;
@@ -87,38 +90,80 @@ export interface BatchSummary {
   ambiguous: number;
   failed: number;
   incomplete: number;
+  /** Claimed by another worker first, or the address changed mid-request. */
   skipped: number;
   remaining: number;
 }
 
-type LocRow = { id: string; name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null; geocode_status: GeocodeStatus; geocode_attempts: number; timezone: string | null };
+type LocRow = { id: string; name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null; geocode_status: GeocodeStatus; geocode_attempts: number; geocode_attempted_at: string | null; timezone: string | null };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Geocode one bounded batch of queued Locations (pending first, then
- * failed ones under the attempt cap) — or exactly `ids` when given (Admin
- * "Retry"). Each write is conditional on the address being unchanged
- * since it was read, so an edit made mid-batch never gets a stale pin. */
-export async function runGeocodeBatch(admin: SupabaseClient, opts: { limit?: number; ids?: string[]; provider?: Provider; pauseMs?: number } = {}): Promise<BatchSummary> {
+/** Provider error text as stored / shown in Admin — never a credential
+ * (a request URL inside an error message would carry the key). */
+export function safeError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : "Provider error";
+  return msg.replace(/(api_key|key|token)=[^&\s"']+/gi, "$1=[redacted]").slice(0, 300) || "Provider error";
+}
+const COLS = "id, name, address, city, state, postal_code, geocode_status, geocode_attempts, geocode_attempted_at, timezone";
+
+export interface DrainOptions {
+  /** At most this many Locations are attempted (≤ MAX_GEOCODE_BATCH). */
+  limit?: number;
+  /** Only these Locations (still only if they're queued). */
+  ids?: string[];
+  provider?: Provider;
+  pauseMs?: number;
+  now?: Date;
+  /** Admin recovery: retry failed ones now instead of waiting out backoff. */
+  ignoreBackoff?: boolean;
+}
+
+/** THE geocoding worker — every trigger (the write-path kick, the cron
+ * safety net, Admin recovery) runs this same function.
+ *
+ * The queue is the Location row itself: `pending` (new, or re-queued by the
+ * database trigger after an address change) and `failed` (transient
+ * provider trouble, retried with backoff). Ambiguous / incomplete /
+ * permanently-unmatched Locations are never retried automatically.
+ *
+ * Deduplication: before calling the provider a worker CLAIMS the row with
+ * one conditional update (attempts n → n+1 only if still n and still
+ * queued); a concurrent worker's claim matches nothing, so each attempt
+ * makes exactly one provider call. The result write is conditional on the
+ * claim and on the address being unchanged, so an address edited while the
+ * request was running never receives the old pin (the trigger has already
+ * re-queued it). */
+export async function drainGeocodeQueue(admin: SupabaseClient, opts: DrainOptions = {}): Promise<BatchSummary> {
   const provider = opts.provider ?? geocodeProvider();
+  const now = opts.now ?? new Date();
   const limit = Math.max(1, Math.min(opts.limit ?? 10, MAX_GEOCODE_BATCH));
-  const cols = "id, name, address, city, state, postal_code, geocode_status, geocode_attempts, timezone";
-  let q = admin.from("locations").select(cols).is("archived_at", null).is("trashed_at", null);
-  q = opts.ids?.length
-    ? q.in("id", opts.ids.slice(0, MAX_GEOCODE_BATCH))
-    : q.in("geocode_status", ["pending", "failed"]).lt("geocode_attempts", MAX_GEOCODE_ATTEMPTS).order("geocode_status", { ascending: false }).order("geocode_attempts", { ascending: true });
-  const { data, error } = await q.limit(limit);
+  let q = admin.from("locations").select(COLS).is("archived_at", null).is("trashed_at", null).in("geocode_status", ["pending", "failed"]).lt("geocode_attempts", MAX_GEOCODE_ATTEMPTS);
+  q = opts.ids?.length ? q.in("id", opts.ids.slice(0, MAX_GEOCODE_BATCH)) : q.order("geocode_attempted_at", { ascending: true, nullsFirst: true });
+  const { data, error } = await q.limit(opts.ids?.length ? MAX_GEOCODE_BATCH : limit * 4);
   if (error) throw new Error(`Couldn't read the geocoding queue: ${error.message}`);
-  const rows = (data ?? []) as LocRow[];
+  const rows = ((data ?? []) as LocRow[]).filter((r) => isDue(r, now, opts.ignoreBackoff === true)).slice(0, limit);
   const summary: BatchSummary = { provider: provider.source, processed: 0, resolved: 0, ambiguous: 0, failed: 0, incomplete: 0, skipped: 0, remaining: 0 };
 
   for (const [i, r] of rows.entries()) {
     if (i > 0) await sleep(opts.pauseMs ?? 250);
-    summary.processed++;
-    const write = async (patch: Record<string, unknown>) => {
-      let u = admin.from("locations").update({ ...patch, geocode_attempts: r.geocode_attempts + 1 }).eq("id", r.id);
+    const claimed = r.geocode_attempts + 1;
+    const sameAddress = <T extends { eq: (c: string, v: string) => T; is: (c: string, v: null) => T }>(u: T): T => {
       for (const k of ["address", "city", "state", "postal_code"] as const) u = r[k] === null ? u.is(k, null) : u.eq(k, r[k] as string);
-      const { data: done } = await u.select("id");
+      return u;
+    };
+    // 1. Claim (one worker per attempt).
+    const { data: claim } = await sameAddress(
+      admin.from("locations").update({ geocode_attempts: claimed, geocode_attempted_at: now.toISOString() }).eq("id", r.id).eq("geocode_status", r.geocode_status).eq("geocode_attempts", r.geocode_attempts)
+    ).select("id");
+    if (!claim?.length) {
+      summary.skipped++;
+      continue;
+    }
+    summary.processed++;
+    // 2. Result — only if our claim still stands and the address is unchanged.
+    const write = async (patch: Record<string, unknown>) => {
+      const { data: done } = await sameAddress(admin.from("locations").update(patch).eq("id", r.id).eq("geocode_attempts", claimed)).select("id");
       if (!done?.length) summary.skipped++;
       return Boolean(done?.length);
     };
@@ -131,7 +176,8 @@ export async function runGeocodeBatch(admin: SupabaseClient, opts: { limit?: num
     try {
       candidates = await provider.geocode(query.text);
     } catch (e) {
-      if (await write({ geocode_status: "failed", geocode_error: (e instanceof Error ? e.message : "Provider error").slice(0, 300) })) summary.failed++;
+      // Transient (network, timeout, 429, 5xx, key/config): retried with backoff.
+      if (await write({ geocode_status: "failed", geocode_error: safeError(e) })) summary.failed++;
       continue;
     }
     const decision = decideGeocode(candidates, r.state);
@@ -147,14 +193,22 @@ export async function runGeocodeBatch(admin: SupabaseClient, opts: { limit?: num
         ...(r.timezone ? {} : { timezone: timezoneFor(decision.timezone, r.state) }),
       });
       if (ok) summary.resolved++;
-    } else if (await write({ geocode_status: decision.status, geocode_error: decision.reason })) {
-      if (decision.status === "ambiguous") summary.ambiguous++;
-      else summary.failed++;
+    } else if (decision.status === "ambiguous") {
+      if (await write({ geocode_status: "ambiguous", geocode_error: decision.reason })) summary.ambiguous++;
+    } else if (await write({ geocode_status: "failed", geocode_error: `${decision.reason} — not retried automatically`, geocode_attempts: MAX_GEOCODE_ATTEMPTS })) {
+      // The provider answered and found nothing: retrying the same input
+      // won't help, so it waits for Admin (or an address change).
+      summary.failed++;
     }
   }
   const { count } = await admin.from("locations").select("id", { count: "exact", head: true }).is("archived_at", null).is("trashed_at", null).in("geocode_status", ["pending", "failed"]).lt("geocode_attempts", MAX_GEOCODE_ATTEMPTS);
   summary.remaining = count ?? 0;
   return summary;
+}
+
+/** Admin recovery / backfill: one bounded batch, retrying failed ones now. */
+export function runGeocodeBatch(admin: SupabaseClient, opts: Omit<DrainOptions, "ignoreBackoff"> = {}): Promise<BatchSummary> {
+  return drainGeocodeQueue(admin, { ...opts, ignoreBackoff: true });
 }
 
 /** Admin pin correction: writes the coordinate; the database trigger
@@ -166,5 +220,5 @@ export async function setManualCoordinate(admin: SupabaseClient, id: string, lat
 
 /** Admin "Retry": back into the queue with a fresh attempt budget. */
 export async function requeueLocation(admin: SupabaseClient, id: string): Promise<void> {
-  await admin.from("locations").update({ geocode_status: "pending", geocode_attempts: 0, geocode_error: null }).eq("id", id).in("geocode_status", ["failed", "ambiguous", "incomplete", "pending"]);
+  await admin.from("locations").update({ geocode_status: "pending", geocode_attempts: 0, geocode_error: null, geocode_attempted_at: null }).eq("id", id).in("geocode_status", ["failed", "ambiguous", "incomplete", "pending"]);
 }

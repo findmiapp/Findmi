@@ -22,6 +22,32 @@ export type GeocodeSource = (typeof GEOCODE_SOURCES)[number];
 export const MAX_GEOCODE_ATTEMPTS = 5;
 export const MAX_GEOCODE_BATCH = 25;
 
+/** Wait after the 1st, 2nd, 3rd and 4th failed attempt before the next
+ * automatic one (a transient provider problem). Then it stops at
+ * MAX_GEOCODE_ATTEMPTS and waits for Admin. */
+export const RETRY_BACKOFF_MINUTES = [15, 60, 6 * 60, 24 * 60] as const;
+/** A claimed `pending` attempt whose worker never finished (a serverless
+ * function cut off mid-request) becomes claimable again after this. */
+export const CLAIM_LEASE_MINUTES = 10;
+
+/** Is a queued Location due for an automatic attempt now? Only `pending`
+ * and `failed` are ever queued — ambiguous / incomplete never retry on
+ * their own. */
+export function isDue(
+  r: { geocode_status: string; geocode_attempts: number; geocode_attempted_at: string | null },
+  now: Date,
+  ignoreBackoff = false
+): boolean {
+  if (r.geocode_status !== "pending" && r.geocode_status !== "failed") return false;
+  if (r.geocode_attempts >= MAX_GEOCODE_ATTEMPTS) return false;
+  if (!r.geocode_attempted_at) return true;
+  const since = (now.getTime() - Date.parse(r.geocode_attempted_at)) / 60_000;
+  // A claimed pending row may still be in flight — never bypassed.
+  if (r.geocode_status === "pending") return since >= CLAIM_LEASE_MINUTES;
+  if (ignoreBackoff) return true;
+  return since >= RETRY_BACKOFF_MINUTES[Math.min(Math.max(r.geocode_attempts, 1), RETRY_BACKOFF_MINUTES.length) - 1];
+}
+
 export interface AddressFields {
   address?: string | null;
   city?: string | null;

@@ -1,4 +1,5 @@
 import "server-only";
+import { queueLocationGeocode } from "@/lib/geo/geocode-auto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
@@ -98,6 +99,9 @@ export async function insertUnlistedPlace(
     console.error("createInlinePlace failed:", error?.message);
     return { status: "error", error: "Couldn't add this place. Please try again." };
   }
+  // Automatic Map placement after the response (covers inline creation,
+  // quick-create and Location import — all insert through here).
+  queueLocationGeocode([created.id as string]);
 
   const row = created as { id: string; slug: string; name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null };
   return {

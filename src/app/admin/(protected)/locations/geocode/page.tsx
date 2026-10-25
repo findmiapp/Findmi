@@ -14,7 +14,9 @@ const LABEL: Record<GeocodeStatus, string> = {
   failed: "Failed",
 };
 
-type Row = { id: string; name: string; slug: string; address: string | null; city: string | null; state: string | null; postal_code: string | null; geocode_status: GeocodeStatus; geocode_error: string | null; geocode_attempts: number };
+type Row = { id: string; name: string; slug: string; address: string | null; city: string | null; state: string | null; postal_code: string | null; geocode_status: GeocodeStatus; geocode_error: string | null; geocode_attempts: number; geocode_attempted_at?: string | null };
+
+const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null);
 
 /**
  * Locations → Map Placement. Canonical coordinates are durable Location
@@ -32,10 +34,14 @@ export default async function GeocodePage({ searchParams }: { searchParams: Prom
     })
   );
   const missing = counts.some((c) => c.error);
-  const { data } = missing
-    ? { data: [] }
-    : await admin.from("locations").select("id, name, slug, address, city, state, postal_code, geocode_status, geocode_error, geocode_attempts").is("archived_at", null).is("trashed_at", null).in("geocode_status", ["ambiguous", "failed", "incomplete"]).order("name").limit(60);
-  const attention = (data ?? []) as Row[];
+  const attentionRes = missing
+    ? { data: [], error: null }
+    : await admin.from("locations").select("id, name, slug, address, city, state, postal_code, geocode_status, geocode_error, geocode_attempts, geocode_attempted_at").is("archived_at", null).is("trashed_at", null).in("geocode_status", ["ambiguous", "failed", "incomplete"]).order("name").limit(60);
+  // The automation migration adds geocode_attempted_at; until it's applied
+  // the read fails and the page says so.
+  const automationMissing = Boolean(attentionRes.error);
+  const attention = (attentionRes.data ?? []) as Row[];
+  const queued = counts.find((c) => c.s === "pending")?.count ?? 0;
   const provider = process.env.GEOCODER === "census" || !process.env.GEOCODIO_API_KEY ? "U.S. Census geocoder (keyless)" : "Geocodio";
 
   return (
@@ -45,8 +51,9 @@ export default async function GeocodePage({ searchParams }: { searchParams: Prom
       </Link>
       <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink">Map Placement</h1>
       <p className="mt-1 text-sm text-ink/60">
-        Places each Location on the Findmi Map from its own address. Runs in small batches, only when you ask. A changed address clears its pin and
-        re-queues it automatically. Being on the map never makes a Location publicly listed.
+        Locations are placed on the Findmi Map automatically from their own address — right after they&rsquo;re saved, with a scheduled run as a
+        safety net. A changed address clears the old pin and is placed again automatically. Only the exceptions below need you. Being on the map never
+        makes a Location publicly listed.
       </p>
 
       {result && <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{result}</p>}
@@ -66,22 +73,16 @@ export default async function GeocodePage({ searchParams }: { searchParams: Prom
             ))}
           </dl>
 
-          <form action={placeNextBatch} className="mt-5 flex flex-wrap items-center gap-2">
-            <select name="limit" defaultValue="10" className="min-h-11 rounded-full border border-black/10 bg-white px-3 text-sm">
-              {[5, 10, MAX_GEOCODE_BATCH].map((n) => (
-                <option key={n} value={n}>
-                  Next {n}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className="min-h-11 rounded-full bg-findmi px-5 text-sm font-bold text-white hover:bg-findmi-600">
-              Place On Map
-            </button>
-            <span className="text-xs text-ink/50">
-              Using {provider}. Failed ones retry up to {MAX_GEOCODE_ATTEMPTS} times.
-            </span>
-          </form>
-
+          {automationMissing && (
+            <p className="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-sm text-amber-900">
+              Map placement is paused until migration 20261115000000_location_geocode_automation.sql is applied.
+            </p>
+          )}
+          {queued > 0 && !automationMissing && (
+            <p className="mt-5 text-sm text-ink/60">
+              {queued} {queued === 1 ? "Location is" : "Locations are"} queued and will be placed automatically.
+            </p>
+          )}
           <h2 className="mt-8 font-display text-lg font-semibold text-ink">Needs Attention</h2>
           {attention.length === 0 ? (
             <p className="mt-2 text-sm text-ink/60">Nothing needs attention.</p>
@@ -98,6 +99,10 @@ export default async function GeocodePage({ searchParams }: { searchParams: Prom
                       <p className="mt-1 text-xs font-semibold text-amber-800">
                         {LABEL[r.geocode_status]}
                         {r.geocode_error ? ` — ${r.geocode_error}` : ""}
+                      </p>
+                      <p className="text-[11px] text-ink/45">
+                        {r.geocode_status === "failed" && r.geocode_attempts < MAX_GEOCODE_ATTEMPTS ? "Retrying automatically. " : r.geocode_status === "failed" ? "Not retried automatically. " : ""}
+                        {when(r.geocode_attempted_at) ? `Last tried ${when(r.geocode_attempted_at)}.` : ""}
                       </p>
                     </div>
                     <form action={retryLocation}>
@@ -125,6 +130,28 @@ export default async function GeocodePage({ searchParams }: { searchParams: Prom
               ))}
             </ul>
           )}
+          <details className="mt-8 rounded-2xl border border-black/5 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink/50">Recovery Tools</summary>
+            <div className="border-t border-black/5 px-4 py-3">
+              <p className="mb-3 text-xs text-ink/55">Not needed day to day. Places the next queued Locations now (for example after an outage), including failed ones still within their retry budget.</p>
+          <form action={placeNextBatch} className="flex flex-wrap items-center gap-2">
+            <select name="limit" defaultValue="10" className="min-h-11 rounded-full border border-black/10 bg-white px-3 text-sm">
+              {[5, 10, MAX_GEOCODE_BATCH].map((n) => (
+                <option key={n} value={n}>
+                  Next {n}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="min-h-11 rounded-full bg-findmi px-5 text-sm font-bold text-white hover:bg-findmi-600">
+              Place On Map
+            </button>
+            <span className="text-xs text-ink/50">
+              Using {provider}. Temporary failures retry automatically up to {MAX_GEOCODE_ATTEMPTS} times, with growing gaps.
+            </span>
+          </form>
+            </div>
+          </details>
+
         </>
       )}
     </div>

@@ -1,5 +1,6 @@
 "use server";
 
+import { queueLocationGeocode } from "@/lib/geo/geocode-auto";
 import { recordProvenance } from "@/lib/provenance";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -166,6 +167,10 @@ export async function saveLocation(id: string | null, formData: FormData) {
     await recordProvenance(supabase, { entityType: "location", entityId: data.id, sourceKind: "findmi", sourceMethod: "admin_manual" });
   }
 
+  // Automatic Map placement (only does work if the Location is queued —
+  // new, or its address just changed).
+  queueLocationGeocode([locationId]);
+
   revalidatePath("/admin/locations");
   revalidatePath(`/location/${slug}`);
   revalidatePath("/locations");
@@ -247,6 +252,7 @@ export async function createInlineAdminLocation(formData: FormData): Promise<Cre
   if (error || !created) {
     return { status: "error", error: "Couldn't create that location. Please try again." };
   }
+  queueLocationGeocode([created.id]);
 
   revalidatePath("/admin/locations");
   revalidatePath("/locations");

@@ -1,5 +1,6 @@
 "use server";
 
+import { queueLocationGeocode } from "@/lib/geo/geocode-auto";
 import { recordProvenance } from "@/lib/provenance";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -322,6 +323,8 @@ export async function createMemberLocation(formData: FormData) {
   if (error || !created) fail("Couldn't add this Location. Please try again.");
 
   const locationId = (created as { id: string }).id;
+  // Automatic Map placement after the response (never blocks creation).
+  queueLocationGeocode([locationId]);
   // Submitted by a member of the public (management is a separate request).
   await recordProvenance(admin, { entityType: "location", entityId: locationId, sourceKind: "community", sourceMethod: "member_submitted" });
   // "I Manage This Location" — a request for Admin review, never a grant.
