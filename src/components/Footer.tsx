@@ -36,29 +36,34 @@ export default function Footer() {
               </p>
               <ul className="mt-3 space-y-2 text-sm text-ink/65">
                 <li><Link href="/join/business" className="hover:text-ink">Join Findmi</Link></li>
-                <li><Link href="/about" className="hover:text-ink">About</Link></li>
               </ul>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Legal
+                Findmi
               </p>
               <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
+                <li><Link href="/about" className="hover:text-ink">About</Link></li>
                 <li><Link href="/terms" className="hover:text-ink">Terms</Link></li>
+                <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
                 <li><Link href="/privacy-choices" className="hover:text-ink">Privacy Choices</Link></li>
               </ul>
             </div>
           </div>
         </div>
 
-        {/* Mobile: compact secondary links only — bottom nav handles primary. */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink/55 md:hidden">
-          <Link href="/about" className="hover:text-ink">About</Link>
-          <Link href="/join/business" className="hover:text-ink">For Business</Link>
-          <Link href="/privacy" className="hover:text-ink">Privacy</Link>
-          <Link href="/terms" className="hover:text-ink">Terms</Link>
-          <Link href="/privacy-choices" className="hover:text-ink">Privacy Choices</Link>
+        {/* Mobile: compact secondary links only (the drawer is primary
+            navigation), with the legal links on their own row. */}
+        <div className="flex flex-col gap-3 md:hidden">
+          <nav aria-label="Findmi" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium text-ink/70">
+            <Link href="/about" className="hover:text-ink">About</Link>
+            <Link href="/join/business" className="hover:text-ink">For Business</Link>
+          </nav>
+          <nav aria-label="Legal" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink/60">
+            <Link href="/terms" className="hover:text-ink">Terms</Link>
+            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
+            <Link href="/privacy-choices" className="hover:text-ink">Privacy Choices</Link>
+          </nav>
         </div>
 
         <p className="mt-6 text-xs text-ink/40 md:mt-10">

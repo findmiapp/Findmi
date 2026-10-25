@@ -11,14 +11,17 @@ import {
 } from "@/lib/privacy/consent-client";
 import { ANALYTICS_IDENTIFIER_DAYS } from "./copy";
 
-/** One switch row. A real <button role="switch"> so keyboard and screen
- * readers get on/off state; `locked` renders the Essential row. */
+/** One choice row. A real <button role="switch"> so keyboard and screen
+ * readers get on/off state; `locked` renders the Essential row and
+ * `unavailable` a choice that can't apply right now (shown as a plain
+ * label, never as a greyed-out switch). */
 function ChoiceRow({
   title,
   description,
   note,
   checked,
   locked,
+  unavailable,
   disabled,
   onChange,
 }: {
@@ -27,6 +30,7 @@ function ChoiceRow({
   note?: string | null;
   checked: boolean;
   locked?: boolean;
+  unavailable?: string;
   disabled?: boolean;
   onChange?: (next: boolean) => void;
 }) {
@@ -44,6 +48,8 @@ function ChoiceRow({
       </div>
       {locked ? (
         <span className="mt-0.5 shrink-0 rounded-full bg-black/[0.05] px-3 py-1 text-xs font-semibold text-ink/60">Always On</span>
+      ) : unavailable ? (
+        <span className="mt-0.5 shrink-0 rounded-full bg-black/[0.05] px-3 py-1 text-xs font-semibold text-ink/60">{unavailable}</span>
       ) : (
         <button
           type="button"
@@ -69,12 +75,29 @@ function ChoiceRow({
 
 /** Privacy Choices: the full set of choices, shared by the /privacy-choices
  * page and the Manage Privacy Choices sheet. Every switch maps to real
- * behavior (lib/privacy/consent.ts); nothing here is decorative. */
-export default function PrivacyChoicesPanel({ onSaved, onCancel }: { onSaved?: () => void; onCancel?: () => void }) {
+ * behavior (lib/privacy/consent.ts); nothing here is decorative.
+ *
+ * Analytics works signed out and signed in (device, plus account when
+ * signed in). Personalized Discovery is account-only: signed out it's a
+ * plain "When Signed In" label, not a disabled switch. Findmi sends no
+ * marketing email, so there's no marketing switch at all (the stored
+ * account preference and the API field are untouched).
+ *
+ * `onNavigate` lets the Manage sheet close itself when the Privacy Policy
+ * link is followed: the sheet lives in the persistent layout, so without
+ * it the new page loaded underneath a still-open dialog. */
+export default function PrivacyChoicesPanel({
+  onSaved,
+  onCancel,
+  onNavigate,
+}: {
+  onSaved?: () => void;
+  onCancel?: () => void;
+  onNavigate?: () => void;
+}) {
   const [state, setState] = useState<PrivacyChoicesState | null>(null);
   const [analytics, setAnalytics] = useState(false);
   const [personalized, setPersonalized] = useState(true);
-  const [marketing, setMarketing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -87,7 +110,6 @@ export default function PrivacyChoicesPanel({ onSaved, onCancel }: { onSaved?: (
         setState(s);
         setAnalytics((s.analytics ?? readClientDeviceChoice()) === "granted");
         setPersonalized(s.account?.personalizedDiscovery ?? true);
-        setMarketing(s.account?.marketingEmail ?? false);
       })
       .catch(() => {
         if (cancelled) return;
@@ -106,7 +128,7 @@ export default function PrivacyChoicesPanel({ onSaved, onCancel }: { onSaved?: (
     try {
       const next = await savePrivacyChoices({
         analytics: analytics ? "granted" : "denied",
-        ...(state?.signedIn ? { personalizedDiscovery: personalized, marketingEmail: marketing } : {}),
+        ...(state?.signedIn ? { personalizedDiscovery: personalized } : {}),
       });
       setState(next);
       setSaved(true);
@@ -146,24 +168,15 @@ export default function PrivacyChoicesPanel({ onSaved, onCancel }: { onSaved?: (
           description={
             signedIn
               ? "Ranks discovery using the pages you follow and save and the items you organize. Turning this off doesn't change your saves, follows or lists."
-              : "Available when you're signed in. Findmi doesn't personalize discovery for signed-out visitors."
+              : "Ranks discovery using the pages you follow and save. Available when you're signed in; Findmi doesn't personalize discovery for signed-out visitors."
           }
           checked={signedIn ? personalized : false}
-          disabled={!signedIn}
+          unavailable={state && !signedIn ? "When Signed In" : undefined}
+          disabled={!state}
           onChange={setPersonalized}
         />
-        <ChoiceRow
-          title="Marketing Emails"
-          description={
-            signedIn
-              ? "Findmi doesn't send marketing emails today. If that changes, they'll only go to you while this is on. Account and service messages aren't affected."
-              : "Available when you're signed in."
-          }
-          checked={signedIn ? marketing : false}
-          disabled={!signedIn}
-          onChange={setMarketing}
-        />
       </div>
+      <p className="mt-1 text-xs leading-relaxed text-ink/50">Findmi doesn&rsquo;t send marketing emails. Account and service emails aren&rsquo;t affected by these choices.</p>
 
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-600">
@@ -194,7 +207,7 @@ export default function PrivacyChoicesPanel({ onSaved, onCancel }: { onSaved?: (
             Cancel
           </button>
         )}
-        <Link href="/privacy" className="ml-auto text-sm font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
+        <Link href="/privacy" onClick={() => onNavigate?.()} className="ml-auto text-sm font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
           Privacy Policy
         </Link>
       </div>

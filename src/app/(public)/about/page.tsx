@@ -6,7 +6,7 @@ import { getSiteContactInfo } from "@/lib/contact-info";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "Findmi helps you discover businesses and always know where to find them next.",
+  description: "Findmi connects what you discover online with where you can experience it in the real world.",
 };
 
 // Menu Polish + Editable About pass — server-rendered from the founder-
@@ -19,9 +19,35 @@ export const metadata: Metadata = {
 // duplicate About-specific email field, and is hidden entirely when no
 // email is configured — never a fabricated address or a dead mailto:.
 const primaryCtaClass =
-  "flex h-12 flex-1 items-center justify-center rounded-xl bg-findmi px-5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center sm:w-auto sm:flex-1 sm:items-center justify-center rounded-xl bg-findmi px-5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 const secondaryCtaClass =
-  "flex h-12 flex-1 items-center justify-center rounded-xl border border-black/10 px-5 text-center text-sm font-bold uppercase tracking-wide text-ink transition hover:border-ink/30";
+  "flex h-12 w-full items-center sm:w-auto sm:flex-1 sm:items-center justify-center rounded-xl border border-black/10 px-5 text-center text-sm font-bold uppercase tracking-wide text-ink transition hover:border-ink/30";
+
+// Fixed About content (Legal content pass, Oct 2026): what Findmi does for
+// people and for businesses today. Not founder-editable on purpose: it
+// describes the product's actual capabilities.
+const ABOUT_AUDIENCES = [
+  {
+    id: "about-people",
+    title: "For People",
+    points: [
+      "Discover brands, businesses, places, products and Events near you",
+      "See where a business will be next, and what's happening Here Now",
+      "Follow and save what you love, and organize it your way",
+      "Share Moments from the places and experiences you find",
+    ],
+  },
+  {
+    id: "about-businesses",
+    title: "For Businesses",
+    points: [
+      "One connected presence for your brand, products, locations, Events and Appearances",
+      "Publish where you'll be, so customers can find you",
+      "Use Findmi's business tools, including products, Opportunities and messaging",
+      "Connect with customers, venues, organizers and other businesses",
+    ],
+  },
+] as const;
 
 export default async function AboutPage() {
   const overrides = await getSiteSections("about");
@@ -31,7 +57,7 @@ export default async function AboutPage() {
   const showContact = contact.visible && Boolean(contactInfo.email);
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
+    <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 sm:py-16">
       {hero.eyebrow && (
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">{hero.eyebrow}</p>
       )}
@@ -44,6 +70,35 @@ export default async function AboutPage() {
         </p>
       ))}
 
+      <div className="mt-10 grid gap-4 sm:grid-cols-2">
+        {ABOUT_AUDIENCES.map((a) => (
+          <section key={a.title} aria-labelledby={a.id} className="rounded-2xl border border-black/5 bg-white p-5">
+            <h2 id={a.id} className="font-display text-lg font-semibold tracking-tight text-ink">
+              {a.title}
+            </h2>
+            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink/70">
+              {a.points.map((p) => (
+                <li key={p} className="flex gap-2">
+                  <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-findmi" />
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <section aria-labelledby="about-pages" className="mt-10">
+        <h2 id="about-pages" className="font-display text-lg font-semibold tracking-tight text-ink">
+          About The Pages On Findmi
+        </h2>
+        <p className="mt-2 text-base leading-relaxed text-ink/70">
+          Some pages are managed by the business or organization itself. Others were compiled by Findmi from publicly available information or added
+          by people who use Findmi, so the business can claim them later. Each page&rsquo;s About This Page section shows which kind it is. Anyone
+          can suggest a correction, request removal or report a page, for free.
+        </p>
+      </section>
+
       <div className="mt-10 flex flex-col gap-3 sm:flex-row">
         <Link href={hero.ctaUrl} className={primaryCtaClass}>
           {hero.ctaLabel}
@@ -52,6 +107,22 @@ export default async function AboutPage() {
           {hero.secondaryCtaLabel}
         </Link>
       </div>
+
+      <p className="mt-8 text-sm text-ink/55">
+        Findmi&rsquo;s{" "}
+        <Link href="/terms" className="font-medium text-ink/75 underline underline-offset-2 hover:text-ink">
+          Terms of Service
+        </Link>
+        ,{" "}
+        <Link href="/privacy" className="font-medium text-ink/75 underline underline-offset-2 hover:text-ink">
+          Privacy Policy
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy-choices" className="font-medium text-ink/75 underline underline-offset-2 hover:text-ink">
+          Privacy Choices
+        </Link>{" "}
+        explain how Findmi works with you.
+      </p>
 
       {showContact && (
         <div className="mt-14 rounded-2xl border border-black/10 bg-black/[0.015] p-6">

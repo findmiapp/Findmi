@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
 import { OPEN_PRIVACY_CHOICES_EVENT, PRIVACY_CHOICE_CHANGED_EVENT, shouldShowFirstVisitCard } from "@/lib/privacy/consent";
 import {
   readClientDeviceChoice,
@@ -60,6 +61,14 @@ export default function PrivacyChoicesRoot({ authenticated }: { authenticated: b
   const [pending, setPending] = useState<"granted" | "denied" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const pathname = usePathname();
+
+  // A route change (the Privacy Policy link, or any other navigation)
+  // always closes the Manage sheet: it lives in the persistent layout, so
+  // otherwise it would stay open over the new page with scrolling locked.
+  useEffect(() => {
+    setSheetOpen(false);
+  }, [pathname]);
 
   const refreshCard = useCallback(() => {
     setShowCard(shouldShowFirstVisitCard({ deviceChoice: readClientDeviceChoice(), gpc: readClientGpc() }));
@@ -178,14 +187,14 @@ export default function PrivacyChoicesRoot({ authenticated }: { authenticated: b
           </button>
         </section>
       )}
-      {sheetOpen && <PrivacyChoicesSheet onClose={closeSheet} />}
+      {sheetOpen && <PrivacyChoicesSheet onClose={closeSheet} onNavigate={() => setSheetOpen(false)} />}
     </>
   );
 }
 
 /** Manage Privacy Choices as a dialog. Escape and the backdrop close it
  * without saving; Tab stays inside while it's open. */
-function PrivacyChoicesSheet({ onClose }: { onClose: () => void }) {
+function PrivacyChoicesSheet({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -236,7 +245,7 @@ function PrivacyChoicesSheet({ onClose }: { onClose: () => void }) {
         </h2>
         <p className="mt-1 text-sm text-ink/60">Choose what Findmi may use beyond what it needs to work. You can change this at any time.</p>
         <div className="mt-2">
-          <PrivacyChoicesPanel onSaved={onClose} onCancel={onClose} />
+          <PrivacyChoicesPanel onSaved={onClose} onCancel={onClose} onNavigate={onNavigate} />
         </div>
       </div>
     </div>,

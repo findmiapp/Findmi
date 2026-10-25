@@ -127,7 +127,7 @@ export default async function PrivacyAndDataPage({
               <form action={submitPrivacyRequest} className="mt-2 flex flex-col gap-3">
                 <input type="hidden" name="request_type" value="delete" />
                 <p className="text-body text-muted">
-                  Findmi reviews each deletion request. Your account, profile, saves, follows and private Moments are deleted; some records may be kept
+                  Findmi reviews each deletion request. Your account, profile, saves, follows and Moments (with their photos) are deleted; some records may be kept
                   where Findmi needs them, such as order and payment records. Pages you own need a new owner first. You&rsquo;ll see the status here.
                 </p>
                 <label className="block">

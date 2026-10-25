@@ -9,9 +9,11 @@
 // Two sections: "hero" (heading/intro/highlight/body/CTAs) and "contact"
 // (heading/copy/action label — the actual email destination is NOT
 // stored here, see resolveAboutContact below). Every default value below
-// is the exact current live About copy, so an unconfigured/absent row
-// renders byte-identical to today (Section 4's field-by-field fallback
-// pattern, same as resolveSection()).
+// is the default live About copy (an unconfigured/absent row renders it),
+// using Section 4's field-by-field fallback pattern, same as
+// resolveSection(). Legal content pass (Oct 2026): defaults rewritten to
+// describe Findmi today; the fixed "For People" / "For Businesses" /
+// "About The Pages On Findmi" sections live in about/page.tsx.
 import type { SiteSection } from "./types";
 
 export interface AboutHero {
@@ -41,11 +43,10 @@ const DEFAULT_HERO: AboutHero = {
   eyebrow: null,
   heading: "About Findmi",
   intro:
-    "Findmi helps you discover brands, vendors, mobile businesses, products, events, pop-ups, markets, and places, with one question always in mind:",
-  highlight: "Where can I find this business next?",
+    "Findmi connects the things you discover online with the places you can experience them in the real world. It's built around one simple question:",
+  highlight: "Where can I find it?",
   bodyParagraphs: [
-    "A lot of the best businesses don't sit still. Coffee carts, food trucks, flower stands, and small makers move between markets, pop-ups, and events every week. Findmi connects the dots: browse a business and see where they'll be next, or browse an event and see who's going to be there.",
-    "For businesses, Findmi is one home for what you sell, where you'll be next, and how customers can reach you, instead of juggling five different social posts to announce a location.",
+    "The best brands, makers, pop-ups and places don't sit still. A coffee cart moves between markets, a brand shows up at a festival, a product turns up on a shelf across town. Findmi follows those moves, so you can see what's happening, where, and when.",
   ],
   ctaLabel: "Explore Findmi",
   ctaUrl: "/discover",
