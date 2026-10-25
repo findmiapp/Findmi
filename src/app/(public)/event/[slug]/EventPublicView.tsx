@@ -21,6 +21,8 @@ import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
+import AboutThisPage from "@/components/trust/AboutThisPage";
+import { getPageTrust } from "@/lib/provenance";
 import MessageButton from "@/components/MessageButton";
 import EntityActionBar from "@/components/public-actions/EntityActionBar";
 import { loadPublicActions } from "@/lib/public-actions";
@@ -406,6 +408,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // Public Actions — only what this Event's managers configured. Event
   // Participation is the existing application (while applications are open);
   // General Inquiry is the existing Contact Organizer form.
+  // Trust & Privacy Phase 2A — About This Page + honest message routing.
+  const pageTrust = await getPageTrust(getAdminSupabase(), "event", event.id, { hostBusinessId: event.host_business_id });
+  const noRecipient = pageTrust ? pageTrust.state !== "managed" : false;
   const publicActions = await loadPublicActions(getAdminSupabase(), "event", event.id, {
     generalInquiry: Boolean(showContact),
     participation: Boolean(event.vendor_applications_enabled && !vendorDeadlinePassed),
@@ -898,6 +903,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             targetName={event.name}
             label="Contact organizer"
             className={quietLinkClass}
+            noRecipient={noRecipient}
             track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
           />
         )}
@@ -929,7 +935,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
     <section id="details" className="scroll-mt-24">
       {contactLinks}
       {/* Claim foundation pass — deliberately last, small, and muted. */}
-      <div className={contactLinks ? "mt-6" : ""}>
+      <AboutThisPage entityType="event" entityId={event.id} entityName={event.name} trust={pageTrust} className={contactLinks ? "mt-6" : ""} />
+      <div className="mt-4">
         <ClaimButton type="event" slug={event.slug} entityName={event.name} />
       </div>
     </section>
@@ -979,6 +986,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at, date: calendarDate(o) ?? o.occurrence_date })) : undefined}
             opportunityCount={publicActions.opportunityCount}
             className="mt-3"
+            noRecipient={noRecipient}
           />
         </div>
       </div>

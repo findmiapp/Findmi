@@ -17,9 +17,11 @@ import {
   isListingStatus,
   isListingVisibility,
   isRecipientStatus,
+  isServiceModel,
   planRecipientSend,
   validateListingInput,
   type ListingFields,
+  type ServiceModel,
   type ListingStatus,
   type RecipientStatus,
 } from "@/lib/opportunity-listings-domain";
@@ -100,6 +102,14 @@ function readListingForm(formData: FormData, legacy: LegacyBridgePricing) {
   });
 }
 
+/** Trust & Privacy Phase 2A — platform vs Findmi-managed (see
+ * SERVICE_MODELS). Anything unexpected is treated as "platform", the
+ * conservative default that never claims Findmi coordinates. */
+function readServiceModel(formData: FormData): ServiceModel {
+  const v = str(formData, "service_model");
+  return isServiceModel(v) ? v : "platform";
+}
+
 /** What createOpportunity/saveOpportunity return when a save is rejected.
  * OpportunityForm keeps every entered value on screen and shows the error
  * (Builder UX pass) — a rejected save never redirects back to a form
@@ -168,7 +178,7 @@ export async function createOpportunity(formData: FormData): Promise<SaveResult 
 
   const parsed = readListingForm(formData, legacy);
   if (!parsed.ok) return { error: parsed.error };
-  const fields = parsed.value;
+  const fields = { ...parsed.value, service_model: readServiceModel(formData) };
   const supabase = getAdminSupabase();
   if (!supabase) return { error: "Storage isn't configured on the server." };
   const refError = await checkReferences(supabase, fields);
@@ -245,7 +255,7 @@ export async function saveOpportunity(id: string, formData: FormData): Promise<S
 
   const parsed = readListingForm(formData, legacy);
   if (!parsed.ok) return { error: parsed.error };
-  const fields = parsed.value;
+  const fields = { ...parsed.value, service_model: readServiceModel(formData) };
   const refError = await checkReferences(supabase, fields);
   if (refError) return { error: refError };
 

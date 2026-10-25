@@ -37,6 +37,8 @@ export default function InquireButton({
   productId,
   className,
   track,
+  noRecipient = false,
+  findmiLabel = "Ask Findmi About This Page",
 }: {
   targetType: "business" | "event" | "location";
   targetId: string;
@@ -61,7 +63,16 @@ export default function InquireButton({
    * (Business Inquire, Location Contact) keeps working unchanged without
    * passing this. */
   track?: Omit<TrackEventPayload, "referrer" | "utm_source" | "utm_medium" | "utm_campaign">;
+  /** Unmanaged-entity communications (Trust & Privacy Phase 2A): true when
+   * nobody manages this page on Findmi, so there is no one to deliver a
+   * direct message to. The button then reads "Ask Findmi About This Page"
+   * and the form says, before sending, that the message goes to Findmi.
+   * The server re-checks and routes the same way regardless. */
+  noRecipient?: boolean;
+  /** Shorter trigger text for tight spaces (e.g. a small pill). */
+  findmiLabel?: string;
 }) {
+  const buttonLabel = noRecipient ? findmiLabel : label;
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [name, setName] = useState("");
@@ -106,11 +117,11 @@ export default function InquireButton({
     buttonRef.current?.focus();
   }
 
-  const needsTopicChoice = Boolean(topics && topics.length > 1);
+  const needsTopicChoice = !noRecipient && Boolean(topics && topics.length > 1);
   // Communication boundary — commercial topics (Wholesale, Catering /
   // Booking, Event / Pop-Up, Collaboration) go to Findmi, never directly
   // to the Business; the form says so before and after sending.
-  const viaFindmi = !productId && targetType === "business" && isCommercialInquiryTopic(topic);
+  const viaFindmi = !noRecipient && !productId && targetType === "business" && isCommercialInquiryTopic(topic);
   const canSubmit = Boolean(name.trim() && email.trim() && message.trim() && (!needsTopicChoice || topic));
 
   async function submit() {
@@ -133,7 +144,7 @@ export default function InquireButton({
             name,
             email,
             phone: phone || undefined,
-            topic: topics ? topic || undefined : undefined,
+            topic: topics && !noRecipient ? topic || undefined : undefined,
             message,
             companySite: companySite || undefined,
           });
@@ -158,7 +169,7 @@ export default function InquireButton({
   return (
     <>
       <button ref={buttonRef} type="button" onClick={openModal} className={className}>
-        {label}
+        {buttonLabel}
       </button>
 
       {mounted &&
@@ -169,12 +180,12 @@ export default function InquireButton({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label={`${label}: ${targetName}`}
+              aria-label={`${buttonLabel}: ${targetName}`}
               className="relative w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-xl sm:max-w-sm sm:rounded-3xl sm:pb-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-                  {sent ? (sentToFindmi ? "Request sent to Findmi" : "Message sent") : `${label}: ${targetName}`}
+                  {sent ? (sentToFindmi ? "Sent to Findmi" : "Message sent") : noRecipient ? "Ask Findmi About This Page" : `${label}: ${targetName}`}
                 </h2>
                 <button
                   type="button"
@@ -191,11 +202,11 @@ export default function InquireButton({
                   <p className="text-sm text-ink/60">
                     {sentToFindmi ? (
                       <>
-                        Thanks. Findmi has your request about {targetName} and will review it and follow up by email. It
-                        wasn&rsquo;t sent directly to {targetName}.
+                        Thanks. Findmi has your message about {targetName}. It wasn&rsquo;t sent to {targetName}. Findmi may
+                        follow up by email.
                       </>
                     ) : (
-                      <>Thanks, we&rsquo;ll be in touch. Your message was sent to {targetName} on Findmi.</>
+                      <>Thanks. Your message was sent to {targetName} on Findmi, and any reply will come from them.</>
                     )}
                   </p>
                   <button
@@ -232,7 +243,7 @@ export default function InquireButton({
                     <span className={labelClass}>Email</span>
                     <input autoCapitalize="none" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
                   </label>
-                  {topics && topics.length === 1 && (
+                  {!noRecipient && topics && topics.length === 1 && (
                     // Single enabled topic — auto-selected (see `topic`'s
                     // initial state above), shown as plain context text
                     // rather than a one-item picker.
@@ -240,7 +251,7 @@ export default function InquireButton({
                       Topic: <span className="font-medium text-ink/70">{BUSINESS_INQUIRY_TOPIC_LABELS[topics[0]]}</span>
                     </p>
                   )}
-                  {topics && topics.length > 1 && (
+                  {!noRecipient && topics && topics.length > 1 && (
                     <div className="block">
                       <span className={labelClass}>Inquiry topic</span>
                       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Inquiry topic">
@@ -266,10 +277,17 @@ export default function InquireButton({
                       </div>
                     </div>
                   )}
+                  {noRecipient && (
+                    <p className="rounded-xl bg-findmi-50 px-3.5 py-2.5 text-xs leading-relaxed text-findmi-700">
+                      {targetName} doesn&rsquo;t manage this page on Findmi yet, so your message goes to Findmi, not to {targetName}.
+                      Findmi may follow up by email, but can&rsquo;t promise a reply from {targetName}.
+                    </p>
+                  )}
                   {viaFindmi && (
                     <p className="rounded-xl bg-findmi-50 px-3.5 py-2.5 text-xs leading-relaxed text-findmi-700">
-                      Findmi handles {BUSINESS_INQUIRY_TOPIC_LABELS[topic as BusinessInquiryTopic]} requests. Your request goes to
-                      Findmi, not directly to {targetName}. We&rsquo;ll review it and follow up with next steps.
+                      {BUSINESS_INQUIRY_TOPIC_LABELS[topic as BusinessInquiryTopic]} requests go to Findmi, not directly to {targetName}.
+                      Findmi reviews each request and may introduce you to {targetName}. Findmi can&rsquo;t guarantee a response,
+                      booking, availability or outcome.
                     </p>
                   )}
                   <label className="block">
@@ -278,7 +296,7 @@ export default function InquireButton({
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       rows={4}
-                      placeholder={viaFindmi ? "Tell Findmi what you have in mind…" : `Write a message to ${targetName}…`}
+                      placeholder={viaFindmi || noRecipient ? "Tell Findmi what you have in mind…" : `Write a message to ${targetName}…`}
                       className={inputClass}
                     />
                   </label>

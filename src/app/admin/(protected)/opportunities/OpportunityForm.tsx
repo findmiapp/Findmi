@@ -7,7 +7,7 @@ import { RelationField, type SearchResult } from "@/components/admin/RelationPic
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
-import { OPPORTUNITY_TYPES, OPPORTUNITY_TYPE_LABELS, type PricingMode } from "@/lib/opportunity-listings-domain";
+import { OPPORTUNITY_TYPES, OPPORTUNITY_TYPE_LABELS, SERVICE_MODELS, SERVICE_MODEL_LABELS, type PricingMode } from "@/lib/opportunity-listings-domain";
 import CommercialTermsBuilder, { type CommercialTermsBuilderHandle, type InitialOption } from "./CommercialTermsBuilder";
 
 /** What createOpportunity/saveOpportunity return when a save is rejected.
@@ -48,6 +48,8 @@ export interface OpportunityFormValues {
   whats_included: string | null;
   requirements: string | null;
   internal_notes: string | null;
+  /** Trust & Privacy Phase 2A — absent until that migration is applied. */
+  service_model?: string | null;
 }
 
 function Section({ id, title, hint, children }: { id?: string; title: string; hint?: string; children: React.ReactNode }) {
@@ -151,6 +153,13 @@ export default function OpportunityForm({
         <TextareaField label="Summary" name="summary" defaultValue={listing?.summary} rows={2} hint="One or two sentences. Up to 280 characters." />
         <TextareaField label="Description" name="description" defaultValue={listing?.description} rows={5} />
         <ImageField label="Image (optional)" name="image_url" defaultValue={listing?.image_url} />
+        <SelectField
+          label="Who Coordinates It"
+          name="service_model"
+          defaultValue={listing?.service_model ?? "platform"}
+          options={SERVICE_MODELS.map((m) => ({ value: m, label: SERVICE_MODEL_LABELS[m] }))}
+          hint="Choose Findmi-managed only when Findmi has expressly agreed to coordinate or perform the engagement. This changes what the Business sees once confirmed."
+        />
       </Section>
 
       <Section title="Place & Host">

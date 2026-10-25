@@ -28,6 +28,7 @@ const SUBJECT_TYPE_LABEL: Record<string, string> = {
   venue_inquiry: "Venue Inquiry",
   findmi_sales: "Findmi Sales",
   findmi_commercial_request: "Commercial Request",
+  findmi_page_inquiry: "Unmanaged Page Question",
   opportunity: "Opportunity",
   commercial_opportunity: "Commercial Opportunity",
   commercial_inquiry: "Commercial Inquiry",
@@ -246,6 +247,10 @@ export async function getAdminConversationList(params: {
       recipientLabel = "Findmi";
       contextLine = first?.body.split("\n")[0] ?? null;
       entityLink = { label: "View Business", href: `/admin/businesses/${c.subject_id}` };
+    } else if (c.subject_type === "findmi_page_inquiry") {
+      // A question about a page nobody manages: sent to Findmi.
+      recipientLabel = "Findmi";
+      contextLine = first?.body.split("\n")[0] ?? null;
     }
 
     return {
@@ -391,6 +396,9 @@ export async function getAdminConversationDetail(conversationId: string): Promis
     recipientLabel = "Findmi";
     contextLine = rawMessages[0]?.body.split("\n")[0] ?? null;
     entityLink = { label: "View Business", href: `/admin/businesses/${row.subject_id}` };
+  } else if (row.subject_type === "findmi_page_inquiry") {
+    recipientLabel = "Findmi";
+    contextLine = rawMessages[0]?.body.split("\n")[0] ?? null;
   }
 
   const messages: AdminConversationMessage[] = rawMessages.map((m) => ({

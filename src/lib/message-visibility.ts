@@ -1,7 +1,7 @@
 import { isDirectBusinessMessagingEnabled } from "@/lib/communication-policy";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { getUserManagedEntities } from "@/lib/opportunities";
+import { entityHasRecipient, getUserManagedEntities } from "@/lib/opportunities";
 
 /** Unify Site-Wide Communications pass — the direct MESSAGE CTA
  * (MessageButton, on the Business/Event/Location public pages) must not
@@ -40,6 +40,8 @@ export async function shouldShowMessageButton(
 
   const admin = getAdminSupabase();
   if (!admin) return false;
+  // Trust & Privacy Phase 2A: no direct message to a page nobody manages.
+  if (!(await entityHasRecipient(admin, targetType, targetId))) return false;
 
   const managed = await getUserManagedEntities(admin, user.id);
   if (targetType === "business") {

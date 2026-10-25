@@ -106,6 +106,22 @@ async function addParticipant(
  * one happens to act first. Membership is re-derived fresh from the
  * existing *_members tables (never a second identity system) — see this
  * pass's own audit conclusion. */
+/** Whether a Business / Event / Location has anyone who would actually
+ * receive a direct message: at least one current manager (for an Event,
+ * also any manager of its host Business). Server-side, service role. */
+export async function entityHasRecipient(admin: SupabaseClient, entityType: "business" | "event" | "location", entityId: string): Promise<boolean> {
+  const spec = membersTableFor(entityType);
+  if (!spec) return false;
+  const { count } = await admin.from(spec.table).select("user_id", { count: "exact", head: true }).eq(spec.column, entityId);
+  if ((count ?? 0) > 0) return true;
+  if (entityType !== "event") return false;
+  const { data: event } = await admin.from("events").select("host_business_id").eq("id", entityId).maybeSingle();
+  const hostId = (event as { host_business_id: string | null } | null)?.host_business_id;
+  if (!hostId) return false;
+  const { count: hostCount } = await admin.from("business_members").select("user_id", { count: "exact", head: true }).eq("business_id", hostId);
+  return (hostCount ?? 0) > 0;
+}
+
 export async function addEntityParticipants(
   admin: SupabaseClient,
   conversationId: string,
@@ -345,7 +361,7 @@ const ENTITY_LABEL: Record<"business" | "event" | "location", string> = {
   location: "Venue",
 };
 
-async function getEntityDisplayName(
+export async function getEntityDisplayName(
   admin: SupabaseClient,
   entityType: ConversationEntityType,
   entityId: string | null
@@ -474,7 +490,12 @@ export type InquirySubjectType =
   // Event / Pop-Up, Collaboration from a Business page): subject_id = the
   // Business it's about, NO organization participant — Findmi receives
   // and qualifies it; the Business is never sent the request directly.
-  | "findmi_commercial_request";
+  | "findmi_commercial_request"
+  // Trust & Privacy Phase 2A — a question about a Business / Event /
+  // Location page nobody manages on Findmi: subject_id = that page, NO
+  // organization participant (there is no one to receive it); Findmi
+  // receives it, and the sender was told so before sending.
+  | "findmi_page_inquiry";
 
 /** Unify Site-Wide Communications pass — the one entry point every
  * CONTROLLED PUBLIC INQUIRY (Business Inquire, Event Contact Organizer,
@@ -1675,7 +1696,7 @@ export async function listConversationsForUser(
       // the other side is Findmi itself (the stored contact is the
       // sender's own, never the counterparty).
       otherPartyLabel:
-        meta?.subject_type === "findmi_commercial_request"
+        meta?.subject_type === "findmi_commercial_request" || meta?.subject_type === "findmi_page_inquiry"
           ? "Findmi"
           : other
             ? (labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member")

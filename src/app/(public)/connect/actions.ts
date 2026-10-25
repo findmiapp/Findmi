@@ -35,6 +35,8 @@ import { isEmailVerified, requireBusinessMember, requireEventMember, requireLoca
 import {
   createInquiryConversation,
   createOpportunity,
+  entityHasRecipient,
+  getEntityDisplayName,
   findOpportunityConversation,
   getOrCreateConversation,
   getThreadMessagingFacts,
@@ -150,6 +152,47 @@ export async function submitEntityInquiry(
     .eq("is_demo", false)
     .maybeSingle();
   if (!target) return { error: "That's no longer available." };
+
+  // Unmanaged-entity communications (Trust & Privacy Phase 2A): with no
+  // real manager there is no one to deliver a direct message to, so it is
+  // routed to Findmi, as the form already told the sender, never silently
+  // stored as an organization message nobody receives.
+  if (!(await entityHasRecipient(admin, input.targetType, input.targetId))) {
+    const supabaseForUser = await getServerSupabase();
+    const {
+      data: { user: sender },
+    } = await supabaseForUser.auth.getUser();
+    const targetName = await getEntityDisplayName(admin, input.targetType, input.targetId);
+    try {
+      const { conversationId } = await createInquiryConversation(admin, {
+        subjectType: "findmi_page_inquiry",
+        subjectId: input.targetId,
+        targetEntityType: null,
+        targetEntityId: null,
+        senderUserId: sender?.id ?? null,
+        guestName: name,
+        guestEmail: email,
+        guestPhone: phone,
+        message: `Question about ${targetName} (${input.targetType}, not managed on Findmi)\n\n${message}`,
+        keepContactDetails: true,
+      });
+      await notifyAdmin({
+        subject: `Question about an unmanaged page: ${targetName}`,
+        heading: `New question about ${targetName}`,
+        body: [
+          `From: ${name} <${email}>${phone ? ` · ${phone}` : ""}${sender ? " (signed in)" : " (guest)"}`,
+          `Page: ${targetName} (${input.targetType}). Nobody manages this page on Findmi.`,
+          message,
+          "This was sent to Findmi, not to the organization. The sender was told so before sending.",
+        ],
+        actionLabel: "Open Message",
+        actionUrl: `/admin/conversations/${conversationId}`,
+      });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Couldn't send your message. Please try again." };
+    }
+    return { ok: true, routedTo: "findmi" };
+  }
 
   // Business-Controlled Inquiry Settings pass — Business Inquiry stays a
   // Pro capability (isBusinessPro, same check BusinessPublicView's own
@@ -317,6 +360,12 @@ export async function submitProductInquiry(input: SubmitProductInquiryInput): Pr
   const enabledTopics = sanitizeBusinessInquiryTopics(business.inquiry_topics);
   if (!business.accepts_inquiries || !enabledTopics.includes("product_order")) {
     return { error: "This business isn't accepting product inquiries right now." };
+  }
+
+  // Unmanaged-entity communications (Phase 2A): never store a product
+  // inquiry nobody will receive.
+  if (!(await entityHasRecipient(admin, "business", row.business_id))) {
+    return { error: "This business doesn't receive messages on Findmi yet." };
   }
 
   const fullMessage = `Product: ${row.name}\n\n${message}`;

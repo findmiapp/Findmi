@@ -82,7 +82,8 @@ export default async function ConversationThreadView({
   // no participant at all for the guest side (see createInquiryConversation),
   // so otherParties is empty; fall back to the guest's own name rather
   // than the generic "Conversation".
-  const isFindmiRequest = thread.subjectType === "findmi_commercial_request";
+  const isFindmiPageQuestion = thread.subjectType === "findmi_page_inquiry";
+  const isFindmiRequest = thread.subjectType === "findmi_commercial_request" || isFindmiPageQuestion;
   const messagingEnabled = isDirectBusinessMessagingEnabled();
   const title = isFindmiRequest ? "Findmi" : otherParties.map((p) => p.label).join(" & ") || thread.guestName || "Conversation";
   // Communication boundary — a direct org-to-org thread is read-only while
@@ -133,8 +134,8 @@ export default async function ConversationThreadView({
           the way an authorized manager actually follows up. */}
       {isFindmiRequest ? (
         <p className="mt-1 text-metadata text-subtle">
-          Sent to Findmi, not directly to the business. Findmi will review it and follow up
-          {thread.guestEmail ? ` at ${thread.guestEmail}` : ""}.
+          {isFindmiPageQuestion ? "Sent to Findmi, not to the organization, because nobody manages that page on Findmi yet." : "Sent to Findmi, not directly to the business."}{" "}
+          Findmi may follow up{thread.guestEmail ? ` at ${thread.guestEmail}` : ""}.
         </p>
       ) : (
         thread.guestEmail && (

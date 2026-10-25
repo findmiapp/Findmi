@@ -61,6 +61,7 @@ export const INBOX_TYPE_LABELS: Record<string, string> = {
   event_inquiry: "Event Inquiry",
   venue_inquiry: "Place Inquiry",
   findmi_commercial_request: "Request To Findmi",
+  findmi_page_inquiry: "Question To Findmi",
   findmi_sales: "Findmi",
   opportunity: "Event Participation",
   event_business_chat: "Message",

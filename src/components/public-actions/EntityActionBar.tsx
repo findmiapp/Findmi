@@ -39,6 +39,7 @@ export default function EntityActionBar({
   eventOccurrences,
   opportunityCount = 0,
   className = "",
+  noRecipient = false,
 }: {
   kind: TargetKind;
   entityId: string;
@@ -53,6 +54,9 @@ export default function EntityActionBar({
   /** Open Opportunities explicitly about this entity. */
   opportunityCount?: number;
   className?: string;
+  /** Nobody manages this page on Findmi: a General Inquiry goes to Findmi
+   * and says so (InquireButton's noRecipient). */
+  noRecipient?: boolean;
 }) {
   const [sheet, setSheet] = useState<{ slot: number; type: PublicActionType | "opportunities" } | null>(null);
 
@@ -112,7 +116,7 @@ export default function EntityActionBar({
 
   function renderAction(a: PublicActionView) {
     if (a.route === "general_inquiry")
-      return <InquireButton targetType={kind} targetId={entityId} targetName={entityName} label={a.label} topics={kind === "business" ? inquiryTopics : undefined} className={cls} />;
+      return <InquireButton targetType={kind} targetId={entityId} targetName={entityName} label={a.label} topics={kind === "business" ? inquiryTopics : undefined} className={cls} noRecipient={noRecipient} />;
     if (a.route === "event_participation")
       return <MessageButton targetType="event" targetId={entityId} targetName={entityName} label={a.label} eventOccurrences={eventOccurrences} triggerClassName={cls} />;
     if (a.route === "website" && a.href)

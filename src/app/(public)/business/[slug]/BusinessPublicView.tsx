@@ -16,6 +16,8 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
+import AboutThisPage from "@/components/trust/AboutThisPage";
+import { getPageTrust } from "@/lib/provenance";
 import EntityActionBar from "@/components/public-actions/EntityActionBar";
 import { loadPublicActions } from "@/lib/public-actions";
 import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
@@ -409,6 +411,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // the actions this Business's managers configured and enabled. Accept
   // Inquiries / topics are capability only (they decide whether a General
   // Inquiry action can work), never visibility.
+  // Trust & Privacy Phase 2A — About This Page + honest message routing.
+  const pageTrust = await getPageTrust(getAdminSupabase(), "business", business.id);
+  const noRecipient = pageTrust ? pageTrust.state !== "managed" : false;
   const publicActions = await loadPublicActions(getAdminSupabase(), "business", business.id, {
     generalInquiry: canInquire,
     website: isSafeExternalUrl(business.website_url) ? business.website_url : null,
@@ -744,6 +749,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               actions={publicActions.actions}
               inquiryTopics={enabledInquiryTopics}
               opportunityCount={publicActions.opportunityCount}
+              noRecipient={noRecipient}
             />
           </div>
         </div>
@@ -1049,7 +1055,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               ClaimButton) — only the entry-point states (guest/none) pick
               up this card's copy via variant="card"; a claim already in
               progress still renders its own existing status card. */}
-          <div className="mt-8">
+          <AboutThisPage entityType="business" entityId={business.id} entityName={business.name} trust={pageTrust} className="mt-8" />
+
+          <div className="mt-4">
             <ClaimButton type="business" slug={business.slug} entityName={business.name} variant="card" />
           </div>
 

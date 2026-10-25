@@ -341,6 +341,10 @@ test("49 (updated after the classification correction). Pass 3 itself added no m
       // Opportunity Relationship Thread — opportunity_recipients.conversation_id
       // (nullable FK to conversations); no Commercial Terms table is touched.
       "20261105000000_opportunity_relationship_thread.sql",
+      // Trust & Privacy Phase 2A — opportunity_listings.service_model
+      // (platform | findmi_managed, default platform); no Commercial
+      // Terms table is touched.
+      "20261112000000_opportunity_service_model.sql",
     ]
   );
 });

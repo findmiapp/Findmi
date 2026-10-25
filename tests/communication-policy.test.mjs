@@ -182,8 +182,10 @@ test("paused: the profile CTA is removed, never swapped for Invite/Apply", () =>
   assert.match(threadPage, /replyPaused \? \(/);
   assert.match(threadPage, /const messagingEnabled = isDirectBusinessMessagingEnabled\(\);/);
   const inquire = read("src/components/InquireButton.tsx");
-  assert.match(inquire, /Your request goes to\s+Findmi, not directly to \{targetName\}/);
-  assert.match(inquire, /Request sent to Findmi/);
+  // Trust & Privacy Phase 2A copy: says who receives it, promises no outcome.
+  assert.match(inquire, /requests go to Findmi, not directly to \{targetName\}/);
+  assert.match(inquire, /can&rsquo;t guarantee a response,\s+booking, availability or outcome/);
+  assert.match(inquire, /"Sent to Findmi"/);
   for (const f of ["src/components/InquireButton.tsx", "src/components/MessageButton.tsx", "src/lib/communication-policy.ts", "src/app/(public)/account/messages/[id]/ConversationThreadView.tsx"]) {
     // Rendered copy only — historical code comments may still say "FINDMI".
     const code = read(f).split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");

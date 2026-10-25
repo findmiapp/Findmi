@@ -512,7 +512,19 @@ const FIELD_LABELS: Record<keyof typeof LISTING_TEXT_LIMITS, string> = {
 /** Listing columns a recipient Business may see. Deliberately excludes
  * internal_notes. */
 export const BUSINESS_LISTING_COLUMNS =
-  "id, status, opportunity_type, title, summary, description, image_url, location_id, place_text, host_name, event_id, starts_at, ends_at, timing_note, response_deadline, pricing_mode, price_cents, currency, credits_eligible, whats_included, requirements";
+  "id, status, opportunity_type, title, summary, description, image_url, location_id, place_text, host_name, event_id, starts_at, ends_at, timing_note, response_deadline, pricing_mode, price_cents, currency, credits_eligible, whats_included, requirements, service_model";
+
+/** Who coordinates a confirmed Opportunity (Trust & Privacy Phase 2A;
+ * opportunity_listings.service_model). "platform": Findmi connects the
+ * parties and they coordinate the engagement themselves. "findmi_managed":
+ * Findmi has expressly agreed to coordinate it. */
+export const SERVICE_MODELS = ["platform", "findmi_managed"] as const;
+export type ServiceModel = (typeof SERVICE_MODELS)[number];
+export const SERVICE_MODEL_LABELS: Record<ServiceModel, string> = {
+  platform: "Platform: the parties coordinate the engagement",
+  findmi_managed: "Findmi-managed: Findmi coordinates the engagement",
+};
+export const isServiceModel = isOneOf(SERVICE_MODELS);
 
 /** Recipient columns the Business may see on ITS OWN row. Deliberately
  * excludes internal_notes, responded_by_user_id and fit_note — fit_note is
@@ -684,7 +696,7 @@ export interface BusinessOpportunityState {
  * and the Business's own recipient status. Mirrors checkBusinessResponse
  * (listing open + offered/interested/not_interested) so the page never
  * offers a choice the server would refuse. */
-export function getBusinessOpportunityState(listingStatus: ListingStatus, recipientStatus: RecipientStatus): BusinessOpportunityState {
+export function getBusinessOpportunityState(listingStatus: ListingStatus, recipientStatus: RecipientStatus, serviceModel: ServiceModel = "platform"): BusinessOpportunityState {
   const open = listingStatus === "open";
   switch (recipientStatus) {
     case "offered":
@@ -693,14 +705,23 @@ export function getBusinessOpportunityState(listingStatus: ListingStatus, recipi
         : { label: "No Longer Available", tone: "muted", answerable: false, choices: [], message: "This Opportunity is no longer taking responses." };
     case "interested":
       return open
-        ? { label: "Interested", tone: "aquaSoft", answerable: true, choices: ["not_interested"], message: "You've let Findmi know you're interested. Findmi will be in touch about next steps." }
+        ? { label: "Interested", tone: "aquaSoft", answerable: true, choices: ["not_interested"], message: "You've let Findmi know you're interested. Findmi may follow up about next steps." }
         : { label: "Interested", tone: "aquaSoft", answerable: false, choices: [], message: "You let Findmi know you're interested. This Opportunity is no longer taking new responses." };
     case "not_interested":
       return open
         ? { label: "Not Interested", tone: "muted", answerable: true, choices: ["interested"], message: "You've passed on this Opportunity. You can change your mind while it's still open." }
         : { label: "Not Interested", tone: "muted", answerable: false, choices: [], message: "You passed on this Opportunity." };
     case "confirmed":
-      return { label: "Confirmed", tone: "positive", answerable: false, choices: [], message: "You're confirmed. Findmi will coordinate the details with you." };
+      return {
+        label: "Confirmed",
+        tone: "positive",
+        answerable: false,
+        choices: [],
+        message:
+          serviceModel === "findmi_managed"
+            ? "You're confirmed. Findmi will coordinate the details with you."
+            : "You're confirmed. You can now coordinate the engagement with the participating party.",
+      };
     case "completed":
       return { label: "Completed", tone: "neutral", answerable: false, choices: [], message: "This Opportunity is complete." };
     case "cancelled":
@@ -734,12 +755,12 @@ export interface BusinessOpportunityView {
 
 export function toBusinessOpportunityView(
   recipient: { id: string; status: RecipientStatus; offered_at: string; responded_at: string | null },
-  listing: PresentableOpportunity & { status: ListingStatus }
+  listing: PresentableOpportunity & { status: ListingStatus; service_model?: string | null }
 ): BusinessOpportunityView {
   return {
     recipientId: recipient.id,
     status: recipient.status,
-    state: getBusinessOpportunityState(listing.status, recipient.status),
+    state: getBusinessOpportunityState(listing.status, recipient.status, isServiceModel(listing.service_model) ? listing.service_model : "platform"),
     group: businessOpportunityGroup(listing.status, recipient.status),
     offeredAt: recipient.offered_at,
     respondedAt: recipient.responded_at,

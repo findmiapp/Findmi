@@ -7,6 +7,8 @@ import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momen
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
+import AboutThisPage from "@/components/trust/AboutThisPage";
+import { getPageTrust } from "@/lib/provenance";
 import EntityActionBar from "@/components/public-actions/EntityActionBar";
 import { loadPublicActions } from "@/lib/public-actions";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -181,6 +183,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const website = isSafeExternalUrl(location.website_url) ? location.website_url : null;
   // Public Actions — only what this Location's managers configured; the
   // existing Contact form backs General Inquiry (when it has contact info).
+  // Trust & Privacy Phase 2A — About This Page + honest message routing.
+  const pageTrust = await getPageTrust(getAdminSupabase(), "location", location.id);
+  const noRecipient = pageTrust ? pageTrust.state !== "managed" : false;
   const publicActions = await loadPublicActions(getAdminSupabase(), "location", location.id, { generalInquiry: Boolean(location.email), website });
   // Public Graph Integrity Pass 1 — same canonical-URL resolution
   // generateLocationMetadata already uses (handle-first, /location/slug
@@ -415,6 +420,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           actions={publicActions.actions}
           opportunityCount={publicActions.opportunityCount}
           className="mt-3"
+          noRecipient={noRecipient}
         />
       </div>
 
@@ -576,6 +582,8 @@ export async function LocationPublicView({ slug }: { slug: string }) {
                 targetName={location.name}
                 label="Contact"
                 className="flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                noRecipient={noRecipient}
+                findmiLabel="Ask Findmi"
               />
             )}
           </div>
@@ -666,7 +674,8 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             "member"), so an already-claimed Location shows no claim
             surface at all — unchanged existing behavior. Stays at the
             bottom, never moved back up. */}
-        <div className="mt-10 max-w-sm">
+        <AboutThisPage entityType="location" entityId={location.id} entityName={location.name} trust={pageTrust} className="mt-10 max-w-xl" />
+        <div className="mt-4 max-w-sm">
           <ClaimButton type="location" slug={location.slug} entityName={location.name} variant="card" />
         </div>
       </div>
