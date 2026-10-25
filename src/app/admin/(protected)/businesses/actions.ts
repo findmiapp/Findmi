@@ -1,5 +1,6 @@
 "use server";
 
+import { recordProvenance } from "@/lib/provenance";
 import { recordAccessEvents } from "@/lib/access-history";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -155,6 +156,7 @@ export async function saveBusiness(id: string | null, formData: FormData) {
       redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create business."));
     }
     businessId = data.id;
+    await recordProvenance(supabase, { entityType: "business", entityId: data.id, sourceKind: "findmi", sourceMethod: "admin_manual" });
   }
 
   const categoryIds = formData.getAll("category_ids").map(String);

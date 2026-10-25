@@ -1,5 +1,6 @@
 "use server";
 
+import { recordProvenance } from "@/lib/provenance";
 import { isCreateScheduleMode, parseScheduleDates, resolveCreateSchedule } from "@/lib/event-create-schedule";
 import { cleanOccurrenceDetails } from "@/lib/event-import/occurrence-details";
 import { decideEventCategoryWrite } from "@/lib/event-categories";
@@ -374,6 +375,7 @@ export async function createMemberEvent(formData: FormData) {
   // Live by default: create_owned_event() still writes the old review
   // state; publish what it just created (lib/event-publication.ts).
   const published = await publishCreatedEvent(admin, eventId);
+  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: "owner_created" });
 
   // create_owned_event() has no p_market_area_id parameter (Area wasn't
   // part of that RPC's original signature) — rather than widen the RPC,

@@ -1,5 +1,6 @@
 "use server";
 
+import { recordProvenance } from "@/lib/provenance";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -321,6 +322,8 @@ export async function createMemberLocation(formData: FormData) {
   if (error || !created) fail("Couldn't add this Location. Please try again.");
 
   const locationId = (created as { id: string }).id;
+  // Submitted by a member of the public (management is a separate request).
+  await recordProvenance(admin, { entityType: "location", entityId: locationId, sourceKind: "community", sourceMethod: "member_submitted" });
   // "I Manage This Location" — a request for Admin review, never a grant.
   // The Location itself is already created and stays created either way;
   // a failure here must be reported truthfully (never silently dropped,

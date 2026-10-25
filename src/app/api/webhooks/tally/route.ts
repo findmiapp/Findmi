@@ -1,3 +1,4 @@
+import { recordProvenance } from "@/lib/provenance";
 import { NextResponse, type NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -424,6 +425,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Could not create business record." }, { status: 500 });
     }
     businessId = created.id;
+    await recordProvenance(supabase, { entityType: "business", entityId: created.id, sourceKind: "organization", sourceMethod: "tally_onboarding" });
   }
 
   if (primaryCategory && businessId) {

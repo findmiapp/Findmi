@@ -1,5 +1,6 @@
 "use server";
 
+import { recordProvenance } from "@/lib/provenance";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -162,6 +163,7 @@ export async function saveLocation(id: string | null, formData: FormData) {
       redirect(errorRedirectUrl(editPath, error ? friendlyHierarchyError(error.message) : "Could not create location."));
     }
     locationId = data.id;
+    await recordProvenance(supabase, { entityType: "location", entityId: data.id, sourceKind: "findmi", sourceMethod: "admin_manual" });
   }
 
   revalidatePath("/admin/locations");

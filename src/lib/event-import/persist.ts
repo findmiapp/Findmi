@@ -1,4 +1,5 @@
 import "server-only";
+import { recordProvenance } from "../provenance";
 // Event Import V1 — persistence, ONLY after the Business has reviewed the
 // candidate. Re-validates every reviewed value (the Review form is client
 // input) and writes through the existing domain paths:
@@ -599,6 +600,10 @@ async function createSourceEvent(
     .single();
   if (error || !created) return { ok: false, error: "Couldn't add this Event. Please try again." };
   const eventId = (created as { id: string }).id;
+  // Imported for a participating Business: the Event's own organizer
+  // hasn't provided it. The imported cover keeps a public-source basis.
+  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "import", sourceMethod: "business_event_import", sourceUrl: input.sourceUrl });
+  if (cover) await recordProvenance(admin, { entityType: "event_image", entityId: eventId, sourceKind: "import", sourceMethod: "event_cover_import", sourceUrl: input.imageUrl, rightsBasis: "public_source" });
   await writeEventExtras(admin, eventId, input);
   await writeEventCategory(admin, eventId, input);
   await writeEventFormats(admin, eventId, input);
@@ -789,6 +794,8 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
   const eventId = (created as { id: string }).id;
   // Live by default (the RPC still writes the old review state).
   await publishCreatedEvent(admin, eventId);
+  // Hosted by the importing Business itself: organization-provided.
+  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: "business_hosted_import", sourceUrl: input.sourceUrl });
 
   const cover = input.imageUrl ? await deps.storeImage(input.imageUrl) : null;
   // Best-effort detail fill — the Event already exists either way.

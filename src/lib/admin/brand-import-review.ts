@@ -1,4 +1,5 @@
 import "server-only";
+import { recordProvenance } from "@/lib/provenance";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { findBusinessMatches, normalizeInstagramHandle, normalizeWebsiteHost, type BusinessMatch, type BusinessMatchInput } from "../business-matching";
 import { prepareBrandWebsite } from "../brand-candidate-builder";
@@ -371,7 +372,10 @@ export function supabaseCanonicalBusinessWriter(admin: SupabaseClient): Canonica
     },
     async insert(row) {
       const { error } = await admin.from("businesses").insert(row);
-      if (!error) return { ok: true };
+      if (!error) {
+        await recordProvenance(admin, { entityType: "business", entityId: row.id, sourceKind: "import", sourceMethod: "brand_website_import", sourceUrl: row.website_url });
+        return { ok: true };
+      }
       const text = `${(error as { message?: string }).message ?? ""} ${(error as { details?: string }).details ?? ""}`;
       if ((error as { code?: string }).code === "23505") return { ok: false, conflict: /slug/i.test(text) ? "slug" : /pkey|\(id\)/i.test(text) ? "id" : "other" };
       return { ok: false, conflict: "other" };

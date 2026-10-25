@@ -1,5 +1,6 @@
 "use server";
 
+import { recordProvenance } from "@/lib/provenance";
 import { decideEventCategoryWrite } from "@/lib/event-categories";
 import { decideEventFormatWrite } from "@/lib/event-formats";
 import { syncEventFormats } from "@/lib/event-formats-server";
@@ -271,6 +272,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
     const { data, error } = await supabase.from("events").insert(payload).select("id").single();
     if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create event."));
     eventId = data.id;
+    await recordProvenance(supabase, { entityType: "event", entityId: data.id, sourceKind: "findmi", sourceMethod: "admin_manual" });
   }
 
   // Attendance label + location visibility — newer columns, written in a
