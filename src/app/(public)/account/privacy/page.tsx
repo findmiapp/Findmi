@@ -112,7 +112,9 @@ export default async function PrivacyAndDataPage({
               A file with your profile, follows, saves, organized items, Moments (photos listed by file name), messages you sent, orders, claims and
               privacy choices.
             </p>
-            <a href="/account/privacy/export" className="mt-3 inline-flex rounded-full bg-findmi px-5 py-2.5 text-sm font-bold text-white transition hover:bg-findmi-600">
+            {/* A file download from a route handler, so a plain link (not client navigation). */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/account/privacy/export" download className="mt-3 inline-flex rounded-full bg-findmi px-5 py-2.5 text-sm font-bold text-white transition hover:bg-findmi-600">
               Download My Data
             </a>
           </div>

@@ -28,8 +28,8 @@ export default function PrivacyPage() {
           <h2 className="text-base font-semibold text-ink">How we use it</h2>
           <p className="mt-2">
             We use the information you provide to operate Findmi: to display business profiles
-            and appearances, to route inquiries to the businesses you contact, to notify you
-            when a business you follow posts a new appearance, and to communicate with
+            and appearances, to route inquiries to the businesses you contact, to show the pages you
+            follow in your account, and to communicate with
             businesses about their membership.
           </p>
         </section>
