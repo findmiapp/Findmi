@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
+import { archiveView, brandArchive } from "@/lib/archive-params";
+import { bboxParam } from "@/lib/geo-results";
+import { brandsInBbox, GEO_LIMIT } from "@/lib/geo-results-server";
 import Link from "next/link";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
@@ -67,6 +71,9 @@ interface Params {
    * field for the full rule: a canonical census_geographies key, additive
    * alongside market/area/location. */
   geo?: string;
+  /** Map Everywhere — Search This Area bounds and the presentation. */
+  bbox?: string;
+  view?: string;
 }
 
 /** Business Directory Browse Mode + Area-Aware Discovery Composition —
@@ -92,7 +99,12 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   const areaSlug = params.market ? params.area : undefined;
   const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
 
-  const isBrowseMode = !params.q && !params.category && !params.location && !featured && !founding && sort === "recommended" && isCanonicalGeoScopeEmpty(canonicalGeo);
+  // Map Everywhere — the List and its Map read this URL the same way
+  // (lib/archive-params); Map / Split and a searched map area show the
+  // flat result set, never the rails.
+  const archive = await brandArchive(params as Record<string, string>);
+  const view = archiveView(params as Record<string, string>);
+  const isBrowseMode = archive.isBrowseMode;
 
   const [categories, markets] = await Promise.all([getCategories(), getConsumerVisibleMarketsWithAreas()]);
 
@@ -103,18 +115,21 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   let businesses: BusinessWithCategories[] = [];
   let appearanceHints = new Map<string, NextAppearanceHint>();
   if (!isBrowseMode) {
-    fetched = await searchBusinesses({
-      q: params.q,
-      categorySlug: params.category,
-      location: params.location,
-      marketSlug,
-      areaSlug,
-      canonicalGeo,
-      featuredOnly: featured,
-      foundingMemberOnly: founding,
-      sort,
-      limit: limit + 1, // one extra row to detect "more available" without a separate count query
-    });
+    fetched = archive.bbox
+      ? // Search This Area: Brands with a real presence inside the area, in List order.
+        (await brandsInBbox(await searchBusinesses({ ...archive.search, limit: GEO_LIMIT }), archive.bbox)).slice(0, limit + 1)
+      : await searchBusinesses({
+          q: params.q,
+          categorySlug: params.category,
+          location: params.location,
+          marketSlug,
+          areaSlug,
+          canonicalGeo,
+          featuredOnly: featured,
+          foundingMemberOnly: founding,
+          sort,
+          limit: limit + 1, // one extra row to detect "more available" without a separate count query
+        });
     hasMore = fetched.length > limit;
     businesses = fetched.slice(0, limit);
     appearanceHints = await getNextAppearanceHints(businesses.map((b) => b.id));
@@ -196,6 +211,8 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   if (featured) baseParams.set("featured", "1");
   if (founding) baseParams.set("founding", "1");
   if (sort !== "recommended") baseParams.set("sort", sort);
+  if (archive.bbox) baseParams.set("bbox", bboxParam(archive.bbox));
+  if (view !== "list") baseParams.set("view", view);
 
   const categoryName = categories.find((c) => c.slug === params.category)?.name;
   const selectedMarket = markets.find((m) => m.slug === params.market);
@@ -263,6 +280,8 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         </p>
 
         <form method="get" className="mt-3 flex flex-col gap-2.5 sm:mt-5 sm:gap-3">
+          {archive.bbox && <input type="hidden" name="bbox" value={bboxParam(archive.bbox)} />}
+          {view !== "list" && <input type="hidden" name="view" value={view} />}
           <ArchiveSearchField defaultValue={params.q} placeholder="Search by name or description" />
           {/* Businesses Discovery V4, item 3 — Area/Filters/Sort
               consolidated onto one row (gap tightened from 2.5 to 2, and
@@ -294,8 +313,10 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         </form>
       </div>
 
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <ArchiveGeoShell surface="brands" initialView={view} bbox={archive.bbox} noun={["Brand", "Brands"]}>
       {isBrowseMode ? (
-        <div className="mx-auto mt-3 max-w-6xl">
+        <div className="-mx-4 mt-3 sm:-mx-6">
           {featuredBusinesses.length === 0 && categoryRails.length === 0 ? (
             <div className="mx-4 mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center sm:mx-6">
               <p className="text-sm text-ink/60">
@@ -394,7 +415,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
           )}
         </div>
       ) : (
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div>
           {/* Businesses Discovery V4, item 5 — compact and subordinate:
               tighter top margin (was mt-5, its own clear break from the
               controls above) so it reads as the controls→results
@@ -430,14 +451,11 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                   Same grid breakpoints as before (1/2/3 columns) — the
                   density win comes entirely from the card itself being
                   far shorter, not from a wider grid. */}
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div data-geo-grid className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {businesses.map((b, i) => (
-                  <BusinessDiscoveryCard
-                    key={b.id}
-                    business={b}
-                    nextAppearance={appearanceHints.get(b.id)}
-                    analyticsContext={{ pageType: "businesses", placement: "results_grid", position: i + 1 }}
-                  />
+                  <div key={b.id} data-geo-key={`br:${b.id}`} className="min-w-0">
+                    <BusinessDiscoveryCard business={b} nextAppearance={appearanceHints.get(b.id)} analyticsContext={{ pageType: "businesses", placement: "results_grid", position: i + 1 }} />
+                  </div>
                 ))}
               </div>
               {hasMore && (
@@ -454,6 +472,8 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
           )}
         </div>
       )}
+      </ArchiveGeoShell>
+      </div>
     </div>
   );
 }

@@ -24,6 +24,7 @@
 // Reserved for later phases, deliberately NOT fields yet (no data): cost,
 // audience, geographic radius / map bounds. Walk-In is not
 // derivable (an Event without RSVP/Tickets isn't evidence of walk-in).
+import { bboxParam, parseBboxParam, parseViewMode } from "./geo-results";
 import { getTemporalLabel, type DiscoveryWindow } from "./format";
 
 /** The Event time filters, in display order. "next" (Up Next) and "all"
@@ -74,6 +75,11 @@ export interface EventFilter {
   /** ANY of these attendance actions. */
   access?: EventAccess[];
   q?: string;
+  /** Map Everywhere — Search This Area bounds ("w,s,e,n") and the
+   * presentation (List is the default, never written). Presentation only
+   * changes how the SAME result set is shown. */
+  bbox?: string;
+  view?: "map" | "split";
   /** Scoping (programmatic only — never parsed from or written to the URL). */
   locationId?: string;
   businessId?: string;
@@ -153,6 +159,10 @@ export function parseEventFilter(source: ParamSource): EventFilter {
   if (access.length > 0) filter.access = access;
   const q = cleanText(first(source, "q"));
   if (q) filter.q = q;
+  const bbox = parseBboxParam(first(source, "bbox"));
+  if (bbox) filter.bbox = bboxParam(bbox);
+  const view = parseViewMode(first(source, "view"));
+  if (view !== "list") filter.view = view;
   return filter;
 }
 
@@ -169,6 +179,8 @@ export function eventFilterToSearchParams(filter: EventFilter): URLSearchParams 
   if (filter.market && filter.area) p.set("area", filter.area);
   for (const f of parseEventFormats(filter.formats ?? [])) p.append("format", f);
   for (const a of parseEventAccess(filter.access ?? [])) p.append("access", a);
+  if (filter.bbox && parseBboxParam(filter.bbox)) p.set("bbox", filter.bbox);
+  if (filter.view) p.set("view", filter.view);
   return p;
 }
 
@@ -188,10 +200,12 @@ export function eventDiscoveryParams(
   access?: EventAccess[];
   locationId?: string;
   businessId?: string;
+  bbox?: [number, number, number, number];
   limit?: number;
   offset?: number;
   featuredFirst?: boolean;
 } {
+  const bbox = parseBboxParam(filter.bbox);
   return {
     when: EVENT_WINDOW_BY_TIME_KEY[filter.when ?? "next"],
     ...(filter.date ? { date: filter.date } : {}),
@@ -204,6 +218,7 @@ export function eventDiscoveryParams(
     ...(filter.access?.length ? { access: filter.access } : {}),
     ...(filter.locationId ? { locationId: filter.locationId } : {}),
     ...(filter.businessId ? { businessId: filter.businessId } : {}),
+    ...(bbox ? { bbox } : {}),
     ...page,
   };
 }

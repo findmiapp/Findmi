@@ -7,6 +7,8 @@ import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import EventDiscoveryCard from "@/components/discover/EventDiscoveryCard";
 import EventFilters from "@/components/discover/EventFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
+import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
+import { parseBboxParam } from "@/lib/geo-results";
 import {
   attachEventCategories,
   getConsumerVisibleMarketsWithAreas,
@@ -185,6 +187,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         {filter.date && <input type="hidden" name="date" value={filter.date} />}
         {filter.market && <input type="hidden" name="market" value={filter.market} />}
         {filter.market && filter.area && <input type="hidden" name="area" value={filter.area} />}
+        {filter.bbox && <input type="hidden" name="bbox" value={filter.bbox} />}
+        {filter.view && <input type="hidden" name="view" value={filter.view} />}
         <ArchiveSearchField defaultValue={params.q} placeholder="Search events" />
 
         {/* Time is the primary axis for event discovery — same tabs, same
@@ -226,6 +230,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "next" ? "/events" : `/events?when=${timeKey}`} />}
       </form>
 
+      {/* Map Everywhere — List / Map / Split of this exact result set. */}
+      <ArchiveGeoShell surface="events" initialView={filter.view ?? "list"} bbox={parseBboxParam(filter.bbox)} noun={["Event", "Events"]}>
       {/* Events Discovery V4, item 4 — same compact treatment as
           Businesses Discovery V4's result count: smaller/lighter than
           any surrounding control text, never a headline. */}
@@ -262,13 +268,11 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
               instead of HomeEventCard (which stays unchanged — it's also
               the Homepage's own discovery card). Same grid breakpoints as
               before; the density win comes from the card itself. */}
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div data-geo-grid className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {events.map((e, i) => (
-              <EventDiscoveryCard
-                key={e.id}
-                event={e}
-                analyticsContext={{ pageType: "events", placement: "results_grid", position: i + 1 }}
-              />
+              <div key={e.id} data-geo-key={`ev:${e.id}`} className="min-w-0">
+                <EventDiscoveryCard event={e} analyticsContext={{ pageType: "events", placement: "results_grid", position: i + 1 }} />
+              </div>
             ))}
           </div>
           {hasMore && (
@@ -283,6 +287,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           )}
         </>
       )}
+      </ArchiveGeoShell>
     </div>
   );
 }

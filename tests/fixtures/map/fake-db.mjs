@@ -1,6 +1,6 @@
 // In-memory stand-in for the Supabase (PostgREST) query builder — just the
 // operators the Discovery Map reads use (eq/neq/in/is/not/gte/lte/lt/gt/
-// contains/or, embedded `alias:table!inner(...)` selects, head counts).
+// contains/ilike/range/or, embedded `alias:table!inner(...)` selects, head counts).
 // Embeds resolve through the conventional `<table>_id` foreign key.
 
 const FK = { locations: "location_id", events: "event_id", businesses: "business_id" };
@@ -41,10 +41,10 @@ function split(s) {
   return out;
 }
 function term(t, prefix) {
-  const and = t.match(/^and\((.*)\)$/s);
-  if (and) {
-    const parts = split(and[1]).map((x) => term(x, prefix));
-    return (r) => parts.every((p) => p(r));
+  const group = t.match(/^(and|or)\((.*)\)$/s);
+  if (group) {
+    const parts = split(group[2]).map((x) => term(x, prefix));
+    return group[1] === "and" ? (r) => parts.every((p) => p(r)) : (r) => parts.some((p) => p(r));
   }
   const [col, op, ...rest] = t.split(".");
   const v = rest.join(".").replace(/^"|"$/g, "");
@@ -67,6 +67,7 @@ export function fakeDb(tables) {
       let head = false;
       let limit = Infinity;
       let single = false;
+      let offset = 0;
       const has = (r, c) => get(r, c) != null;
       const q = {
         select(s, o) {
@@ -84,6 +85,8 @@ export function fakeDb(tables) {
         lt: (c, v) => (preds.push((r) => has(r, c) && get(r, c) < v), q),
         gt: (c, v) => (preds.push((r) => has(r, c) && get(r, c) > v), q),
         contains: (c, v) => (preds.push((r) => Array.isArray(get(r, c)) && v.every((x) => get(r, c).includes(x))), q),
+        ilike: (c, v) => (preds.push((r) => like(v).test(String(get(r, c) ?? ""))), q),
+        range: (from, to) => ((offset = from), (limit = to - from + 1), q),
         or(expr, o) {
           const terms = split(expr).map((t) => term(t, o?.referencedTable ? `${o.referencedTable}.` : ""));
           preds.push((r) => terms.some((f) => f(r)));
@@ -102,7 +105,7 @@ export function fakeDb(tables) {
           });
           const hit = rows.filter((r) => emb.every((e) => !e.inner || r[e.alias]) && preds.every((p) => p(r)));
           if (head) return resolve({ count: hit.length, data: null, error: null });
-          return resolve({ data: single ? (hit[0] ?? null) : hit.slice(0, limit), error: null });
+          return resolve({ data: single ? (hit[0] ?? null) : hit.slice(offset, offset + limit), error: null });
         },
       };
       return q;

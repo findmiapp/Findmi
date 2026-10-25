@@ -32,6 +32,8 @@ import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import BrandHeading from "@/components/BrandHeading";
 import OurLocations from "@/components/OurLocations";
+import ContextMap from "@/components/map/ContextMap";
+import { brandPlaceResults } from "@/lib/geo-results-server";
 import { publicLocationHref } from "@/lib/location-links";
 import SectionAnchorNav from "@/components/SectionAnchorNav";
 import { buildSectionAnchors } from "@/lib/section-anchors";
@@ -254,7 +256,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, activity, people, galleryImages, journal, ourLocations, findUsAt] = await Promise.all([
+  const [products, activity, people, galleryImages, journal, ourLocations, findUsAt, wherePlaces] = await Promise.all([
     getProductsForBusiness(business.id),
     // Upcoming activity reconciled with the Business's approved Event
     // participation and each Event's CURRENT schedule (read-only — see
@@ -275,6 +277,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     // Business (explicit links only; never one it operates). Only the small
     // displayed set is requested.
     getAvailabilityLocationsForBusiness(getSupabase(), business.id, { publicOnly: true, limit: FIND_US_AT_PUBLIC_LIMIT }),
+    // Map Everywhere — the same real relationships, as places on a map.
+    brandPlaceResults(business),
   ]);
   // EVENT IDENTITY != SCHEDULE OCCURRENCES. The Featured Appearance card
   // shows a multi-date Event ONCE (its live date, else its next date — see
@@ -898,6 +902,20 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               physical-presence story reads: Findmi Here → Our Locations →
               Find Us At. Nothing renders with none. */}
           <FindUsAt businessName={business.name} locations={findUsAt.items} />
+
+          {/* Where To Find Us — Map Everywhere: every real place this Brand
+              operates, is Available Here or pops up (no headquarters point
+              without one of those relationships). Lazily started. */}
+          {wherePlaces.length > 0 && (
+            <section id="where-to-find-us" className="mt-8 scroll-mt-24" aria-labelledby="where-to-find-us-heading">
+              <h2 id="where-to-find-us-heading" className="font-display text-lg font-bold tracking-tight text-ink">
+                Where To Find Us
+              </h2>
+              <div className="mt-3">
+                <ContextMap results={wherePlaces} label={`Map of where to find ${business.name}`} tall={new Set(wherePlaces.map((r) => r.place.id)).size > 1} />
+              </div>
+            </section>
+          )}
 
           {/* The optional Announcement (Bulletin) — profile content, not an
               action; the visitor actions live in the Public Actions bar. */}

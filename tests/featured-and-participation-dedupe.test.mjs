@@ -188,7 +188,11 @@ test("discovery: /events and /discover opt in; homepage rows, search and /find k
   for (const f of ["src/lib/homepage-rows.ts", "src/app/api/homepage-search/route.ts", "src/app/api/homepage-events/route.ts", "src/app/(public)/find/page.tsx"]) {
     assert.doesNotMatch(read(f), /featuredFirst/, f);
   }
-  assert.match(read("src/lib/data.ts"), /if \(params\.featuredFirst\) sortFeaturedFirst\(rows\);\s*\n\s*const offset = params\.offset \?\? 0;/, "sorted before paging");
+  // Sorted in the whole result set (getEventsDiscoveryRows — shared with the
+  // Map), then paged by getEventsDiscovery: still sorted before paging.
+  const data = read("src/lib/data.ts");
+  assert.match(data, /if \(params\.featuredFirst\) sortFeaturedFirst\(rows\);\s*\n\s*return rows;/, "sorted before paging");
+  assert.match(data, /return \(await getEventsDiscoveryRows\(params\)\)\s*\n?\s*\.slice\(offset, offset \+ limit\)/, "paging happens after");
   const card = read("src/components/discover/EventDiscoveryCard.tsx");
   assert.match(card, /\{event\.is_featured && \(\s*<span className="rounded-full bg-findmi [^"]*text-white">Featured<\/span>/);
 });

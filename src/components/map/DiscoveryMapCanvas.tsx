@@ -40,6 +40,9 @@ export interface CanvasProps {
   /** Padding (px) the bottom sheet / side panel covers. */
   padding?: { top: number; bottom: number; left: number; right: number };
   label?: string;
+  /** In-page maps (detail pages): one finger scrolls the page, two pan
+   * the map; on desktop the wheel needs a modifier. Off for /map. */
+  cooperativeGestures?: boolean;
 }
 
 const prefersReducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -123,7 +126,7 @@ function selectedElement(f: MapFeature): HTMLElement {
   return el;
 }
 
-export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results" }: CanvasProps) {
+export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false }: CanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -153,6 +156,7 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
         touchPitch: false,
         maxZoom: 19,
         fadeDuration: prefersReducedMotion() ? 0 : 200,
+        ...(cooperativeGestures ? { cooperativeGestures: true } : {}),
       });
       mapRef.current = map;
       map.touchZoomRotate.disableRotation();

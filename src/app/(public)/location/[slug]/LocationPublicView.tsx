@@ -39,6 +39,8 @@ import {
   type LocationHappening,
 } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
+import { placeResult } from "@/lib/geo-results";
+import ContextMap from "@/components/map/ContextMap";
 import { isLocationDiscoverable, isRenderableImageUrl } from "@/lib/location-eligibility";
 import { hasAnyHours } from "@/lib/locationHours";
 import { LocationHoursStatus } from "@/components/LocationHours";
@@ -170,6 +172,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // Address card: street on line 1 (stronger), "City, ST ZIP" on line 2
   // (secondary but readable) — from the structured fields, never a split
   // of the joined string. Either line alone still renders on its own.
+  const mapResult = placeResult(location);
   const addressLine1 = location.address?.trim() || null;
   const addressLine2 = cityStateZip(location.city, location.state, location.postal_code) || null;
   const addressBlock = (
@@ -649,6 +652,19 @@ export async function LocationPublicView({ slug }: { slug: string }) {
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {/* Map Everywhere — a thin, lazily started map of the Location
+            itself (its address is already text in the hero above). */}
+        {mapResult && (
+          <section id="map" className="mt-8 scroll-mt-20" aria-labelledby="location-map-heading">
+            <h2 id="location-map-heading" className="font-display text-lg font-bold tracking-tight text-ink">
+              On The Map
+            </h2>
+            <div className="mt-3">
+              <ContextMap results={[mapResult]} label={`Map of ${location.name}`} />
+            </div>
           </section>
         )}
 

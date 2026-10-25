@@ -11,6 +11,8 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
 import FormAction from "@/components/FormAction";
 import ProductCard from "@/components/ProductCard";
+import ContextMap from "@/components/map/ContextMap";
+import { productPlaces } from "@/lib/geo-results-server";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
 import ProductSaveButton from "@/components/ProductSaveButton";
@@ -102,7 +104,7 @@ export default async function ProductPage({
     product.business.accepts_inquiries &&
     sanitizeBusinessInquiryTopics(product.business.inquiry_topics).includes("product_order");
 
-  const [fulfillmentOptions, appearances, sellerProducts, inquiryAction, journal] = await Promise.all([
+  const [fulfillmentOptions, appearances, sellerProducts, inquiryAction, journal, wherePlaces] = await Promise.all([
     canAddToCart ? getFulfillmentOptionsForProduct(product.id) : Promise.resolve([]),
     getUpcomingAppearancesForBusiness(product.business_id, 3),
     getProductsForBusiness(product.business_id),
@@ -110,6 +112,10 @@ export default async function ProductPage({
     // Journal Distribution V1 — experiences structurally connected to
     // this Product only.
     getPublicJournalCollection({ subjectType: "product", subjectId: product.id, limit: 6, withCount: true }),
+    // Map Everywhere — only places tied to THIS Product (Available Here
+    // naming it, Event dates featuring it, Pop-Up pickup) — never every
+    // Location of its Brand.
+    productPlaces(product.id),
   ]);
   const moreFromSeller = sellerProducts.filter((p) => p.id !== product.id).slice(0, 8);
 
@@ -340,6 +346,17 @@ export default async function ProductPage({
         <section className="mt-10 lg:max-w-2xl">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">About this product</h2>
           <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/70">{product.description}</p>
+        </section>
+      )}
+
+      {wherePlaces.length > 0 && (
+        <section id="where-to-find-it" className="mt-10 lg:max-w-2xl" aria-labelledby="where-to-find-it-heading">
+          <h2 id="where-to-find-it-heading" className="font-display text-lg font-bold tracking-tight text-ink">
+            Where To Find It
+          </h2>
+          <div className="mt-3">
+            <ContextMap results={wherePlaces} label={`Map of where to find ${product.name}`} tall={new Set(wherePlaces.map((r) => r.place.id)).size > 1} />
+          </div>
         </section>
       )}
 

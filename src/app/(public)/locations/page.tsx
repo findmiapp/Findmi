@@ -6,7 +6,9 @@ import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import CategorySelect from "@/components/discover/CategorySelect";
 import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import { getConsumerVisibleMarketsWithAreas, getLocationCategories, getLocations, getMarketAreaLabel } from "@/lib/data";
-import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
+import { archiveView, placeArchive } from "@/lib/archive-params";
+import { bboxParam } from "@/lib/geo-results";
 
 export const metadata: Metadata = {
   title: "Locations",
@@ -26,24 +28,18 @@ interface Params {
   /** Canonical Entity Geography completion pass — see /events' own Params
    * field for the full rule. */
   geo?: string;
+  /** Map Everywhere — Search This Area bounds and the presentation. */
+  bbox?: string;
+  view?: string;
 }
 
 export default async function LocationsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
-  const canonicalGeo = params.geo ? await resolveCanonicalGeoScope(params.geo) : null;
+  // One reading of the URL for the List and its Map (lib/archive-params).
+  const options = await placeArchive(params as Record<string, string>);
+  const view = archiveView(params as Record<string, string>);
 
-  const [categories, markets, locations] = await Promise.all([
-    getLocationCategories(),
-    getConsumerVisibleMarketsWithAreas(),
-    getLocations({
-      q: params.q,
-      categorySlug: params.category,
-      marketSlug: params.market,
-      areaSlug: params.market ? params.area : undefined,
-      canonicalGeo,
-      limit: RESULT_LIMIT,
-    }),
-  ]);
+  const [categories, markets, locations] = await Promise.all([getLocationCategories(), getConsumerVisibleMarketsWithAreas(), getLocations({ ...options, limit: RESULT_LIMIT })]);
 
   const categoryName = categories.find((c) => c.slug === params.category)?.name;
   const selectedMarket = markets.find((m) => m.slug === params.market);
@@ -59,6 +55,8 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   if (params.category) baseParams.set("category", params.category);
   if (params.market) baseParams.set("market", params.market);
   if (params.market && params.area) baseParams.set("area", params.area);
+  if (options.bbox) baseParams.set("bbox", bboxParam(options.bbox));
+  if (view !== "list") baseParams.set("view", view);
 
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
@@ -95,6 +93,8 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
       </p>
 
       <form method="get" className="mt-4 flex flex-col gap-3">
+        {options.bbox && <input type="hidden" name="bbox" value={bboxParam(options.bbox)} />}
+        {view !== "list" && <input type="hidden" name="view" value={view} />}
         <ArchiveSearchField defaultValue={params.q} placeholder="Search locations" />
 
         <div className="flex flex-wrap items-center gap-2.5">
@@ -113,6 +113,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
         {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref="/locations" />}
       </form>
 
+      <ArchiveGeoShell surface="locations" initialView={view} bbox={options.bbox ?? null} noun={["Place", "Places"]}>
       <p className="mt-3 text-xs font-medium text-ink/45">
         {locations.length} location{locations.length === 1 ? "" : "s"}
       </p>
@@ -127,16 +128,15 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
           )}
         </div>
       ) : (
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-geo-grid className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {locations.map((l, i) => (
-            <LocationDiscoveryCard
-              key={l.id}
-              location={l}
-              analyticsContext={{ pageType: "locations", placement: "results_grid", position: i + 1 }}
-            />
+            <div key={l.id} data-geo-key={`loc:${l.id}`} className="min-w-0">
+              <LocationDiscoveryCard location={l} analyticsContext={{ pageType: "locations", placement: "results_grid", position: i + 1 }} />
+            </div>
           ))}
         </div>
       )}
+      </ArchiveGeoShell>
     </div>
   );
 }

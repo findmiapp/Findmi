@@ -20,13 +20,16 @@ test("heading + canonical name/address (no aggressive one-line truncation)", () 
   assert.match(card, /\{cityLine && <span className="block break-words text-muted">\{cityLine\}<\/span>\}/);
 });
 
-test("Get Directions (accent, same maps query + tracking) and View Location (canonical page); no map link", () => {
+test("Get Directions (accent, same maps query + tracking) and View Location (canonical page); the shared contextual map", () => {
   assert.match(card, /variant="compact"/);
   assert.match(card, /const mapsQuery = \[location\.name, location\.address, cityState\(location\.city, location\.state\)\]\.filter\(Boolean\)\.join\(", "\);/, "Directions destination unchanged");
   assert.match(card, /event_name: "click_directions",\n\s+subject_type: "location",/);
   assert.match(directions, /className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1\.5 rounded-full bg-findmi px-4 text-sm font-bold text-white[^"]*"\n\s+>\n\s+\{glyph\}\n\s+Get Directions/);
   assert.match(card, /href=\{publicLocationHref\(location\)!\}[\s\S]{0,260}View Location/, "canonical page — only when it exists (lib/location-links.ts)");
-  assert.doesNotMatch(card, /View on Map|\/map\b/);
+  // Map Everywhere: the Findmi Map is live — the card carries the shared
+  // contextual map (with its own View On Map) for a Location with real
+  // coordinates; Directions above stays the external maps destination.
+  assert.match(card, /<ContextMap results=\{\[geo\]\}/);
 });
 
 test("privacy: no section for a hidden location (canonicalLocation is null); no empty section", () => {

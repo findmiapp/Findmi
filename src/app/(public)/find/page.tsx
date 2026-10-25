@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
+import { archiveBbox, archiveView } from "@/lib/archive-params";
+import { bboxParam } from "@/lib/geo-results";
+import { appearancesInBbox, GEO_LIMIT } from "@/lib/geo-results-server";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import { cityState, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
@@ -62,6 +66,9 @@ interface Params {
   /** Canonical Entity Geography completion pass — see /events' own Params
    * field for the full rule. */
   geo?: string;
+  /** Map Everywhere — Search This Area bounds and the presentation. */
+  bbox?: string;
+  view?: string;
 }
 
 /** Carousel-First pass — stable round-robin by business.id, preserving
@@ -97,7 +104,10 @@ function diversifyByBusiness<T extends { business: { id: string } }>(list: T[]):
 }
 
 export default async function FindPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam, geo: geoParam } = await searchParams;
+  const raw = await searchParams;
+  const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam, geo: geoParam } = raw;
+  const bbox = archiveBbox(raw as Record<string, string>);
+  const view = archiveView(raw as Record<string, string>);
   const canonicalGeo = geoParam ? await resolveCanonicalGeoScope(geoParam) : null;
   // Findmi Here Clarity pass — default is Next Up ("anytime"), not Now
   // ("live"): explicit ?when=live/today/weekend still select exactly that
@@ -128,12 +138,16 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const [categories, markets, items, matchingEvents, continuationItems] = await Promise.all([
     getCategories(),
     getConsumerVisibleMarketsWithAreas(),
-    getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }),
+    // Search This Area (Map Everywhere): the same feed, narrowed to Pop-Ups
+    // at a Location inside the area — exactly what /api/geo/find maps.
+    bbox
+      ? getFindMiHereFeed(when, GEO_LIMIT, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }).then(async (all) => (await appearancesInBbox(all, bbox)).slice(0, 30))
+      : getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }),
     category || marketSlug || canonicalGeo
-      ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, canonicalGeo, limit: 6 })
+      ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, canonicalGeo, bbox, limit: 6 })
       : Promise.resolve([]),
     isConstrainedWindow
-      ? getFindMiHereFeed("anytime", 20, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo })
+      ? getFindMiHereFeed("anytime", bbox ? GEO_LIMIT : 20, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }).then(async (all) => (bbox ? (await appearancesInBbox(all, bbox)).slice(0, 20) : all))
       : Promise.resolve([]),
   ]);
 
@@ -214,6 +228,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
     if (next.market) p.set("market", next.market);
     if (next.market && next.area) p.set("area", next.area);
     if (next.q) p.set("q", next.q);
+    if (bbox) p.set("bbox", bboxParam(bbox));
+    if (view !== "list") p.set("view", view);
     const qs = p.toString();
     return qs ? `/find?${qs}` : "/find";
   }
@@ -237,6 +253,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           Hidden when/market/area fields mean submitting never drops
           whichever of those the visitor already had selected. */}
       <form method="get" className="mt-3 flex flex-col gap-2">
+        {bbox && <input type="hidden" name="bbox" value={bboxParam(bbox)} />}
+        {view !== "list" && <input type="hidden" name="view" value={view} />}
         <div className="flex gap-2">
           <input autoCapitalize="none"
             type="text"
@@ -316,6 +334,9 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         </div>
       </form>
 
+      {/* Map Everywhere — List | Map of this window's Pop-Ups (no Split: the
+          List is a carousel + feed, not a scannable result column). */}
+      <ArchiveGeoShell surface="find" initialView={view} bbox={bbox} noun={["Pop-Up", "Pop-Ups"]} allowSplit={false}>
       {items.length === 0 ? (
         <div className="mt-5 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
           {q ? (
@@ -418,8 +439,9 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           )}
         </>
       )}
+      </ArchiveGeoShell>
 
-      {hasFilters && dedupedMatchingEvents.length > 0 && (
+      {hasFilters && dedupedMatchingEvents.length > 0 && view === "list" && (
         <div className="mt-8">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Matching Events</p>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">

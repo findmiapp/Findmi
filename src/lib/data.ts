@@ -2408,6 +2408,9 @@ export interface EventDiscoveryParams {
    * Additive alongside marketSlug/areaSlug/location — never a
    * replacement for either. */
   canonicalGeo?: CanonicalGeoScope | null;
+  /** Map Everywhere — Search This Area: only Events whose date is at a
+   * real Location inside these bounds (w, s, e, n). */
+  bbox?: [number, number, number, number] | null;
 }
 
 /** Shared events query — backs /events' "All" browse state and
@@ -2496,6 +2499,17 @@ export async function getEventIdsInCanonicalGeo(canonicalGeo: CanonicalGeoScope 
 }
 
 export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Promise<FindmiEvent[]> {
+  const offset = params.offset ?? 0;
+  const limit = params.limit ?? 50;
+  return (await getEventsDiscoveryRows(params))
+    .slice(offset, offset + limit)
+    .map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
+}
+
+/** The whole filtered, ordered /events result set (before paging) — the
+ * List pages through it and the Map draws it, so the two can never mean
+ * different things. */
+export async function getEventsDiscoveryRows(params: EventDiscoveryParams = {}): Promise<EffectiveEventRow[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -2562,10 +2576,12 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
   // on the date each Event is shown by; access is the Event's own action
   // fields (the same truthiness every card uses to show the button).
   // Applied before paging so pages stay consistent.
+  const bbox = params.bbox;
   const rows = effectiveRows.filter(
     (r) =>
       (params.date || params.when !== "live" || isEventHappeningNow(r.effectiveStart, r.effectiveEnd)) &&
-      eventMatchesAccess(r.event, params.access)
+      eventMatchesAccess(r.event, params.access) &&
+      (!bbox || inBboxRow(r.occurrenceLocation, bbox))
   );
 
   // Findmi editorial Featured (events.is_featured): on the Event discovery
@@ -2573,13 +2589,11 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
   // featured_sort_order, then date — and every other Event keeps its
   // normal date order. Applied before paging so pages stay consistent.
   if (params.featuredFirst) sortFeaturedFirst(rows);
-
-  const offset = params.offset ?? 0;
-  const limit = params.limit ?? 50;
-  return rows
-    .slice(offset, offset + limit)
-    .map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
+  return rows;
 }
+
+const inBboxRow = (l: { latitude: number | null; longitude: number | null } | null, b: [number, number, number, number]) =>
+  l != null && typeof l.latitude === "number" && typeof l.longitude === "number" && l.longitude >= b[0] && l.longitude <= b[2] && l.latitude >= b[1] && l.latitude <= b[3];
 
 /** Attaches each event's tagged categories (event_categories) — mirrors
  * attachCategories' shape/pattern for businesses. Used where category
@@ -4361,6 +4375,9 @@ export function normalizeCategoryEmbed(raw: unknown): LocationCategoryRef | null
 
 export interface LocationsDiscoveryOptions {
   limit?: number;
+  /** Map Everywhere — Search This Area: Locations whose canonical
+   * coordinates are inside these bounds (w, s, e, n). */
+  bbox?: [number, number, number, number] | null;
   /** Locations Discovery V4 — plain substring match over name/city/state,
    * same fields (and same `.or(...ilike...)` shape) searchLocations
    * already uses for Global Search. A separate, parallel implementation
@@ -4402,7 +4419,7 @@ export interface LocationsDiscoveryOptions {
 }
 
 export async function getLocations(options: LocationsDiscoveryOptions = {}): Promise<LocationWithCategory[]> {
-  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo, requireCoverImage = false, requireActivityImages = false } = options;
+  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo, bbox, requireCoverImage = false, requireActivityImages = false } = options;
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -4466,6 +4483,7 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     query = rollupFilter ? query.or(`market_id.eq.${marketId},${rollupFilter}`) : query.eq("market_id", marketId);
   }
   if (categoryId) query = query.eq("category_id", categoryId);
+  if (bbox) query = query.gte("longitude", bbox[0]).lte("longitude", bbox[2]).gte("latitude", bbox[1]).lte("latitude", bbox[3]);
   if (q?.trim()) {
     const pattern = `%${q.trim()}%`;
     query = query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern}`);

@@ -8,6 +8,8 @@ import { OpportunityAsideSections, OpportunityDeal, OpportunityHero, Opportunity
 import { loadBusinessShell } from "../../loadBusinessShell";
 import { expressInterestFromExplore } from "../../actions";
 import { getSiteContactInfo } from "@/lib/contact-info";
+import ContextMap from "@/components/map/ContextMap";
+import { opportunityPlace } from "@/lib/geo-results-server";
 import { CHOOSE_PACKAGE_MESSAGE, choosePackageMailto, requiresPackageChoice } from "@/lib/opportunity-package-policy";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,9 @@ export default async function ExploreOpportunityPage({
     ? choosePackageMailto({ email: (await getSiteContactInfo()).email, opportunityTitle: o.title, businessName: shell.business.name })
     : null;
   const mayRespond = canMemberRespond(membership.role, membership.viaAdmin);
+  // Map Everywhere — only a listing tied to a real Location has a point; a
+  // Market-wide, remote or nationwide Opportunity gets none.
+  const mapPlace = await opportunityPlace(item.place?.slug, item.place?.name ?? o.title);
   const note = membership.viaAdmin
     ? "Viewing as a Findmi Admin. Responses come from the Business; manage Opportunities from Admin."
     : !mayRespond
@@ -97,6 +102,7 @@ export default async function ExploreOpportunityPage({
               showCredits={false}
               showInvestment={false}
             />
+            {mapPlace && <ContextMap results={[mapPlace]} label={`Map of ${mapPlace.place.name}`} />}
           </div>
         </div>
       </div>

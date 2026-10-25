@@ -246,10 +246,13 @@ test("6/7/8. Every discovery page (/search via runDiscovery, /events, /find, /di
   assert.match(server, /getCandidates\(executed\.market, executed\.area, kinds, executed\.census\)/, "/search's existing ?geo=/?census= param (see discovery/query.ts SCALAR_KEYS) now scopes the candidate fetch itself");
   assert.match(server, /resolveCanonicalGeoScope\(geoKey\)/);
 
+  assert.match(read("src/lib/archive-params.ts"), /export async function placeArchive[\s\S]*?canonicalGeo: geo \? await resolveCanonicalGeoScope\(geo\) : null/);
   for (const file of ["src/app/(public)/events/page.tsx", "src/app/(public)/find/page.tsx", "src/app/(public)/discover/page.tsx", "src/app/(public)/businesses/page.tsx", "src/app/(public)/locations/page.tsx"]) {
     const src = read(file);
     assert.match(src, /geo\?: string/, `${file} accepts ?geo=`);
-    assert.match(src, /resolveCanonicalGeoScope/, `${file} resolves it`);
+    // Map Everywhere: /locations reads its URL through lib/archive-params
+    // (shared with its Map), which resolves the same canonical scope.
+    assert.match(src, /resolveCanonicalGeoScope|placeArchive\(/, `${file} resolves it`);
     assert.match(src, /\bmarket\??: string/, `${file} still accepts ?market= unchanged`);
   }
 });

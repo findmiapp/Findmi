@@ -6,6 +6,8 @@ import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import type { FindmiLocation } from "@/lib/types";
 import type { LocationPlaceContext } from "@/lib/data";
 import { cityState, cityStateZip } from "@/lib/format";
+import { placeResult } from "@/lib/geo-results";
+import ContextMap from "@/components/map/ContextMap";
 
 /** Event page — Location section: a "Location" heading and ONE compact card
  * for the Event's real linked Location (never built from plain venue text;
@@ -14,7 +16,9 @@ import { cityState, cityStateZip } from "@/lib/format";
  * to two lines; the address is the Location's own structured fields
  * (street / "City, ST ZIP"); actions are Get Directions (primary, same
  * maps query + click_directions tracking as before) and View Location
- * (the canonical Location page). No map link — Findmi's map isn't live. */
+ * (the canonical Location page). Map Everywhere: a thin, lazily started
+ * map of the Location (with View On Map) sits above the card when the
+ * Location has real coordinates. */
 export default function EventLocationFeature({
   location,
   placeContext,
@@ -28,11 +32,17 @@ export default function EventLocationFeature({
   const mapsQuery = [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ");
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : null;
   const image = location.logo_url ?? location.cover_image_url;
+  const geo = placeResult(location, { linkable: Boolean(publicLocationHref(location)) });
 
   return (
     <section id="location" aria-labelledby="location-heading" className="scroll-mt-24">
       <SectionHeading id="location-heading">Location</SectionHeading>
       <div className="mt-3 rounded-2xl border border-black/5 bg-white p-3.5 sm:max-w-xl">
+        {geo && (
+          <div className="mb-3">
+            <ContextMap results={[geo]} label={`Map of ${location.name}`} />
+          </div>
+        )}
         <div className="flex items-start gap-3">
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-black/[0.04]">
             {image ? (
