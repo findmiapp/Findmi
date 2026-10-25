@@ -221,23 +221,56 @@ export async function getCurrentUserId(): Promise<string | null> {
  * exists. A path that fails to sign (a deleted/missing object) is simply
  * absent from the map rather than throwing, so one bad row never breaks
  * an entire gallery. */
-export async function resolveSignedUrls(paths: string[], size: ImageSize = "original"): Promise<Map<string, string>> {
-  return (await resolveSignedImageUrls(paths, [size])).get(size) ?? new Map();
+export async function resolveSignedUrls(paths: string[], size: ImageSize = "original", opts: { publicView?: boolean } = {}): Promise<Map<string, string>> {
+  return (await resolveSignedImageUrls(paths, [size], opts)).get(size) ?? new Map();
 }
 
-/** Several display sizes for the same paths, still one signing call. */
-export async function resolveSignedImageUrls(paths: string[], sizes: ImageSize[]): Promise<Map<ImageSize, Map<string, string>>> {
+// Image metadata privacy (Phase 2A): photos stored before metadata
+// stripping may still carry EXIF/GPS in their ORIGINAL file, so a public
+// view (anyone but the Moment's own managers) is only ever served display
+// variants, which are always metadata-free. A photo with no variant yet
+// gets them generated in the background (once per server instance, a few
+// per request) and appears as soon as they exist. Originals are never
+// modified here.
+const variantJobs = new Set<string>();
+const MAX_VARIANT_JOBS_PER_REQUEST = 6;
+
+function scheduleMissingVariants(paths: string[]) {
+  const admin = getAdminSupabase();
+  if (!admin) return;
+  const todo = paths.filter((p) => !variantJobs.has(p)).slice(0, MAX_VARIANT_JOBS_PER_REQUEST);
+  if (todo.length === 0) return;
+  for (const p of todo) variantJobs.add(p);
+  // Loaded lazily: the variant pipeline (sharp) and next/server's after()
+  // are only needed when a job actually runs.
+  const run = async () => {
+    const { mapLimit, storePrivateVariants } = await import("./image-variants-server");
+    await mapLimit(todo, 2, async (p) => {
+      const ok = await storePrivateVariants(admin, JOURNAL_MEDIA_BUCKET, p).catch(() => false);
+      if (!ok) variantJobs.delete(p); // allow a later retry
+    });
+  };
+  import("next/server")
+    .then(({ after }) => after(run))
+    .catch(() => {
+      for (const p of todo) variantJobs.delete(p);
+    });
+}
+
+/** Several display sizes for the same paths, still one signing call.
+ * `publicView` (anyone who doesn't manage the Moment): variants only. */
+export async function resolveSignedImageUrls(paths: string[], sizes: ImageSize[], opts: { publicView?: boolean } = {}): Promise<Map<ImageSize, Map<string, string>>> {
   const admin = getAdminSupabase();
   if (paths.length === 0 || !admin) return new Map(sizes.map((s) => [s, new Map()]));
   const sign: Signer = async (toSign, ttl) => {
     const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrls(toSign, ttl);
     return error ? null : (data ?? []);
   };
-  return signImageUrls(paths, sizes, sign, signedUrlCache);
+  return signImageUrls(paths, sizes, sign, signedUrlCache, opts.publicView ? { allowOriginal: false, onMissingVariants: scheduleMissingVariants } : {});
 }
 
-async function attachSignedUrls(media: JournalEntryMediaRow[]): Promise<JournalMediaWithUrl[]> {
-  const urls = await resolveSignedImageUrls(media.map((m) => m.storage_path), ["original", "card", "large"]);
+async function attachSignedUrls(media: JournalEntryMediaRow[], opts: { publicView?: boolean } = {}): Promise<JournalMediaWithUrl[]> {
+  const urls = await resolveSignedImageUrls(media.map((m) => m.storage_path), ["original", "card", "large"], opts);
   const get = (s: ImageSize, p: string) => urls.get(s)?.get(p) ?? null;
   return media.map((m) => ({ ...m, url: get("original", m.storage_path), cardUrl: get("card", m.storage_path), largeUrl: get("large", m.storage_path) }));
 }
@@ -271,7 +304,11 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
     loadEntrySections(supabase, entryId),
   ]);
 
-  const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
+  // "Can manage" — derived from current state: a Personal Moment → its
+  // creator; a Business Moment → a current owner/manager of it. Anyone
+  // else is a public viewer and only ever gets display variants.
+  const isOwner = Boolean(user && (await viewerManagesEntry(supabase, user.id, entry as JournalEntryRow)));
+  const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[], { publicView: !isOwner });
   const connections = (connectionRows ?? []) as JournalConnectionRow[];
   const { businesses, products, events, occurrences } = await resolveConnectedObjects(connections, supabase);
 
@@ -284,9 +321,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
     events,
     occurrences,
     sections,
-    // "Can manage" — derived from current state: a Personal Moment → its
-    // creator; a Business Moment → a current owner/manager of it.
-    isOwner: Boolean(user && (await viewerManagesEntry(supabase, user.id, entry as JournalEntryRow))),
+    isOwner,
   };
 }
 

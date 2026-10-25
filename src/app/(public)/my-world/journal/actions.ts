@@ -13,6 +13,7 @@ import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } fr
 import { getAllOccurrencesForEvent } from "@/lib/data";
 import { canGenerateVariants, mapLimit, storePrivateVariants, variantPathsFor } from "@/lib/image-variants-server";
 import { normalizeStagedImage } from "@/lib/imageUploadValidation";
+import { stripImageMetadata } from "@/lib/image-metadata";
 import { isVariantPath } from "@/lib/image-variants";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { calendarDate } from "@/lib/event-time";
@@ -281,7 +282,10 @@ export async function uploadJournalPhoto(
     // carries no authorization meaning on its own — see this module's own
     // header note on why a signed URL is the only way to ever read it.
     const path = `journal/${userId}/${entryId}/${randomUUID()}.${validated.extension}`;
-    const uploadBody = validated.converted?.buffer ?? file;
+    // Image metadata privacy (Phase 2A): store the metadata-free original.
+    const stripped = await stripImageMetadata(validated.converted?.buffer ?? Buffer.from(await file.arrayBuffer()), validated.contentType);
+    if ("error" in stripped) return { error: "Couldn't process that photo. Please try again." };
+    const uploadBody = stripped.buffer;
     const { error: uploadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).upload(path, uploadBody, {
       contentType: validated.contentType,
       upsert: false,
@@ -328,8 +332,7 @@ export async function uploadJournalPhoto(
     // upload isn't slowed; until they exist, readers fall back to the
     // original (see lib/signed-image-urls.ts). Never touches the original.
     if (canGenerateVariants(validated.contentType)) {
-      const source = validated.converted?.buffer ?? Buffer.from(await file.arrayBuffer());
-      after(() => storePrivateVariants(admin, JOURNAL_MEDIA_BUCKET, path, source));
+      after(() => storePrivateVariants(admin, JOURNAL_MEDIA_BUCKET, path, uploadBody));
     }
 
     return { id: mediaRow.id, url: signed?.signedUrl ?? "", isCover: mediaRow.is_cover };
@@ -469,6 +472,28 @@ export interface JournalBatchFinalizeItem {
   errorMessage?: string;
 }
 
+/** Image metadata privacy (Phase 2A): rewrites a directly uploaded,
+ * not-yet-recorded original in place without EXIF/GPS/XMP/IPTC (same
+ * path, before any reader has been given a URL for it). A file that has no
+ * such metadata is left untouched. */
+async function sanitizeStoredOriginal(admin: SupabaseClient, storagePath: string): Promise<{ ok: true } | { error: string }> {
+  const ext = storagePath.split(".").pop()?.toLowerCase() ?? "";
+  const contentType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : null;
+  if (!contentType) return { error: "unsupported type" };
+  if (contentType === "image/gif") return { ok: true };
+  const { data: blob, error: downloadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).download(storagePath);
+  if (downloadError || !blob) return { error: downloadError?.message ?? "download failed" };
+  const stripped = await stripImageMetadata(Buffer.from(await blob.arrayBuffer()), contentType);
+  if ("error" in stripped) return stripped;
+  if (!stripped.changed) return { ok: true };
+  const { error: uploadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).upload(storagePath, stripped.buffer, {
+    contentType,
+    upsert: true,
+    cacheControl: "31536000",
+  });
+  return uploadError ? { error: uploadError.message } : { ok: true };
+}
+
 /** The metadata-only half of direct upload — called once the browser has
  * already PUT a chunk's bytes straight to Storage via uploadToSignedUrl.
  * Never trusts a client-supplied storagePath at face value: each must fall
@@ -575,8 +600,10 @@ export async function finalizeJournalPhotoBatch(
         }
         const normalized = await normalizeStagedImage(Buffer.from(await blob.arrayBuffer()));
         if ("error" in normalized) return fail(normalized.error);
+        const cleaned = await stripImageMetadata(normalized.buffer, normalized.contentType);
+        if ("error" in cleaned) return fail("Couldn't process that photo. Tap Retry.");
         const finalPath = `${stagedBase(item.storagePath)}.${normalized.extension}`;
-        const { error: uploadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).upload(finalPath, normalized.buffer, {
+        const { error: uploadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).upload(finalPath, cleaned.buffer, {
           contentType: normalized.contentType,
           upsert: false,
           cacheControl: "31536000",
@@ -609,8 +636,27 @@ export async function finalizeJournalPhotoBatch(
     const coverIds = new Set<string>((existingRows ?? []).filter((r) => r.is_cover).map((r) => r.id as string));
     const idempotencyMs = Date.now() - idempotencyStart;
 
+    // Image metadata privacy (Phase 2A): a photo the browser uploaded
+    // directly (not converted here) may still carry EXIF/GPS, e.g. a small
+    // JPEG the client didn't re-encode. Clean the stored original BEFORE
+    // its row exists, so no reader (owner or public) can ever be served
+    // the metadata-bearing bytes. A photo that can't be cleaned is not
+    // recorded; the client's Retry re-runs this step.
+    const metadataStart = Date.now();
+    const notYetRecorded = readyItems.filter((it) => !mediaIdByPath.has(it.storagePath) && !stagedSources.has(it.storagePath));
+    const uncleanable = new Set<string>();
+    await mapLimit(notYetRecorded, 3, async (item) => {
+      const result = await sanitizeStoredOriginal(admin, item.storagePath);
+      if ("error" in result) {
+        console.error("[journal] finalizeJournalPhotoBatch metadata strip failed", { entryId, localId: item.localId, message: result.error });
+        uncleanable.add(item.storagePath);
+        results.push({ localId: item.localId, ok: false, errorMessage: "Couldn't process that photo. Tap Retry." });
+      }
+    });
+    const metadataMs = Date.now() - metadataStart;
+
     const insertStart = Date.now();
-    const needsInsert = readyItems.filter((it) => !mediaIdByPath.has(it.storagePath));
+    const needsInsert = readyItems.filter((it) => !mediaIdByPath.has(it.storagePath) && !uncleanable.has(it.storagePath));
     if (needsInsert.length > 0) {
       // Moments V2 — explicit cover: only the position-0 photo of a Moment
       // that has NO cover yet claims it (see uploadJournalPhoto's note).
@@ -661,6 +707,7 @@ export async function finalizeJournalPhotoBatch(
     if (doneSources.length > 0) after(() => admin.storage.from(JOURNAL_MEDIA_BUCKET).remove(doneSources));
 
     for (const item of readyItems) {
+      if (uncleanable.has(item.storagePath)) continue; // already pushed an error result above
       const mediaId = mediaIdByPath.get(item.storagePath);
       if (!mediaId) continue; // already pushed an error result above
       results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(item.storagePath) ?? "", isCover: coverIds.has(mediaId) });
@@ -674,6 +721,7 @@ export async function finalizeJournalPhotoBatch(
       stagedCount: staged.length,
       convertMs,
       idempotencyMs,
+      metadataMs,
       insertMs,
       signedUrlMs,
       totalMs: Date.now() - perfStart,

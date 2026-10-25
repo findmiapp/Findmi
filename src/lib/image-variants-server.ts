@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
+import { stripImageMetadata } from "./image-metadata";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { VARIANT_SIZES, markedOriginalName, variantPath, type VariantSize } from "./image-variants";
 
@@ -99,9 +100,14 @@ export async function storePublicImage(
   const id = randomUUID();
   let variantsStored = false;
   let markedPath: string | null = null;
+  // Image metadata privacy (Phase 2A): the stored original is the
+  // metadata-free version (no EXIF/GPS/XMP/IPTC), never the raw upload.
+  const stripped = await stripImageMetadata(validated.converted?.buffer ?? Buffer.from(await file.arrayBuffer()), validated.contentType);
+  if ("error" in stripped) return { error: "Couldn't process that image. Please try a different file." };
+  const original = stripped.buffer;
   if (canGenerateVariants(validated.contentType)) {
     try {
-      const source = validated.converted?.buffer ?? Buffer.from(await file.arrayBuffer());
+      const source = original;
       const variants = await generateImageVariants(source);
       markedPath = markedOriginalName(id, validated.extension);
       variantsStored = await uploadVariants(admin, bucket, markedPath, variants);
@@ -111,7 +117,7 @@ export async function storePublicImage(
     }
   }
   const path = variantsStored && markedPath ? markedPath : `${id}.${validated.extension}`;
-  const { error } = await admin.storage.from(bucket).upload(path, validated.converted?.buffer ?? file, {
+  const { error } = await admin.storage.from(bucket).upload(path, original, {
     contentType: validated.contentType,
     upsert: false,
     cacheControl: VARIANT_CACHE_CONTROL, // fresh UUID path, never overwritten

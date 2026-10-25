@@ -9,7 +9,6 @@ import {
   type OwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
 import type { BusinessFollowerSummary } from "@/lib/business-followers";
-import SupabaseImage from "@/components/SupabaseImage";
 import { Panel, RowList, Row, Stat, SectionEyebrow, PerformanceMetric, ShareBar, RankedPerformanceRow, secondaryButtonClass } from "../../owner-ui";
 
 // Performance Command Center pass — Analytics stays presentational-only
@@ -477,37 +476,25 @@ export default function PerformanceTab({
           <div className="flex flex-col gap-4 lg:col-start-3">
             {/* ── Your Audience — Followers itself lives in the KPI
                 strip above, so this section is about the PEOPLE behind
-                that total. Now always rendered: a real waiting line
-                when there are zero followers, the existing avatar grid
-                or factual privacy-safe line once there are some. Never
-                shows growth (not available today). ── */}
+                that total. Aggregate only (Trust & Privacy Phase 2A):
+                total and 30-day growth, never who the followers are. ── */}
             <Panel padded={false}>
               <SectionHeader title="Your Audience" />
               <div className="p-4">
                 {followerSummary.totalCount === 0 ? (
                   <SectionWaiting title="No followers yet" body={`When people follow ${businessName}, you'll see your audience here.`} />
-                ) : followerSummary.profiles.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    {followerSummary.profiles.map((p) => (
-                      <Link
-                        key={p.username}
-                        href={`/user/${p.username}`}
-                        className="flex flex-col items-center gap-1 text-center transition hover:opacity-70"
-                      >
-                        <div className="relative h-11 w-11 overflow-hidden rounded-full bg-mist ring-1 ring-black/[0.06]">
-                          {p.avatar_url && (
-                            <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="44px" className="object-cover" />
-                          )}
-                        </div>
-                        <p className="w-full truncate text-microcopy font-medium text-secondary">{p.display_name || `@${p.username}`}</p>
-                      </Link>
-                    ))}
-                  </div>
                 ) : (
-                  <p className="text-body text-muted">
-                    {followerSummary.totalCount.toLocaleString()} {followerSummary.totalCount === 1 ? "person follows" : "people follow"}{" "}
-                    {businessName}. Public profiles will appear here once they&rsquo;re set.
-                  </p>
+                  <div>
+                    <p className="text-body text-secondary">
+                      {followerSummary.totalCount.toLocaleString()} {followerSummary.totalCount === 1 ? "person follows" : "people follow"} {businessName}.
+                    </p>
+                    <p className="mt-1 text-body text-muted">
+                      {followerSummary.newLast30Days > 0
+                        ? `${followerSummary.newLast30Days.toLocaleString()} new in the last 30 days.`
+                        : "No new followers in the last 30 days."}
+                    </p>
+                    <p className="mt-2 text-microcopy text-subtle">Follower totals are shown in aggregate. Findmi doesn&rsquo;t share who follows you.</p>
+                  </div>
                 )}
                 {followerSummary.totalCount > 0 && (followerSummary.accountCount > 0 || followerSummary.legacyCount > 0) && (
                   <p className="mt-3 border-t border-black/[0.05] pt-2.5 text-microcopy text-subtle">

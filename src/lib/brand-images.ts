@@ -1,4 +1,5 @@
 import "server-only";
+import { stripImageMetadata } from "./image-metadata";
 import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { safeFetchBrandImage, safeFetchSvg, SAFE_FETCH_SVG_MAX_BYTES, type SafeFetchContentIssue, type SafeFetchFailure, type SafeFetchImageResult } from "./safe-fetch";
@@ -610,7 +611,11 @@ export async function stageBrandImage(admin: SupabaseClient, userId: string, ima
     if (!EXT_TYPE[ext]) return null;
     const path = `${BRAND_STAGING_PREFIX}/${userId.toLowerCase()}/${randomUUID()}.${ext}`;
     if (!isStagedPathFor(path, userId)) return null;
-    const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, image.body, { contentType: EXT_TYPE[ext], upsert: false, cacheControl: "600" });
+    // Image metadata privacy (Phase 2A): imported images are stored
+    // without EXIF/XMP/IPTC, like every user upload.
+    const stripped = await stripImageMetadata(image.body, EXT_TYPE[ext]);
+    if ("error" in stripped) return null;
+    const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, stripped.buffer, { contentType: EXT_TYPE[ext], upsert: false, cacheControl: "600" });
     return error ? null : path;
   } catch {
     return null;

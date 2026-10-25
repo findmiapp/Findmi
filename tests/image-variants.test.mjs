@@ -191,13 +191,15 @@ test("variant failure never fails the upload: original stored unmarked, no stray
   assert.equal(V.imageVariantUrl(PUB + res.path, "card"), PUB + res.path); // readers use the original
 });
 
-test("undecodable / GIF uploads still store the original", async () => {
+test("GIF uploads still store the original; an undecodable image is refused", async () => {
   const { admin, objects } = fakeStorage();
   const gif = await S.storePublicImage(admin, "findmi-media", { extension: "gif", contentType: "image/gif" }, await asFile(Buffer.from("GIF89a"), "image/gif"));
   assert.equal(gif.variants, false);
+  // Image metadata privacy (Phase 2A): an original whose metadata can't be
+  // inspected and stripped is never stored.
   const bad = await S.storePublicImage(admin, "findmi-media", { extension: "jpg", contentType: "image/jpeg" }, await asFile(Buffer.from("nope"), "image/jpeg"));
-  assert.equal(bad.variants, false);
-  assert.equal(objects.size, 2);
+  assert.ok("error" in bad);
+  assert.equal(objects.size, 1);
 });
 
 test("HEIC uploads use the already-converted JPEG buffer as the source", async () => {
@@ -205,7 +207,13 @@ test("HEIC uploads use the already-converted JPEG buffer as the source", async (
   const converted = await photo(1600, 1200, "jpeg");
   const res = await S.storePublicImage(admin, "findmi-media", { extension: "jpg", contentType: "image/jpeg", converted: { buffer: converted } }, await asFile(Buffer.from("heic-bytes"), "image/heic"));
   assert.equal(res.variants, true);
-  assert.equal(objects.get(res.path).body, converted);
+  // The stored original is the converted JPEG (metadata stripped), never
+  // the raw HEIC bytes.
+  const stored = objects.get(res.path).body;
+  const meta = await sharp(stored).metadata();
+  assert.equal(meta.format, "jpeg");
+  assert.equal(meta.width, 1600);
+  assert.equal(meta.exif, undefined);
 });
 
 test("original upload failure returns an error and cleans up its variants", async () => {

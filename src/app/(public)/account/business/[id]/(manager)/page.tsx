@@ -1422,7 +1422,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       totalCount: 0,
       accountCount: 0,
       legacyCount: 0,
-      profiles: [],
+      newLast30Days: 0,
     } as Awaited<ReturnType<typeof getBusinessFollowerSummary>>),
     marketsPromise,
     whenP(onHome || onOrders || (onMore && pro), () => getBusinessOrderSummary(admin, id), noOrderSummary),

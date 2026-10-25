@@ -19,7 +19,7 @@
 // minutes so a freshly generated variant is picked up quickly. Whole-call
 // failures are never cached. Process-local (each server instance has its
 // own); nothing is persisted.
-import { sizeToVariant, variantPath, type ImageSize } from "./image-variants";
+import { sizeToVariant, variantPath, type ImageSize, type VariantSize } from "./image-variants";
 
 export const SIGNED_URL_TTL_SECONDS = 60 * 60;
 export const SIGNED_URL_REUSE_MS = 45 * 60 * 1000;
@@ -56,22 +56,46 @@ export function createSignedUrlCache({ now = Date.now, max = 5000 }: { now?: () 
   };
 }
 
+/** Public-view variant preference per requested size (largest useful
+ * first): a public viewer is never served the stored original. */
+const PUBLIC_VARIANT_ORDER: Record<ImageSize, readonly VariantSize[]> = {
+  original: [1600, 800, 160],
+  large: [1600, 800, 160],
+  card: [800, 1600, 160],
+  thumb: [160, 800, 1600],
+};
+
+export interface SignImageOptions {
+  /** false (public views): never fall back to the stored original; use
+   * only display variants (sanitized, metadata-free WebP), and report
+   * paths that have none so the caller can generate them. Default true
+   * (owner / editor views keep today's behavior). */
+  allowOriginal?: boolean;
+  /** Receives original paths with no variant at all (public views). */
+  onMissingVariants?: (paths: string[]) => void;
+}
+
 /** Signed display URLs for `paths` at each requested size, in ONE signing
  * call for everything not already cached. Result: size → (original path →
- * URL); a size whose variant is missing maps to the original's URL. */
+ * URL); a size whose variant is missing maps to the original's URL, except
+ * in a public view (allowOriginal: false), where it maps to another
+ * variant or is left out. */
 export async function signImageUrls(
   paths: string[],
   sizes: ImageSize[],
   sign: Signer,
-  cache: SignedUrlCache
+  cache: SignedUrlCache,
+  options: SignImageOptions = {}
 ): Promise<Map<ImageSize, Map<string, string>>> {
+  const allowOriginal = options.allowOriginal !== false;
   const unique = [...new Set(paths)];
   const wanted = new Set<string>();
   for (const p of unique) {
-    wanted.add(p);
+    if (allowOriginal) wanted.add(p);
     for (const s of sizes) {
       const v = sizeToVariant(s);
       if (v) wanted.add(variantPath(p, v));
+      if (!allowOriginal) for (const pv of PUBLIC_VARIANT_ORDER[s]) wanted.add(variantPath(p, pv));
     }
   }
   const missing = [...wanted].filter((p) => cache.get(p) === undefined);
@@ -89,14 +113,25 @@ export async function signImageUrls(
     }
   }
   const out = new Map<ImageSize, Map<string, string>>();
+  const withoutVariants = new Set<string>();
   for (const s of sizes) {
     const m = new Map<string, string>();
     const v = sizeToVariant(s);
     for (const p of unique) {
-      const url = (v ? cache.get(variantPath(p, v))?.url : null) ?? cache.get(p)?.url;
+      let url: string | null | undefined;
+      if (allowOriginal) {
+        url = (v ? cache.get(variantPath(p, v))?.url : null) ?? cache.get(p)?.url;
+      } else {
+        for (const pv of PUBLIC_VARIANT_ORDER[s]) {
+          url = cache.get(variantPath(p, pv))?.url;
+          if (url) break;
+        }
+        if (!url) withoutVariants.add(p);
+      }
       if (url) m.set(p, url);
     }
     out.set(s, m);
   }
+  if (withoutVariants.size > 0) options.onMissingVariants?.([...withoutVariants]);
   return out;
 }

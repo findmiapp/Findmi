@@ -189,7 +189,9 @@ export async function getBusinessMoments(
       const c = coverOf(id);
       return c ? [c.storage_path] : [];
     }),
-    "card"
+    "card",
+    // Includes other people's public Moments: display variants only.
+    { publicView: true }
   );
 
   const moments: BusinessMoment[] = limited.map((r) => {
