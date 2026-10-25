@@ -117,7 +117,7 @@ function selectedElement(f: MapFeature): HTMLElement {
   name.textContent = f.label;
   const status = document.createElement("span");
   status.className = "max-w-[11rem] truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
-  status.textContent = f.live ? (f.status && f.status !== "LIVE" ? `LIVE · ${f.status}` : "LIVE") : f.status || f.place;
+  status.textContent = f.live ? (f.status && f.status !== "LIVE" ? `● LIVE · ${f.status}` : "● LIVE") : f.status || f.place;
   text.append(name, status);
   el.append(mark, text);
   return el;

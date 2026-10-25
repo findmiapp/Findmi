@@ -16,9 +16,10 @@ const KIND: Record<Card["kind"], string> = { event: "Event", appearance: "Pop-Up
 const VIEW: Record<Card["kind"], string> = { event: "View Event", appearance: "View Brand", place: "View Place" };
 
 export function StatusPill({ status, when }: { status: Card["status"]; when?: string }) {
+  // "● LIVE · Ends 9 PM" — the word carries the state, the color supports it.
   if (status.live)
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-white" />
         Live
         <span className="font-semibold normal-case tracking-normal">· {status.text}</span>
@@ -78,9 +79,14 @@ export default function MapResultCard({
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {/* 1. When / state first: one line, never the same fact twice. */}
         <div className="flex min-w-0 items-center gap-1.5">
-          <StatusPill status={card.status} when={card.when} />
-          <span className="truncate text-[10px] font-bold uppercase tracking-wide text-ink/40">{KIND[card.kind]}</span>
+          {card.status.live || card.status.tone === "soon" || card.status.tone === "today" || (card.kind === "place" && card.status.text) ? (
+            <StatusPill status={card.status} />
+          ) : card.when ? (
+            <span className="truncate text-[11px] font-bold text-ink/60">{card.when}</span>
+          ) : null}
+          {card.kind !== "event" && <span className="truncate text-[10px] font-bold uppercase tracking-wide text-ink/40">{KIND[card.kind]}</span>}
         </div>
         {onSelect ? (
           <button type="button" onClick={() => onSelect(card)} aria-pressed={selected} className="min-w-0 text-left after:absolute after:inset-0 after:rounded-2xl focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-findmi">
@@ -92,7 +98,11 @@ export default function MapResultCard({
           </Link>
         )}
         {sub && <p className="truncate text-xs text-ink/55">{sub}</p>}
-        {card.kind !== "place" && card.when && !card.status.live && card.status.text !== card.when && <p className="truncate text-xs text-ink/55">{card.when}</p>}
+        {card.kind === "place" && card.brandCount > 0 && (
+          <p className="truncate text-xs text-ink/55">
+            {card.brandCount} {card.brandCount === 1 ? "Brand" : "Brands"} Here
+          </p>
+        )}
         {(perks.length > 0 || distance || card.moreDates > 0) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-1">
             {perks.map((p) => (

@@ -99,7 +99,8 @@ export default function MapFilterSheet({
     setCounting(true);
     const t = setTimeout(() => {
       count(draft, ctl.signal)
-        .then((v) => !ctl.signal.aborted && setN(v))
+        // Keep the last known count on screen until the new one arrives.
+        .then((v) => !ctl.signal.aborted && v !== null && setN(v))
         .finally(() => !ctl.signal.aborted && setCounting(false));
     }, 350);
     return () => {
@@ -341,8 +342,16 @@ export default function MapFilterSheet({
         </div>
 
         <div className="border-t border-black/5 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <button type="button" onClick={() => onApply(draft)} className="flex min-h-12 w-full items-center justify-center rounded-full bg-findmi text-[15px] font-bold text-white shadow-[0_6px_18px_rgba(20,176,188,0.35)] hover:bg-findmi-600" aria-live="polite">
-            {n === null ? (counting ? "Counting…" : `Show ${noun}`) : n === 0 ? `No ${noun} Match` : `Show ${n} ${n === 1 ? noun.replace(/s$/, "") : noun}`}
+          {n === 0 && !counting && <p className="mb-2 text-center text-xs text-ink/60">Nothing matches all of these. Remove a filter to see results.</p>}
+          <button
+            type="button"
+            onClick={() => onApply(draft)}
+            disabled={n === 0 && !counting}
+            aria-live="polite"
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-findmi text-[15px] font-bold text-white shadow-[0_6px_18px_rgba(20,176,188,0.35)] hover:bg-findmi-600 disabled:bg-black/[0.08] disabled:text-ink/45 disabled:shadow-none"
+          >
+            {n === null ? `Show ${noun}` : n === 0 ? `0 ${noun}` : `Show ${n.toLocaleString()} ${n === 1 ? noun.replace(/s$/, "") : noun}`}
+            {counting && <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white motion-reduce:animate-none" />}
           </button>
         </div>
       </div>

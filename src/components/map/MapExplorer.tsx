@@ -8,6 +8,7 @@ import { mapHref, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, t
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
 import MapFilterSheet, { type FilterOptions } from "./MapFilterSheet";
+import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetState } from "./sheet";
 
 // Discovery Map + Feed — ONE Discovery Query, one result set, two
 // renderers. The map never fetches while it moves: panning only reveals
@@ -20,7 +21,6 @@ const DiscoveryMapCanvas = dynamic(() => import("./DiscoveryMapCanvas"), {
   loading: () => <div className="h-full w-full animate-pulse bg-[#eef0ef] motion-reduce:animate-none" />,
 });
 
-type Sheet = "peek" | "half" | "full";
 type View = "map" | "feed";
 
 const GEO_KEYS: (keyof DiscoveryQuery)[] = ["bbox", "area", "market", "census", "place", "near", "radius"];
@@ -44,11 +44,6 @@ const bboxOf = (features: MapFeature[]): Bbox | null => {
   }
   const pad = 0.004;
   return [w - pad, s - pad, e + pad, n + pad];
-};
-const movedEnough = (a: Bbox | undefined, b: Bbox) => {
-  if (!a) return true;
-  const span = Math.max(a[2] - a[0], a[3] - a[1]);
-  return a.some((v, i) => Math.abs(v - b[i]) > span * 0.12);
 };
 
 const QUICK: { label: string; when?: DiscoveryWhen; flag?: "free" | "near" }[] = [
@@ -96,7 +91,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const [extras, setExtras] = useState<{ brands: { name: string; slug: string }[]; moments: { id: string; title: string; href: string }[]; open: boolean | null } | null>(null);
   const [viewport, setViewport] = useState<Bbox>(initialQuery.bbox ?? defaultBbox);
   const [showSearchArea, setShowSearchArea] = useState(false);
-  const [sheet, setSheet] = useState<Sheet>("peek");
+  const [sheet, setSheet] = useState<SheetState>("peek");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [text, setText] = useState(initialQuery.text ?? "");
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
@@ -107,7 +103,45 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const ctl = useRef<AbortController | null>(null);
   const counts = useRef(new Map<string, number>());
   const listRef = useRef<HTMLDivElement>(null);
-  const sheetDrag = useRef<number | null>(null);
+  const sheetDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
+  const [dragH, setDragH] = useState<number | null>(null);
+  // Bounds the current results were queried for (Search This Area compares
+  // against these): the query's own viewport, or — for an Area / place /
+  // search query — the view the map fitted to its results.
+  const queriedBounds = useRef<Bbox | null>((initialQuery.bbox as Bbox | undefined) ?? null);
+  const awaitingFit = useRef(false);
+
+  // ---- measured sheet geometry (content-driven heights)
+  const columnRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const firstRef = useRef<HTMLLIElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState({ column: 0, head: 0, peekBody: 0, contentBody: 0, topReserve: 0 });
+  const measure = useCallback(() => {
+    const content = contentRef.current;
+    const pad = 16;
+    let peekBody = 0;
+    if (previewRef.current && content) peekBody = previewRef.current.offsetTop - content.offsetTop + previewRef.current.offsetHeight + pad;
+    else if (firstRef.current && content) peekBody = firstRef.current.offsetTop - content.offsetTop + firstRef.current.offsetHeight + pad;
+    else if (content) peekBody = content.offsetHeight;
+    const next = {
+      column: columnRef.current?.offsetHeight ?? 0,
+      head: headRef.current?.offsetHeight ?? 0,
+      peekBody,
+      contentBody: content ? content.offsetHeight + pad : 0,
+      topReserve: (topRef.current?.offsetHeight ?? 0) + 8,
+    };
+    setMetrics((m) => (Object.keys(next).every((k) => Math.abs(m[k as keyof typeof m] - next[k as keyof typeof next]) < 1) ? m : next));
+  }, []);
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    for (const r of [columnRef, headRef, contentRef, topRef]) if (r.current) ro.observe(r.current);
+    measure();
+    return () => ro.disconnect();
+  });
 
   const key = queryKey({ ...query, offset: undefined });
 
@@ -125,7 +159,10 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   useEffect(() => {
     if (skipKey.current === key) {
       skipKey.current = null;
-      if (!query.bbox && data?.features.length) setFit({ bbox: bboxOf(data.features)!, key: Date.now() });
+      if (!query.bbox && data?.features.length) {
+        awaitingFit.current = true;
+        setFit({ bbox: bboxOf(data.features)!, key: Date.now() });
+      }
       return;
     }
     ctl.current?.abort();
@@ -142,7 +179,10 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           counts.current.set(key, d.total);
           if (!query.bbox) {
             const b = bboxOf(d.features);
-            if (b) setFit({ bbox: b, key: Date.now() });
+            if (b) {
+              awaitingFit.current = true;
+              setFit({ bbox: b, key: Date.now() });
+            }
           }
         })
         .catch(() => undefined)
@@ -164,6 +204,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     setFocusCards(null);
     setExtras(null);
     setShowSearchArea(false);
+    if (next.bbox) queriedBounds.current = next.bbox as Bbox;
     setQuery({ ...next, offset: undefined });
     listRef.current?.scrollTo({ top: 0 });
   }, []);
@@ -180,16 +221,26 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       setSelected(id);
       setFocusCards(null);
       setExtras(null);
+      setPreviewLoading(false);
+      // Selecting (or closing) always settles on the content-sized Peek:
+      // the selected preview, with the map still in view.
+      setSheet("peek");
+      listRef.current?.scrollTo({ top: 0 });
       if (!id) return;
-      setSheet((s) => (s === "full" ? "half" : s));
       const f = featureById.get(id);
       if (!f) return;
       const have = results.filter((c) => f.keys.includes(c.key));
       if (have.length < Math.min(f.count, f.keys.length)) {
+        setPreviewLoading(true);
         fetch(`/api/discovery/map?${queryToParams({ ...query, offset: undefined }).toString()}&focus=${f.locationId}`)
           .then((r) => (r.ok ? r.json() : null))
-          .then((d: MapResponse | null) => d && setFocusCards(d.results.filter((c) => f.keys.includes(c.key)).length ? d.results.filter((c) => f.keys.includes(c.key)) : d.results))
-          .catch(() => undefined);
+          .then((d: MapResponse | null) => {
+            if (!d) return;
+            const mine = d.results.filter((c) => f.keys.includes(c.key));
+            setFocusCards(mine.length ? mine : d.results);
+          })
+          .catch(() => undefined)
+          .finally(() => setPreviewLoading(false));
       }
       fetch(`/api/discovery/map/preview?location=${f.locationId}`)
         .then((r) => (r.ok ? r.json() : null))
@@ -200,10 +251,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     [featureById, results, query]
   );
   const selectCard = (card: Card) => {
-    setSelected(card.featureId);
-    setFocusCards(null);
+    selectFeature(card.featureId);
     setFocus({ lng: card.lng, lat: card.lat, key: Date.now() });
-    if (view === "map") setSheet((s) => (s === "full" ? "half" : s));
   };
   const selectedFeature = selected ? (featureById.get(selected) ?? null) : null;
   const selectedCards = selectedFeature ? (focusCards ?? results.filter((c) => selectedFeature.keys.includes(c.key))) : [];
@@ -212,9 +261,18 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const onViewportChange = useCallback(
     (b: Bbox, byUser: boolean) => {
       setViewport(b);
-      if (byUser) setShowSearchArea(movedEnough(query.bbox as Bbox | undefined, b));
+      if (!byUser) {
+        // The map just fitted itself to an Area / search result set: that
+        // view is what was searched.
+        if (awaitingFit.current || !queriedBounds.current) {
+          queriedBounds.current = b;
+          awaitingFit.current = false;
+        }
+        return;
+      }
+      setShowSearchArea(movedMeaningfully(queriedBounds.current, b));
     },
-    [query.bbox]
+    []
   );
 
   // ---- search (natural language → the same structured query)
@@ -241,12 +299,17 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       setResults(d.results);
       setQuery(next);
       setText(next.text ?? "");
+      setShowSearchArea(false);
+      if (next.bbox) queriedBounds.current = next.bbox as Bbox;
       if (!next.bbox) {
         const b = bboxOf(d.features);
-        if (b) setFit({ bbox: b, key: Date.now() });
+        if (b) {
+          awaitingFit.current = true;
+          setFit({ bbox: b, key: Date.now() });
+        }
       }
       (document.activeElement as HTMLElement | null)?.blur?.();
-      setSheet("half");
+      setSheet("browse");
     } catch {
       /* aborted */
     } finally {
@@ -418,14 +481,14 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     </div>
   );
 
-  const list = (
+  const renderList = (mobile: boolean) => (
     <div className="flex flex-col gap-2.5">
       {notices}
       {emptyState}
       {selectedFeature && view === "map" && results.length > selectedCards.length && <p className="text-xs font-bold uppercase tracking-wide text-ink/45">More Results</p>}
       <ul role="list" className={view === "feed" ? "grid gap-2.5 lg:grid-cols-2" : "flex flex-col gap-2.5"}>
-        {results.filter((card) => !(view === "map" && selectedFeature?.keys.includes(card.key))).map((card) => (
-          <li key={card.key}>
+        {results.filter((card) => !(view === "map" && selectedFeature?.keys.includes(card.key))).map((card, i) => (
+          <li key={card.key} ref={mobile && i === 0 ? firstRef : undefined}>
             <MapResultCard card={card} selected={selectedFeature?.keys.includes(card.key) ?? false} onSelect={view === "map" ? selectCard : undefined} showDistance={Boolean(query.near)} />
           </li>
         ))}
@@ -443,25 +506,32 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     </div>
   );
 
-  const preview = selectedFeature && (
-    <div className="flex flex-col gap-2">
+  // Selected preview: what's happening there first, then useful context.
+  // Every section renders only when it has something in it.
+  const [primary, ...others] = selectedCards;
+  const othersLive = others.some((c) => c.status.live);
+  const renderPreview = (mobile: boolean) => selectedFeature && (
+    <div ref={mobile ? previewRef : undefined} className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-xs font-bold uppercase tracking-wide text-ink/45">
           {selectedFeature.place}
           {extras?.open === true ? " · Open Now" : extras?.open === false ? " · Closed Now" : ""}
           {selectedFeature.count > 1 ? ` · ${selectedFeature.count} Here` : ""}
         </p>
-        <button type="button" onClick={() => selectFeature(null)} aria-label="Close preview" className="flex h-8 w-8 items-center justify-center rounded-full text-ink/50 hover:bg-black/5">
+        <button type="button" onClick={() => selectFeature(null)} aria-label="Close preview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink/50 hover:bg-black/5">
           <Icon d={CLOSE} className="h-4 w-4" />
         </button>
       </div>
-      {selectedCards.slice(0, 1).map((c) => (
-        <MapResultCard key={c.key} card={c} variant="preview" selected showDistance={Boolean(query.near)} />
-      ))}
-      {selectedCards.slice(1, 4).map((c) => (
-        <MapResultCard key={c.key} card={c} showDistance={Boolean(query.near)} />
-      ))}
-      {selectedCards.length === 0 && <div className="h-24 animate-pulse rounded-2xl bg-black/[0.04] motion-reduce:animate-none" />}
+      {primary && <MapResultCard card={primary} variant="preview" selected showDistance={Boolean(query.near)} />}
+      {!primary && previewLoading && <div className="h-24 animate-pulse rounded-2xl bg-black/[0.04] motion-reduce:animate-none" />}
+      {others.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/45">{othersLive ? "Happening Here" : "Coming Up Here"}</p>
+          {others.slice(0, 3).map((c) => (
+            <MapResultCard key={c.key} card={c} showDistance={Boolean(query.near)} />
+          ))}
+        </div>
+      )}
       {extras && extras.brands.length > 0 && (
         <p className="text-xs text-ink/60">
           <span className="font-semibold text-ink/75">Brands Here: </span>
@@ -492,16 +562,50 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     </button>
   );
 
-  const cycleSheet = () => setSheet((s) => (s === "peek" ? "half" : s === "half" ? "full" : "peek"));
+  // ---- sheet: content-sized snap heights, header-only drag (the list
+  // scrolls, the header drags — they never fight).
+  const heights = sheetHeights(metrics);
+  const measured = metrics.column > 0 && metrics.head > 0;
+  const sheetPx = dragH ?? heights[sheet];
+  // Keep the selected marker in the visible part of the map: once the
+  // preview has rendered and the sheet has settled at its new height, pan
+  // the marker clear of it (marker taps near the bottom included).
+  const settledSheet = measured ? heights[sheet] : 0;
+  useEffect(() => {
+    if (!selectedFeature || view !== "map" || screen.desktop) return;
+    const t = setTimeout(() => setFocus({ lng: selectedFeature.lng, lat: selectedFeature.lat, key: Date.now() }), 180);
+    return () => clearTimeout(t);
+    // Re-run only when the selection or the settled sheet height changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFeature?.id, settledSheet]);
+
   const onSheetDown = (e: ReactPointerEvent) => {
-    sheetDrag.current = e.clientY;
+    if ((e.target as HTMLElement).closest("[data-sheet-action]")) return;
+    sheetDrag.current = { y: e.clientY, h: heights[sheet], moved: false };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onSheetMove = (e: ReactPointerEvent) => {
+    const d = sheetDrag.current;
+    if (!d) return;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dy) > 6) d.moved = true;
+    if (d.moved) setDragH(Math.max(metrics.head, Math.min(heights.expanded, d.h - dy)));
   };
   const onSheetUp = (e: ReactPointerEvent) => {
-    if (sheetDrag.current === null) return;
-    const dy = e.clientY - sheetDrag.current;
+    const d = sheetDrag.current;
     sheetDrag.current = null;
-    if (Math.abs(dy) < 8) return cycleSheet();
-    setSheet((s) => (dy < -30 ? (s === "peek" ? "half" : "full") : dy > 30 ? (s === "full" ? "half" : "peek") : s));
+    if (!d) return;
+    const dy = e.clientY - d.y;
+    const released = dragH ?? heights[sheet];
+    setDragH(null);
+    const next = d.moved ? snapAfterDrag(sheet, heights, released, dy) : nextOnTap(sheet, heights);
+    if (next === "peek") listRef.current?.scrollTo({ top: 0 });
+    setSheet(next);
+  };
+  const toggleList = () => {
+    const next: SheetState = sheet === "peek" ? "browse" : "peek";
+    if (next === "peek") listRef.current?.scrollTo({ top: 0 });
+    setSheet(next);
   };
 
   return (
@@ -511,7 +615,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       </p>
 
       {/* MAP column (mobile: whole surface in Map view; desktop: ~62%) */}
-      <div className={`relative min-w-0 flex-1 ${view === "feed" ? "hidden" : ""}`}>
+      <div ref={columnRef} className={`relative min-w-0 flex-1 ${view === "feed" ? "hidden" : ""}`}>
         <DiscoveryMapCanvas
           features={data?.features ?? []}
           selectedId={selected}
@@ -524,41 +628,62 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           padding={
             screen.desktop
               ? { top: 48, bottom: 48, left: 48, right: 48 }
-              : { top: 150, bottom: sheet === "half" ? Math.round(screen.h * 0.52) : selected ? 250 : 120, left: 28, right: 28 }
+              : { top: (metrics.topReserve || 150) + 8, bottom: (measured ? heights[sheet] : 120) + 12, left: 28, right: 28 }
           }
         />
         {/* mobile top controls over the map */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-2 p-3 lg:hidden">
+        <div ref={topRef} className="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-2 p-3 lg:hidden">
           {searchBar}
           {chipRow}
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[8.25rem] flex justify-center lg:top-4">{searchAreaButton}</div>
 
-        {/* mobile bottom sheet: Peek → Half → Expanded */}
+        {/* mobile bottom sheet: Peek → Browse → Expanded, sized by content */}
         <section
           aria-label="Results"
-          className={`absolute inset-x-0 bottom-0 z-10 flex flex-col rounded-t-3xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-[height] duration-300 ease-out motion-reduce:transition-none lg:hidden ${
-            sheet === "full" ? "h-[calc(100%-7.75rem)]" : sheet === "half" ? "h-[52%]" : selectedFeature ? "h-[15.5rem]" : "h-[6.75rem]"
-          }`}
+          style={measured ? { height: sheetPx } : undefined}
+          className={`absolute inset-x-0 bottom-0 z-10 flex flex-col rounded-t-3xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] lg:hidden ${dragH === null ? "transition-[height] duration-300 ease-out motion-reduce:transition-none" : ""} ${measured ? "" : "h-[7.5rem]"}`}
         >
-          <button
-            type="button"
+          <div
+            ref={headRef}
+            role="button"
+            tabIndex={0}
             onPointerDown={onSheetDown}
+            onPointerMove={onSheetMove}
             onPointerUp={onSheetUp}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), cycleSheet())}
-            aria-label={sheet === "full" ? "Collapse results" : "Expand results"}
+            onPointerCancel={() => {
+              sheetDrag.current = null;
+              setDragH(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSheet(nextOnTap(sheet, heights));
+              }
+            }}
+            aria-label={sheet === "expanded" ? "Collapse results" : "Expand results"}
             aria-expanded={sheet !== "peek"}
-            className="flex w-full shrink-0 touch-none flex-col items-center gap-2 px-4 pb-2 pt-2.5"
+            className="flex w-full shrink-0 cursor-grab touch-none select-none flex-col items-center gap-1.5 px-4 pb-2 pt-2 active:cursor-grabbing"
           >
             <span aria-hidden className="h-1.5 w-10 rounded-full bg-black/15" />
-            <span className="flex w-full items-center justify-between">
+            <span className="flex w-full items-center justify-between gap-3">
               <span className="font-display text-[15px] font-bold text-ink">{loading && !data ? "Finding…" : countLine}</span>
-              <span className="text-xs font-semibold text-ink/45">{sheet === "full" ? "Map" : "List"}</span>
+              {total > 0 && (
+                <button type="button" data-sheet-action onClick={toggleList} className="flex min-h-9 items-center gap-1.5 rounded-full bg-black/[0.05] px-3 text-xs font-bold text-ink/75">
+                  <Icon d={sheet === "peek" ? LIST : MAP} className="h-3.5 w-3.5" />
+                  {sheet === "peek" ? "List" : "Map"}
+                </button>
+              )}
             </span>
-          </button>
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            {preview && <div className="mb-3">{preview}</div>}
-            {(sheet !== "peek" || !preview) && (sheet !== "peek" ? list : (data?.mapReady === false || total === 0) && <div className="pt-1">{notices}{emptyState}</div>)}
+          </div>
+          <div
+            ref={listRef}
+            className={`min-h-0 flex-1 overscroll-contain px-3 ${sheet === "peek" && !selectedFeature ? "overflow-hidden" : "overflow-y-auto"}`}
+          >
+            <div ref={contentRef} className="flex flex-col gap-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+              {renderPreview(true)}
+              {renderList(true)}
+            </div>
           </div>
         </section>
       </div>
@@ -572,7 +697,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <p className="mb-2 font-display text-[15px] font-bold text-ink">{countLine}</p>
-            {list}
+            {renderList(false)}
           </div>
         </div>
       )}
@@ -594,8 +719,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           </div>
         </div>
         <div ref={view === "feed" ? undefined : listRef} className={`min-h-0 flex-1 overflow-y-auto p-4 ${view === "feed" ? "mx-auto w-full max-w-4xl" : ""}`}>
-          {preview && view === "map" && <div className="mb-4 rounded-2xl bg-findmi-50/60 p-3">{preview}</div>}
-          {list}
+          {selectedFeature && view === "map" && <div className="mb-4 rounded-2xl bg-findmi-50/60 p-3">{renderPreview(false)}</div>}
+          {renderList(false)}
         </div>
       </aside>
 
