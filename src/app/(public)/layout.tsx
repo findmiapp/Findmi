@@ -3,6 +3,7 @@ import MobileHeader from "@/components/MobileHeader";
 import AdminToolbar from "@/components/AdminToolbar";
 import Footer from "@/components/Footer";
 import SiteChrome from "@/components/SiteChrome";
+import PrivacyChoicesRoot from "@/components/privacy/PrivacyChoicesRoot";
 import { BusinessesProvider } from "@/components/BusinessesContext";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -71,6 +72,7 @@ export default async function PublicLayout({ children }: { children: React.React
           that component's own comment — so QuickCreateMenu itself never
           renders there). One provider, no second fetch. */}
       <BusinessesProvider businesses={businesses}>{children}</BusinessesProvider>
+      <PrivacyChoicesRoot authenticated={authenticated} />
     </SiteChrome>
   );
 }

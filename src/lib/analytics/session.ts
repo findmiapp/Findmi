@@ -18,13 +18,17 @@
 // "optimize" later.
 import { cookies } from "next/headers";
 import { isUuid } from "./taxonomy";
+import { ANALYTICS_IDENTIFIER_MAX_AGE_DAYS } from "./session-constants";
 
 export const ANALYTICS_SESSION_COOKIE = "findmi_sid";
 
-// ~2 years — long-lived by design (the whole point is correlating a
-// returning anonymous visitor's actions over time), not a session-length
-// cookie.
-const MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 2;
+// Privacy Choices (Phase 2A): 90 days, down from 2 years. Long enough to
+// recognize a returning visitor across a season of discovery, short enough
+// that an identifier never outlives its purpose. Only ever minted after
+// the person allows Analytics (see lib/privacy/consent.ts); callers must
+// check isAnalyticsAllowedForRequest() before calling resolveSessionId().
+export { ANALYTICS_IDENTIFIER_MAX_AGE_DAYS };
+const MAX_AGE_SECONDS = 60 * 60 * 24 * ANALYTICS_IDENTIFIER_MAX_AGE_DAYS;
 
 /** Reads the existing findmi_sid cookie if present and valid, otherwise
  * mints a new random uuid and sets it as a first-party cookie on the
@@ -75,11 +79,11 @@ export async function resolveSessionId(): Promise<string> {
 // to work end-to-end).
 export const ANALYTICS_ACQUISITION_COOKIE = "findmi_acq";
 
-// Same lifecycle as findmi_sid — no strong reason found to diverge: the
-// whole point of first-touch acquisition is answering "how did this
-// (long-lived, findmi_sid-identified) session originally arrive" for as
-// long as that session itself is still being correlated at all.
-const ACQUISITION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 2;
+// Same lifecycle as findmi_sid (90 days), and the same Analytics
+// permission: first-touch acquisition is analytics, not essential to
+// resolving a QR code, so it is only ever set after the person allows
+// Analytics.
+const ACQUISITION_MAX_AGE_SECONDS = MAX_AGE_SECONDS;
 
 export interface AcquisitionState {
   source: "qr";

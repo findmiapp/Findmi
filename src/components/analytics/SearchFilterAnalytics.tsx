@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { trackEvent } from "@/lib/analytics/track";
+import { isAnalyticsAllowedClient } from "@/lib/privacy/consent-client";
 import type { AnalyticsPageType } from "@/lib/analytics/taxonomy";
 
 /** Mounted once per public discovery route (/businesses, /events, /find,
@@ -39,6 +40,9 @@ export default function SearchFilterAnalytics({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Privacy Choices: this snapshot exists only to detect analytics
+    // changes, so it is not kept at all without Analytics permission.
+    if (!isAnalyticsAllowedClient()) return;
     const path = window.location.pathname;
     const storageKey = `findmi_discovery_params:${path}`;
     const params = new URLSearchParams(window.location.search);

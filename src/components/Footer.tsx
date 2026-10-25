@@ -46,6 +46,7 @@ export default function Footer() {
               <ul className="mt-3 space-y-2 text-sm text-ink/65">
                 <li><Link href="/privacy" className="hover:text-ink">Privacy</Link></li>
                 <li><Link href="/terms" className="hover:text-ink">Terms</Link></li>
+                <li><Link href="/privacy-choices" className="hover:text-ink">Privacy Choices</Link></li>
               </ul>
             </div>
           </div>
@@ -57,6 +58,7 @@ export default function Footer() {
           <Link href="/join/business" className="hover:text-ink">For Business</Link>
           <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           <Link href="/terms" className="hover:text-ink">Terms</Link>
+          <Link href="/privacy-choices" className="hover:text-ink">Privacy Choices</Link>
         </div>
 
         <p className="mt-6 text-xs text-ink/40 md:mt-10">

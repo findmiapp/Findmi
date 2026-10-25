@@ -11,7 +11,13 @@
 // immediately after a click — e.g. an outbound Website/social link),
 // falling back to fetch(..., { keepalive: true }) where sendBeacon isn't
 // available. Both are fire-and-forget; neither is awaited by callers.
+//
+// Privacy Choices (Phase 2A): nothing is sent unless the person allowed
+// Analytics on this device (lib/privacy/consent.ts). The server enforces
+// the same rule again, so this is a courtesy that avoids a pointless
+// request, never the only gate.
 import type { AnalyticsEventName } from "./taxonomy";
+import { isAnalyticsAllowedClient } from "@/lib/privacy/consent-client";
 
 const ENDPOINT = "/api/analytics/track";
 
@@ -60,6 +66,7 @@ function currentPageContext(): Pick<TrackEventPayload, "referrer" | "utm_source"
 /** Fire-and-forget. Never awaited, never throws into the caller. */
 export function trackEvent(payload: TrackEventPayload): void {
   try {
+    if (!isAnalyticsAllowedClient()) return;
     const body = JSON.stringify({ ...currentPageContext(), ...payload });
 
     if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {

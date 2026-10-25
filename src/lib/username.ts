@@ -18,7 +18,7 @@ const RESERVED_USERNAMES = new Set([
   "business", "businesses", "cart", "checkout", "claim", "discover",
   "event", "events", "find", "findmi", "forgot-password", "help", "join",
   "location", "locations", "login", "logout", "marketplace", "me",
-  "null", "orders", "people", "person", "privacy", "product", "products",
+  "null", "orders", "people", "person", "privacy", "privacy-choices", "product", "products",
   "profile", "redeem", "reset-password", "root", "saved", "settings",
   "signin", "signout", "signup", "static", "support", "system", "terms",
   "undefined", "upgrade", "user", "users", "www", "you",

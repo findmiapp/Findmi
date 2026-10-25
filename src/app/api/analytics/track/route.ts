@@ -4,6 +4,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { readAcquisition, resolveSessionId } from "@/lib/analytics/session";
 import { isRateLimited } from "@/lib/analytics/rateLimit";
 import { insertAnalyticsEvent } from "@/lib/analytics/serverTrack";
+import { sanitizePagePath, sanitizeReferrer } from "@/lib/analytics/sanitize";
+import { isAnalyticsAllowedForRequest } from "@/lib/privacy/consent-server";
 import {
   clampText,
   isAnalyticsEventName,
@@ -29,6 +31,14 @@ export const dynamic = "force-dynamic";
  * user_id is likewise derived server-side from the visitor's real Supabase
  * Auth session (getServerSupabase().auth.getUser()), never trusted from
  * the body.
+ *
+ * PRIVACY CHOICES (Phase 2A): this route records nothing, and mints no
+ * findmi_sid, unless the person has allowed Analytics on this device and
+ * their signed-in account (if any) has not refused it — see
+ * isAnalyticsAllowedForRequest / lib/privacy/consent.ts. A refused or
+ * undecided request gets 204 with no Set-Cookie and no row. page_path and
+ * referrer are minimized before storage (lib/analytics/sanitize.ts) so a
+ * URL can never carry search text into analytics.
  *
  * navigator.sendBeacon (the tracker's primary transport — see
  * lib/analytics/track.ts) POSTs as `Content-Type: text/plain` regardless
@@ -77,21 +87,26 @@ export async function POST(request: NextRequest) {
 
   const metadata = sanitizeMetadata(body.metadata);
 
+  // Consent gate FIRST — before any identifier is read or minted.
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!(await isAnalyticsAllowedForRequest(supabase, user?.id ?? null))) {
+    return new NextResponse(null, { status: 204 });
+  }
+
   // session_id, user_id, and acquisition are deliberately NOT read from
   // `body` at all — see the module doc comment above and
   // lib/analytics/session.ts's own note on acquisition spoofing. A
   // client cannot claim to be QR-acquired (or claim any qr_campaign_id)
   // by supplying it in the payload; both are resolved solely from
   // server-verified cookies.
-  const [sessionId, supabase, acquisition] = await Promise.all([resolveSessionId(), getServerSupabase(), readAcquisition()]);
+  const [sessionId, acquisition] = await Promise.all([resolveSessionId(), readAcquisition()]);
 
   if (isRateLimited(sessionId)) {
     return NextResponse.json({ error: "Too many events." }, { status: 429 });
   }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const admin = getAdminSupabase();
   if (!admin) return NextResponse.json({ error: "Server isn't configured." }, { status: 500 });
@@ -111,11 +126,11 @@ export async function POST(request: NextRequest) {
     discovery_topic_id: optionalUuid(body.discovery_topic_id) ?? null,
     market_area_id: optionalUuid(body.market_area_id) ?? null,
     page_type: clampText(body.page_type, 64) ?? null,
-    page_path: clampText(body.page_path, 512) ?? null,
+    page_path: sanitizePagePath(clampText(body.page_path, 512)),
     placement: clampText(body.placement, 128) ?? null,
     session_id: sessionId,
     user_id: user?.id ?? null,
-    referrer: clampText(body.referrer) ?? null,
+    referrer: sanitizeReferrer(clampText(body.referrer), request.headers.get("host")),
     utm_source: clampText(body.utm_source, 256) ?? null,
     utm_medium: clampText(body.utm_medium, 256) ?? null,
     utm_campaign: clampText(body.utm_campaign, 256) ?? null,

@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { getAccountPrivacy } from "@/lib/privacy/consent-server";
 import { getEventsDiscovery, getFindMiHereFeed, getLocations, searchBusinesses } from "@/lib/data";
 import { eventHref } from "@/lib/event-links";
 import { getProductMappings, resolvePhrase, resolveState, resolveZipCode, geoScopeFor, censusTargetByKey } from "@/lib/geo/resolve";
@@ -318,6 +319,10 @@ export const getPersonalContext = cache(async (): Promise<PersonalContext | null
     const supabase = await getServerSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
+    // Privacy Choices: Personalized Discovery off -> no ranking by the
+    // person's own actions. Their saves/follows/lists are untouched.
+    const privacy = await getAccountPrivacy(supabase, user.id);
+    if (!privacy.personalizedDiscovery) return null;
     const ids = (res: { data: unknown }, col: string) => ((res.data ?? []) as Row[]).map((r) => r[col] as string).filter(Boolean);
     const [fb, fe, fl, sb, se, sl, rel] = await Promise.all([
       supabase.from("account_followed_businesses").select("business_id").eq("user_id", user.id).limit(200),
