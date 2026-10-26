@@ -24,10 +24,10 @@ import { CSS } from "@dnd-kit/utilities";
  * "move index A to index B" and "remove index i".
  *
  * Interaction follows the Android-tested pattern from
- * components/journal/JournalPhotoStrip.tsx: ONLY the small grip handle is
- * wired to the drag sensors and only it disables native touch gestures
- * (touch-none). The photo itself is an ordinary touch surface, so a swipe
- * anywhere else on a tile scrolls the page. A 4px movement threshold (not a
+ * components/journal/JournalPhotoStrip.tsx: ONLY the grip (the left part
+ * of the control bar under each photo) is wired to the drag sensors and only
+ * it disables native touch gestures (touch-none). The photo itself is an
+ * ordinary touch surface, so a swipe anywhere on it scrolls the page. A 4px movement threshold (not a
  * press delay) keeps a plain tap on the grip from counting as a drag.
  * dnd-kit's auto-scroll (on by default) scrolls the page while dragging near
  * an edge, for long galleries.
@@ -129,7 +129,7 @@ export default function SortableImageGrid({
         }}
       >
         <SortableContext items={ids} strategy={rectSortingStrategy}>
-          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-label={`${itemNoun}s, in display order`}>
+          <ul className="grid auto-rows-fr grid-cols-3 gap-2 sm:grid-cols-4" aria-label={`${itemNoun}s, in display order`}>
             {items.map((item, index) => (
               <SortableTile
                 key={item.id}
@@ -144,7 +144,7 @@ export default function SortableImageGrid({
                 onRemove={() => menuRemove(index)}
               />
             ))}
-            {trailing && <li className="aspect-square">{trailing}</li>}
+            {trailing && <li className="min-h-[7.5rem]">{trailing}</li>}
           </ul>
         </SortableContext>
 
@@ -152,9 +152,12 @@ export default function SortableImageGrid({
             dims in place (same as JournalPhotoStrip). */}
         <DragOverlay>
           {activeItem ? (
-            <div className="aspect-square scale-105 overflow-hidden rounded-xl border-2 border-findmi bg-mist shadow-xl">
+            <div className="scale-105 overflow-hidden rounded-xl border-2 border-findmi bg-white shadow-xl">
               {/* eslint-disable-next-line @next/next/no-img-element -- preview only, a live Storage URL */}
-              <img src={activeItem.src} alt="" className="h-full w-full object-cover" />
+              <img src={activeItem.src} alt="" className="aspect-square w-full object-cover" />
+              <div className="flex h-10 items-center justify-center bg-findmi text-white">
+                <GripGlyph className="h-5 w-5 rotate-90" />
+              </div>
             </div>
           ) : null}
         </DragOverlay>
@@ -197,45 +200,50 @@ function SortableTile({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`relative aspect-square overflow-hidden rounded-xl border border-black/10 bg-mist ${isDragging ? "opacity-30" : ""}`}
+      className={`flex flex-col overflow-hidden rounded-xl border border-black/10 bg-white ${isDragging ? "opacity-30" : ""}`}
     >
       {/* The photo is a normal touch surface — no drag listeners, no
           touch-action override — so swiping over it scrolls the page. */}
-      {/* eslint-disable-next-line @next/next/no-img-element -- preview only, a live Storage URL */}
-      <img src={item.src} alt={label} loading="lazy" className="h-full w-full object-cover" />
-
-      {/* Drag handle — the ONLY element given the drag listeners and the
-          only one with touch-none. 40px hit area, smaller visible chip. */}
-      <button
-        type="button"
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        aria-label={`Drag to reorder ${label}`}
-        className="absolute left-0 top-0 flex h-10 w-10 cursor-grab touch-none items-center justify-center rounded-br-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi active:cursor-grabbing"
-      >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white">
-          <GripGlyph className="h-4 w-4" />
+      <div className="relative aspect-square bg-mist">
+        {/* eslint-disable-next-line @next/next/no-img-element -- preview only, a live Storage URL */}
+        <img src={item.src} alt={label} loading="lazy" draggable={false} className="h-full w-full object-cover" />
+        {/* Visible position — the order saved and shown on the public page. */}
+        <span aria-hidden="true" className="pointer-events-none absolute left-1.5 top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-white/95 px-1.5 text-[12px] font-bold text-primary shadow-sm">
+          {index + 1}
         </span>
-      </button>
+      </div>
 
-      {/* Options — Move actions and Remove, so dragging is never required. */}
-      <button
-        type="button"
-        ref={menuButtonRef}
-        onClick={onToggleMenu}
-        aria-label={`Options for ${label}`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center rounded-bl-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi"
-      >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-[11px] font-bold leading-none text-white">•••</span>
-      </button>
+      {/* Control bar under the photo: the drag handle and the Options menu,
+          each a full-height 40px target, never covering the photo. */}
+      <div className="flex h-10 shrink-0 border-t border-black/[0.07]">
+        {/* Drag handle — the ONLY element given the drag listeners and the
+            only one with touch-none (also no text selection / long-press
+            callout), so pressing it and moving reorders on a phone. */}
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          onContextMenu={(e) => e.preventDefault()}
+          aria-label={`Drag to reorder ${label}`}
+          className="flex min-w-0 flex-1 cursor-grab touch-none select-none items-center justify-center bg-black/[0.025] text-ink/70 transition [-webkit-touch-callout:none] hover:bg-findmi-50 hover:text-findmi-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi active:cursor-grabbing active:bg-findmi-50 active:text-findmi-700"
+        >
+          <GripGlyph className="h-5 w-5 rotate-90" />
+        </button>
 
-      {/* Visible position — the saved display order. */}
-      <span aria-hidden="true" className="pointer-events-none absolute bottom-1.5 left-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-white/95 px-1.5 text-[11px] font-bold text-primary shadow-sm">
-        {index + 1}
-      </span>
+        {/* Options — Move actions and Remove, so dragging is never required. */}
+        <button
+          type="button"
+          ref={menuButtonRef}
+          onClick={onToggleMenu}
+          aria-label={`Options for ${label}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="flex w-10 shrink-0 items-center justify-center border-l border-black/[0.07] text-[13px] font-bold leading-none text-ink/60 transition hover:bg-black/[0.03] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi"
+        >
+          •••
+        </button>
+      </div>
 
       {menuOpen && (
         <MenuPopover anchorRef={menuButtonRef} onClose={onCloseMenu} label={`Options for ${label}`}>

@@ -56,10 +56,19 @@ test("Photos view: title, View Public Page, the gallery form; no form when the g
   assert.match(PAGE, /const onGallery = activeTab === "gallery";/);
 });
 
-test("Profile no longer embeds the gallery; its Photos entry opens the destination", () => {
+test("Profile no longer embeds the gallery; one shared section nav (Manager segmented tabs) links both", () => {
   const profile = PAGE.slice(PAGE.indexOf('{activeTab === "profile" && ('), PAGE.indexOf('{activeTab === "gallery" && ('));
   assert.doesNotMatch(profile, /MemberGalleryField|galleryAction|Panel id="gallery"/);
-  assert.match(profile, /<Link href=\{managerHref\(id, "gallery"\)\}/);
+  assert.match(profile, /<ProfileSectionNav businessId=\{id\} current="profile" \/>/);
+  assert.match(PAGE, /<ProfileSectionNav businessId=\{id\} current="gallery" \/>/);
+  assert.doesNotMatch(profile, /\["#details", "Details"\]/, "no raw inline anchor links");
+  const nav = read(`${B}/v2/ProfileSectionNav.tsx`);
+  assert.match(nav, /<OptimisticTabs/);
+  assert.match(nav, /<ScrollActiveIntoView/);
+  assert.match(nav, /overflow-x-auto rounded-full bg-black\/\[0\.04\] p-1/, "same track as Findmi Here's Events / Places / Past");
+  assert.match(nav, /whitespace-nowrap/);
+  assert.match(nav, /shrink-0/, "items keep their width and the track scrolls instead of wrapping");
+  assert.doesNotMatch(nav, /flex-wrap/);
 });
 
 test("reachable from More → Manage (right after Public Profile) and Home's Public Profile row", () => {
@@ -78,7 +87,10 @@ test("grid: only the grip handle gets the drag listeners and touch-none; the pho
   assert.match(handle, /\{\.\.\.listeners\}/);
   assert.match(handle, /touch-none/);
   assert.equal(GRID.match(/className="[^"]*touch-none/g).length, 1, "touch-none is on the handle's class only");
-  assert.match(handle, /h-10 w-10/, "40px handle hit area");
+  assert.match(GRID, /<div className="flex h-10 shrink-0 border-t/, "40px control bar under the photo");
+  assert.match(handle, /flex-1/, "the grip fills the bar beside the 40px menu button");
+  assert.match(handle, /select-none/);
+  assert.match(GRID, /draggable=\{false\}/, "no native image drag on the photo");
 });
 
 test("grid: pointer + touch sensors with a 4px threshold, keyboard sensor, default auto-scroll", () => {
@@ -86,7 +98,7 @@ test("grid: pointer + touch sensors with a 4px threshold, keyboard sensor, defau
   assert.match(GRID, /useSensor\(TouchSensor, \{ activationConstraint: \{ distance: 4 \} \}\)/);
   assert.match(GRID, /useSensor\(KeyboardSensor, \{ coordinateGetter: sortableKeyboardCoordinates \}\)/);
   assert.doesNotMatch(GRID, /autoScroll=\{false\}/);
-  assert.match(GRID, /grid grid-cols-3/);
+  assert.match(GRID, /grid auto-rows-fr grid-cols-3/);
 });
 
 test("grid: Move menu (Front / Earlier / Later / End / Remove), visible positions, announcements", () => {
@@ -116,7 +128,9 @@ test("field: local list, DOM order is the saved order, dirty vs the saved galler
   assert.match(FIELD, /<input type="hidden" name=\{name\} value=\{url\} \/>/);
   assert.match(FIELD, /const dirty = urls\.length !== initialUrls\.length \|\| urls\.some\(\(u, i\) => u !== initialUrls\[i\]\);/);
   assert.match(FIELD, /useUnsavedChangesGuard\(dirty\);/);
-  assert.match(FIELD, /<SaveButton disabled=\{isPending \|\| !dirty\} \/>/);
+  assert.match(FIELD, /\{dirty && <SaveButton disabled=\{isPending\} \/>\}/, "Save shows when there are changes, waits for uploads");
+  assert.match(FIELD, /\{dirty && <SaveButton compact disabled=\{isPending\} \/>\}/);
+  assert.match(FIELD, /htmlFor=\{fileInputId\}[\s\S]*Add Photos/, "visible Add Photos action");
   assert.match(FIELD, /type="submit"/);
   assert.doesNotMatch(FIELD, /import[^\n]*updateBusinessGallery|requestSubmit|\.submit\(/, "no autosave");
 });

@@ -27,6 +27,7 @@ import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow } from "../../../owner-ui";
 import BusinessHome from "../v2/BusinessHome";
 import MoreMenu from "../v2/MoreMenu";
+import ProfileSectionNav from "../v2/ProfileSectionNav";
 import { LEGACY_TAB_REDIRECTS, VALID_BUSINESS_TAB_KEYS } from "../v2/business-nav";
 import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "../v2/OpportunitiesView";
 import { LocationsPresence, PastPresence, PlacesLens, PresenceHeader, parsePresenceView } from "../v2/PresenceViews";
@@ -2032,24 +2033,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               </Link>
             )}
           </div>
-          <nav aria-label="Public Profile sections" className="-mt-1 flex flex-wrap gap-x-4 gap-y-1 text-metadata font-semibold">
-            {[
-              ["#details", "Details"],
-              ["#public-actions", "Public Actions"],
-              ["#links", "Contact & Links"],
-              ["#announcement", "Announcement"],
-            ].map(([href, label]) => (
-              <a key={href} href={href} className="flex min-h-10 items-center text-accent hover:underline">
-                {label}
-              </a>
-            ))}
-            {/* Photos is its own destination (?tab=gallery), not a section
-                of this page. */}
-            <Link href={managerHref(id, "gallery")} className="flex min-h-10 items-center gap-1 text-accent hover:underline">
-              Photos
-              <ChevronIcon direction="right" className="h-3 w-3" />
-            </Link>
-          </nav>
+          <ProfileSectionNav businessId={id} current="profile" />
           {/* ?tab=profile&created=1 shows the same confirmation the
               Overview shows (Brand onboarding now completes on Account
               Home — /account?created=<id>, VCL A2). */}
@@ -2375,16 +2359,19 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             reordering; the save returns here with Saved. or its error. */}
         {activeTab === "gallery" && (
           <div className="flex flex-col gap-4 lg:max-w-3xl">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Photos</h1>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Photos</h1>
+                <p className="mt-0.5 text-body text-muted">Add, remove and arrange the photos on your public page.</p>
+              </div>
               {business.slug && (
-                <Link href={`/business/${business.slug}`} className="flex min-h-10 items-center gap-1 text-metadata font-bold text-accent hover:underline">
+                <Link href={`/business/${business.slug}`} className="flex min-h-10 shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
                   View Public Page
                   <ChevronIcon direction="right" className="h-3 w-3" />
                 </Link>
               )}
             </div>
-            <p className="-mt-2 text-body text-muted">The photo gallery on your public page, in the order shown here.</p>
+            <ProfileSectionNav businessId={id} current="gallery" />
             {photos ? (
               <section aria-label="Photo gallery" className={cardClass}>
                 <form action={galleryAction}>

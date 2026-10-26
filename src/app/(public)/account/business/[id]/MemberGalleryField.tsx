@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useState, useTransition } from "react";
+import { Fragment, useId, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { uploadMemberBusinessImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
@@ -36,6 +36,7 @@ export default function MemberGalleryField({
   const [items, setItems] = useState(() => initialUrls.map(makeItem));
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const fileInputId = useId();
 
   const urls = items.map((it) => it.url);
   const dirty = urls.length !== initialUrls.length || urls.some((u, i) => u !== initialUrls[i]);
@@ -75,15 +76,17 @@ export default function MemberGalleryField({
     });
   }
 
-  const addButton = (
+  // One file input; the toolbar's Add Photos and the grid's last tile are
+  // both labels for it.
+  const addTile = (
     <label
-      className={`flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-black/15 text-ink/50 transition hover:border-findmi/50 hover:text-findmi-700 ${
+      htmlFor={fileInputId}
+      className={`flex h-full min-h-[7.5rem] w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-black/15 text-ink/50 transition hover:border-findmi/50 hover:text-findmi-700 ${
         isPending ? "pointer-events-none opacity-60" : ""
       }`}
     >
       <span className="text-2xl leading-none">+</span>
       <span className="text-metadata font-semibold">{isPending ? "Uploading…" : "Add Photos"}</span>
-      <input type="file" accept="image/*" multiple className="sr-only" onChange={handleFile} disabled={isPending} />
     </label>
   );
 
@@ -94,35 +97,49 @@ export default function MemberGalleryField({
           <input type="hidden" name={name} value={url} />
         </Fragment>
       ))}
+      <input id={fileInputId} type="file" accept="image/*" multiple className="sr-only" onChange={handleFile} disabled={isPending} />
 
       <div className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="text-metadata text-muted" aria-live="polite">
-          {items.length === 1 ? "1 photo" : `${items.length} photos`}
+          <span className="font-semibold text-primary">{items.length === 1 ? "1 photo" : `${items.length} photos`}</span>
           {isPending ? " · Uploading…" : dirty ? " · " : ""}
           {!isPending && dirty && <span className="font-semibold text-amber-700">Unsaved changes</span>}
         </p>
-        {dirty && <SaveButton compact disabled={isPending} />}
+        <div className="flex shrink-0 items-center gap-2">
+          <label
+            htmlFor={fileInputId}
+            className={`flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3.5 text-button font-semibold text-primary transition hover:border-findmi/40 hover:text-findmi-700 ${
+              isPending ? "pointer-events-none opacity-60" : ""
+            }`}
+          >
+            <span aria-hidden="true" className="text-base leading-none">+</span>
+            {isPending ? "Uploading…" : "Add Photos"}
+          </label>
+          {dirty && <SaveButton compact disabled={isPending} />}
+        </div>
       </div>
 
       {items.length === 0 ? (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          <div className="aspect-square">{addButton}</div>
-        </div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{addTile}</div>
       ) : (
-        <SortableImageGrid
-          items={items.map((it) => ({ id: it.id, src: imageVariantUrl(it.url, "card") }))}
-          onMove={moveTo}
-          onRemove={removeAt}
-          trailing={addButton}
-        />
+        <>
+          {items.length > 1 && (
+            <p className="text-metadata text-muted">
+              Photo 1 shows first on your public page. To reorder, press and drag a photo&rsquo;s grip bar, or tap ••• and choose a move.
+            </p>
+          )}
+          <SortableImageGrid
+            items={items.map((it) => ({ id: it.id, src: imageVariantUrl(it.url, "card") }))}
+            onMove={moveTo}
+            onRemove={removeAt}
+            trailing={addTile}
+          />
+        </>
       )}
 
-      {items.length > 1 && (
-        <p className="text-metadata text-muted">The first photo shows first on your public page. Drag a photo by its handle, or use its ••• menu, to change the order.</p>
-      )}
       {error && <p className="text-metadata text-red-600">{error}</p>}
 
-      <SaveButton disabled={isPending || !dirty} />
+      {dirty && <SaveButton disabled={isPending} />}
     </div>
   );
 }
