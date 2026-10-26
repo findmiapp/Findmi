@@ -91,6 +91,36 @@ export async function storeEventImage(admin: SupabaseClient, image: VerifiedEven
   }
 }
 
+/** An owner's UPLOADED flyer, used as the Event image only because they
+ * chose "Use This Image For The Event" in Review. The same Event image rules
+ * as every imported cover — the bytes decide the type (validateImageFile,
+ * HEIC/HEIF converted to JPEG exactly as every upload), the Event image fit
+ * check, then storeEventImage (storePublicImage: metadata stripped, original
+ * + WebP variants). Nothing is stored for a file that fails. Never throws. */
+export async function storeUploadedEventImage(admin: SupabaseClient, file: unknown, maxBytes: number): Promise<{ ok: true; url: string } | { ok: false; reason: EventImageRejection | "too_large" }> {
+  try {
+    if (!(file instanceof File) || file.size === 0) return { ok: false, reason: "invalid_file" };
+    if (file.size > maxBytes) return { ok: false, reason: "too_large" };
+    const validated = await validateImageFile(file);
+    if ("error" in validated) return { ok: false, reason: "invalid_file" };
+    const body = validated.converted?.buffer ?? Buffer.from(await file.arrayBuffer());
+    let width: number | undefined;
+    let height: number | undefined;
+    try {
+      const meta = await sharp(body, { limitInputPixels: EVENT_IMAGE_PIXEL_LIMIT }).metadata();
+      width = meta.width;
+      height = meta.pageHeight ?? meta.height;
+    } catch {
+      return { ok: false, reason: "unreadable" };
+    }
+    if (!width || !height || !isSuitableEventImage(width, height)) return { ok: false, reason: "unsuitable" };
+    const url = await storeEventImage(admin, { body, validated, width, height });
+    return url ? { ok: true, url } : { ok: false, reason: "store_failed" };
+  } catch {
+    return { ok: false, reason: "store_failed" };
+  }
+}
+
 /** The one call every Event import path uses: fetch → verify → store. */
 export async function recoverEventImage(admin: SupabaseClient, url: string, deps: EventImageDeps = defaultDeps): Promise<{ ok: true; url: string } | { ok: false; reason: EventImageRejection }> {
   const verified = await fetchVerifiedEventImage(url, deps);

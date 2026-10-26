@@ -527,7 +527,7 @@ async function analyzeOneTextEvent(text: string, businessId: string | null, now:
   const hidden = pageAttendance(extraction.controls, extraction.lines, TEXT_BASE).hiddenLocation;
   const ai = allowAi && needsTextAssist(extraction.candidate, hidden) ? await readEventTextWithAi(text, deps.ai) : null;
   if (ai?.multiple_events) return { ok: false, code: "multiple_events" };
-  const sanitized = ai ? sanitizeEventAiOutput(ai, text, { now, yearHint: extraction.yearHint }) : null;
+  const sanitized = ai ? sanitizeEventAiOutput(ai, text, { now, yearHint: extraction.yearHint, upcomingYear: true }) : null;
   return finishEvidenceCandidate(extraction, sanitized ? mergeTextAi(extraction.candidate, sanitized) : extraction.candidate, "text_no_event", businessId, now, deps);
 }
 
@@ -666,7 +666,7 @@ export async function analyzeEventImage(
   // every AI value is checked against it.
   const extraction = extractTextEventCandidate(read.visibleText, { now, origin: "image" });
   if (extraction.multipleEvents) return { ok: false, code: "multiple_events" };
-  const sanitized = sanitizeEventAiOutput(read.output, read.visibleText, { now, yearHint: extraction.yearHint });
+  const sanitized = sanitizeEventAiOutput(read.output, read.visibleText, { now, yearHint: extraction.yearHint, upcomingYear: true });
   return finishEvidenceCandidate(extraction, mergeTextAi(extraction.candidate, sanitized), "image_no_event", input.businessId, now, deps);
 }
 

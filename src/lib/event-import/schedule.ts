@@ -16,6 +16,7 @@
 // re-read through this same parser) rather than guessed.
 import { localDateTimeToIso } from "../admin/form-helpers";
 import { cleanText } from "../brand-website-extract";
+import { APP_TIMEZONE, dateKeyInZone } from "../format";
 import { EMPTY_VENUE, venueKey, type ImportedOccurrence, type ImportedVenue } from "./types";
 
 export const SCHEDULE_MAX_OCCURRENCES = 60;
@@ -28,10 +29,17 @@ const WEEKDAYS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 
 
 const WD_PREFIX = String.raw`(?:(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day|sday|nesday|rsday|urday)?\.?,?\s+)?`;
 const MONTH_WORD = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?`;
-const DATE_TOKEN = new RegExp(
-  String.raw`${WD_PREFIX}(?:(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d\/])|${MONTH_WORD}\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?(?!\d|:\d))`,
+const MONTH_FIRST = String.raw`(?:(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d\/])|${MONTH_WORD}\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?(?!\d|:\d))`;
+const DATE_TOKEN = new RegExp(`${WD_PREFIX}${MONTH_FIRST}`, "gi");
+// Owner flyer / pasted text only (ScheduleContext.upcomingYear): day-first
+// "29th November (2026)" too — common on flyers. It needs a real word
+// boundary on both sides, so "5 marvelous" or "Top 2 Mayors" never read as
+// dates. Link imports keep DATE_TOKEN unchanged.
+const DATE_TOKEN_DAY_FIRST = new RegExp(
+  String.raw`${WD_PREFIX}(?:${MONTH_FIRST.slice(3, -1)}|(?<![\d\/:])(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?${MONTH_WORD}(?![a-z])(?:,?\s+(\d{4}))?(?!\d|:\d))`,
   "gi"
 );
+const tokenRegex = (ctx?: ScheduleContext) => (ctx?.upcomingYear ? DATE_TOKEN_DAY_FIRST : DATE_TOKEN);
 const RANGE_JOIN = /^\s*(?:–|—|-|to|through|thru|until|till)\s*$/i;
 const DAY_ONLY_RANGE = /^\s*(?:–|—|-|to|through|thru)\s*(\d{1,2})(?:st|nd|rd|th)?\b/i;
 const WEEKDAY_WORD = /\b(mon(?:day)?s?|tue(?:s(?:day)?)?s?|wed(?:nesday)?s?|thu(?:r(?:s(?:day)?)?)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?)\b\.?/gi;
@@ -55,6 +63,10 @@ export interface ScheduleContext {
   now: number;
   /** The single year the page mentions, if exactly one. */
   yearHint: number | null;
+  /** Owner flyer / pasted-text imports: a month/day with no stated year is
+   * the NEXT occurrence of that day that hasn't passed (in Findmi's Eastern
+   * calendar). Link imports keep the closest-to-today rule. */
+  upcomingYear?: boolean;
 }
 
 export interface ScheduleResult {
@@ -77,14 +89,15 @@ export function addDays(date: string, n: number): string {
   return t.toISOString().slice(0, 10);
 }
 
-function dateTokens(line: string): DateToken[] {
+function dateTokens(line: string, ctx?: ScheduleContext): DateToken[] {
   const out: DateToken[] = [];
-  DATE_TOKEN.lastIndex = 0;
+  const re = tokenRegex(ctx);
+  re.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = DATE_TOKEN.exec(line)) && out.length < 40) {
-    const month = m[1] ? Number(m[1]) : MONTHS[(m[4] ?? "").slice(0, 3).toLowerCase()];
-    const day = Number(m[1] ? m[2] : m[5]);
-    const rawYear = m[3] ?? m[6] ?? null;
+  while ((m = re.exec(line)) && out.length < 40) {
+    const month = m[1] ? Number(m[1]) : MONTHS[(m[4] ?? m[8] ?? "").slice(0, 3).toLowerCase()];
+    const day = Number(m[1] ? m[2] : m[4] ? m[5] : m[7]);
+    const rawYear = m[3] ?? m[6] ?? m[9] ?? null;
     const year = rawYear ? (rawYear.length === 2 ? 2000 + Number(rawYear) : Number(rawYear)) : null;
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) out.push({ index: m.index, end: m.index + m[0].length, month, day, year });
   }
@@ -92,9 +105,16 @@ function dateTokens(line: string): DateToken[] {
 }
 
 /** Calendar year for a month/day without one: the page's own year when it
- * states exactly one, else the occurrence of that day closest to today. */
-function resolveYear(month: number, day: number, ctx: ScheduleContext): number {
+ * states exactly one; for owner flyer / pasted-text imports the next
+ * occurrence that hasn't passed (this year if still ahead or today, else
+ * next year); otherwise the occurrence of that day closest to today. */
+export function resolveYear(month: number, day: number, ctx: ScheduleContext): number {
   if (ctx.yearHint) return ctx.yearHint;
+  if (ctx.upcomingYear) {
+    const today = dateKeyInZone(new Date(ctx.now), APP_TIMEZONE);
+    const year = Number(today.slice(0, 4));
+    return ymd(year, month, day) >= today ? year : year + 1;
+  }
   const nowYear = new Date(ctx.now).getUTCFullYear();
   let best = nowYear;
   let bestDist = Infinity;
@@ -106,6 +126,59 @@ function resolveYear(month: number, day: number, ctx: ScheduleContext): number {
     }
   }
   return best;
+}
+
+const LONE_MONTH = new RegExp(String.raw`^${WD_PREFIX}${MONTH_WORD},?$`, "i");
+const LONE_DAY = /^(\d{1,2})\s*(st|nd|rd|th)?[.,]?$/i;
+const LONE_SUFFIX = /^(st|nd|rd|th)\.?$/i;
+const LONE_YEAR = /^(20\d{2})$/;
+
+/** Flyers often stack a date over several visual lines ("NOVEMBER" / "29TH",
+ * "NOVEMBER" / "29" / "TH", "29TH" / "NOVEMBER"). Rejoins exactly those
+ * fragments (a lone month word, a lone day number, a lone ordinal suffix, a
+ * lone year) into one date line. Nothing else is touched, so nothing that
+ * isn't written as a date can become one. Blank lines are preserved. */
+export function joinSplitDateLines(lines: readonly string[]): string[] {
+  const out: string[] = [];
+  const nextIdx = (i: number) => {
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j++;
+    return j;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const month = LONE_MONTH.test(line);
+    const day = LONE_DAY.exec(line);
+    if (!month && !day) {
+      out.push(lines[i]);
+      continue;
+    }
+    let j = nextIdx(i);
+    const second = j < lines.length ? lines[j].trim() : "";
+    const secondDay = month ? LONE_DAY.exec(second) : null;
+    const secondMonth = day && LONE_MONTH.test(second);
+    if (!secondDay && !secondMonth) {
+      out.push(lines[i]);
+      continue;
+    }
+    // month-first or day-first pair
+    let joined = month ? `${line} ${secondDay![1]}${secondDay![2] ?? ""}` : `${day![1]}${day![2] ?? ""} ${second}`;
+    let hasSuffix = Boolean(month ? secondDay![2] : day![2]);
+    let k = nextIdx(j);
+    if (!hasSuffix && k < lines.length && LONE_SUFFIX.test(lines[k].trim())) {
+      joined += lines[k].trim().replace(/\.$/, "");
+      hasSuffix = true;
+      j = k;
+      k = nextIdx(j);
+    }
+    if (k < lines.length && LONE_YEAR.test(lines[k].trim())) {
+      joined += ` ${lines[k].trim()}`;
+      j = k;
+    }
+    out.push(joined);
+    i = j;
+  }
+  return out;
 }
 
 /** Weekday rule stated in text, e.g. "Wednesdays, Fridays and Saturdays",
@@ -251,7 +324,7 @@ export function parseScheduleLines(lines: string[], ctx: ScheduleContext): Sched
 
   const constraintLine = (i: number): { days: Set<number>; times: ReturnType<typeof parseTimes>; text: string } | null => {
     const line = clean[i];
-    if (!line || line.length > MAX_LINE_CHARS || dateTokens(line).length > 0) return null;
+    if (!line || line.length > MAX_LINE_CHARS || dateTokens(line, ctx).length > 0) return null;
     const days = parseWeekdayRule(line);
     if (!days) return null;
     const times = parseTimes(line);
@@ -263,7 +336,7 @@ export function parseScheduleLines(lines: string[], ctx: ScheduleContext): Sched
   for (let i = 0; i < clean.length && out.length < SCHEDULE_MAX_OCCURRENCES * 2; i++) {
     const line = clean[i];
     if (!line || line.length > MAX_LINE_CHARS) continue;
-    const tokens = dateTokens(line);
+    const tokens = dateTokens(line, ctx);
     if (tokens.length === 0 || tokens[0].index > 4) continue;
 
     // Range: "9/25–10/31", "Sep 25 – Oct 31", "Sep 25–30".
@@ -280,7 +353,7 @@ export function parseScheduleLines(lines: string[], ctx: ScheduleContext): Sched
     // Everything that isn't a date is the line's time + place.
     let rest = range ? line.slice(range.end) : line;
     if (!range) for (const t of [...tokens].reverse()) rest = rest.slice(0, t.index) + " " + rest.slice(t.end);
-    else rest = rest.replace(DATE_TOKEN, " ");
+    else rest = rest.replace(tokenRegex(ctx), " ");
     let times = parseTimes(rest);
     if (times) rest = rest.slice(0, times.span[0]) + " " + rest.slice(times.span[1]);
 
@@ -357,7 +430,7 @@ export function explicitDateList(text: string, ctx: ScheduleContext, maxRangeDay
     .replace(/\u00A0/g, " ")
     .replace(/\b(20\d{2})-(\d{2})-(\d{2})\b/g, (_, y: string, m: string, d: string) => `${Number(m)}/${Number(d)}/${y}`)
     .trim();
-  const tokens = dateTokens(t);
+  const tokens = dateTokens(t, ctx);
   if (tokens.length === 0 || t.length > MAX_LINE_CHARS) return null;
   const stated = /\b(20\d{2})\b/.exec(t);
   const yearOf = (tk: DateToken) => tk.year ?? (stated ? Number(stated[1]) : resolveYear(tk.month, tk.day, ctx));
@@ -418,7 +491,7 @@ export function yearHintFrom(lines: string[]): number | null {
 export function bareDate(line: string, ctx: ScheduleContext): string | null {
   const clean = line.replace(/\u00A0/g, " ").replace(/^[\s•*·▪◦>|–—-]+/, "").trim();
   if (!clean || clean.length > 60) return null;
-  const tokens = dateTokens(clean);
+  const tokens = dateTokens(clean, ctx);
   if (tokens.length !== 1 || tokens[0].index > 4) return null;
   const rest = (clean.slice(0, tokens[0].index) + clean.slice(tokens[0].end)).replace(/[\s,.;:–—\-|·•]+/g, "");
   if (rest) return null;

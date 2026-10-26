@@ -11,7 +11,8 @@ import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { normalizeReview, persistEventImport, type PersistDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { applyBusinessToEvent } from "@/lib/event-participation";
-import { recoverEventImage } from "@/lib/event-import/media";
+import { recoverEventImage, storeUploadedEventImage } from "@/lib/event-import/media";
+import { EVENT_IMPORT_IMAGE_MAX_BYTES } from "@/lib/event-import/types";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { isSlugTaken } from "@/lib/admin/queries";
@@ -80,7 +81,7 @@ export async function analyzeEventImportImage(businessId: string, form: FormData
 type Ctx = NonNullable<Awaited<ReturnType<typeof authorize>>>;
 
 /** The existing domain paths, bound to this Business + signed-in person. */
-function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
+function persistDepsFor(ctx: Ctx, businessId: string, storedFlyerUrl: string | null = null): PersistDeps {
   const { admin, user, business } = ctx;
   return {
     admin,
@@ -92,6 +93,8 @@ function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
     // The one Event image path (lib/event-import/media.ts) — Event art
     // rules, not the Brand header rules.
     storeImage: async (url) => {
+      // The owner's own flyer, already verified + stored by this commit.
+      if (storedFlyerUrl && url === storedFlyerUrl) return storedFlyerUrl;
       const stored = await recoverEventImage(admin, url);
       return stored.ok ? stored.url : null;
     },
@@ -127,24 +130,35 @@ function persistDepsFor(ctx: Ctx, businessId: string): PersistDeps {
   };
 }
 
-async function commitOne(ctx: Ctx, businessId: string, review: EventImportReview, emailVerified: () => Promise<boolean>): Promise<EventImportOutcome> {
+async function commitOne(ctx: Ctx, businessId: string, review: EventImportReview, emailVerified: () => Promise<boolean>, flyer: unknown = null): Promise<EventImportOutcome> {
   const normalized = normalizeReview(review);
   if (!normalized.ok) return normalized;
   if (normalized.value.intent === "participating" && normalized.value.useEventId && !(await emailVerified())) {
     return { ok: false, error: "Verify your email before asking to join an Event." };
   }
+  // "Use This Image For The Event": the uploaded flyer is stored only now,
+  // only because the owner chose it, and only for a NEW Event (joining an
+  // existing Event never changes its image).
+  let flyerUrl: string | null = null;
+  if (flyer && !normalized.value.useEventId) {
+    const stored = await storeUploadedEventImage(ctx.admin, flyer, EVENT_IMPORT_IMAGE_MAX_BYTES);
+    if (!stored.ok) return { ok: false, error: stored.reason === "unsuitable" ? "That image can't be used as the Event image (it's too small or too narrow). Choose “Don’t Use This Image” to continue." : "Couldn't use that image. Try again, or choose “Don’t Use This Image”." };
+    flyerUrl = stored.url;
+  }
   try {
-    return await persistEventImport(normalized.value, persistDepsFor(ctx, businessId));
+    return await persistEventImport(flyerUrl ? { ...normalized.value, imageUrl: flyerUrl } : normalized.value, persistDepsFor(ctx, businessId, flyerUrl));
   } catch {
     return { ok: false, error: "Couldn't save it. Please try again." };
   }
 }
 
-/** Create / connect — only from the reviewed values. */
-export async function commitEventImport(businessId: string, review: EventImportReview): Promise<EventImportOutcome> {
+/** Create / connect — only from the reviewed values. `flyer` carries the
+ * uploaded source image ONLY when the owner chose to use it as the Event
+ * image; otherwise nothing about the upload is ever stored. */
+export async function commitEventImport(businessId: string, review: EventImportReview, flyer: FormData | null = null): Promise<EventImportOutcome> {
   const ctx = await authorize(businessId);
   if (!ctx) return { ok: false, error: "You don't have access to this Business." };
-  const outcome = await commitOne(ctx, businessId, review, () => isEmailVerified(ctx.admin, ctx.user.id));
+  const outcome = await commitOne(ctx, businessId, review, () => isEmailVerified(ctx.admin, ctx.user.id), flyer instanceof FormData ? flyer.get("image") : null);
   if (outcome.ok) {
     revalidatePath(`/account/business/${businessId}`);
     revalidatePath("/account");

@@ -277,7 +277,11 @@ test("import: an EXISTING matched Event never has its Formats written", async ()
   await P.persistEventImport(P.normalizeReview(review({ ...withFormats, intent: "hosting", useEventId: "cccccccc-0000-4000-8000-000000000001" })).value, deps(c.client));
   assert.equal(formatWrites(c.ops).length, 0, "hosting an Event already on Findmi");
   // The Review shows the picker only where a NEW Event is created.
-  assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /\{\(intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor key=\{`f\$\{reviewVersion\}`\} formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
+  // Foxden correction: the single Review keeps one shape across relationships
+  // (the editor stays visible for a matched Event, for reference) — the
+  // persistence assertions above are what guarantee an existing Event's
+  // Formats are never written.
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /\{\(intent === "hosting" \|\| review\.asEvent \|\| usingExisting\) && <EventFormatEditor key=\{`f\$\{reviewVersion\}`\} formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
   assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /\{\(!joining \|\| operator\) && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventFormatEditor formats=\{formats\} review=\{review\} set=\{set\} \/>\}/);
 });
 
