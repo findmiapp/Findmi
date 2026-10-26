@@ -25,6 +25,7 @@ export default function ContextMap({
   tall = false,
   listPlaces = true,
   onResult,
+  initialSelect,
 }: {
   results: GeoResult[];
   label: string;
@@ -33,6 +34,11 @@ export default function ContextMap({
   /** A section that owns its own detail view (a schedule's quick view)
    * opens it from the selected marker's cards; View still links out. */
   onResult?: (result: GeoResult) => void;
+  /** Open already showing something useful instead of waiting for a first
+   * tap: "single" selects the marker only when there is exactly one place;
+   * "first" selects the place of the first result (callers pass results in
+   * their own order, e.g. a schedule's earliest date first). */
+  initialSelect?: "single" | "first";
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -65,16 +71,27 @@ export default function ContextMap({
     if (places.length === 1) return bboxAround(places[0].place.lat, places[0].place.lng, 0.35);
     return boundsOf(results, 0.01);
   }, [results, places]);
+  const initialId = useMemo(() => {
+    if (!initialSelect || !results.length || (initialSelect === "single" && places.length !== 1)) return null;
+    return features.find((f) => f.keys.includes(results[0].key))?.id ?? null;
+  }, [initialSelect, results, places, features]);
+  // Until the visitor picks a marker, the initial selection stands.
+  const [touched, setTouched] = useState(false);
+  const selectedId = touched ? selected : (selected ?? initialId);
+  const select = (id: string | null) => {
+    setTouched(true);
+    setSelected(id);
+  };
   if (!bbox) return null;
   const single = places.length === 1;
-  const selectedFeature = features.find((f) => f.id === selected) ?? null;
+  const selectedFeature = features.find((f) => f.id === selectedId) ?? null;
   const picked = selectedFeature ? results.filter((r) => selectedFeature.keys.includes(r.key)) : [];
   const mapHref = single && places[0].place.href ? `/map?place=${encodeURIComponent(places[0].place.href.replace("/location/", ""))}` : `/map?bbox=${bbox.map((x) => Math.round(x * 1e4) / 1e4).join(",")}`;
 
   return (
     <div data-context-map className="flex flex-col gap-2">
       <div ref={holder} className={`relative overflow-hidden rounded-2xl border border-black/5 bg-[#eef0ef] ${tall ? "h-64 sm:h-80" : "h-40 sm:h-48"}`}>
-        {visible && <DiscoveryMapCanvas features={features} selectedId={selected} onSelect={setSelected} onViewportChange={() => undefined} initialBbox={bbox} cooperativeGestures autoCollapseAttribution label={label} />}
+        {visible && <DiscoveryMapCanvas features={features} selectedId={selectedId} onSelect={select} onViewportChange={() => undefined} initialBbox={bbox} cooperativeGestures autoCollapseAttribution label={label} />}
         <Link href={mapHref} className="absolute right-2 top-2 z-10 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm hover:border-black/20">
           View On Map
         </Link>

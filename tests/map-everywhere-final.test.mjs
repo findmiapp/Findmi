@@ -207,6 +207,11 @@ test("Brand detail Map = the SAME upcoming schedule: each date at its own Locati
   await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Map").click());
   assert.ok(host.querySelector("[data-context-map]"), "the shared contextual map");
   assert.match(host.textContent, /2 of 4 dates on the map · 2 without locations/, "no fake presence; the rest is acknowledged");
+  // Opens already showing the earliest mapped date (schedule order), not a blank map.
+  assert.ok(globalThis.__canvas.selectedId, "a marker starts selected");
+  assert.deepEqual([...host.querySelectorAll("[data-context-map] [data-geo-card]")].map((c) => c.getAttribute("data-geo-card")), ["app:a1"], "its card is shown");
+  await act(async () => globalThis.__canvas.onSelect(null));
+  assert.equal(globalThis.__canvas.selectedId, null, "the visitor can still clear / pick another marker");
   await act(async () => root.render(React.createElement(AppearanceFindMiHere, { appearances, business, galleryImages: [] })));
   assert.deepEqual([...host.querySelectorAll('[role="group"][aria-label="View"] button')].map((b) => b.textContent), ["Cards", "List"], "no geo → no Map option");
   root.unmount();
@@ -225,4 +230,31 @@ test("Event detail Map only where geography is real complexity: dates at 2+ dist
   assert.match(view, /const datesGeoAll = locationHidden \? \[\] : occurrenceResults\(datedOccurrences/, "a hidden venue is never mapped");
   assert.match(view, /const datesGeo = datesMapEligible\(datesGeoAll\) \? datesGeoAll : undefined;/);
   assert.match(read("src/components/UpcomingDatesRail.tsx"), /const modes = geo && geo\.length > 0 \? \(\["cards", "list", "map"\] as const\)/);
+});
+
+const { default: ContextMap } = await import("../src/components/map/ContextMap.tsx");
+
+test("contextual map initial selection: one place opens selected; several places open as an overview", async () => {
+  const res = (key, l) => ({ key, kind: "place", title: l.name, subtitle: null, href: `/location/${l.slug}`, image: null, logo: null, status: null, live: false, place: { id: l.id, name: l.name, lat: l.latitude, lng: l.longitude, address: l.address, href: `/location/${l.slug}` } });
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => root.render(React.createElement(ContextMap, { results: [res("p1", STUDIO)], label: "m", initialSelect: "single" })));
+  assert.ok(globalThis.__canvas.selectedId, "exactly one place: selected on arrival");
+  assert.equal(host.querySelectorAll("[data-geo-card]").length, 1, "its details shown immediately");
+  await act(async () => root.render(React.createElement(ContextMap, { results: [res("p1", STUDIO), res("p2", PIER)], label: "m2", initialSelect: "single", key: "multi" })));
+  assert.equal(globalThis.__canvas.selectedId, null, "several places: overview until a marker is tapped");
+  assert.equal(host.querySelectorAll("[data-geo-card]").length, 0);
+  await act(async () => root.render(React.createElement(ContextMap, { results: [res("p1", STUDIO)], label: "m3", key: "plain" })));
+  assert.equal(globalThis.__canvas.selectedId, null, "callers without initialSelect (Location / Event blocks) are unchanged");
+  root.unmount();
+  const view = read("src/app/(public)/business/[slug]/BusinessPublicView.tsx");
+  assert.match(view, /\{wherePlaceCount > 1 && <p className="mt-1 text-sm text-ink\/55">Tap a marker on the map to see location details\.<\/p>\}/);
+  assert.match(view, /initialSelect="single"/);
+});
+
+test("shared Peek carousel: page-gutter inset on both ends, cards rest at the gutter, selection ring not clipped", () => {
+  const shell = read("src/components/map/ArchiveGeoShell.tsx");
+  assert.match(shell, /className="flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto px-4 pb-\[calc\(0\.75rem\+env\(safe-area-inset-bottom\)\)\] pt-1/);
+  assert.match(shell, /getComputedStyle\(strip\)\.scrollPaddingLeft/, "browsing highlight measures from the resting gutter");
 });

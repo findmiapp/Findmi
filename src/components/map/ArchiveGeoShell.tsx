@@ -372,7 +372,8 @@ export default function ArchiveGeoShell({
     const strip = stripRef.current;
     if (!strip || selectedFeature) return;
     const cards = [...strip.querySelectorAll<HTMLElement>("[data-geo-card]")];
-    const left = strip.getBoundingClientRect().left;
+    // Cards rest at the strip's scroll padding (the page gutter), not its edge.
+    const left = strip.getBoundingClientRect().left + (parseFloat(getComputedStyle(strip).scrollPaddingLeft) || 0);
     const near = cards.reduce<HTMLElement | null>((best, c) => (!best || Math.abs(c.getBoundingClientRect().left - left) < Math.abs(best.getBoundingClientRect().left - left) ? c : best), null);
     const id = near?.dataset.geoCard ? featureOfKey.get(near.dataset.geoCard) : undefined;
     if (id && id !== browsing) setBrowsing(id);
@@ -479,7 +480,7 @@ export default function ArchiveGeoShell({
       <div className={`min-h-0 flex-1 overscroll-contain ${sheet === "peek" ? "overflow-hidden" : "overflow-y-auto"}`}>
         {sheet === "peek" ? (
           sheetResults.length > 0 && (
-            <div ref={stripRef} onScroll={onStripScroll} className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div ref={stripRef} onScroll={onStripScroll} className="flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sheetResults.slice(0, 30).map((r) => (
                 <div key={r.key} className="w-[84%] max-w-[22rem] shrink-0 snap-start">
                   <GeoResultCard result={r} compact selected={selectedFeature !== null || browsing === featureOfKey.get(r.key)} onSelect={selectResult} />

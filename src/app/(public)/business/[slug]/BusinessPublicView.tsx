@@ -280,6 +280,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     // Map Everywhere — the same real relationships, as places on a map.
     brandPlaceResults(business),
   ]);
+  const wherePlaceCount = new Set(wherePlaces.map((r) => r.place.id)).size;
   // EVENT IDENTITY != SCHEDULE OCCURRENCES. The Featured Appearance card
   // shows a multi-date Event ONCE (its live date, else its next date — see
   // lib/findmi-here); Findmi Here below is the schedule and keeps every
@@ -914,8 +915,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               <h2 id="where-to-find-us-heading" className="font-display text-lg font-bold tracking-tight text-ink">
                 Where To Find Us
               </h2>
+              {wherePlaceCount > 1 && <p className="mt-1 text-sm text-ink/55">Tap a marker on the map to see location details.</p>}
               <div className="mt-3">
-                <ContextMap results={wherePlaces} label={`Map of where to find ${business.name}`} tall={new Set(wherePlaces.map((r) => r.place.id)).size > 1} />
+                <ContextMap results={wherePlaces} label={`Map of where to find ${business.name}`} tall={wherePlaceCount > 1} initialSelect="single" />
               </div>
             </section>
           )}

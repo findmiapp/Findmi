@@ -72,9 +72,14 @@ export default function EventLocationFeature({
           </div>
           )}
           <div className="min-w-0 flex-1">
-            {!self && <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">{location.name}</p>}
+            {self ? (
+              // Its own page: just enough identity for the address — no logo.
+              <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-primary">{location.name}</p>
+            ) : (
+              <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">{location.name}</p>
+            )}
             {(street || cityLine) && (
-              <div className={`${self ? "" : "mt-1 "}flex items-start gap-1.5`}>
+              <div className="mt-1 flex items-start gap-1.5">
                 <PinGlyph className="mt-0.5 h-3.5 w-3.5 shrink-0 text-findmi-700" />
                 <p className="min-w-0 text-metadata leading-snug">
                   {street && <span className="block break-words font-medium text-secondary">{street}</span>}

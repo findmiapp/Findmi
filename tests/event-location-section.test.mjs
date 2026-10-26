@@ -15,7 +15,7 @@ test("heading + canonical name/address (no aggressive one-line truncation)", () 
   // the Event page's default output is unchanged.
   assert.match(card, /heading = "Location",\n\s+sectionId = "location",/);
   assert.match(card, /<SectionHeading id=\{`\$\{sectionId\}-heading`\}>\{heading\}<\/SectionHeading>/);
-  assert.match(card, /\{!self && <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">\{location\.name\}<\/p>/);
+  assert.match(card, /\) : \(\n\s+<p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">\{location\.name\}<\/p>/, "Event variant name unchanged");
   assert.doesNotMatch(card, /<p className="truncate font-display[^"]*">\{location\.name\}/, "name no longer forced onto one line");
   assert.match(card, /const street = location\.address\?\.trim\(\) \|\| null;/);
   assert.match(card, /const cityLine = cityStateZip\(location\.city, location\.state, location\.postal_code\) \|\| null;/);
@@ -49,7 +49,10 @@ test("order: Location stays directly before Hosted By; mobile-safe card", () => 
   assert.match(card, /<div className="min-w-0 flex-1">/, "text column can shrink — no horizontal overflow");
 });
 
-test("the Location's own page reuses the same block: map + full address + Get Directions, no repeated name, no View Location", () => {
+test("the Location's own page reuses the same block: map + name + full address + Get Directions, no logo, no View Location", () => {
+  const card = read("src/components/event/EventLocationFeature.tsx");
+  assert.match(card, /\{self \? \(\n\s+\/\/[^\n]*\n\s+<p className="line-clamp-2 break-words text-sm font-bold leading-snug text-primary">\{location\.name\}<\/p>/, "a quiet bold name above the address");
+  assert.match(card, /\{!self && \(\n\s+<div className="relative h-16 w-16/, "no logo on its own page");
   const loc = read("src/app/(public)/location/[slug]/LocationPublicView.tsx");
   assert.match(loc, /<EventLocationFeature location=\{location\} placeContext=\{placeContext\} variant="self" heading="On The Map" sectionId="map" \/>/);
   assert.doesNotMatch(loc, /<ContextMap /, "no second, barer map implementation");
