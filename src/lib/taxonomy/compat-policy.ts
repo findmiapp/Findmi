@@ -96,11 +96,16 @@ export const CATEGORY_DIMENSION_KIND: Readonly<Record<CategoryDimension, V2Categ
   product_category: "product",
 };
 
-/** Assignment sources that are confirmed classifications. 'suggestion' on an
- * ASSIGNMENT row means a reviewer accepted it (Pass 1: assignment rows are
- * always confirmed); open suggestions live only in classification_suggestions,
- * which this layer never reads. 'migration' is excluded: it is re-derived. */
-export const DURABLE_SOURCES = ["admin", "owner", "importer", "suggestion"] as const;
+/** Assignment sources that are confirmed classifications. 'migration' is
+ * excluded: it is re-derived from current V1. 'suggestion' is excluded too:
+ * an assignment row (or field source) marked 'suggestion' carries no
+ * persisted proof that anyone reviewed it — no link to a
+ * classification_suggestions row, no reviewed_at / reviewed_by — so it
+ * can't be told apart from an unreviewed idea. Until an acceptance
+ * workflow records that confirmation verifiably, such a value never
+ * counts (open suggestions live only in classification_suggestions, which
+ * this layer never reads). */
+export const DURABLE_SOURCES = ["admin", "owner", "importer"] as const;
 export type DurableSource = (typeof DURABLE_SOURCES)[number];
 
 /** Whether a stored V2 value with this source counts for this dimension. A

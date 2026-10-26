@@ -203,6 +203,8 @@ function tables() {
       { event_id: E.conf, term_id: TERM.market.id, is_primary: true, source: "migration" },
       { event_id: E.primary, term_id: TERM.market.id, is_primary: true, source: "admin" },
       { event_id: E.primary, term_id: TERM.exhibition.id, is_primary: false, source: "admin" },
+      // Unverifiable 'suggestion' provenance: never counts.
+      { event_id: E.nothing, term_id: TERM.party.id, is_primary: true, source: "suggestion" },
     ],
     event_mechanic_assignments: [],
     event_topics: [],
@@ -292,6 +294,10 @@ test("policy: every dimension has one central mode; shared Event columns stay V1
   assert.equal(P.isDurableFor("event_type", "importer"), true);
   assert.equal(P.isDurableFor("opportunity_category", null), true, "a column with no recorded source is an explicit value");
   assert.equal(P.isDurableFor("event_type", "nonsense"), false);
+  // 'suggestion' has no persisted review proof → never confirmed, for any
+  // dimension (V1-backed or V2-only), until an acceptance workflow exists.
+  for (const d of P.COMPAT_DIMENSIONS) assert.equal(P.isDurableFor(d, "suggestion"), false, d);
+  assert.deepEqual([...P.DURABLE_SOURCES], ["admin", "owner", "importer"]);
   assert.equal(C.policyFor("product", "audience").mode, "v2_only", "Product Audience is its own V2 column");
   assert.equal(C.policyFor("event", "audience").mode, "v1_only");
 });
