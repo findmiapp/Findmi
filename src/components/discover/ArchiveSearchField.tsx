@@ -35,15 +35,23 @@ export default function ArchiveSearchField({
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0 flex-1">
+      {/* Archive Discovery UX pass — compact (normal control height, a
+          leading search glyph) so the field shares one row with Refine;
+          name/value/submit are unchanged. */}
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/40">
+        <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
       <input autoCapitalize="none"
+        type="search"
+        enterKeyHint="search"
+        aria-label={placeholder}
         ref={inputRef}
-        type="text"
         name={name}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
-        className="h-11 w-full rounded-full border border-black/10 bg-white pl-5 pr-11 text-sm text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+        className="h-10 w-full rounded-full border border-black/10 bg-white pl-10 pr-10 text-sm text-ink placeholder:text-ink/45 focus:border-ink/30 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
       />
       {value.length > 0 && (
         <button

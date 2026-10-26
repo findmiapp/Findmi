@@ -257,7 +257,7 @@ async function mountShell(search, props = {}) {
   const root = createRoot(host);
   const sp = new URLSearchParams(search);
   const list = React.createElement("div", { "data-geo-grid": "" }, ["ev:tabli", "ev:art-walk", "ev:open-house"].map((k) => React.createElement("a", { key: k, href: "#", "data-geo-key": k }, k)));
-  await act(async () => root.render(React.createElement(ArchiveGeoShell, { surface: "events", initialView: G.parseViewMode(sp.get("view")), bbox: G.parseBboxParam(sp.get("bbox")), noun: ["Event", "Events"], ...props }, list)));
+  await act(async () => root.render(React.createElement(ArchiveGeoShell, { surface: "events", initialView: G.parseViewMode(sp.get("view")), bbox: G.parseBboxParam(sp.get("bbox")), noun: ["Event", "Events"], title: "Events", controls: null, ...props }, list)));
   await settle();
   return { host, root, pushes, calls };
 }
@@ -279,7 +279,8 @@ test("List is the light default: no map, no geo request; choosing Map pushes ?vi
   await settle();
   assert.ok(globalThis.__canvas, "the map renders in Map mode");
   assert.deepEqual(globalThis.__canvas.features.map((f) => f.locationId).sort(), [EATALY.id, STUDIO.id].sort());
-  assert.match(b.host.textContent, /2 of 4 Events on the map/, "partial geography is stated, not hidden");
+  assert.match(b.host.textContent, /2 Events on the map/);
+  assert.match(b.host.textContent, /2 without locations/, "partial geography is stated, not hidden");
   b.root.unmount();
 });
 
@@ -356,7 +357,7 @@ test("context map: text first, MapLibre only when the section nears the viewport
 
 test("detail pages and archives use the one shared renderer and one switch — no per-entity map systems", () => {
   for (const f of ["src/components/map/ArchiveGeoShell.tsx", "src/components/map/ContextMap.tsx"]) assert.match(read(f), /import\("\.\/DiscoveryMapCanvas"\)/, f);
-  for (const f of ["src/app/(public)/events/page.tsx", "src/app/(public)/locations/page.tsx", "src/app/(public)/businesses/page.tsx", "src/app/(public)/find/page.tsx"]) assert.match(read(f), /<ArchiveGeoShell surface=/, f);
+  for (const f of ["src/app/(public)/events/page.tsx", "src/app/(public)/locations/page.tsx", "src/app/(public)/businesses/page.tsx", "src/app/(public)/find/page.tsx"]) assert.match(read(f), /<ArchiveGeoShell\s+surface=/, f);
   for (const f of ["src/components/event/EventLocationFeature.tsx", "src/app/(public)/location/[slug]/LocationPublicView.tsx", "src/app/(public)/business/[slug]/BusinessPublicView.tsx", "src/app/(public)/product/[slug]/page.tsx"]) assert.match(read(f), /<ContextMap /, f);
   assert.doesNotMatch(read("src/components/map/MapExplorer.tsx"), /ArchiveGeoShell|ContextMap/, "/map is untouched");
 });

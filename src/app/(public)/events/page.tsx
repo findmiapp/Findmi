@@ -6,7 +6,7 @@ import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import EventDiscoveryCard from "@/components/discover/EventDiscoveryCard";
 import EventFilters from "@/components/discover/EventFilters";
-import FilterSheet from "@/components/discover/FilterSheet";
+import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
 import { parseBboxParam } from "@/lib/geo-results";
 import {
@@ -146,6 +146,13 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     return `/events?${p.toString()}`;
   })();
 
+  // Refine's Reset: every Refine filter removed — search, time, map area
+  // and view kept.
+  const resetHref = (() => {
+    const p = eventFilterToSearchParams({ q: filter.q, when: filter.when, date: filter.date, bbox: filter.bbox, view: filter.view });
+    return `/events${p.toString() ? `?${p.toString()}` : ""}`;
+  })();
+
   const timeHref = (key: EventTimeKey) => {
     // A time tab replaces an exact date (date overrides when).
     const p = eventFilterToSearchParams({ ...filter, when: key, date: undefined });
@@ -168,74 +175,21 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
             : "No upcoming events yet. Check back soon.";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-6xl px-4 pb-8 pt-3 sm:px-6 sm:py-10">
       <SearchFilterAnalytics pageType="events" filterParams={["category", "format", "market", "area", "when", "access"]} />
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Events</h1>
-      {/* Events Discovery V4, item 1 — same mobile-header compression as
-          Businesses Discovery V4: this subtitle adds little a consumer
-          can't already infer from the page title + search field, and was
-          previously the single biggest contributor to pre-result mobile
-          space. Hidden on mobile, kept unchanged on desktop. */}
-      <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
-        Markets, pop-ups, and festivals, and who you&rsquo;ll find here.
-      </p>
+      {/* Archive Discovery UX pass — one compact control family: heading +
+          view action, search + Refine on one row, the time lenses (they
+          earn their space on Events), compact chips; every other filter
+          lives in Refine. Same fields, same URL, same submit as before. */}
+      <ArchiveGeoShell
+        surface="events"
+        initialView={filter.view ?? "list"}
+        bbox={parseBboxParam(filter.bbox)}
+        noun={["Event", "Events"]}
+        title="Events"
+        count={
+          <>
 
-      <form method="get" className="mt-4 flex flex-col gap-3">
-        {/* Submitting search or the filter sheet keeps the chosen time and
-            Area (they're set by links/the Area picker, not form fields). */}
-        {filter.when && <input type="hidden" name="when" value={filter.when} />}
-        {filter.date && <input type="hidden" name="date" value={filter.date} />}
-        {filter.market && <input type="hidden" name="market" value={filter.market} />}
-        {filter.market && filter.area && <input type="hidden" name="area" value={filter.area} />}
-        {filter.bbox && <input type="hidden" name="bbox" value={filter.bbox} />}
-        {filter.view && <input type="hidden" name="view" value={filter.view} />}
-        <ArchiveSearchField defaultValue={params.q} placeholder="Search events" />
-
-        {/* Time is the primary axis for event discovery — same tabs, same
-            underlying window logic, as the homepage. */}
-        <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {TIME_TABS.map((t) => (
-            <Link
-              key={t.key}
-              href={timeHref(t.key)}
-              className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                timeKey === t.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
-              }`}
-            >
-              {t.label}
-            </Link>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <AreaPicker
-            options={markets.map((m) => ({
-              slug: m.slug,
-              label: getMarketAreaLabel(m),
-              areasIncluded: m.areas_included,
-              areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-            }))}
-          />
-          <FilterSheet activeCount={sheetFilterCount}>
-            <EventFilters
-              categories={eventCategories}
-              defaultCategory={params.category}
-              defaultLocation={params.location}
-              defaultAccess={filter.access}
-              formats={formatChoices}
-              defaultFormats={selectedFormats}
-            />
-          </FilterSheet>
-        </div>
-        {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "next" ? "/events" : `/events?when=${timeKey}`} />}
-      </form>
-
-      {/* Map Everywhere — List / Map / Split of this exact result set. */}
-      <ArchiveGeoShell surface="events" initialView={filter.view ?? "list"} bbox={parseBboxParam(filter.bbox)} noun={["Event", "Events"]}>
-      {/* Events Discovery V4, item 4 — same compact treatment as
-          Businesses Discovery V4's result count: smaller/lighter than
-          any surrounding control text, never a headline. */}
-      <p className="mt-3 text-xs font-medium text-ink/45">
         {events.length === 0 && !hasMore ? 0 : `${events.length}${hasMore ? "+" : ""}`} event{events.length === 1 && !hasMore ? "" : "s"}
         {filter.date
           ? ` on ${filter.date}`
@@ -250,7 +204,67 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
                   : timeKey === "week"
                     ? " this week"
                     : ""}
-      </p>
+          </>
+        }
+        subtitle="Markets, pop-ups, and festivals, and who you’ll find here."
+        controls={
+          <form method="get" className="flex items-center gap-2">
+            {/* Submitting search or Refine keeps the chosen time, Area, map
+                area and view (set by links / pickers, not form fields). */}
+            {filter.when && <input type="hidden" name="when" value={filter.when} />}
+            {filter.date && <input type="hidden" name="date" value={filter.date} />}
+            {filter.market && <input type="hidden" name="market" value={filter.market} />}
+            {filter.market && filter.area && <input type="hidden" name="area" value={filter.area} />}
+            {filter.bbox && <input type="hidden" name="bbox" value={filter.bbox} />}
+            {filter.view && <input type="hidden" name="view" value={filter.view} />}
+            <ArchiveSearchField defaultValue={params.q} placeholder="Search Events" />
+            <RefineSheet noun="Events" activeCount={sheetFilterCount + (params.market ? 1 : 0)} resetHref={resetHref}>
+              <RefineSection title="Where">
+                <AreaPicker
+                  fullWidth
+                  options={markets.map((m) => ({
+                    slug: m.slug,
+                    label: getMarketAreaLabel(m),
+                    areasIncluded: m.areas_included,
+                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                  }))}
+                />
+              </RefineSection>
+              <EventFilters
+                categories={eventCategories}
+                defaultCategory={params.category}
+                defaultLocation={params.location}
+                defaultAccess={filter.access}
+                formats={formatChoices}
+                defaultFormats={selectedFormats}
+                showSubmit={false}
+              />
+            </RefineSheet>
+          </form>
+        }
+        lenses={
+          // Time is the primary axis for event discovery — same tabs, same
+          // underlying window logic, as the homepage.
+          <nav aria-label="When" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+            {TIME_TABS.map((t) => (
+              <Link
+                key={t.key}
+                href={timeHref(t.key)}
+                aria-current={timeKey === t.key ? "page" : undefined}
+                className={`flex min-h-8 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold uppercase tracking-wide transition ${
+                  timeKey === t.key ? "bg-findmi text-white" : "border border-black/10 bg-white text-ink/60 hover:border-black/20"
+                }`}
+              >
+                {t.label}
+              </Link>
+            ))}
+          </nav>
+        }
+        chips={chips.length > 0 ? <ActiveFilterChips chips={chips} clearHref={timeKey === "next" ? "/events" : `/events?when=${timeKey}`} /> : null}
+      >
+      {/* Events Discovery V4, item 4 — same compact treatment as
+          Businesses Discovery V4's result count: smaller/lighter than
+          any surrounding control text, never a headline. */}
 
       {events.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
@@ -268,7 +282,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
               instead of HomeEventCard (which stays unchanged — it's also
               the Homepage's own discovery card). Same grid breakpoints as
               before; the density win comes from the card itself. */}
-          <div data-geo-grid className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div data-geo-grid className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {events.map((e, i) => (
               <div key={e.id} data-geo-key={`ev:${e.id}`} className="min-w-0">
                 <EventDiscoveryCard event={e} analyticsContext={{ pageType: "events", placement: "results_grid", position: i + 1 }} />

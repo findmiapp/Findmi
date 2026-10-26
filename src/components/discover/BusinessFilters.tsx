@@ -23,12 +23,15 @@ export default function BusinessFilters({
   defaultLocation,
   defaultFeatured,
   defaultFounding,
+  showSubmit = true,
 }: {
   categories: Category[];
   defaultCategory?: string;
   defaultLocation?: string;
   defaultFeatured?: boolean;
   defaultFounding?: boolean;
+  /** Refine sheets supply their own Apply footer. */
+  showSubmit?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -49,7 +52,7 @@ export default function BusinessFilters({
       </label>
 
       <label className="block">
-        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Location</span>
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Based In</span>
         <input autoCapitalize="none"
           type="text"
           name="location"
@@ -70,12 +73,14 @@ export default function BusinessFilters({
         </label>
       </div>
 
-      <button
-        type="submit"
-        className="mt-1 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-      >
-        Show Results
-      </button>
+      {showSubmit && (
+        <button
+          type="submit"
+          className="mt-1 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        >
+          Show Results
+        </button>
+      )}
     </div>
   );
 }

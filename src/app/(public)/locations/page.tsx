@@ -3,7 +3,7 @@ import Link from "next/link";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
 import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
-import CategorySelect from "@/components/discover/CategorySelect";
+import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import { getConsumerVisibleMarketsWithAreas, getLocationCategories, getLocations, getMarketAreaLabel } from "@/lib/data";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
@@ -73,6 +73,14 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
 
   const filtering = chips.length > 0 || Boolean(params.q);
+  // Refine's Reset: Where / Category removed — search, map area, view kept.
+  const resetHref = (() => {
+    const p = new URLSearchParams();
+    if (params.q) p.set("q", params.q);
+    if (options.bbox) p.set("bbox", bboxParam(options.bbox));
+    if (view !== "list") p.set("view", view);
+    return `/locations${p.toString() ? `?${p.toString()}` : ""}`;
+  })();
 
   const emptyLabel =
     params.q || params.category || params.market
@@ -80,43 +88,54 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
       : "No locations yet. Check back soon.";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Locations</h1>
-      {/* Locations Discovery V4, item 1 — the old subtitle ("Recurring
-          markets and venues — see who's showing up next.") described an
-          earlier, narrower version of the Location model (Locations now
-          include cafés, restaurants, shops, and other everyday places,
-          not just recurring markets/venues). Same mobile compression as
-          Businesses/Events V4: hidden on mobile, kept on desktop. */}
-      <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
-        Discover places and see what&rsquo;s happening there.
-      </p>
-
-      <form method="get" className="mt-4 flex flex-col gap-3">
-        {options.bbox && <input type="hidden" name="bbox" value={bboxParam(options.bbox)} />}
-        {view !== "list" && <input type="hidden" name="view" value={view} />}
-        <ArchiveSearchField defaultValue={params.q} placeholder="Search locations" />
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <AreaPicker
-            options={markets.map((m) => ({
-              slug: m.slug,
-              label: getMarketAreaLabel(m),
-              areasIncluded: m.areas_included,
-              areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-            }))}
-          />
-          {categories.length > 0 && (
-            <CategorySelect options={categories.map((c) => ({ value: c.slug, label: c.name }))} allLabel="All Categories" />
-          )}
-        </div>
-        {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref="/locations" />}
-      </form>
-
-      <ArchiveGeoShell surface="locations" initialView={view} bbox={options.bbox ?? null} noun={["Place", "Places"]}>
-      <p className="mt-3 text-xs font-medium text-ink/45">
-        {locations.length} location{locations.length === 1 ? "" : "s"}
-      </p>
+    <div className="mx-auto max-w-6xl px-4 pb-8 pt-3 sm:px-6 sm:py-10">
+      {/* Archive Discovery UX pass — heading + view action, search +
+          Refine (Where, Category) on one row, compact chips; no permanent
+          lens row (Locations doesn't need one). Same URL fields as before. */}
+      <ArchiveGeoShell
+        surface="locations"
+        initialView={view}
+        bbox={options.bbox ?? null}
+        noun={["Place", "Places"]}
+        title="Locations"
+        count={`${locations.length} location${locations.length === 1 ? "" : "s"}`}
+        subtitle="Discover places and see what’s happening there."
+        controls={
+          <form method="get" className="flex items-center gap-2">
+            {options.bbox && <input type="hidden" name="bbox" value={bboxParam(options.bbox)} />}
+            {view !== "list" && <input type="hidden" name="view" value={view} />}
+            {params.market && <input type="hidden" name="market" value={params.market} />}
+            {params.market && params.area && <input type="hidden" name="area" value={params.area} />}
+            <ArchiveSearchField defaultValue={params.q} placeholder="Search Places" />
+            <RefineSheet noun="Places" activeCount={(params.market ? 1 : 0) + (params.category ? 1 : 0)} resetHref={resetHref}>
+              <RefineSection title="Where">
+                <AreaPicker
+                  fullWidth
+                  options={markets.map((m) => ({
+                    slug: m.slug,
+                    label: getMarketAreaLabel(m),
+                    areasIncluded: m.areas_included,
+                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                  }))}
+                />
+              </RefineSection>
+              {categories.length > 0 && (
+                <RefineSection title="Category">
+                  <select name="category" defaultValue={params.category ?? ""} aria-label="Category" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3.5 text-sm text-ink focus:border-ink/30 focus:outline-none">
+                    <option value="">All Categories</option>
+                    {categories.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </RefineSection>
+              )}
+            </RefineSheet>
+          </form>
+        }
+        chips={chips.length > 0 ? <ActiveFilterChips chips={chips} clearHref="/locations" /> : null}
+      >
 
       {locations.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
@@ -128,7 +147,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
           )}
         </div>
       ) : (
-        <div data-geo-grid className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-geo-grid className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {locations.map((l, i) => (
             <div key={l.id} data-geo-key={`loc:${l.id}`} className="min-w-0">
               <LocationDiscoveryCard location={l} analyticsContext={{ pageType: "locations", placement: "results_grid", position: i + 1 }} />

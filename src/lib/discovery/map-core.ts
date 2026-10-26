@@ -466,6 +466,10 @@ export interface MapFeature {
   locationId: string;
   /** Result keys this marker selects (bounded). */
   keys: string[];
+  /** Archive maps only: a rich identity + status label before any click
+   * (a few top results), ordered by `rank` (lower first). */
+  promoted?: boolean;
+  rank?: number;
 }
 
 export function isEventsLens(q: DiscoveryQuery): boolean {

@@ -22,7 +22,7 @@ const INK = "#111111";
 const LIVE = "#DC2626";
 const SRC = "fm-results";
 const USER_SRC = "fm-user";
-const POINT_LAYERS = ["fm-point", "fm-logo", "fm-label"];
+const POINT_LAYERS = ["fm-point", "fm-logo", "fm-label", "fm-promo"];
 
 export interface CanvasProps {
   features: MapFeature[];
@@ -62,6 +62,10 @@ function toGeoJSON(features: MapFeature[]): GeoJSON.FeatureCollection {
         statusLine: f.live ? (f.status && f.status !== "LIVE" ? `LIVE · ${f.status}` : "LIVE") : f.status,
         logo: f.logo ? `logo:${f.logo}` : "",
         initial: (f.label || f.place || "?").slice(0, 1).toUpperCase(),
+        // Archive maps (Map Everywhere) may promote a few results to rich
+        // labels at city zoom; /map never sets it.
+        promoted: f.promoted ? 1 : 0,
+        rank: f.rank ?? 999,
       },
     })),
   };
@@ -269,6 +273,27 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
           },
           paint: { "text-color": INK, "text-halo-color": "#ffffff", "text-halo-width": 1.6 },
         });
+        // Promoted results (archive maps only): identity + status before any
+        // click, from city zoom — LIVE first, then the archive's own order
+        // (rank); symbol collision keeps only as many as fit.
+        map.addLayer({
+          id: "fm-promo",
+          type: "symbol",
+          source: SRC,
+          minzoom: 11,
+          filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "promoted"], 1]],
+          layout: {
+            "text-field": ["format", ["get", "label"], { "text-font": ["literal", MAP_LABEL_FONT_BOLD] }, "\n", {}, ["get", "statusLine"], { "font-scale": 0.88 }],
+            "text-font": MAP_LABEL_FONT,
+            "text-size": 12,
+            "text-anchor": "top",
+            "text-offset": [0, 1.25],
+            "text-max-width": 12,
+            "text-optional": true,
+            "symbol-sort-key": ["get", "rank"],
+          },
+          paint: { "text-color": INK, "text-halo-color": "#ffffff", "text-halo-width": 1.8 },
+        });
         map.addLayer({ id: "fm-user-halo", type: "circle", source: USER_SRC, paint: { "circle-radius": 18, "circle-color": INK, "circle-opacity": 0.12 } });
         map.addLayer({ id: "fm-user", type: "circle", source: USER_SRC, paint: { "circle-radius": 7, "circle-color": INK, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
 
@@ -327,7 +352,8 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     map.setFilter("fm-point", ["all", ["!", ["has", "point_count"]], notSelected]);
     map.setFilter("fm-logo", ["all", ["!", ["has", "point_count"]], ["!=", ["get", "logo"], ""], notSelected]);
     map.setFilter("fm-initial", ["all", ["!", ["has", "point_count"]], ["==", ["get", "logo"], ""], notSelected]);
-    map.setFilter("fm-label", ["all", ["!", ["has", "point_count"]], notSelected]);
+    map.setFilter("fm-label", ["all", ["!", ["has", "point_count"]], ["!=", ["get", "promoted"], 1], notSelected]);
+    map.setFilter("fm-promo", ["all", ["!", ["has", "point_count"]], ["==", ["get", "promoted"], 1], notSelected]);
     markerRef.current?.remove();
     markerRef.current = null;
     const f = selectedId ? features.find((x) => x.id === selectedId) : null;

@@ -4,12 +4,29 @@ import type { GeoResult } from "@/lib/geo-results";
 
 // One map result (archive Map mode, detail-page maps) — the same card
 // language as MapResultCard: white card, rounded-2xl, LIVE in words.
+// With `onSelect` (an archive's map sheet) the card selects its place on
+// the map and a separate "View" opens the canonical page; without it the
+// whole card is the link.
 
-export default function GeoResultCard({ result, compact = false }: { result: GeoResult; compact?: boolean }) {
+export default function GeoResultCard({
+  result,
+  compact = false,
+  selected = false,
+  onSelect,
+}: {
+  result: GeoResult;
+  compact?: boolean;
+  selected?: boolean;
+  onSelect?: (result: GeoResult) => void;
+}) {
   const img = result.image ?? result.logo;
   return (
-    <article data-geo-card={result.key} className="relative flex gap-3 rounded-2xl border border-black/5 bg-white p-2.5">
-      <div className={`relative shrink-0 overflow-hidden rounded-xl bg-black/5 ${compact ? "h-12 w-12" : "h-16 w-16"}`}>
+    <article
+      data-geo-card={result.key}
+      aria-current={selected ? "true" : undefined}
+      className={`relative flex h-full gap-3 rounded-2xl border bg-white p-2.5 transition ${selected ? "border-findmi shadow-[0_0_0_3px_rgba(20,176,188,0.18)]" : "border-black/5"}`}
+    >
+      <div className={`relative shrink-0 overflow-hidden rounded-xl bg-black/5 ${compact ? "h-14 w-14" : "h-16 w-16"}`}>
         {img ? (
           <SupabaseImage src={img} alt="" fill sizes="64px" className={result.image ? "object-cover" : "object-contain p-1.5"} />
         ) : (
@@ -27,11 +44,22 @@ export default function GeoResultCard({ result, compact = false }: { result: Geo
         ) : result.status ? (
           <span className="truncate text-[11px] font-bold text-ink/55">{result.status}</span>
         ) : null}
-        <Link href={result.href} className="line-clamp-2 font-display text-sm font-bold leading-snug text-ink after:absolute after:inset-0 after:rounded-2xl hover:underline">
-          {result.title}
-        </Link>
+        {onSelect ? (
+          <button type="button" onClick={() => onSelect(result)} aria-pressed={selected} className="min-w-0 text-left after:absolute after:inset-0 after:rounded-2xl focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-findmi">
+            <span className="line-clamp-2 font-display text-sm font-bold leading-snug text-ink">{result.title}</span>
+          </button>
+        ) : (
+          <Link href={result.href} className="line-clamp-2 font-display text-sm font-bold leading-snug text-ink after:absolute after:inset-0 after:rounded-2xl hover:underline">
+            {result.title}
+          </Link>
+        )}
         {result.subtitle && <p className="truncate text-xs text-ink/55">{result.subtitle}</p>}
       </div>
+      {onSelect && (
+        <Link href={result.href} aria-label={`View ${result.title}`} className="relative z-10 flex shrink-0 items-center self-center rounded-full px-2 py-2 text-xs font-bold text-findmi-700 hover:underline">
+          View
+        </Link>
+      )}
     </article>
   );
 }

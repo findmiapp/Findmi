@@ -10,7 +10,7 @@ import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import BusinessDiscoveryCard from "@/components/discover/BusinessDiscoveryCard";
 import BusinessFilters from "@/components/discover/BusinessFilters";
-import FilterSheet from "@/components/discover/FilterSheet";
+import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import SortSelect from "@/components/discover/SortSelect";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
@@ -257,64 +257,64 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   })();
 
   const filtering = chips.length > 0 || Boolean(params.q);
+  // Refine's Reset: every Refine filter removed — search, map area, view kept.
+  const resetHref = (() => {
+    const p = new URLSearchParams();
+    if (params.q) p.set("q", params.q);
+    if (archive.bbox) p.set("bbox", bboxParam(archive.bbox));
+    if (view !== "list") p.set("view", view);
+    return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
+  })();
 
   return (
     // Businesses Discovery V4 — py-8/sm:py-10 was the same generous top/
     // bottom breathing room every archive page opens with; tightened on
     // mobile only (sm: unchanged) since the whole point of this pass is
     // giving that space back to results, not desktop layout.
-    <div className="py-5 sm:py-10">
+    <div className="pb-5 pt-3 sm:py-10">
       <SearchFilterAnalytics pageType="businesses" filterParams={["category", "market", "area"]} />
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Businesses</h1>
-        {/* Businesses Discovery V4, item 1 — this line added little a
-            consumer couldn't already infer from the page title + search
-            field, and was previously the single biggest contributor
-            (alongside the old giant control stack below) to how far
-            results sat from the top of a mobile viewport. Hidden below
-            sm: rather than shortened — omitting it entirely is
-            explicitly sanctioned by this pass's own spec when it "adds
-            little value" on small mobile; desktop keeps it unchanged. */}
-        <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
-          Search Findmi&rsquo;s directory of local vendors and brands.
-        </p>
-
-        <form method="get" className="mt-3 flex flex-col gap-2.5 sm:mt-5 sm:gap-3">
-          {archive.bbox && <input type="hidden" name="bbox" value={bboxParam(archive.bbox)} />}
-          {view !== "list" && <input type="hidden" name="view" value={view} />}
-          <ArchiveSearchField defaultValue={params.q} placeholder="Search by name or description" />
-          {/* Businesses Discovery V4, item 3 — Area/Filters/Sort
-              consolidated onto one row (gap tightened from 2.5 to 2, and
-              SortSelect itself shrunk — see that component's own note);
-              AreaPicker and FilterSheet are shared with the Find Your
-              Area modal and /events' own filter sheet respectively, so
-              neither's own geometry changed, only this row's spacing. */}
-          <div className="flex flex-wrap items-center gap-1">
-            <AreaPicker
-              options={markets.map((m) => ({
-                slug: m.slug,
-                label: getMarketAreaLabel(m),
-                areasIncluded: m.areas_included,
-                areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-              }))}
-            />
-            <FilterSheet activeCount={sheetFilterCount}>
-              <BusinessFilters
-                categories={categories}
-                defaultCategory={params.category}
-                defaultLocation={params.location}
-                defaultFeatured={featured}
-                defaultFounding={founding}
-              />
-            </FilterSheet>
-            <SortSelect options={SORT_OPTIONS} />
-          </div>
-          {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref="/businesses" />}
-        </form>
-      </div>
-
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-      <ArchiveGeoShell surface="brands" initialView={view} bbox={archive.bbox} noun={["Brand", "Brands"]}>
+      {/* Archive Discovery UX pass — heading + view action, search + Refine
+          (Where, Category, Based In, Featured / Founding, Sort) on one row,
+          compact chips — then the Featured rails / results right away.
+          Same fields and URL as before. */}
+      <ArchiveGeoShell
+        surface="brands"
+        initialView={view}
+        bbox={archive.bbox}
+        noun={["Brand", "Brands"]}
+        title="Businesses"
+        count={isBrowseMode ? undefined : `${businesses.length === 0 && !hasMore ? 0 : `${businesses.length}${hasMore ? "+" : ""}`} business${businesses.length === 1 && !hasMore ? "" : "es"}`}
+        subtitle="Search Findmi’s directory of local vendors and brands."
+        controls={
+          <form method="get" className="flex items-center gap-2">
+            {archive.bbox && <input type="hidden" name="bbox" value={bboxParam(archive.bbox)} />}
+            {view !== "list" && <input type="hidden" name="view" value={view} />}
+            {params.market && <input type="hidden" name="market" value={params.market} />}
+            {params.market && params.area && <input type="hidden" name="area" value={params.area} />}
+            {sort !== "recommended" && <input type="hidden" name="sort" value={sort} />}
+            <ArchiveSearchField defaultValue={params.q} placeholder="Search Businesses" />
+            <RefineSheet noun="Businesses" activeCount={sheetFilterCount + (params.market ? 1 : 0) + (sort !== "recommended" ? 1 : 0)} resetHref={resetHref}>
+              <RefineSection title="Where">
+                <AreaPicker
+                  fullWidth
+                  options={markets.map((m) => ({
+                    slug: m.slug,
+                    label: getMarketAreaLabel(m),
+                    areasIncluded: m.areas_included,
+                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                  }))}
+                />
+              </RefineSection>
+              <BusinessFilters categories={categories} defaultCategory={params.category} defaultLocation={params.location} defaultFeatured={featured} defaultFounding={founding} showSubmit={false} />
+              <RefineSection title="Sort">
+                <SortSelect options={SORT_OPTIONS} />
+              </RefineSection>
+            </RefineSheet>
+          </form>
+        }
+        chips={chips.length > 0 ? <ActiveFilterChips chips={chips} clearHref="/businesses" /> : null}
+      >
       {isBrowseMode ? (
         <div className="-mx-4 mt-3 sm:-mx-6">
           {featuredBusinesses.length === 0 && categoryRails.length === 0 ? (
@@ -421,10 +421,6 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
               controls above) so it reads as the controls→results
               transition rather than its own section, smaller/lighter
               than any surrounding control text, never a headline. */}
-          <p className="mt-3 text-xs font-medium text-ink/45">
-            {businesses.length === 0 && !hasMore ? 0 : `${businesses.length}${hasMore ? "+" : ""}`} business
-            {businesses.length === 1 && !hasMore ? "" : "es"}
-          </p>
 
           {businesses.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
@@ -451,7 +447,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                   Same grid breakpoints as before (1/2/3 columns) — the
                   density win comes entirely from the card itself being
                   far shorter, not from a wider grid. */}
-              <div data-geo-grid className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div data-geo-grid className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {businesses.map((b, i) => (
                   <div key={b.id} data-geo-key={`br:${b.id}`} className="min-w-0">
                     <BusinessDiscoveryCard business={b} nextAppearance={appearanceHints.get(b.id)} analyticsContext={{ pageType: "businesses", placement: "results_grid", position: i + 1 }} />

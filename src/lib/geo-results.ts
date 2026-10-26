@@ -59,9 +59,13 @@ export function geoPlace(l: { id?: string | null; name?: string | null; slug?: s
 /** One marker per canonical Location. A Location holding a single result
  * (or results that all name the same thing) shows that identity; several
  * different results show the Location with their count. */
-export function geoFeatures(results: readonly GeoResult[]): MapFeature[] {
+export function geoFeatures(results: readonly GeoResult[], opts: { promote?: number } = {}): MapFeature[] {
   const byPlace = new Map<string, GeoResult[]>();
-  for (const r of results) byPlace.set(r.place.id, [...(byPlace.get(r.place.id) ?? []), r]);
+  const firstAt = new Map<string, number>();
+  results.forEach((r, i) => {
+    byPlace.set(r.place.id, [...(byPlace.get(r.place.id) ?? []), r]);
+    if (!firstAt.has(r.place.id)) firstAt.set(r.place.id, i);
+  });
   const out: MapFeature[] = [];
   for (const [placeId, rs] of byPlace) {
     const lead = rs.find((r) => r.live) ?? rs[0];
@@ -81,8 +85,15 @@ export function geoFeatures(results: readonly GeoResult[]): MapFeature[] {
       logo: lead.logo,
       locationId: placeId,
       keys: rs.map((r) => r.key).slice(0, 50),
+      // The result set's own order (featured-first / soonest / relevance
+      // as the archive ranked it), LIVE ahead of everything.
+      rank: (live ? 0 : 1000) + (firstAt.get(placeId) ?? 0),
     });
   }
+  // A few promoted rich labels tell the map's story before any click; the
+  // rest stay compact identity markers / clusters. No new ranking.
+  const promote = opts.promote ?? 0;
+  if (promote > 0) for (const f of [...out].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)).slice(0, promote)) f.promoted = true;
   return out;
 }
 

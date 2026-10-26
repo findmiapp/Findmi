@@ -25,6 +25,7 @@ export default function EventFilters({
   defaultAccess,
   formats = [],
   defaultFormats = [],
+  showSubmit = true,
 }: {
   categories: Category[];
   defaultCategory?: string;
@@ -34,6 +35,8 @@ export default function EventFilters({
   /** Event Formats V1 — the Formats to offer (slug → `format` param). */
   formats?: Category[];
   defaultFormats?: string[];
+  /** Refine sheets supply their own Apply footer. */
+  showSubmit?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -67,7 +70,7 @@ export default function EventFilters({
       )}
 
       <label className="block">
-        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Location</span>
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">City or State</span>
         <input autoCapitalize="none"
           type="text"
           name="location"
@@ -103,12 +106,14 @@ export default function EventFilters({
         </div>
       </fieldset>
 
-      <button
-        type="submit"
-        className="mt-1 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-      >
-        Show Results
-      </button>
+      {showSubmit && (
+        <button
+          type="submit"
+          className="mt-1 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        >
+          Show Results
+        </button>
+      )}
     </div>
   );
 }

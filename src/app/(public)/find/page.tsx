@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import ActiveFilterChips from "@/components/discover/ActiveFilterChips";
+import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
+import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
 import { archiveBbox, archiveView } from "@/lib/archive-params";
 import { bboxParam } from "@/lib/geo-results";
@@ -214,17 +217,18 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   // current category/market/area/q forward unless explicitly overridden,
   // so switching one dimension never silently drops another (Section 7).
   function buildHref(
-    overrides: Partial<{ when: FindWindow; market: string | undefined; area: string | undefined; q: string | undefined }> = {}
+    overrides: Partial<{ when: FindWindow; market: string | undefined; area: string | undefined; q: string | undefined; category: string | undefined }> = {}
   ) {
     const next = {
       when: overrides.when ?? when,
       market: "market" in overrides ? overrides.market : marketSlug,
       area: "area" in overrides ? overrides.area : areaSlug,
       q: "q" in overrides ? overrides.q : q,
+      category: "category" in overrides ? overrides.category : category,
     };
     const p = new URLSearchParams();
     if (next.when !== "anytime") p.set("when", next.when);
-    if (category) p.set("category", category);
+    if (next.category) p.set("category", next.category);
     if (next.market) p.set("market", next.market);
     if (next.market && next.area) p.set("area", next.area);
     if (next.q) p.set("q", next.q);
@@ -237,106 +241,81 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const viewAllAreasHref = buildHref({ market: undefined, area: undefined });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-6xl px-4 pb-6 pt-3 sm:px-6 sm:py-6">
       <SearchFilterAnalytics pageType="find" filterParams={["category", "market", "area", "when"]} />
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Explore</p>
-      <h1 className="mt-0.5 font-display text-xl font-bold tracking-tight text-ink sm:text-3xl">
-        Help me find something specific
-      </h1>
-
-      {/* Find V3 — SEARCH + WHAT + WHERE compose with WHEN (Section 3): one
-          form, one submit. Search text and category both need an explicit
-          submit (Where/When act immediately via AreaPicker/Links, exactly
-          as before) — reusing the same "Find" action as search's own
-          submit, rather than a second button, is what keeps this to one
-          compact row instead of a second oversized one (Section 4).
-          Hidden when/market/area fields mean submitting never drops
-          whichever of those the visitor already had selected. */}
-      <form method="get" className="mt-3 flex flex-col gap-2">
-        {bbox && <input type="hidden" name="bbox" value={bboxParam(bbox)} />}
-        {view !== "list" && <input type="hidden" name="view" value={view} />}
-        <div className="flex gap-2">
-          <input autoCapitalize="none"
-            type="text"
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="Search businesses, events…"
-            className="h-11 w-full flex-1 rounded-xl border border-black/10 bg-white px-3.5 text-sm text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="h-11 shrink-0 rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-          >
-            Search
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink/40">What</span>
-            <select
-              name="category"
-              defaultValue={category ?? ""}
-              className="h-10 w-full rounded-xl border border-black/10 bg-white px-3 text-sm text-ink focus:border-ink/30 focus:outline-none"
-            >
-              <option value="">Any category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div>
-            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink/40">Where</span>
-            <AreaPicker
-              options={markets.map((m) => ({
-                slug: m.slug,
-                label: getMarketAreaLabel(m),
-                areasIncluded: m.areas_included,
-                areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-              }))}
+      {/* Archive Discovery UX pass — the same compact control family as
+          /events: heading + view action, search + Refine (What, Where) on
+          one row, the time lenses, compact chips. Same fields, same hidden
+          when/market/area, same URL — one submit (Enter or Refine). */}
+      <ArchiveGeoShell
+        surface="find"
+        initialView={view}
+        bbox={bbox}
+        noun={["Pop-Up", "Pop-Ups"]}
+        allowSplit={false}
+        title="Findmi Here"
+        subtitle="Help me find something specific."
+        controls={
+          <form method="get" className="flex items-center gap-2">
+            {bbox && <input type="hidden" name="bbox" value={bboxParam(bbox)} />}
+            {view !== "list" && <input type="hidden" name="view" value={view} />}
+            <input type="hidden" name="when" value={when} />
+            {marketSlug && <input type="hidden" name="market" value={marketSlug} />}
+            {marketSlug && areaSlug && <input type="hidden" name="area" value={areaSlug} />}
+            <ArchiveSearchField defaultValue={q ?? ""} placeholder="Search Brands & Events" />
+            <RefineSheet noun="Pop-Ups" activeCount={(category ? 1 : 0) + (marketSlug ? 1 : 0)} resetHref={buildHref({ market: undefined, area: undefined, category: undefined })}>
+              <RefineSection title="What">
+                <select name="category" defaultValue={category ?? ""} aria-label="What" className="h-11 w-full rounded-xl border border-black/10 bg-white px-3.5 text-sm text-ink focus:border-ink/30 focus:outline-none">
+                  <option value="">Any Category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </RefineSection>
+              <RefineSection title="Where">
+                <AreaPicker
+                  fullWidth
+                  options={markets.map((m) => ({
+                    slug: m.slug,
+                    label: getMarketAreaLabel(m),
+                    areasIncluded: m.areas_included,
+                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                  }))}
+                />
+              </RefineSection>
+            </RefineSheet>
+          </form>
+        }
+        lenses={
+          <nav aria-label="When" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+            {TABS.map((t) => (
+              <Link
+                key={t.value}
+                href={buildHref({ when: t.value })}
+                aria-current={when === t.value ? "page" : undefined}
+                className={`flex min-h-8 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold uppercase tracking-wide transition ${
+                  when === t.value ? "bg-findmi text-white" : "border border-black/10 bg-white text-ink/60 hover:border-black/20"
+                }`}
+              >
+                {t.label}
+              </Link>
+            ))}
+          </nav>
+        }
+        chips={
+          category || areaLabel ? (
+            <ActiveFilterChips
+              chips={[
+                ...(areaLabel ? [{ label: areaLabel, href: buildHref({ market: undefined, area: undefined }) }] : []),
+                ...(category ? [{ label: categories.find((c) => c.slug === category)?.name ?? category, href: buildHref({ category: undefined }) }] : []),
+              ]}
+              clearHref={buildHref({ market: undefined, area: undefined, category: undefined })}
             />
-          </div>
-        </div>
-        <input type="hidden" name="when" value={when} />
-        {marketSlug && <input type="hidden" name="market" value={marketSlug} />}
-        {marketSlug && areaSlug && <input type="hidden" name="area" value={areaSlug} />}
-
-        {/* Filter Results UX pass — Area already applies immediately via
-            AreaPicker's own router.push, but Category is a plain <select>
-            inside this form and had no explicit, visually-associated way
-            to submit it (the "Search" button above reads as belonging to
-            the text field, not to What/Where). This is a second submit
-            button for the SAME form/state (q + category + the hidden
-            when/market/area fields) — not a second, incompatible URL
-            model — so pressing it applies whatever What/Where currently
-            show, without disturbing the current search text. */}
-        <button
-          type="submit"
-          className="h-10 w-full rounded-lg bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-fit sm:self-start sm:px-6"
-        >
-          Filter Results
-        </button>
-
-        <div className="flex flex-wrap gap-1.5">
-          {TABS.map((t) => (
-            <Link
-              key={t.value}
-              href={buildHref({ when: t.value })}
-              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                when === t.value ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
-              }`}
-            >
-              {t.label}
-            </Link>
-          ))}
-        </div>
-      </form>
-
-      {/* Map Everywhere — List | Map of this window's Pop-Ups (no Split: the
-          List is a carousel + feed, not a scannable result column). */}
-      <ArchiveGeoShell surface="find" initialView={view} bbox={bbox} noun={["Pop-Up", "Pop-Ups"]} allowSplit={false}>
+          ) : null
+        }
+      >
       {items.length === 0 ? (
         <div className="mt-5 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
           {q ? (

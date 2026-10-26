@@ -16,12 +16,14 @@ export interface ActiveFilterChip {
 export default function ActiveFilterChips({ chips, clearHref }: { chips: ActiveFilterChip[]; clearHref: string }) {
   if (chips.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    // One compact row (the archive shell scrolls it sideways on phones).
+    <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap" aria-label="Active filters">
       {chips.map((chip) => (
         <Link
           key={chip.label}
           href={chip.href}
-          className="flex max-w-[70vw] items-center gap-1 rounded-full bg-ink/[0.06] px-2.5 py-1 text-xs font-medium text-ink/75 transition hover:bg-ink/10 sm:max-w-[240px]"
+          aria-label={`Remove filter: ${chip.label}`}
+          className="flex min-h-8 max-w-[70vw] shrink-0 items-center gap-1 rounded-full bg-ink/[0.06] px-3 text-xs font-medium text-ink/75 transition hover:bg-ink/10 sm:max-w-[240px]"
         >
           <span className="truncate">{chip.label}</span>
           <span aria-hidden="true" className="shrink-0 text-ink/40">
@@ -30,7 +32,7 @@ export default function ActiveFilterChips({ chips, clearHref }: { chips: ActiveF
         </Link>
       ))}
       {chips.length > 0 && (
-        <Link href={clearHref} className="px-1.5 text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
+        <Link href={clearHref} className="flex min-h-8 shrink-0 items-center px-1.5 text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
           Clear All
         </Link>
       )}

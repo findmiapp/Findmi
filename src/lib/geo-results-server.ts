@@ -56,7 +56,8 @@ export async function eventGeo(params: EventDiscoveryParams): Promise<GeoRespons
       key: `ev:${r.event.id}`,
       kind: "event",
       title: r.event.name,
-      subtitle: [when, place.name].filter(Boolean).join(" · ") || null,
+      // The date is the status line; the subtitle says where.
+      subtitle: place.name || null,
       href: eventHref(r.event.slug, r.occurrence?.id ?? null),
       image: r.event.cover_image_url ?? null,
       logo: null,
@@ -135,7 +136,7 @@ export function brandResults(brands: { id: string; slug: string; name: string; l
   for (const p of presence) {
     const b = byId.get(p.businessId);
     if (!b) continue;
-    out.push({ key: `br:${b.id}@${p.place.id}`, kind: "brand", title: b.name, subtitle: [p.relation, p.place.name].join(" · "), href: `/business/${b.slug}`, image: b.cover_image_url ?? null, logo: b.logo_url ?? null, status: p.live ? "LIVE" : p.when ?? p.relation, live: p.live, place: p.place });
+    out.push({ key: `br:${b.id}@${p.place.id}`, kind: "brand", title: b.name, subtitle: p.live || p.when ? `${p.relation} · ${p.place.name}` : p.place.name, href: `/business/${b.slug}`, image: b.cover_image_url ?? null, logo: b.logo_url ?? null, status: p.live ? "LIVE" : p.when ?? p.relation, live: p.live, place: p.place });
   }
   return out;
 }
