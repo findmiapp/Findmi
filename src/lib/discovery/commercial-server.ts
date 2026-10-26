@@ -23,6 +23,7 @@ import {
   type CommercialQuery,
   type MatchReason,
 } from "./commercial";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 /** Commercial Discovery — the server reader behind Growth → Targets → Discover.
  *
@@ -523,7 +524,7 @@ function resolveScope(q: CommercialQuery, catalog: Catalog): { scope: GeographyS
 export async function getCommercialDiscovery(admin: SupabaseClient, viewerId: string, q: CommercialQuery, now = new Date()): Promise<CommercialDiscovery> {
   const [catalog, catRes] = await Promise.all([
     readGeographyCatalog(admin),
-    admin.from("categories").select("id, name, kind, parent_id").in("kind", ["location", "business", "event", "event_format"]).limit(SIGNAL_LIMIT),
+    admin.from("categories").select("id, name, kind, parent_id").in("kind", ["location", "business", "event", "event_format"]).neq("status", STAGED_CATEGORY_STATUS).limit(SIGNAL_LIMIT),
   ]);
   const cats = (catRes.data ?? []) as CategoryRow[];
   const options = buildOptions(catalog, cats);

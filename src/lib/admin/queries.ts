@@ -20,6 +20,7 @@ import type {
   ProInvite,
   ProInviteRedemption,
 } from "@/lib/types";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 // Admin-only row shapes: the public types.ts interfaces don't carry
 // is_demo (public code never needs to see it directly — it just filters
@@ -49,7 +50,7 @@ export async function getDashboardCounts() {
     supabase.from("locations").select("id", { count: "exact", head: true }),
     supabase.from("appearances").select("id", { count: "exact", head: true }),
     supabase.from("products").select("id", { count: "exact", head: true }),
-    supabase.from("categories").select("id", { count: "exact", head: true }),
+    supabase.from("categories").select("id", { count: "exact", head: true }).neq("status", STAGED_CATEGORY_STATUS),
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("payment_status", "paid"),
   ]);
   const [businessesPublic] = await Promise.all([
@@ -201,7 +202,7 @@ export async function getAdminBusinessById(
 export async function getAllCategories(kind?: CategoryKind): Promise<Category[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  let query = supabase.from("categories").select("*");
+  let query = supabase.from("categories").select("*").neq("status", STAGED_CATEGORY_STATUS);
   if (kind) query = query.eq("kind", kind);
   const { data } = await query.order("name");
   const categories = data ?? [];

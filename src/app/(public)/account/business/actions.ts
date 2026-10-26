@@ -34,6 +34,7 @@ import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
 import { storePublicImage } from "@/lib/image-variants-server";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -338,6 +339,7 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
     .select("id")
     .eq("id", categoryId)
     .eq("kind", "business")
+    .neq("status", STAGED_CATEGORY_STATUS)
     .maybeSingle();
   if (!category) redirect(appendQuery(redirectPath, { error: "That's not a valid category." }));
 
@@ -1887,6 +1889,7 @@ async function setMemberProductCategory(admin: SupabaseClient, productId: string
     .select("id")
     .eq("id", categoryId)
     .eq("kind", "product")
+    .neq("status", STAGED_CATEGORY_STATUS)
     .maybeSingle();
   if (category) {
     await admin.from("product_categories").insert({ product_id: productId, category_id: categoryId });

@@ -10,6 +10,7 @@ import { isCategorySlugTaken } from "./queries";
 import { str } from "./form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import type { CategoryKind } from "@/lib/types";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 interface CategoryActionResult {
   error?: string;
@@ -154,6 +155,7 @@ export async function reorderBusinessCategory(
     .select("id, name, home_sort_order")
     .eq("kind", "business")
     .neq("name", "Other")
+    .neq("status", STAGED_CATEGORY_STATUS)
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name", { ascending: true });
   if (fetchError) return { error: fetchError.message };

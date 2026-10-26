@@ -282,6 +282,7 @@ function fakeAdmin({ candidates = [] } = {}) {
       const chain = {
         select: () => chain,
         eq: () => chain,
+        neq: () => chain,
         is: () => chain,
         or: () => chain,
         limit: () => chain,

@@ -80,7 +80,7 @@ test("migration: integrity — only kind='event_format' can be linked; Formats a
   // from its parent's, so no Format can be a parent either (a child would
   // have to be an event_format, which can't have a parent).
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261116000000_taxonomy_v2_foundation.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1, Brand Intelligence V1.1, Brand Intelligence V1.2, Discovery Intelligence V1, Canonical Entity Geography) */);
+  assert.equal(files.at(-1), "20261117000000_taxonomy_v2_staged_categories.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1, Brand Intelligence V1.1, Brand Intelligence V1.2, Discovery Intelligence V1, Canonical Entity Geography) */);
 });
 
 // ── PERSISTENCE ───────────────────────────────────────────────────────────
@@ -112,6 +112,7 @@ function linkClient({ links = [], formats = [POP, SAMPLING, BRAND] } = {}) {
       select: () => api,
       eq: (k, v) => (filters.push(["eq", k, v]), api),
       in: (k, v) => (filters.push(["in", k, v]), api),
+      neq: (k, v) => (filters.push(["neq", k, v]), api),
       then: (resolve) => {
         if (table === "categories") {
           const ids = filters.find((f) => f[0] === "in")?.[2] ?? [];

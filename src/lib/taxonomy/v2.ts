@@ -447,126 +447,171 @@ export const LEGACY_EVENT_FORMAT_MAPPINGS: LegacyMappingSeed[] = [
   { legacyKind: "event_format", legacySlug: "party-social", targets: [{ dimension: "event_type", slug: "party" }], note: "Review: some rows may be Meetup & Social rather than Party." },
 ];
 
-// ------------------------------------------------------------ V2 category trees (manifest only)
-// The approved target trees for public.categories. NOT seeded in Pass 1:
-// 39 code paths read categories by kind with no status filter, and many V2
-// slugs collide with live V1 rows (e.g. event "food-drink", location
-// "restaurant"), so inserting them now would change Admin pickers and
-// public filters. Pass 2 inserts them as status 'staged' alongside the
-// legacy → V2 mapping and the reader filter.
+// ------------------------------------------------------------ V2 Category trees (Pass 2: staged)
+// The V2 entity Category trees in public.categories. Tree STRUCTURE lives in
+// public.category_tree_v2 (category → V2 parent), never in parent_id, so a
+// live V1 row can join the V2 tree under a new parent without changing V1.
+//
+//   reuse: true   an existing ACTIVE V1 row of the same kind + slug with the
+//                 same meaning, kept exactly as it is (V1 keeps reading it);
+//                 `name` is its V2 label (category_tree_v2.display_name when
+//                 it differs from the V1 name; "" = keep the V1 name).
+//   otherwise     a NEW row inserted with status 'staged' — invisible to V1
+//                 (RLS hides staged rows from anon/authenticated; service-
+//                 role V1 readers exclude them explicitly) until the read
+//                 switch.
+//
+// Only Business / Location / Event / Product are Categories. Event Type,
+// Mechanic, Appearance Type, Topic, Audience, Access, Price, Setting,
+// Benefits, Attributes and Business Model are separate dimensions.
+
+export type V2CategoryKind = "business" | "location" | "event" | "product";
 
 export interface CategoryNode {
   slug: string;
   name: string;
+  reuse?: true;
   children?: CategoryNode[];
 }
 
 const n = (slug: string, name: string, children?: CategoryNode[]): CategoryNode => ({ slug, name, ...(children ? { children } : {}) });
+/** An existing V1 row reused as-is (its V2 label may differ). */
+const r = (slug: string, name: string, children?: CategoryNode[]): CategoryNode => ({ slug, name, reuse: true, ...(children ? { children } : {}) });
+/** Reused V1 rows that keep their V1 names in V2 too (name ""). */
+const rs = (...slugs: string[]): CategoryNode[] => slugs.map((s) => r(s, ""));
 
-/** Event Category / Domain — ONE level. Specificity comes from Event
- * Type, Experience Mechanic, Topic, Audience, Access, Setting, Benefits. */
+/** Event Category / Domain — ONE level. Specificity comes from Event Type,
+ * Experience Mechanic, Topic, Audience, Access, Setting, Benefits. Seven
+ * V1 top-level rows are exact equivalents; "home-lifestyle" reuses the V1
+ * row of that name (a V1 subcategory — its V1 parent_id is untouched; in
+ * V2 it is top-level). */
 export const V2_EVENT_DOMAINS: CategoryNode[] = [
-  n("food-drink", "Food & Drink"),
-  n("arts-culture", "Arts & Culture"),
-  n("music-nightlife", "Music & Nightlife"),
-  n("entertainment", "Entertainment"),
+  r("food-drink", "Food & Drink"),
+  r("arts-culture", "Arts & Culture"),
+  r("music-nightlife", "Music & Nightlife"),
+  r("entertainment", "Entertainment"),
   n("shopping-style", "Shopping & Style"),
-  n("beauty-wellness", "Beauty & Wellness"),
-  n("sports-fitness", "Sports & Fitness"),
+  r("beauty-wellness", "Beauty & Wellness"),
+  r("sports-fitness", "Sports & Fitness"),
   n("outdoors-nature", "Outdoors & Nature"),
-  n("business-tech", "Business & Tech"),
+  r("business-tech", "Business & Tech"),
   n("community-causes", "Community & Causes"),
-  n("home-lifestyle", "Home & Lifestyle"),
+  r("home-lifestyle", "Home & Lifestyle"),
 ];
 
+/** Industry / vertical only — never business model, audience, channel or
+ * participation role (those are Business Model / Audience / relationships). */
+export const V2_BUSINESS_TREE: CategoryNode[] = [
+  n("food-beverage", "Food & Beverage", [
+    n("coffee-tea", "Coffee & Tea"),
+    n("bakery-desserts", "Bakery & Desserts"),
+    n("restaurants-food-service", "Restaurants & Food Service"),
+    n("packaged-food", "Packaged Food"),
+    n("beverages", "Beverages"),
+    n("alcoholic-beverages", "Alcoholic Beverages"),
+    n("non-alcoholic-beverages", "Non-Alcoholic Beverages"),
+  ]),
+  r("fashion-apparel", "Fashion & Apparel", [
+    n("apparel", "Apparel"),
+    n("footwear", "Footwear"),
+    n("accessories", "Accessories"),
+    n("jewelry", "Jewelry"),
+    r("vintage-resale", "Vintage & Resale"),
+  ]),
+  n("beauty-personal-care", "Beauty & Personal Care", [n("skincare", "Skincare"), n("haircare", "Haircare"), n("cosmetics", "Cosmetics"), n("fragrance", "Fragrance"), n("personal-care", "Personal Care")]),
+  n("health-wellness", "Health & Wellness", [n("fitness", "Fitness"), n("wellness", "Wellness"), n("health-services", "Health Services")]),
+  n("home-living", "Home & Living", [n("home-goods", "Home Goods"), n("furniture-decor", "Furniture & Decor"), n("plants-garden", "Plants & Garden")]),
+  n("arts-makers", "Arts & Makers", [n("art", "Art"), n("crafts", "Crafts"), n("makers", "Makers")]),
+  n("kids-baby", "Kids & Baby", [n("baby", "Baby"), n("kids", "Kids"), n("toys-play", "Toys & Play")]),
+  r("pets", "Pets"),
+  n("media-entertainment", "Media & Entertainment", [n("music", "Music"), n("film-video", "Film & Video"), n("publishing-books", "Publishing & Books"), n("entertainment", "Entertainment")]),
+  n("events-hospitality", "Events & Hospitality", [n("event-production", "Event Production"), n("hospitality", "Hospitality"), n("venues", "Venues")]),
+  n("services", "Services"),
+];
+
+/** Function, not physical form (place_type / parent_location_id own form
+ * and containment). Reused V1 rows keep their V1 names for V1 readers. */
 export const V2_LOCATION_TREE: CategoryNode[] = [
   n("food-drink", "Food & Drink", [
-    n("cafe", "Café", [n("coffee-shop", "Coffee Shop"), n("tea-house", "Tea House")]),
+    r("cafe-coffee-shop", "Café & Coffee Shop"),
     n("bakery", "Bakery"),
-    n("restaurant", "Restaurant"),
-    n("bar-lounge", "Bar & Lounge"),
-    n("brewery-taproom", "Brewery & Taproom"),
-    n("food-hall-market-hall", "Food Hall & Market Hall"),
-    n("grocery-specialty-food", "Grocery & Specialty Food"),
+    r("restaurant", "Restaurant"),
+    r("bar-lounge", "Bar"),
+    n("food-hall", "Food Hall"),
+    n("specialty-food-shop", "Specialty Food Shop"),
   ]),
-  n("shopping", "Shopping", [
-    n("retail-store", "Retail Store"),
-    n("shopping-center", "Shopping Center"),
-    n("pop-up-shop-space", "Pop-Up Shop Space"),
-    n("open-air-market-site", "Open-Air Market Site"),
-  ]),
-  n("arts-culture", "Arts & Culture", [
-    n("gallery", "Gallery"),
-    n("museum", "Museum"),
-    n("theater", "Theater"),
-    n("music-venue", "Music Venue"),
-    n("cinema", "Cinema"),
-    n("creative-studio", "Creative Studio"),
-  ]),
-  n("event-community-spaces", "Event & Community Spaces", [
-    n("event-venue", "Event Venue"),
-    n("community-space", "Community Space"),
-    n("coworking-space", "Coworking Space"),
-    n("rental-studio", "Rental Studio"),
-  ]),
-  n("outdoors", "Outdoors", [n("park", "Park"), n("plaza-public-space", "Plaza & Public Space"), n("waterfront-pier", "Waterfront & Pier"), n("garden", "Garden")]),
-  n("health-wellness", "Health & Wellness", [n("gym-fitness-studio", "Gym & Fitness Studio"), n("salon-spa", "Salon & Spa")]),
-  n("hospitality", "Hospitality", [n("hotel", "Hotel")]),
-  n("work-education", "Work & Education", [n("office", "Office"), n("campus", "Campus")]),
-  n("landmarks", "Landmarks", [n("landmark-transit-hub", "Landmark & Transit Hub")]),
+  n("shopping", "Shopping", [r("retail-store", "Store"), n("boutique", "Boutique"), n("shopping-center", "Shopping Center"), n("market-hall", "Market Hall")]),
+  n("arts-culture", "Arts & Culture", [r("gallery", "Gallery"), n("museum", "Museum"), n("theater", "Theater"), n("cinema", "Cinema")]),
+  n("event-community-spaces", "Event & Community Spaces", [r("event-venue", "Event Venue"), r("community-space", "Community Space"), n("convention-exhibition-space", "Convention / Exhibition Space")]),
+  n("outdoors", "Outdoors", [n("park", "Park"), n("plaza", "Plaza"), n("waterfront", "Waterfront"), n("recreation-area", "Recreation Area")]),
+  n("health-wellness", "Health & Wellness", [r("fitness-gym", "Gym & Fitness Studio"), n("wellness-studio", "Wellness Studio"), r("salon-spa", "Salon & Spa")]),
+  n("hospitality", "Hospitality", [r("hotel", "Hotel")]),
+  n("work-education", "Work & Education", [r("coworking-space", "Coworking Space"), n("school-campus", "School / Campus"), n("library", "Library")]),
+  n("landmarks", "Landmarks", [n("landmark-attraction", "Landmark / Attraction")]),
 ];
 
-export const V2_BUSINESS_TREE: CategoryNode[] = [
-  n("food-beverage", "Food & Beverage", [n("coffee-tea", "Coffee & Tea"), n("bakery-desserts", "Bakery & Desserts"), n("restaurant-cafe", "Restaurant & Café"), n("food-truck-mobile", "Food Truck & Mobile Food"), n("packaged-food-snacks", "Packaged Food & Snacks"), n("beverages", "Beverages"), n("beer-wine-spirits", "Beer, Wine & Spirits"), n("specialty-grocery", "Specialty Grocery")]),
-  n("fashion-apparel", "Fashion & Apparel", [n("clothing", "Clothing"), n("streetwear-sneakers", "Streetwear & Sneakers"), n("jewelry-accessories", "Jewelry & Accessories"), n("bags-leather", "Bags & Leather Goods"), n("vintage-resale", "Vintage & Resale")]),
-  n("beauty-personal-care", "Beauty & Personal Care", [n("skincare", "Skincare"), n("makeup", "Makeup"), n("fragrance", "Fragrance"), n("hair-care", "Hair Care"), n("salon-spa", "Salon & Spa")]),
-  n("health-wellness", "Health & Wellness", [n("fitness", "Fitness"), n("wellness-products", "Wellness Products"), n("wellness-services", "Wellness Services")]),
-  n("home-living", "Home & Living", [n("home-decor", "Home Decor"), n("kitchen-dining", "Kitchen & Dining"), n("furniture", "Furniture"), n("plants-flowers", "Plants & Flowers"), n("gifts-specialty", "Gifts & Specialty Goods")]),
-  n("arts-makers", "Arts & Makers", [n("art-illustration", "Art & Illustration"), n("handmade-goods", "Handmade Goods"), n("stationery-paper", "Stationery & Paper"), n("photography-creative", "Photography & Creative")]),
-  n("kids-baby", "Kids & Baby", [n("baby-products", "Baby Products"), n("toys-games", "Toys & Games"), n("kids-activities", "Kids Activities")]),
-  n("pets", "Pets", [n("pet-products", "Pet Products"), n("pet-services", "Pet Services")]),
-  n("media-entertainment", "Media & Entertainment", [n("music-performers", "Music & Performers"), n("books-authors", "Books & Authors"), n("experiences-entertainment", "Experiences & Entertainment")]),
-  n("events-hospitality", "Events & Hospitality", [n("event-organizer", "Event Organizer"), n("market-popup-organizer", "Market & Pop-Up Organizer"), n("venue", "Venue"), n("catering", "Catering")]),
-  n("services", "Services", [n("agency-marketing", "Agency & Marketing"), n("professional-services", "Professional Services"), n("home-local-services", "Home & Local Services"), n("classes-education", "Classes & Education")]),
-];
-
+/** Catalog products only — no Services category (a service business is a
+ * Business Category + Business Model service_provider). The V1 product
+ * catalog is already well structured, so its rows are reused under V2
+ * parents; only the regrouped tops are new. */
 export const V2_PRODUCT_TREE: CategoryNode[] = [
-  n("food-snacks", "Food & Snacks", [n("bakery-desserts", "Bakery & Desserts"), n("pantry", "Pantry"), n("snacks", "Snacks"), n("chocolate-sweets", "Chocolate & Sweets")]),
-  n("beverages", "Beverages", [n("coffee", "Coffee"), n("tea", "Tea"), n("non-alcoholic", "Non-Alcoholic"), n("beer-wine-spirits", "Beer, Wine & Spirits")]),
-  n("beauty-personal-care", "Beauty & Personal Care", [n("skincare", "Skincare"), n("makeup", "Makeup"), n("fragrance", "Fragrance"), n("hair-body", "Hair & Body")]),
-  n("apparel", "Apparel", [n("tops", "Tops"), n("bottoms", "Bottoms"), n("outerwear", "Outerwear"), n("footwear", "Footwear")]),
-  n("accessories-jewelry", "Accessories & Jewelry", [n("jewelry", "Jewelry"), n("bags", "Bags"), n("hats-small-accessories", "Hats & Small Accessories")]),
-  n("home-living", "Home & Living", [n("decor", "Decor"), n("kitchen-dining", "Kitchen & Dining"), n("candles-fragrance", "Candles & Fragrance"), n("plants", "Plants")]),
-  n("art-collectibles", "Art & Collectibles", [n("prints", "Prints"), n("originals", "Originals"), n("collectibles", "Collectibles")]),
-  n("craft-maker-goods", "Craft & Maker Goods", [n("crochet-knit", "Crochet & Knit"), n("ceramics", "Ceramics"), n("handmade", "Handmade")]),
-  n("books-media", "Books & Media", [n("books", "Books"), n("music", "Music"), n("zines", "Zines")]),
-  n("stationery-paper", "Stationery & Paper"),
-  n("kids-baby", "Kids & Baby", [n("baby", "Baby"), n("toys-games", "Toys & Games")]),
-  n("pets", "Pets"),
-  n("wellness", "Wellness"),
+  n("food-snacks", "Food & Snacks", rs("bread-baked-goods", "cakes-desserts", "candy-chocolate", "cookies-pastries", "jams-spreads", "pantry-goods", "prepared-foods", "sauces-condiments", "snacks", "specialty-foods", "spices-seasonings")),
+  n("beverages", "Beverages", rs("coffee", "tea-matcha", "non-alcoholic-drinks")),
+  n("beauty-personal-care", "Beauty & Personal Care", rs("bath-body", "cosmetics", "fragrance", "grooming", "hair-care", "nail-care", "skincare", "soap")),
+  n("apparel", "Apparel", rs("activewear", "baby-clothing", "dresses", "intimates-sleepwear", "kids-clothing", "other-clothing", "outerwear", "pants-shorts", "skirts", "sweatshirts-hoodies", "swimwear", "t-shirts-tops", "vintage-clothing")),
+  n("accessories-jewelry", "Accessories & Jewelry", [
+    r("jewelry", "Jewelry", rs("anklets", "body-jewelry", "bracelets", "brooches-pins", "charms-pendants", "earrings", "fine-jewelry", "necklaces", "other-jewelry", "rings", "watches")),
+    r("bags-accessories", "Bags & Accessories", rs("backpacks", "belts", "hair-accessories", "handbags-purses", "hats-caps", "keychains", "other-accessories", "scarves-wraps", "sunglasses-eyewear", "tote-bags", "travel-accessories", "wallets-card-holders")),
+  ]),
+  r("home-living", "Home & Living", rs("bath-home", "bedding", "candles", "drinkware", "furniture", "garden-outdoor", "home-decor", "home-fragrance", "kitchen-dining", "other-home-goods", "pillows-textiles", "plants-planters", "storage-organization", "wall-decor")),
+  r("art-collectibles", "Art & Collectibles", rs("collectibles", "digital-art", "figurines-miniatures", "illustration", "memorabilia", "mixed-media", "other-art", "paintings", "photography", "posters", "prints", "sculpture")),
+  r("craft-maker-goods", "Craft & Maker Goods", rs("ceramics-pottery", "craft-supplies", "crochet-knit", "fiber-arts", "glasswork", "handmade-soap-candles", "leather-goods", "metalwork", "other-maker-goods", "patterns-kits", "resin-goods", "woodwork")),
+  r("books-media", "Books & Media", rs("books", "comics", "digital-downloads", "magazines", "music", "other-books-media", "vinyl-physical-media", "zines")),
+  r("stationery-paper", "Stationery & Paper", rs("art-prints", "calendars", "gift-wrap", "greeting-cards", "invitations", "journals-notebooks", "other-paper-goods", "party-paper-goods", "planners", "stationery", "stickers")),
+  r("kids-baby", "Kids & Baby", [
+    ...rs("baby-accessories", "baby-essentials", "baby-gifts", "educational-products", "kids-accessories", "kids-decor", "nursery", "other-kids-baby"),
+    r("toys-games", "Toys & Games", rs("collectible-toys", "dolls-figures", "games", "other-toys-games", "outdoor-toys", "plush-stuffed-animals", "puzzles", "sensory-toys", "toys")),
+  ]),
+  r("pets", "Pets", rs("bowls-feeding", "collars-leashes", "other-pet-products", "pet-accessories", "pet-beds", "pet-clothing", "pet-gifts", "pet-toys", "pet-treats")),
+  n("wellness", "Wellness", rs("aromatherapy", "wellness-products")),
 ];
+
+export const V2_TREES: Record<V2CategoryKind, CategoryNode[]> = { event: V2_EVENT_DOMAINS, business: V2_BUSINESS_TREE, location: V2_LOCATION_TREE, product: V2_PRODUCT_TREE };
 
 /** Maximum tree depth per entity Category kind (1 = flat). */
 export const CATEGORY_MAX_DEPTH = { event: 1, location: 3, business: 2, product: 3 } as const;
 
-/** Categories whose V2 rows will imply these Topics (category_topics),
- * linked when Pass 2 inserts the rows. */
-export const V2_CATEGORY_TOPIC_IMPLICATIONS: { kind: "business" | "location" | "product"; slug: string; topics: string[] }[] = [
-  { kind: "location", slug: "coffee-shop", topics: ["coffee"] },
-  { kind: "location", slug: "tea-house", topics: ["tea"] },
+/** V2 Category → Topic implications (public.category_topics): only where
+ * the Category guarantees the subject. A Coffee & Tea business could be a
+ * tea brand, so it implies nothing; a Coffee Shop is about coffee. */
+export const V2_CATEGORY_TOPIC_IMPLICATIONS: { kind: V2CategoryKind; slug: string; topics: string[] }[] = [
+  { kind: "location", slug: "cafe-coffee-shop", topics: ["coffee"] },
   { kind: "location", slug: "bakery", topics: ["bakery-pastry"] },
   { kind: "location", slug: "gallery", topics: ["art"] },
   { kind: "location", slug: "theater", topics: ["theater"] },
-  { kind: "location", slug: "music-venue", topics: ["live-music"] },
-  { kind: "business", slug: "coffee-tea", topics: ["coffee", "tea"] },
-  { kind: "business", slug: "bakery-desserts", topics: ["bakery-pastry"] },
-  { kind: "business", slug: "streetwear-sneakers", topics: ["streetwear", "sneakers"] },
+  { kind: "location", slug: "cinema", topics: ["film"] },
   { kind: "business", slug: "vintage-resale", topics: ["vintage"] },
+  { kind: "business", slug: "jewelry", topics: ["jewelry"] },
   { kind: "business", slug: "skincare", topics: ["skincare"] },
   { kind: "business", slug: "fragrance", topics: ["fragrance"] },
+  { kind: "business", slug: "cosmetics", topics: ["beauty"] },
+  { kind: "business", slug: "fitness", topics: ["fitness"] },
+  { kind: "business", slug: "plants-garden", topics: ["plants"] },
+  { kind: "business", slug: "art", topics: ["art"] },
+  { kind: "business", slug: "publishing-books", topics: ["books"] },
+  { kind: "business", slug: "pets", topics: ["pets"] },
   { kind: "product", slug: "coffee", topics: ["coffee"] },
-  { kind: "product", slug: "tea", topics: ["tea"] },
+  { kind: "product", slug: "tea-matcha", topics: ["tea"] },
+  { kind: "product", slug: "candy-chocolate", topics: ["chocolate-sweets"] },
+  { kind: "product", slug: "bread-baked-goods", topics: ["bakery-pastry"] },
+  { kind: "product", slug: "cookies-pastries", topics: ["bakery-pastry"] },
   { kind: "product", slug: "skincare", topics: ["skincare"] },
+  { kind: "product", slug: "fragrance", topics: ["fragrance"] },
+  { kind: "product", slug: "jewelry", topics: ["jewelry"] },
+  { kind: "product", slug: "books", topics: ["books"] },
+  { kind: "product", slug: "plants-planters", topics: ["plants"] },
+  { kind: "product", slug: "vintage-clothing", topics: ["vintage"] },
+  { kind: "product", slug: "pets", topics: ["pets"] },
 ];
 
 // ------------------------------------------------------------ Location hours (representation only)

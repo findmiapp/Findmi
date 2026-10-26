@@ -90,7 +90,7 @@ test("services are not products; no ownership/identity attributes; no price leve
   assert.doesNotMatch(SQL, /price_level/);
 });
 
-test("Category trees (manifest for Pass 2): unique slugs per kind, depth limits, Event Domain is ONE level", () => {
+test("Category trees (staged in Pass 2): unique slugs per kind, depth limits, Event Domain is ONE level", () => {
   const trees = { event: T.V2_EVENT_DOMAINS, location: T.V2_LOCATION_TREE, business: T.V2_BUSINESS_TREE, product: T.V2_PRODUCT_TREE };
   for (const [kind, tree] of Object.entries(trees)) {
     const nodes = flatten(tree);
@@ -100,8 +100,10 @@ test("Category trees (manifest for Pass 2): unique slugs per kind, depth limits,
   }
   assert.deepEqual(T.V2_EVENT_DOMAINS.map((d) => d.name), ["Food & Drink", "Arts & Culture", "Music & Nightlife", "Entertainment", "Shopping & Style", "Beauty & Wellness", "Sports & Fitness", "Outdoors & Nature", "Business & Tech", "Community & Causes", "Home & Lifestyle"]);
   assert.ok(T.V2_EVENT_DOMAINS.every((d) => !d.children), "no Event subcategories");
-  const cafe = flatten(T.V2_LOCATION_TREE).find((x) => x.slug === "coffee-shop");
-  assert.equal(cafe.parent, "cafe");
+  // (Pass 2 refined the trees to the founder's staged structure; full
+  // tree/mapping coverage lives in tests/taxonomy-v2-pass2.test.mjs.)
+  const cafe = flatten(T.V2_LOCATION_TREE).find((x) => x.slug === "cafe-coffee-shop");
+  assert.equal(cafe.parent, "food-drink");
   assert.deepEqual(T.V2_LOCATION_TREE.map((x) => x.name), ["Food & Drink", "Shopping", "Arts & Culture", "Event & Community Spaces", "Outdoors", "Health & Wellness", "Hospitality", "Work & Education", "Landmarks"]);
   for (const imp of T.V2_CATEGORY_TOPIC_IMPLICATIONS) {
     assert.ok(flatten(trees[imp.kind]).some((x) => x.slug === imp.slug), `${imp.kind}/${imp.slug} exists`);

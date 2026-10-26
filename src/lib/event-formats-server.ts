@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cleanEventFormatIds, diffEventFormats } from "./event-formats";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 /** Keeps only ids that are real kind='event_format' categories (never an
  * Event category, or anything made up). The database refuses any other
@@ -9,7 +10,7 @@ import { cleanEventFormatIds, diffEventFormats } from "./event-formats";
 export async function existingEventFormatIds(client: SupabaseClient, ids: readonly string[]): Promise<string[]> {
   const clean = cleanEventFormatIds(ids);
   if (clean.length === 0) return [];
-  const { data, error } = await client.from("categories").select("id").eq("kind", "event_format").in("id", clean);
+  const { data, error } = await client.from("categories").select("id").eq("kind", "event_format").in("id", clean).neq("status", STAGED_CATEGORY_STATUS);
   if (error) return [];
   const valid = new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
   return clean.filter((id) => valid.has(id));

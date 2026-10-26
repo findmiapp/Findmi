@@ -10,6 +10,7 @@ import { cleanLocationPhone, cleanPostalCode, normalizeLocationWebsite } from ".
 import { locationIdentityIssue } from "./resolve";
 import { extractLocationFacts } from "./website";
 import type { ExistingLocation, LocationCreateInput, LocationEvidence, LocationMediaChoice, LocationWebsiteFacts } from "./types";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 /** Location Import V1 — the server half: website reading and creation.
  * Reuses Brand Import's proven pieces as they are — the shared safe page
@@ -39,7 +40,7 @@ export function defaultLocationImportDeps(admin: SupabaseClient): LocationImport
     store: (image) => storeBrandImage(admin, image),
     findCandidates: (e) => findLikelyDuplicateLocations(admin, { name: e.name ?? "", address: e.address, city: e.city, state: e.state, postal_code: e.postalCode }),
     locationCategoryIds: async () => {
-      const { data } = await admin.from("categories").select("id").eq("kind", "location");
+      const { data } = await admin.from("categories").select("id").eq("kind", "location").neq("status", STAGED_CATEGORY_STATUS);
       return new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
     },
   };

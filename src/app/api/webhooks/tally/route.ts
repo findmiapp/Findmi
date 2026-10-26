@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { notifyFounderOfPaidClaim } from "@/lib/notifications/claimNotification";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 // This one webhook URL serves every Tally form in the project, branching
 // on which hidden field identifies the submission:
@@ -408,7 +409,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (primaryCategory && businessId) {
-    const { data: cat } = await supabase.from("categories").select("id").ilike("name", primaryCategory).maybeSingle();
+    const { data: cat } = await supabase.from("categories").select("id").ilike("name", primaryCategory).neq("status", STAGED_CATEGORY_STATUS).maybeSingle();
     if (cat) {
       await supabase.from("business_categories").delete().eq("business_id", businessId).eq("category_id", cat.id);
       await supabase.from("business_categories").insert({ business_id: businessId, category_id: cat.id });

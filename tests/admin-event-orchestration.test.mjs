@@ -358,6 +358,7 @@ function existingClient(snapshot) {
         eq: () => chain,
         is: () => chain,
         in: () => chain,
+        neq: () => chain,
         maybeSingle: async () => ({ data: table === "events" ? row : null }),
         then: (res) => res({ data: table === "event_formats" ? snapshot.formatIds.map((id) => ({ category_id: id })) : table === "event_occurrences" ? [{ id: "o1", location_id: "l1" }] : table === "categories" ? [{ id: PROPOSAL.categoryId }] : [], error: null }),
         update: (patch) => (writes.push({ table, kind: "update", patch }), { eq: async () => ({ error: null }) }),

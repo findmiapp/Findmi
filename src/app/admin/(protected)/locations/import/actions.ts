@@ -11,6 +11,7 @@ import { createImportedLocation, defaultLocationImportDeps, readLocationWebsite,
 import type { LocationCreateInput, LocationEvidence, LocationProposal, LocationResolution } from "@/lib/location-import/types";
 import { researchEntity } from "@/lib/entity-research";
 import { prepareLocation, type PreparedLocation } from "@/lib/entity-prepare";
+import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
 
 /** Location Import V1 — Admin entry points. Every action verifies the
  * founder Admin session first (requireAdminSupabase, the same check the
@@ -27,7 +28,7 @@ async function adminClient(): Promise<SupabaseClient | null> {
 }
 
 async function locationCategories(admin: SupabaseClient): Promise<LocationCategoryOption[]> {
-  const { data } = await admin.from("categories").select("id, name, slug").eq("kind", "location");
+  const { data } = await admin.from("categories").select("id, name, slug").eq("kind", "location").neq("status", STAGED_CATEGORY_STATUS);
   return ((data ?? []) as LocationCategoryOption[]).filter((c) => c && typeof c.id === "string");
 }
 
