@@ -307,7 +307,7 @@ test("upload: facts not visible in the image are dropped; the image is never the
   // Foxden correction: the flyer is OFFERED as the Event image in Review —
   // default not used, stored only when the owner chooses it at save
   // (tests/foxden-owner-workflows.test.mjs); analysis never stores it.
-  assert.match(ui, /candidate\.origin === "image" && !joiningExisting[\s\S]{0,900}Use This Image For The Event[\s\S]{0,200}Don’t Use This Image/);
+  assert.match(ui, /candidate\.origin === "image" && \([\s\S]{0,1200}Use This Image For The Event[\s\S]{0,200}Don’t Use This Image/);
   assert.match(ui, /const \[useFlyer, setUseFlyer\] = useState\(false\)/);
 });
 

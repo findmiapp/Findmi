@@ -105,9 +105,20 @@ const sameName = (a: string | null, b: string) => (a ?? "").toLowerCase().replac
  * but left unselected. A host's import never pre-selects someone else's
  * Event. A participating Business is not shown as the organizer unless the
  * page's structured data says so explicitly. */
-export function reviewDefaults(candidate: EventCandidate, matches: EventImportMatches, intent: EventImportIntent, businessName = ""): EventImportReview {
+export function reviewDefaults(
+  candidate: EventCandidate,
+  matches: EventImportMatches,
+  intent: EventImportIntent,
+  businessName = "",
+  opts: { identityFromMatch?: boolean } = {}
+): EventImportReview {
   const event = matches.event;
-  const useEvent = event && event.confidence === "strong" && (intent === "participating" || event.hostedByThisBusiness) ? event.id : null;
+  // identityFromMatch (the single-Event Review): Event identity comes from
+  // the match alone — never from how the Business is involved — so a strong
+  // match is preselected whether the import started as Participating or
+  // Hosting. The multi-Event list keeps its existing default.
+  const useEvent =
+    event && event.confidence === "strong" && (opts.identityFromMatch || intent === "participating" || event.hostedByThisBusiness) ? event.id : null;
   const included = includedByDefault(candidate);
   // Pasted text / an image may state the place without a readable date.
   const shared = included.length === 0 && candidate.place ? candidate.place : sharedVenue(included);
@@ -341,7 +352,27 @@ export function decidePlaceFrom(review: EventImportReview, target: string, decis
 }
 
 /** How a reviewed item will be saved, in Business words (never "Appearance"). */
-export function persistNote(review: EventImportReview, businessName: string): { label: string; line: string } {
+/** Switches ONLY the Business relationship. The extracted Event candidate,
+ * every reviewed edit and the selected existing Event stay exactly as they
+ * are — relationship and Event identity are separate questions. */
+export function withIntent(review: EventImportReview, intent: EventImportIntent): EventImportReview {
+  return { ...review, intent };
+}
+
+/** Hosting an Event that is already on Findmi with another organizer (or
+ * none): Findmi never creates a second copy, and there is no self-serve
+ * organizer claim yet — Findmi has to confirm it. */
+export function hostingNeedsConfirmation(review: Pick<EventImportReview, "intent" | "useEventId">, matches: Pick<EventImportMatches, "event">): boolean {
+  return review.intent === "hosting" && Boolean(review.useEventId) && !(matches.event && matches.event.id === review.useEventId && matches.event.hostedByThisBusiness);
+}
+
+export function persistNote(review: EventImportReview, businessName: string, matches?: Pick<EventImportMatches, "event">): { label: string; line: string } {
+  if (review.intent === "hosting" && review.useEventId) {
+    if (!matches) return { label: "Your Event", line: `Findmi will add this Event with ${businessName} as its host.` };
+    return !hostingNeedsConfirmation(review, matches)
+      ? { label: "Your Event", line: `It’s already ${businessName}’s Event on Findmi.` }
+      : { label: "Needs Findmi", line: `This Event is already on Findmi with another organizer. Findmi won’t create a second one — to be connected as its organizer, contact Findmi, or choose We’re Participating.` };
+  }
   if (review.intent === "hosting") return { label: "Your Event", line: `Findmi will add this Event with ${businessName} as its host.` };
   if (review.useEventId) return { label: "On Findmi", line: `${businessName} will ask to join this Event.` };
   if (review.asEvent) return { label: "Event", line: `Findmi will add this Event and put ${businessName} on its schedule.` };

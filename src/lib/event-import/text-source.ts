@@ -229,9 +229,19 @@ export function extractTextEventCandidate(text: string, opts: { now: number; ori
     // "PRESENTED BY:" on its own line → the name on the next line, under
     // the same name rules (reads like a name, at most six words, not a
     // date / address / link).
+    // A flyer may also break the name itself over lines ("Faire" / "and
+    // Flourish", "Faire" / "&" / "Flourish"): a line ending in, being, or
+    // starting with "and" / "&" continues the same name.
     if (ORGANIZER_LABEL.test(l.replace(PICTO, "").trim())) {
-      const next = (lines[i + 1] ?? "").replace(PICTO, "").trim();
-      const who = next && titleLike(next) ? cleanText(next, 160) : null;
+      const clean = (k: number) => (lines[k] ?? "").replace(PICTO, "").trim();
+      let name = clean(i + 1);
+      let k = i + 2;
+      const joins = (a: string, b: string) => /(?:^|\s)(?:and|&)$/i.test(a) || /^(?:and|&)(?:\s|$)/i.test(b);
+      while (k < lines.length && k <= i + 4 && clean(k) && joins(name, clean(k))) {
+        name = `${name} ${clean(k)}`;
+        k++;
+      }
+      const who = name && !/(?:^|\s)(?:and|&)$/i.test(name) && titleLike(name) ? cleanText(name, 160) : null;
       if (who && words(who).length <= 6) organizer = who;
       break;
     }
@@ -313,6 +323,15 @@ const sameText = (a: string | null, b: string | null) => (a ?? "").toLowerCase()
 
 /** Fills ONLY what the deterministic reading left empty, from an AI reading
  * already sanitized against the same text (./ai.ts sanitizeEventAiOutput). */
+/** `longer` is `shorter` continued (same words first, then more) — e.g.
+ * "Faire and Flourish" extends "Faire". */
+function extendsName(longer: string, shorter: string): boolean {
+  const n = (x: string) => x.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+  const a = n(longer);
+  const b = n(shorter);
+  return Boolean(b) && a.length > b.length && a.startsWith(`${b} `);
+}
+
 export function mergeTextAi(candidate: EventCandidate, ai: SanitizedAi | null): EventCandidate {
   if (!ai) return candidate;
   const next: EventCandidate = { ...candidate, occurrences: [...candidate.occurrences], sources: { ...candidate.sources } };
@@ -362,6 +381,10 @@ export function mergeTextAi(candidate: EventCandidate, ai: SanitizedAi | null): 
   if (!next.organizer && ai.organizer) {
     next.organizer = ai.organizer;
     next.sources.organizer = "ai";
+  } else if (next.organizer && ai.organizer && next.sources.organizer === "page" && extendsName(ai.organizer, next.organizer)) {
+    // The grounded AI organizer is the SAME name, completed ("Faire" →
+    // "Faire and Flourish" when the line reader stopped at a line break).
+    next.organizer = ai.organizer;
   }
   if ((!next.otherBusinesses || next.otherBusinesses.length === 0) && ai.otherBusinesses.length > 0) {
     next.otherBusinesses = ai.otherBusinesses;

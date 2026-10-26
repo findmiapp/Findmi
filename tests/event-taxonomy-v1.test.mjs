@@ -277,7 +277,11 @@ test("import: an EXISTING matched Event is joined without touching its categorie
   await P.persistEventImport(hosted.value, persistDeps(c.client));
   assert.equal(categoryInserts(c.ops).length, 0);
   // The Review only offers the picker when a NEW Event will be created.
-  assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /\{\(intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor key=\{reviewVersion\} categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
+  // Foxden correction: the single Review keeps one shape across relationships
+  // (the editor stays visible for a matched Event, for reference) — the
+  // persistence assertions above guarantee an existing Event's categories
+  // are never written.
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx"), /\{\(intent === "hosting" \|\| review\.asEvent \|\| usingExisting\) && <EventCategoryEditor key=\{reviewVersion\} categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
   assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /\{\(!joining \|\| operator\) && \(review\.intent === "hosting" \|\| review\.asEvent\) && <EventCategoryEditor categories=\{categories\} review=\{review\} set=\{set\} \/>\}/);
 });
 

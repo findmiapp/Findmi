@@ -126,9 +126,10 @@ test("organizer conflict: surfaced only when the source names someone else; the 
   assert.equal(R.reviewDefaults(candidate, matches, "participating", "Fox Den LeatherCraft").organizer, "Faire and Flourish");
   const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
   assert.match(ui, /This looks like an event presented by/);
-  assert.match(ui, /How is \{businessName\} involved\?/);
-  assert.match(ui, /intent === "hosting" && !hostingConfirmed && organizerConflict\(/, "save is held until the owner answers");
-  assert.ok(!/setIntent\("participating"\)/.test(ui.replace(/function switchIntent[\s\S]*?\n  \}\n/, "")), "only an owner click switches the relationship");
+  assert.match(ui, /How Is \{businessName\} Involved\?/);
+  assert.match(ui, /intent === "hosting" && !relationshipConfirmed && organizerConflict\(/, "save is held until the owner answers");
+  assert.deepEqual([...ui.matchAll(/setIntent\(/g)].length, 2, "only the intent picker and the owner's own relationship choice set it");
+  assert.match(ui, /function chooseIntent\(next: EventImportIntent\) \{\s*setIntent\(next\);\s*setReview\(\(r\) => \(r \? withIntent\(r, next\) : r\)\);/);
 });
 
 test("existing Event reuse: a strong match while participating joins it — applyBusinessToEvent only, no new Event", async () => {
@@ -298,4 +299,115 @@ test("gallery fields: Business / Event / Location all use the crash-safe loop; s
     assert.match(src, /function removeAt\(i: number\)/);
   }
   assert.ok(!/gallery-upload/.test(read("src/components/journal/useJournalPhotoUpload.ts")), "Journal / Moment upload flow untouched");
+});
+
+// ------------------------------------------------------------ one review model (Android Preview QA)
+
+const KILLMEYER = "da506528-59ef-43d4-9a80-6d70525633eb";
+const strongMatch = (over = {}) => ({
+  event: { id: KILLMEYER, name: "KILLMEYER'S 3RD ANNUAL German Christmas MARKET", slug: "k", startAt: "2026-11-29T18:00:00Z", venueName: "KILLMEYER'S", city: "STATEN ISLAND", confidence: "strong", hostBusinessId: null, hostedByThisBusiness: false, ...over },
+  locations: [],
+  organizerBusiness: null,
+  existingAppearance: null,
+});
+const killmeyerCandidate = () => TS.extractTextEventCandidate(flyer("NOVEMBER\n29TH\n1PM - 6PM"), { now: OCT26, origin: "image" }).candidate;
+
+test("one review: the same extracted candidate survives Hosting → Participating → Hosting; identity never moves", () => {
+  const candidate = killmeyerCandidate();
+  const start = R.reviewDefaults(candidate, strongMatch(), "hosting", "Fox Den LeatherCraft", { identityFromMatch: true });
+  const edited = { ...start, description: "Owner's edit", title: "Killmeyer's German Christmas Market" };
+  const p = R.withIntent(edited, "participating");
+  const h = R.withIntent(p, "hosting");
+  for (const r of [p, h]) {
+    const { intent, ...rest } = r;
+    const { intent: _i, ...orig } = edited;
+    assert.deepEqual(rest, orig, "only the relationship changes — candidate, edits, dates, place, organizer and Event identity are untouched");
+  }
+  assert.equal(p.intent, "participating");
+  assert.equal(h.intent, "hosting");
+  assert.equal(h.useEventId, KILLMEYER);
+  assert.equal(h.occurrences[0].date, "2026-11-29");
+  assert.equal(h.occurrences[0].startTime, "13:00");
+  assert.equal(h.organizer, "Faire and Flourish");
+  // A deliberate "No, It's A Different Event" also survives relationship changes.
+  assert.equal(R.withIntent({ ...p, useEventId: null }, "hosting").useEventId, null);
+  const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
+  assert.ok(!/reviewDefaults\([^)]*\)[\s\S]{0,40}\n[\s\S]*function chooseIntent[\s\S]{0,300}reviewDefaults/.test(ui), "switching the relationship never re-initializes the review");
+  assert.ok(!/function chooseIntent[\s\S]{0,400}setReviewVersion/.test(ui), "nor remounts the editors");
+});
+
+test("strong existing-Event match is preselected the same way whatever the initial relationship (single Review)", () => {
+  const candidate = killmeyerCandidate();
+  for (const intent of ["hosting", "participating"]) {
+    assert.equal(R.reviewDefaults(candidate, strongMatch(), intent, "Fox Den LeatherCraft", { identityFromMatch: true }).useEventId, KILLMEYER, intent);
+  }
+  const weak = { ...strongMatch(), event: { ...strongMatch().event, confidence: "possible" } };
+  for (const intent of ["hosting", "participating"]) assert.equal(R.reviewDefaults(candidate, weak, intent, "Fox Den LeatherCraft", { identityFromMatch: true }).useEventId, null, "a possible match is never preselected");
+  // The multi-Event list keeps its existing default.
+  assert.equal(R.reviewDefaults(candidate, strongMatch(), "hosting", "Fox Den LeatherCraft").useEventId, null);
+  const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
+  assert.match(ui, /reviewDefaults\(result\.candidate, result\.matches, intent!, businessName, \{ identityFromMatch: true \}\)/);
+  assert.match(ui, /We Found This Event On Findmi/);
+  assert.match(ui, /title="Yes, It’s This Event"/);
+  assert.match(ui, /title="No, It’s A Different Event"/);
+});
+
+test("Hosting + an existing Event with another organizer: no duplicate Event; Review says Findmi must confirm", async () => {
+  const review = R.reviewDefaults(killmeyerCandidate(), strongMatch(), "hosting", "Fox Den LeatherCraft", { identityFromMatch: true });
+  assert.equal(R.hostingNeedsConfirmation(review, strongMatch()), true);
+  assert.equal(R.hostingNeedsConfirmation(review, strongMatch({ hostedByThisBusiness: true })), false, "already this Business's Event");
+  assert.equal(R.hostingNeedsConfirmation(R.withIntent(review, "participating"), strongMatch()), false);
+  assert.equal(R.hostingNeedsConfirmation({ ...review, useEventId: null }, strongMatch()), false, "a different Event is a new Event");
+  assert.match(R.persistNote(review, "Fox Den LeatherCraft", strongMatch()).line, /won’t create a second one/);
+  // Persistence: the existing host path refuses rather than creating.
+  const n = P.normalizeReview(review);
+  assert.equal(n.ok, true);
+  const writes = [];
+  const admin = {
+    from: (t) => {
+      const api = { select: () => api, eq: () => api, maybeSingle: async () => ({ data: { id: KILLMEYER, host_business_id: null } }), insert: () => (writes.push(t), api) };
+      return api;
+    },
+    rpc: async (name) => (writes.push(name), { data: null }),
+  };
+  const out = await P.persistEventImport(n.value, {
+    admin, userId: "u", businessId: "fox", businessName: "Fox Den LeatherCraft",
+    applyToEvent: async () => assert.fail("hosting never applies"), canHost: async () => true,
+    storeImage: async () => assert.fail("no image work"), geography: async () => null, uniqueEventSlug: async () => "dup", notifyNewEvent: async () => {}, propagateDates: async () => {},
+  });
+  assert.equal(out.ok, false);
+  assert.deepEqual(writes, [], "no create_owned_event, no Event, no Date");
+  const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
+  assert.match(ui, /if \(hostingNeedsConfirmation\(\{ intent: intent!, useEventId: review\.useEventId \}, step\.matches\)\)/, "blocked before the request");
+});
+
+test("organizer: the Event's presenter, never the importing Business; 'Faire and Flourish' stays whole", () => {
+  const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
+  assert.match(ui, /const organizerShown = matches\.organizerBusiness \? `\$\{matches\.organizerBusiness\.name\} \(on Findmi\)` : review\.organizer;/);
+  assert.ok(!/intent === "hosting"\s*\?\s*businessName/.test(ui), "Hosting no longer renders the Business as the organizer");
+  const org = (lines) => TS.extractTextEventCandidate(flyer("NOVEMBER 29TH\n1PM - 6PM").replace("PRESENTED BY:\nFaire and Flourish", lines), { now: OCT26, origin: "image" }).candidate.organizer;
+  assert.equal(org("PRESENTED BY:\nFaire and Flourish"), "Faire and Flourish");
+  assert.equal(org("PRESENTED BY:\nFaire\nand Flourish"), "Faire and Flourish", "name broken over lines");
+  assert.equal(org("PRESENTED BY:\nFaire and\nFlourish"), "Faire and Flourish");
+  assert.equal(org("PRESENTED BY:\nFaire\n&\nFlourish"), "Faire & Flourish");
+  assert.equal(org("PRESENTED BY:\nFaire\nVENDORS WANTED"), "Faire", "no join without and / &");
+  // A grounded AI organizer completes a line-broken name, never replaces a different one.
+  const base = TS.extractTextEventCandidate("Market\nNOV 29\nPresented by Faire\nand Flourish\n1 Main St\nStaten Island, NY", { now: OCT26, origin: "image" }).candidate;
+  assert.equal(base.organizer, "Faire");
+  const ai = { title: null, occurrences: [], venue: { name: null, address: null, city: null, state: null, postalCode: null }, organizer: "Faire and Flourish", otherBusinesses: [] };
+  assert.equal(TS.mergeTextAi(base, ai).organizer, "Faire and Flourish");
+  assert.equal(TS.mergeTextAi(base, { ...ai, organizer: "Someone Else" }).organizer, "Faire", "a different AI name never replaces the stated one");
+  assert.equal(AI.sanitizeEventAiOutput({ title: null, schedule: [], venue_name: null, street_address: null, city: null, state: null, postal_code: null, organizer: "Faire and Flourish", organizer_evidence: null, organizer_entity_type: null, other_businesses: [] }, "PRESENTED BY:\nFaire and Flourish", { now: OCT26, yearHint: null }).organizer, "Faire and Flourish", "AI grounding keeps 'and'");
+});
+
+test("complete review in both relationship states: every Event field renders whatever the relationship", () => {
+  const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
+  const review = ui.slice(ui.indexOf("// ── Review ──"));
+  assert.ok(!/joiningExisting/.test(ui), "no relationship-dependent collapse of the Event fields");
+  for (const field of ['htmlFor="title"', 'htmlFor="description"', "Your Uploaded Image", 'htmlFor="source"', "<WhenWhereEditor", "<AttendanceEditor", "<EventCategoryEditor", "<EventFormatEditor", 'id="organizer"']) {
+    assert.ok(review.includes(field), field);
+  }
+  assert.ok(!/\{!usingExisting && \(\s*<div>\s*<label htmlFor="description"/.test(review), "description is not hidden for a matched Event");
+  assert.match(review, /Using the Event details already on Findmi\./);
+  assert.ok(review.indexOf("What Event Is This?") < review.indexOf("We Found This Event On Findmi") && review.indexOf("We Found This Event On Findmi") < review.indexOf("How Is {businessName} Involved?"), "Event → match → relationship");
 });
