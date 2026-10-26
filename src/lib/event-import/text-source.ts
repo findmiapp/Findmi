@@ -16,7 +16,7 @@
 // (sanitized against this same text) only fills what is still missing.
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { cleanEventDescription } from "./description";
-import { bareDate, dedupeOccurrences, parseScheduleLines, parseTimes, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
+import { bareDate, dedupeOccurrences, joinSplitDateLines, parseScheduleLines, parseTimes, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
 import { EMPTY_VENUE, venueKey, type EventCandidate, type EventImportOrigin, type ImportedOccurrence, type ImportedVenue } from "./types";
 import type { PageControl } from "./attendance";
 import type { SanitizedAi } from "./ai";
@@ -44,8 +44,10 @@ const PLACE_LABEL = /^(where|location|venue|place|address)\s*[:\-–]\s*/i;
 const URL_RE = /https?:\/\/[^\s<>"'()[\]]+/gi;
 const STREET = /^\d{1,6}[A-Za-z]?(?:-\d{1,6})?\s+(?:[A-Za-z0-9.'-]+\s+){0,6}?(?:st|street|ave|avenue|av|blvd|boulevard|rd|road|pl|place|dr|drive|ln|lane|way|sq|square|pkwy|parkway|ct|court|ter|terrace|hwy|highway|plaza|broadway|bowery)\b\.?/i;
 const CITY_LINE = /^([A-Za-z][A-Za-z .'-]{1,40}),\s*([A-Za-z][A-Za-z .]{1,20}?)\.?(?:\s+(\d{5}(?:-\d{4})?))?$/;
-const DATE_START = /^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?(?:\d{1,2}\/\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})/i;
+const DATE_START = /^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?(?:\d{1,2}\/\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b)/i;
 const ORGANIZER = /\b(?:[Oo]rgani[sz]ed|[Hh]osted|[Pp]resented|[Pp]roduced)\s+by\s+(?:the\s+)?([A-Z0-9@][^.,;!?\n()]{1,58})/;
+/** A flyer label on its own line ("PRESENTED BY:"), the name on the next. */
+const ORGANIZER_LABEL = /^(?:organi[sz]ed|hosted|presented|produced)\s+by\s*:?$/i;
 const PICTO = /^[\p{Extended_Pictographic}\uFE0F\u200D\s•*·#|]+|[\p{Extended_Pictographic}\uFE0F\u200D\s|]+$/gu;
 
 /** NFKC, one space, invisible characters removed; empty lines kept (they
@@ -119,10 +121,13 @@ function linkControls(lines: string[]): PageControl[] {
 
 /** Deterministic reading of pasted text (or the text visible in an image). */
 export function extractTextEventCandidate(text: string, opts: { now: number; origin: Exclude<EventImportOrigin, "link"> }): TextExtraction {
-  const raw = toLines(text.slice(0, PASTE_MAX_CHARS));
+  // A date stacked over several flyer lines ("NOVEMBER" / "29TH") is read
+  // as the one date line it is.
+  const raw = joinSplitDateLines(toLines(text.slice(0, PASTE_MAX_CHARS)));
   const lines = raw.filter(Boolean);
   const yearHint = yearHintFrom(lines);
-  const ctx = { now: opts.now, yearHint };
+  // Owner flyer / pasted text: a date without a year is its next occurrence.
+  const ctx = { now: opts.now, yearHint, upcomingYear: true };
   const used = new Set<number>(); // indices into raw, consumed as structured facts
 
   // Name: the first line, when it reads like one.
@@ -213,10 +218,20 @@ export function extractTextEventCandidate(text: string, opts: { now: number; ori
 
   // Organizer: only when the text says so ("hosted by …").
   let organizer: string | null = null;
-  for (const l of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
     const m = ORGANIZER.exec(l);
     if (m) {
       const who = cleanText(m[1].replace(/\s+(?:and|&)\s*$/i, "").trim(), 160);
+      if (who && words(who).length <= 6) organizer = who;
+      break;
+    }
+    // "PRESENTED BY:" on its own line → the name on the next line, under
+    // the same name rules (reads like a name, at most six words, not a
+    // date / address / link).
+    if (ORGANIZER_LABEL.test(l.replace(PICTO, "").trim())) {
+      const next = (lines[i + 1] ?? "").replace(PICTO, "").trim();
+      const who = next && titleLike(next) ? cleanText(next, 160) : null;
       if (who && words(who).length <= 6) organizer = who;
       break;
     }

@@ -141,6 +141,25 @@ export function reviewDefaults(candidate: EventCandidate, matches: EventImportMa
 }
 
 /** "18:00" → "6:00 PM". */
+/** The source names a DIFFERENT organizer / presenter ("Presented By: …",
+ * "Hosted By …", or a matched organizer Business) than the Business doing
+ * the import. Review then asks how that Business is involved — it never
+ * switches the relationship itself, and never creates the organizer or the
+ * venue. Null when the source names no organizer, or names this Business. */
+export function organizerConflict(
+  candidate: Pick<EventCandidate, "organizer" | "occurrences" | "place">,
+  matches: Pick<EventImportMatches, "organizerBusiness">,
+  businessId: string,
+  businessName: string
+): { organizer: string; place: string | null; onFindmi: boolean } | null {
+  const found = matches.organizerBusiness;
+  if (found && found.id === businessId) return null;
+  const organizer = found?.name ?? candidate.organizer;
+  if (!organizer || sameName(organizer, businessName) || (candidate.organizer && sameName(candidate.organizer, businessName))) return null;
+  const place = candidate.occurrences.find((o) => o.venue.name)?.venue.name ?? candidate.place?.name ?? null;
+  return { organizer, place, onFindmi: Boolean(found) };
+}
+
 export function formatTime(hhmm: string): string {
   if (!/^\d{2}:\d{2}$/.test(hhmm)) return "";
   const [h, m] = hhmm.split(":").map(Number);

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { uploadMemberBusinessImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
+import { galleryUploadErrorMessage, uploadGalleryFiles } from "@/lib/gallery-upload";
 
 /** Member-facing counterpart to admin's GalleryField.tsx — same "current
  * config, not economic history" delete-then-reinsert-on-save shape (every
@@ -38,19 +39,14 @@ export default function MemberGalleryField({
     // duplicate-submission guard as before, just covering the whole batch
     // instead of one file.
     startTransition(async () => {
-      let lastError: string | null = null;
-      // Sequential, not Promise.all — preserves the order the visitor
-      // selected files in, and one failure never discards images that
-      // already uploaded successfully (each success is appended as soon
-      // as it resolves, regardless of what happens to the rest).
-      for (const file of files) {
-        const fd = new FormData();
-        fd.set("file", file);
-        const result = await uploadMemberBusinessImage(businessId, fd);
-        if (result.error) lastError = result.error;
-        else if (result.url) setUrls((prev) => [...prev, result.url!]);
-      }
-      if (lastError) setError(lastError);
+      // Each file on its own (lib/gallery-upload.ts): photos reduced first,
+      // a rejected upload caught, one failure never stopping or discarding
+      // the others; successes are kept as soon as each one resolves.
+      const failures = await uploadGalleryFiles(files, {
+        upload: (fd) => uploadMemberBusinessImage(businessId, fd),
+        onUploaded: (url) => setUrls((prev) => [...prev, url]),
+      });
+      setError(galleryUploadErrorMessage(failures));
     });
   }
 

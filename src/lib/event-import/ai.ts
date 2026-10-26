@@ -12,7 +12,7 @@ import { z } from "zod";
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { localDateTimeToIso } from "../admin/form-helpers";
 import { EVENT_TITLE_MAX } from "./extract";
-import { addDays, dedupeOccurrences, parseScheduleLines, SCHEDULE_MAX_OCCURRENCES, type ScheduleContext } from "./schedule";
+import { addDays, dedupeOccurrences, joinSplitDateLines, parseScheduleLines, resolveYear, SCHEDULE_MAX_OCCURRENCES, type ScheduleContext } from "./schedule";
 import { EMPTY_VENUE, realStreetAddress, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue } from "./types";
 
 export const EVENT_AI_TIMEOUT_MS = 15_000;
@@ -127,11 +127,17 @@ export function organizerEvidenced(name: string, pageText: string): boolean {
 }
 
 const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-/** The evidence line really mentions this calendar date. */
-function mentionsDate(evidence: string, date: string): boolean {
+/** The evidence really mentions this calendar date: "11/29" or "Nov 29th";
+ * for owner flyers / pasted text also day-first "29th November" and the
+ * same split over stacked lines ("NOVEMBER" / "29" / "TH" — rejoined exactly
+ * as the deterministic reader does). The month name and the day number
+ * must both be in the quoted text. */
+function mentionsDate(evidence: string, date: string, flyer = false): boolean {
   const [, m, d] = date.split("-").map(Number);
-  const t = evidence.toLowerCase();
-  return new RegExp(`(^|[^\\d])${m}/0?${d}([^\\d]|$)|${MONTH_NAMES[m - 1]}[a-z]*\\.?\\s+0?${d}([^\\d]|$)`).test(t);
+  const mon = MONTH_NAMES[m - 1];
+  if (!flyer) return new RegExp(`(^|[^\\d])${m}/0?${d}([^\\d]|$)|${mon}[a-z]*\\.?\\s+0?${d}([^\\d]|$)`).test(evidence.toLowerCase());
+  const t = joinSplitDateLines(evidence.split("\n")).join("\n").toLowerCase();
+  return new RegExp(`(^|[^\\d])${m}/0?${d}([^\\d]|$)|${mon}[a-z]*\\.?\\s+0?${d}([^\\d]|$)|(^|[^\\d/:])0?${d}(st|nd|rd|th)?\\s+(of\\s+)?${mon}[a-z]*([^a-z]|$)`).test(t);
 }
 /** The evidence line states this HH:MM time (as "6pm", "6:30", "18:00", "noon" …). */
 function mentionsTime(evidence: string, hhmm: string): boolean {
@@ -252,24 +258,28 @@ export function sanitizeEventAiOutput(
     const evidence = lines.join("\n");
     const aiVenueName = keep(entry.venue_name, 160, evidence);
     const aiVenue = { ...EMPTY_VENUE, name: aiVenueName, address: realStreetAddress(aiVenueName, keep(entry.street_address, 200, evidence)) };
-    const parsed = parseScheduleLines(lines, ctx).occurrences;
+    const parsed = parseScheduleLines(ctx.upcomingYear ? joinSplitDateLines(lines) : lines, ctx).occurrences;
     if (parsed.length > 0) {
       for (const o of parsed) occurrences.push(venueKey(o.venue) ? o : { ...o, venue: aiVenue });
       continue;
     }
-    if (!entry.date || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !mentionsDate(evidence, entry.date)) continue;
+    if (!entry.date || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !mentionsDate(evidence, entry.date, Boolean(ctx.upcomingYear))) continue;
+    // Owner flyer / pasted text that states no year: the year is Findmi's
+    // next-occurrence rule, never the model's guess (link imports unchanged).
+    const [, mm, dd] = entry.date.split("-").map(Number);
+    const date = ctx.upcomingYear && !evidence.includes(entry.date.slice(0, 4)) ? `${resolveYear(mm, dd, ctx)}${entry.date.slice(4)}` : entry.date;
     const start = entry.start_time && /^\d{2}:\d{2}$/.test(entry.start_time) && mentionsTime(evidence, entry.start_time) ? entry.start_time : null;
     const end = start && entry.end_time && /^\d{2}:\d{2}$/.test(entry.end_time) && mentionsTime(evidence, entry.end_time) ? entry.end_time : null;
-    const startIso = start ? localDateTimeToIso(`${entry.date}T${start}`) : null;
+    const startIso = start ? localDateTimeToIso(`${date}T${start}`) : null;
     if (start && !startIso) continue;
     let endIso: string | null = null;
     if (startIso && end) {
-      endIso = localDateTimeToIso(`${start && end < start ? addDays(entry.date, 1) : entry.date}T${end}`);
+      endIso = localDateTimeToIso(`${start && end < start ? addDays(date, 1) : date}T${end}`);
     }
     occurrences.push(
       startIso
         ? { start: startIso, end: endIso, hasTime: true, venue: aiVenue, evidence }
-        : { start: entry.date, end: null, hasTime: false, venue: aiVenue, evidence }
+        : { start: date, end: null, hasTime: false, venue: aiVenue, evidence }
     );
   }
   const postal = cleanText(raw.postal_code, 12);

@@ -21,7 +21,8 @@ import {
   type ReviewOccurrence,
   type SourceEventAnalysis,
 } from "@/lib/event-import/types";
-import { pastReviewOccurrences, persistNote, reviewDefaults, successMessage, withCreatedLocations } from "@/lib/event-import/review";
+import { organizerConflict, pastReviewOccurrences, persistNote, reviewDefaults, successMessage, withCreatedLocations } from "@/lib/event-import/review";
+import { preprocessImageForUpload } from "@/lib/imagePreprocessing";
 
 /** Event Import V1 — Business importer: a link, pasted details or an
  * uploaded flyer/screenshot → Findmi reads it →
@@ -103,6 +104,10 @@ export default function EventImporter({
   const [step, setStep] = useState<Step>({ kind: "url", error: null });
   const [review, setReview] = useState<EventImportReview | null>(null);
   const [useImage, setUseImage] = useState(true);
+  // The uploaded flyer as the Event image — only when the owner chooses it.
+  const [useFlyer, setUseFlyer] = useState(false);
+  // Hosting confirmed despite the source naming a different organizer.
+  const [hostingConfirmed, setHostingConfirmed] = useState(false);
   const [initialPast, setInitialPast] = useState<ReviewOccurrence[]>([]);
   const [reviewVersion, setReviewVersion] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -183,6 +188,8 @@ export default function EventImporter({
     setInitialPast(pastReviewOccurrences(result.candidate, result.matches));
     setReviewVersion((v) => v + 1);
     setUseImage(Boolean(result.candidate.imageUrl));
+    setUseFlyer(false);
+    setHostingConfirmed(false);
     setSaveError(null);
     setStep({ kind: "review", candidate: result.candidate, matches: result.matches, warnings: result.warnings });
   }
@@ -239,11 +246,23 @@ export default function EventImporter({
   }
 
   function save() {
-    if (!review) return;
+    if (!review || step.kind !== "review") return;
+    if (intent === "hosting" && !hostingConfirmed && organizerConflict(step.candidate, step.matches, businessId, businessName)) {
+      setSaveError(`Choose how ${businessName} is involved above.`);
+      return;
+    }
     setSaveError(null);
+    const flyerChosen = useFlyer && step.candidate.origin === "image" && imageFile && !(intent === "participating" && review.useEventId);
     startSave(async () => {
       try {
-        const outcome = await commitEventImport(businessId, { ...review, intent: intent!, imageUrl: useImage ? review.imageUrl : null });
+        let flyer: FormData | null = null;
+        if (flyerChosen) {
+          // Large phone originals are reduced first (HEIC stays as-is for the
+          // existing server conversion); the server re-validates the bytes.
+          flyer = new FormData();
+          flyer.append("image", await preprocessImageForUpload(imageFile!));
+        }
+        const outcome = await commitEventImport(businessId, { ...review, intent: intent!, imageUrl: flyerChosen ? null : useImage ? review.imageUrl : null }, flyer);
         if (!outcome.ok) {
           setSaveError(outcome.error);
           return;
@@ -463,6 +482,16 @@ export default function EventImporter({
   const { matches, warnings, candidate } = step;
   const set = (patch: Partial<EventImportReview>) => setReview((r) => (r ? { ...r, ...patch } : r));
   const joiningExisting = intent === "participating" && Boolean(review.useEventId);
+  const conflict = organizerConflict(candidate, matches, businessId, businessName);
+  /** The existing relationship paths — never switched automatically. */
+  function switchIntent(next: EventImportIntent) {
+    setIntent(next);
+    setReview(reviewDefaults(candidate, matches, next, businessName));
+    setInitialPast(pastReviewOccurrences(candidate, matches));
+    setReviewVersion((v) => v + 1);
+    setHostingConfirmed(false);
+    setSaveError(null);
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -478,6 +507,37 @@ export default function EventImporter({
         </ul>
       )}
 
+      {/* The source names someone else as organizer: ask, never assume. */}
+      {intent === "hosting" && conflict && !hostingConfirmed && (
+        <section aria-labelledby="who-organizes" className="rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-4">
+          <h2 id="who-organizes" className="text-card-title font-semibold text-primary">
+            Who&rsquo;s Organizing This?
+          </h2>
+          <p className="mt-1 text-body text-secondary">
+            This looks like an event presented by <span className="font-semibold">{conflict.organizer}</span>
+            {conflict.place ? (
+              <>
+                {" "}
+                at <span className="font-semibold">{conflict.place}</span>
+              </>
+            ) : null}
+            .
+          </p>
+          {matches.event?.confidence === "strong" && (
+            <p className="mt-1 text-metadata text-muted">It&rsquo;s already on Findmi as {matches.event.name} — participating adds {businessName} to that Event instead of creating another.</p>
+          )}
+          <p className="mt-2 text-metadata font-semibold text-primary">How is {businessName} involved?</p>
+          <div className="mt-2 flex flex-col gap-2">
+            <button type="button" onClick={() => switchIntent("participating")} className={primaryButtonClass}>
+              We&rsquo;re Participating
+            </button>
+            <button type="button" onClick={() => setHostingConfirmed(true)} className={secondaryButtonClass}>
+              We&rsquo;re Hosting / Organizing It
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Your Business — the relationship that will be created. */}
       <section aria-labelledby="your-business" className={sectionClass}>
         <h2 id="your-business" className="text-label font-bold uppercase text-subtle">
@@ -487,18 +547,7 @@ export default function EventImporter({
           <p className="text-card-title font-semibold text-primary">
             {businessName} · {copy.badge}
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              const next = intent === "hosting" ? "participating" : "hosting";
-              setIntent(next);
-              const defaults = reviewDefaults(candidate, matches, next, businessName);
-              setReview(defaults);
-              setInitialPast(pastReviewOccurrences(candidate, matches));
-              setReviewVersion((v) => v + 1);
-            }}
-            className="text-metadata font-semibold text-accent hover:underline"
-          >
+          <button type="button" onClick={() => switchIntent(intent === "hosting" ? "participating" : "hosting")} className="text-metadata font-semibold text-accent hover:underline">
             {intent === "hosting" ? "We’re Participating Instead" : "We’re Hosting Instead"}
           </button>
         </div>
@@ -570,11 +619,17 @@ export default function EventImporter({
           </div>
         )}
         {candidate.origin === "image" && !joiningExisting && (
-          <p className="rounded-lg bg-black/[0.03] px-3 py-2 text-metadata text-muted">
-            Your uploaded image was only used to read these details. It won&rsquo;t be shown as the Event image.
-          </p>
+          <fieldset className="flex flex-col gap-2">
+            <legend className={labelClass}>Your Uploaded Image</legend>
+            {imagePreview && (
+              // eslint-disable-next-line @next/next/no-img-element -- a local preview of the chosen file
+              <img src={imagePreview} alt="Your uploaded image" className="max-h-56 w-auto max-w-full self-start rounded-xl object-contain" />
+            )}
+            <Choice checked={useFlyer} onChange={() => setUseFlyer(true)} title="Use This Image For The Event" line="It becomes the Event image when you add the Event." />
+            <Choice checked={!useFlyer} onChange={() => setUseFlyer(false)} title="Don’t Use This Image" line="It was only used to read these details and won’t be saved." />
+          </fieldset>
         )}
-        {review.imageUrl && !joiningExisting && (
+        {review.imageUrl && !joiningExisting && !(candidate.origin === "image" && useFlyer) && (
           <label className="flex items-center gap-2 text-metadata text-secondary">
             <input type="checkbox" checked={useImage} onChange={(e) => setUseImage(e.target.checked)} className="h-5 w-5 accent-findmi" />
             Use the event image from the page

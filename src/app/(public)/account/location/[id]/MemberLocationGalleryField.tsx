@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { uploadMemberLocationImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
+import { galleryUploadErrorMessage, uploadGalleryFiles } from "@/lib/gallery-upload";
 
 /** Member-facing gallery field for the Location Manager — same "current
  * config, not economic history" delete-then-reinsert-on-save shape as
@@ -27,15 +28,14 @@ export default function MemberLocationGalleryField({
     if (files.length === 0) return;
     setError(null);
     startTransition(async () => {
-      let lastError: string | null = null;
-      for (const file of files) {
-        const fd = new FormData();
-        fd.set("file", file);
-        const result = await uploadMemberLocationImage(locationId, fd);
-        if (result.error) lastError = result.error;
-        else if (result.url) setUrls((prev) => [...prev, result.url!]);
-      }
-      if (lastError) setError(lastError);
+      // Each file on its own (lib/gallery-upload.ts): photos reduced first,
+      // a rejected upload caught, one failure never stopping or discarding
+      // the others; successes are kept as soon as each one resolves.
+      const failures = await uploadGalleryFiles(files, {
+        upload: (fd) => uploadMemberLocationImage(locationId, fd),
+        onUploaded: (url) => setUrls((prev) => [...prev, url]),
+      });
+      setError(galleryUploadErrorMessage(failures));
     });
   }
 
