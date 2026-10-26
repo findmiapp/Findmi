@@ -8,7 +8,7 @@ import EventDiscoveryCard from "@/components/discover/EventDiscoveryCard";
 import EventFilters from "@/components/discover/EventFilters";
 import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
-import { parseBboxParam } from "@/lib/geo-results";
+import { parseBboxParam, resolveView } from "@/lib/geo-results";
 import {
   attachEventCategories,
   getConsumerVisibleMarketsWithAreas,
@@ -183,7 +183,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           lives in Refine. Same fields, same URL, same submit as before. */}
       <ArchiveGeoShell
         surface="events"
-        initialView={filter.view ?? "list"}
+        initialView={resolveView(filter.view)}
         bbox={parseBboxParam(filter.bbox)}
         noun={["Event", "Events"]}
         title="Events"

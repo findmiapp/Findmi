@@ -153,7 +153,10 @@ export default function ArchiveGeoShell({
     setSheet("peek");
     // A real navigation (pushed, so Back returns to the previous mode) —
     // every filter link the server renders then carries the mode too.
-    startTransition(() => router.push(hrefWith((p) => (v === "list" ? p.delete("view") : p.set("view", v))), { scroll: false }));
+    // Explicit for every mode (List included): the URL — and every archive
+    // link and form, which carry it — keeps the chosen view (Map-first is
+    // only the default of a fresh visit; lib/geo-results resolveView).
+    startTransition(() => router.push(hrefWith((p) => p.set("view", v)), { scroll: false }));
   };
 
   // Phones: the Map is a screen — the page under it doesn't scroll.
@@ -411,6 +414,7 @@ export default function ArchiveGeoShell({
         focus={focus}
         padding={isPhone() ? { top: 56, bottom: (measured ? heights[sheet] : 140) + 12, left: 28, right: 28 } : undefined}
         label={`Map of ${many}`}
+        autoCollapseAttribution
       />
     ) : results ? (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 pb-40 text-center lg:pb-6">

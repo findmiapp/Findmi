@@ -1,4 +1,6 @@
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "@/lib/event-range-mirror";
+import { occurrenceResults } from "@/lib/geo-results-server";
+import { datesMapEligible } from "@/lib/geo-results";
 import NavIcon from "@/components/NavIcon";
 import { publicLocationHref } from "@/lib/location-links";
 import type { Metadata } from "next";
@@ -703,6 +705,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // Quick View, Location switching, etc.) — unchanged below. Rendering
   // `null` here (no spacer) lets the next section's own flex gap close
   // up naturally.
+  // Map Everywhere — a Map of the dates only when they really are in
+  // different places (2+ distinct real Locations); never for a hidden
+  // venue, never the parent Event pinned to one spot.
+  const datesGeoAll = locationHidden ? [] : occurrenceResults(datedOccurrences, { slug: event.slug, name: event.name });
+  const datesGeo = datesMapEligible(datesGeoAll) ? datesGeoAll : undefined;
   const datesSection =
     datedOccurrences.length > 1 ? (
       <section id="dates" className="scroll-mt-24">
@@ -722,6 +729,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
           vendorApplication={vendorAppForm}
           rostersByOccurrence={rostersByOccurrence}
+          geo={datesGeo}
         />
       </section>
     ) : null;

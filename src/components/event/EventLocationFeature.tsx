@@ -18,14 +18,26 @@ import ContextMap from "@/components/map/ContextMap";
  * maps query + click_directions tracking as before) and View Location
  * (the canonical Location page). Map Everywhere: a thin, lazily started
  * map of the Location (with View On Map) sits above the card when the
- * Location has real coordinates. */
+ * Location has real coordinates.
+ *
+ * The ONE Location map / address block: the Location's own page renders it
+ * as `variant="self"` — its heading, no repeated name / logo (the page
+ * heading already says it) and no View Location (you're there); the map,
+ * full address, "Inside …" context and Get Directions stay. */
 export default function EventLocationFeature({
   location,
   placeContext,
+  variant = "event",
+  heading = "Location",
+  sectionId = "location",
 }: {
   location: FindmiLocation;
   placeContext: LocationPlaceContext | null;
+  variant?: "event" | "self";
+  heading?: string;
+  sectionId?: string;
 }) {
+  const self = variant === "self";
   const street = location.address?.trim() || null;
   const cityLine = cityStateZip(location.city, location.state, location.postal_code) || null;
   const parentName = placeContext?.ancestors[0]?.name ?? null;
@@ -35,8 +47,14 @@ export default function EventLocationFeature({
   const geo = placeResult(location, { linkable: Boolean(publicLocationHref(location)) });
 
   return (
-    <section id="location" aria-labelledby="location-heading" className="scroll-mt-24">
-      <SectionHeading id="location-heading">Location</SectionHeading>
+    <section id={sectionId} aria-labelledby={`${sectionId}-heading`} className={self ? "mt-8 scroll-mt-20" : "scroll-mt-24"}>
+      {self ? (
+        <h2 id={`${sectionId}-heading`} className="font-display text-lg font-bold tracking-tight text-ink">
+          {heading}
+        </h2>
+      ) : (
+        <SectionHeading id={`${sectionId}-heading`}>{heading}</SectionHeading>
+      )}
       <div className="mt-3 rounded-2xl border border-black/5 bg-white p-3.5 sm:max-w-xl">
         {geo && (
           <div className="mb-3">
@@ -44,6 +62,7 @@ export default function EventLocationFeature({
           </div>
         )}
         <div className="flex items-start gap-3">
+          {!self && (
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-black/[0.04]">
             {image ? (
               <SupabaseImage src={image} alt="" fill sizes="64px" className={location.logo_url ? "object-contain p-2" : "object-cover"} />
@@ -51,10 +70,11 @@ export default function EventLocationFeature({
               <div className="flex h-full w-full items-center justify-center text-lg font-bold uppercase text-ink/30">{location.name.charAt(0)}</div>
             )}
           </div>
+          )}
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">{location.name}</p>
+            {!self && <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">{location.name}</p>}
             {(street || cityLine) && (
-              <div className="mt-1 flex items-start gap-1.5">
+              <div className={`${self ? "" : "mt-1 "}flex items-start gap-1.5`}>
                 <PinGlyph className="mt-0.5 h-3.5 w-3.5 shrink-0 text-findmi-700" />
                 <p className="min-w-0 text-metadata leading-snug">
                   {street && <span className="block break-words font-medium text-secondary">{street}</span>}
@@ -80,7 +100,7 @@ export default function EventLocationFeature({
             />
           )}
           {/* Only a listed Location has a public page (never a dead link). */}
-          {publicLocationHref(location) && (
+          {!self && publicLocationHref(location) && (
             <Link
               href={publicLocationHref(location)!}
               className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-full border border-black/10 bg-white px-4 text-sm font-bold text-ink transition hover:border-ink/30 active:scale-[0.98]"

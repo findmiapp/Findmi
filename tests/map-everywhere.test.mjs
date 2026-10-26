@@ -149,7 +149,8 @@ test("the Event filter contract carries view + Search This Area bounds through e
   assert.equal(p.get("view"), "map", "a time tab keeps the Map");
   assert.equal(p.get("bbox"), f.bbox, "and the searched area");
   assert.deepEqual(EF.eventDiscoveryParams(f).bbox, [-74.01, 40.7, -73.99, 40.73]);
-  assert.equal(EF.parseEventFilter({ view: "list" }).view, undefined, "List is never written");
+  assert.equal(EF.parseEventFilter({ view: "list" }).view, "list", "an explicit List is kept (Map-first is only the fresh-visit default)");
+  assert.equal(EF.parseEventFilter({}).view, undefined, "a fresh visit names no view");
   assert.equal(EF.parseEventFilter({ bbox: "nonsense" }).bbox, undefined);
 });
 
@@ -358,6 +359,7 @@ test("context map: text first, MapLibre only when the section nears the viewport
 test("detail pages and archives use the one shared renderer and one switch — no per-entity map systems", () => {
   for (const f of ["src/components/map/ArchiveGeoShell.tsx", "src/components/map/ContextMap.tsx"]) assert.match(read(f), /import\("\.\/DiscoveryMapCanvas"\)/, f);
   for (const f of ["src/app/(public)/events/page.tsx", "src/app/(public)/locations/page.tsx", "src/app/(public)/businesses/page.tsx", "src/app/(public)/find/page.tsx"]) assert.match(read(f), /<ArchiveGeoShell\s+surface=/, f);
-  for (const f of ["src/components/event/EventLocationFeature.tsx", "src/app/(public)/location/[slug]/LocationPublicView.tsx", "src/app/(public)/business/[slug]/BusinessPublicView.tsx", "src/app/(public)/product/[slug]/page.tsx"]) assert.match(read(f), /<ContextMap /, f);
+  for (const f of ["src/components/event/EventLocationFeature.tsx", "src/app/(public)/business/[slug]/BusinessPublicView.tsx", "src/app/(public)/product/[slug]/page.tsx"]) assert.match(read(f), /<ContextMap /, f);
+  assert.match(read("src/app/(public)/location/[slug]/LocationPublicView.tsx"), /<EventLocationFeature [^>]*variant="self"/, "the Location page reuses the one Location map / address block");
   assert.doesNotMatch(read("src/components/map/MapExplorer.tsx"), /ArchiveGeoShell|ContextMap/, "/map is untouched");
 });

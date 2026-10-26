@@ -3,7 +3,7 @@ import type { BusinessSort, EventDiscoveryParams, FindWindow, LocationsDiscovery
 import { eventDiscoveryParams, parseEventFilter, type EventFilter } from "@/lib/event-filter";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 import { isCanonicalGeoScopeEmpty } from "@/lib/geo/entity-geo-core";
-import { parseBboxParam, parseViewMode, type ViewMode } from "@/lib/geo-results";
+import { parseBboxParam, parseViewParam, resolveView, type ViewMode } from "@/lib/geo-results";
 import type { Bbox } from "@/lib/discovery/map-core";
 
 // Map Everywhere — ONE reading of each archive's URL, shared by the
@@ -16,7 +16,10 @@ const one = (p: ArchiveParams, k: string) => {
   return (Array.isArray(v) ? v[0] : v)?.trim() || undefined;
 };
 
-export const archiveView = (p: ArchiveParams): ViewMode => parseViewMode(p.view);
+/** The view the URL explicitly asks for (null = a fresh visit). */
+export const archiveViewParam = (p: ArchiveParams): ViewMode | null => parseViewParam(p.view);
+/** The view to render (lib/geo-results resolveView precedence). */
+export const archiveView = (p: ArchiveParams, allowSplit = true): ViewMode => resolveView(archiveViewParam(p), allowSplit);
 export const archiveBbox = (p: ArchiveParams): Bbox | null => parseBboxParam(p.bbox);
 
 /** /events */
@@ -43,9 +46,11 @@ export async function placeArchive(p: ArchiveParams): Promise<LocationsDiscovery
 
 export const BUSINESS_SORTS: BusinessSort[] = ["recommended", "newest", "az"];
 
-/** /businesses — Results Mode parameters, and whether the page is in its
- * curated Browse Mode instead. Map / Split and a searched map area always
- * show the flat result set (a map of rails would mean nothing). */
+/** /businesses — the result-set parameters, and whether the visit is
+ * unrefined ("curated": no search / filter / sort / map area). Curation
+ * depends ONLY on the query — never on the presentation — so List and
+ * Map always show the same flat result set (a Map → List switch can't turn
+ * the List into a different page). */
 export async function brandArchive(p: ArchiveParams): Promise<{ search: SearchBusinessesParams; sort: BusinessSort; featured: boolean; founding: boolean; isBrowseMode: boolean; bbox: Bbox | null }> {
   const sortRaw = one(p, "sort") as BusinessSort | undefined;
   const sort: BusinessSort = sortRaw && BUSINESS_SORTS.includes(sortRaw) ? sortRaw : "recommended";
@@ -58,7 +63,7 @@ export async function brandArchive(p: ArchiveParams): Promise<{ search: SearchBu
   const category = one(p, "category");
   const location = one(p, "location");
   const bbox = archiveBbox(p);
-  const isBrowseMode = !q && !category && !location && !featured && !founding && sort === "recommended" && isCanonicalGeoScopeEmpty(canonicalGeo) && !bbox && archiveView(p) === "list";
+  const isBrowseMode = !q && !category && !location && !featured && !founding && sort === "recommended" && isCanonicalGeoScopeEmpty(canonicalGeo) && !bbox;
   return {
     search: { q, categorySlug: category, location, marketSlug: market, areaSlug: market ? one(p, "area") : undefined, canonicalGeo, featuredOnly: featured, foundingMemberOnly: founding, sort },
     sort,

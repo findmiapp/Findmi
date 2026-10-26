@@ -24,7 +24,7 @@
 // Reserved for later phases, deliberately NOT fields yet (no data): cost,
 // audience, geographic radius / map bounds. Walk-In is not
 // derivable (an Event without RSVP/Tickets isn't evidence of walk-in).
-import { bboxParam, parseBboxParam, parseViewMode } from "./geo-results";
+import { bboxParam, parseBboxParam, parseViewParam } from "./geo-results";
 import { getTemporalLabel, type DiscoveryWindow } from "./format";
 
 /** The Event time filters, in display order. "next" (Up Next) and "all"
@@ -79,7 +79,8 @@ export interface EventFilter {
    * presentation (List is the default, never written). Presentation only
    * changes how the SAME result set is shown. */
   bbox?: string;
-  view?: "map" | "split";
+  /** Explicit `view=` (List included — see lib/geo-results resolveView). */
+  view?: "list" | "map" | "split";
   /** Scoping (programmatic only — never parsed from or written to the URL). */
   locationId?: string;
   businessId?: string;
@@ -161,8 +162,8 @@ export function parseEventFilter(source: ParamSource): EventFilter {
   if (q) filter.q = q;
   const bbox = parseBboxParam(first(source, "bbox"));
   if (bbox) filter.bbox = bboxParam(bbox);
-  const view = parseViewMode(first(source, "view"));
-  if (view !== "list") filter.view = view;
+  const view = parseViewParam(first(source, "view"));
+  if (view) filter.view = view;
   return filter;
 }
 

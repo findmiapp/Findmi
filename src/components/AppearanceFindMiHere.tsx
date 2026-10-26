@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import ContextMap from "./map/ContextMap";
+import type { GeoResult } from "@/lib/geo-results";
 import AppearanceCarousel, { type AppearanceCarouselAppearance } from "./AppearanceCarousel";
 import AppearanceList from "./AppearanceList";
 import AppearanceQuickView, { type AppearanceQuickViewBusiness } from "./AppearanceQuickView";
@@ -21,15 +23,19 @@ import type { AnalyticsPlacementContext } from "@/lib/analytics/context";
  * branch gets added (plus one more control in ViewSwitcher) — neither
  * AppearanceCarousel nor AppearanceList nor AppearanceQuickView, nor the
  * Appearance data contract they all already share, would need to change. */
-type ViewMode = "cards" | "list"; // future: | "map"
+type ViewMode = "cards" | "list" | "map";
 
 export default function AppearanceFindMiHere({
   appearances,
   business,
   galleryImages,
   analyticsContext,
+  geo,
 }: {
   appearances: AppearanceCarouselAppearance[];
+  /** Map Everywhere — the SAME schedule, each date at its own real
+   * Location (lib/geo-results-server scheduleResults). Omitted → no Map. */
+  geo?: GeoResult[];
   business: AppearanceQuickViewBusiness;
   /** Image Fallback Refinement pass — this Business's own existing
    * gallery (business_images), already fetched by the caller — passed
@@ -41,7 +47,8 @@ export default function AppearanceFindMiHere({
 }) {
   // Per-device Cards/List preference (Cards on first paint; the stored
   // choice applies after mount — shared useStoredView).
-  const [view, setView] = useStoredView("findmi:business-findmi-here-view");
+  const modes: ViewMode[] = geo && appearances.length > 0 ? ["cards", "list", "map"] : ["cards", "list"];
+  const [view, setView] = useStoredView("findmi:business-findmi-here-view", "cards", modes);
   // Field QA UX Pass 2 — LIST view reveals 3 at a time (shared rule).
   const listReveal = useProgressiveReveal(appearances.length);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -71,11 +78,13 @@ export default function AppearanceFindMiHere({
           <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Upcoming Schedule</h2>
           <p className="mt-0.5 text-xs text-ink/50">See where {business.name} is showing up next.</p>
         </div>
-        <ViewSwitcher view={view} onChange={switchView} />
+        <ViewSwitcher view={view} onChange={switchView} modes={modes} />
       </div>
 
       <div className="mt-3">
-        {view === "cards" ? (
+        {view === "map" && geo ? (
+          <ScheduleMap geo={geo} total={appearances.length} name={business.name} onOpen={setOpenId} />
+        ) : view === "cards" ? (
           <AppearanceCarousel
             appearances={appearances}
             business={business}
@@ -114,15 +123,34 @@ export default function AppearanceFindMiHere({
   );
 }
 
-function ViewSwitcher({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
+/** Where can I find this Brand? — the schedule's own dates on the shared
+ * contextual map; tapping a date opens the same quick view as Cards. */
+function ScheduleMap({ geo, total, name, onOpen }: { geo: GeoResult[]; total: number; name: string; onOpen: (id: string) => void }) {
+  const unmapped = total - geo.length;
+  if (geo.length === 0)
+    return <p className="rounded-2xl border border-black/5 bg-black/[0.015] p-4 text-center text-sm text-ink/60">None of these dates are at a placed Findmi Location yet — Cards and List show them all.</p>;
+  return (
+    <div className="flex flex-col gap-2">
+      <ContextMap results={geo} label={`Map of where to find ${name}`} tall onResult={(r) => onOpen(r.key.replace(/^app:/, ""))} />
+      {unmapped > 0 && (
+        <p className="text-xs font-semibold text-ink/50">
+          {geo.length} of {total} dates on the map · {unmapped} without {unmapped === 1 ? "a location" : "locations"}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ViewSwitcher({ view, onChange, modes }: { view: ViewMode; onChange: (v: ViewMode) => void; modes: ViewMode[] }) {
   return (
     <div role="group" aria-label="View" className="flex shrink-0 items-center gap-0.5 rounded-full border border-black/10 bg-white p-0.5">
       {(
         [
           { mode: "cards" as const, label: "Cards" },
           { mode: "list" as const, label: "List" },
+          { mode: "map" as const, label: "Map" },
         ]
-      ).map(({ mode, label }) => (
+      ).filter(({ mode }) => modes.includes(mode)).map(({ mode, label }) => (
         <button
           key={mode}
           type="button"

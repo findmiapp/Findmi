@@ -33,7 +33,7 @@ import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import BrandHeading from "@/components/BrandHeading";
 import OurLocations from "@/components/OurLocations";
 import ContextMap from "@/components/map/ContextMap";
-import { brandPlaceResults } from "@/lib/geo-results-server";
+import { brandPlaceResults, scheduleResults } from "@/lib/geo-results-server";
 import { publicLocationHref } from "@/lib/location-links";
 import SectionAnchorNav from "@/components/SectionAnchorNav";
 import { buildSectionAnchors } from "@/lib/section-anchors";
@@ -314,6 +314,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // is promotion only — the date it shows (live or not) stays in its place
   // in the canonical chronological schedule.
   const scheduleAppearances = activity.upcoming;
+  // Map Everywhere — the same schedule, each date at its own Location.
+  const scheduleGeo = await scheduleResults(scheduleAppearances, business);
   // Image Fallback Refinement pass — precedence is now: the most specific
   // real image already attached to this appearance (its own flyer image,
   // else its linked Event's own cover image when event-backed — never
@@ -887,6 +889,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 }}
                 galleryImages={galleryImages}
                 analyticsContext={{ pageType: "business" }}
+                geo={scheduleGeo}
               />
             </section>
           )}

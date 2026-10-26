@@ -40,7 +40,7 @@ import {
 } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
 import { placeResult } from "@/lib/geo-results";
-import ContextMap from "@/components/map/ContextMap";
+import EventLocationFeature from "@/components/event/EventLocationFeature";
 import { isLocationDiscoverable, isRenderableImageUrl } from "@/lib/location-eligibility";
 import { hasAnyHours } from "@/lib/locationHours";
 import { LocationHoursStatus } from "@/components/LocationHours";
@@ -655,18 +655,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* Map Everywhere — a thin, lazily started map of the Location
-            itself (its address is already text in the hero above). */}
-        {mapResult && (
-          <section id="map" className="mt-8 scroll-mt-20" aria-labelledby="location-map-heading">
-            <h2 id="location-map-heading" className="font-display text-lg font-bold tracking-tight text-ink">
-              On The Map
-            </h2>
-            <div className="mt-3">
-              <ContextMap results={[mapResult]} label={`Map of ${location.name}`} />
-            </div>
-          </section>
-        )}
+        {/* Map Everywhere — the shared Location map / address block (the
+            same one Event pages use), as this Location's own: map, full
+            address + "Inside …", Get Directions, View On Map. */}
+        {mapResult && <EventLocationFeature location={location} placeContext={placeContext} variant="self" heading="On The Map" sectionId="map" />}
 
         {/* Gallery — same shared ImageGalleryStrip as Business/Event
             (scroll strip + lightbox), hidden entirely below 2 images.

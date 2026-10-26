@@ -7,7 +7,7 @@ import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import { getConsumerVisibleMarketsWithAreas, getLocationCategories, getLocations, getMarketAreaLabel } from "@/lib/data";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
-import { archiveView, placeArchive } from "@/lib/archive-params";
+import { archiveView, archiveViewParam, placeArchive } from "@/lib/archive-params";
 import { bboxParam } from "@/lib/geo-results";
 
 export const metadata: Metadata = {
@@ -38,6 +38,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   // One reading of the URL for the List and its Map (lib/archive-params).
   const options = await placeArchive(params as Record<string, string>);
   const view = archiveView(params as Record<string, string>);
+  const viewParam = archiveViewParam(params as Record<string, string>);
 
   const [categories, markets, locations] = await Promise.all([getLocationCategories(), getConsumerVisibleMarketsWithAreas(), getLocations({ ...options, limit: RESULT_LIMIT })]);
 
@@ -56,7 +57,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   if (params.market) baseParams.set("market", params.market);
   if (params.market && params.area) baseParams.set("area", params.area);
   if (options.bbox) baseParams.set("bbox", bboxParam(options.bbox));
-  if (view !== "list") baseParams.set("view", view);
+  if (viewParam) baseParams.set("view", viewParam);
 
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
@@ -78,7 +79,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
     const p = new URLSearchParams();
     if (params.q) p.set("q", params.q);
     if (options.bbox) p.set("bbox", bboxParam(options.bbox));
-    if (view !== "list") p.set("view", view);
+    if (viewParam) p.set("view", viewParam);
     return `/locations${p.toString() ? `?${p.toString()}` : ""}`;
   })();
 
@@ -103,7 +104,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
         controls={
           <form method="get" className="flex items-center gap-2">
             {options.bbox && <input type="hidden" name="bbox" value={bboxParam(options.bbox)} />}
-            {view !== "list" && <input type="hidden" name="view" value={view} />}
+            {viewParam && <input type="hidden" name="view" value={viewParam} />}
             {params.market && <input type="hidden" name="market" value={params.market} />}
             {params.market && params.area && <input type="hidden" name="area" value={params.area} />}
             <ArchiveSearchField defaultValue={params.q} placeholder="Search Places" />

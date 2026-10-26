@@ -68,7 +68,7 @@ test("2. every Event-page Location link goes through publicLocationHref (no raw 
   // The unlisted case still shows the place: name / address render without a link.
   assert.match(read("src/components/EventLocationCard.tsx"), /<div className="flex items-center gap-3 rounded-xl border border-black\/10 bg-white p-2\.5">\{inner\}<\/div>/);
   assert.match(VIEW, /\(publicLocationHref\(canonicalLocation\) \? \(\n\s+<Link href=\{publicLocationHref\(canonicalLocation\)!\}[\s\S]{0,400}<p className="mt-0\.5 text-metadata text-muted">\{placeName\}<\/p>/);
-  assert.match(read("src/components/event/EventLocationFeature.tsx"), /\{publicLocationHref\(location\) && \(\n\s+<Link/, "View Location only when there is a page");
+  assert.match(read("src/components/event/EventLocationFeature.tsx"), /\{!self && publicLocationHref\(location\) && \(\n\s+<Link/, "View Location only when there is a page");
 });
 
 test("2. Location rows reaching Event pages carry is_demo (select * or the embed adds it)", () => {

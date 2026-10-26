@@ -123,12 +123,28 @@ export function parseBboxParam(v: string | string[] | null | undefined): Bbox | 
 }
 export const bboxParam = (b: Bbox) => b.map((x) => Math.round(x * 1e5) / 1e5).join(",");
 
-/** Archive view modes. List is the lightweight default (never stored in
- * the URL); Split is a desktop presentation. */
+/** Archive view modes. Split is the desktop side-by-side presentation
+ * (on phones it IS the Map screen). */
 export type ViewMode = "list" | "map" | "split";
 export function parseViewMode(v: string | string[] | null | undefined): ViewMode {
+  return parseViewParam(v) ?? "list";
+}
+/** The view the URL explicitly names, or null. */
+export function parseViewParam(v: string | string[] | null | undefined): ViewMode | null {
   const s = Array.isArray(v) ? v[0] : v;
-  return s === "map" || s === "split" ? s : "list";
+  return s === "map" || s === "split" || s === "list" ? s : null;
+}
+/** Map-first discovery. The ONE precedence every archive uses:
+ *   1. the URL's explicit `view=` (any switch writes it — List included —
+ *      and every archive link / form carries it, so a chosen List stays
+ *      List through search, filters, lenses, paging, Back / Forward);
+ *   2. otherwise (a fresh visit) the geographic default: Split — which is
+ *      the Map screen on phones and Map + List side by side on desktop —
+ *      or Map where a surface has no Split.
+ * No storage: leaving the archive and coming back fresh is a fresh visit. */
+export function resolveView(explicit: ViewMode | null | undefined, allowSplit = true): ViewMode {
+  if (explicit) return explicit === "split" && !allowSplit ? "map" : explicit;
+  return allowSplit ? "split" : "map";
 }
 
 /** A single Location as a map result (detail-page maps). */
@@ -137,3 +153,8 @@ export function placeResult(l: Parameters<typeof geoPlace>[0] & { logo_url?: str
   if (!place) return null;
   return { key: `loc:${place.id}`, kind: "place", title: opts.title ?? place.name, subtitle: place.address, href: place.href ?? "", image: null, logo: l?.logo_url ?? null, status: null, live: false, place };
 }
+
+/** Event detail: a Map of the dates earns its place only when the dates
+ * really are in different places — two or more distinct real Locations.
+ * One place → the Location block's own map already answers "where". */
+export const datesMapEligible = (results: readonly GeoResult[]) => new Set(results.map((r) => r.place.id)).size >= 2;

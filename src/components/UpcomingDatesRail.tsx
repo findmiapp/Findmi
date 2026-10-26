@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import SectionHeading from "./SectionHeading";
 import ViewToggle, { useStoredView } from "./ViewToggle";
+import ContextMap from "./map/ContextMap";
+import type { GeoResult } from "@/lib/geo-results";
 import type { EventBusinessListing, EventOccurrenceWithLocation } from "@/lib/data";
 import type { ResolvedForm } from "@/lib/forms";
 import { HorizontalScroller } from "./Section";
@@ -65,6 +67,7 @@ export default function UpcomingDatesRail({
   vendorApplicationsEnabled,
   vendorApplication,
   rostersByOccurrence,
+  geo,
 }: {
   occurrences: EventOccurrenceWithLocation[];
   eventName: string;
@@ -89,12 +92,17 @@ export default function UpcomingDatesRail({
   vendorApplicationsEnabled: boolean;
   vendorApplication: ResolvedForm | null;
   rostersByOccurrence: Record<string, EventBusinessListing[]>;
+  /** Map Everywhere — these same dates at their own Locations; passed
+   * only when they span 2+ real Locations (lib/geo-results
+   * datesMapEligible). */
+  geo?: GeoResult[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   // Cards / List preference — per device, Cards on first paint (shared
   // ViewToggle / useStoredView).
-  const [view, chooseView] = useStoredView(VIEW_STORAGE_KEY);
+  const modes = geo && geo.length > 0 ? (["cards", "list", "map"] as const) : (["cards", "list"] as const);
+  const [view, chooseView] = useStoredView(VIEW_STORAGE_KEY, "cards", modes);
 
   // Field QA UX Pass 2 — LIST view reveals 3 at a time (shared
   // ProgressiveList rule); Cards keep their own bounded rail below.
@@ -129,11 +137,20 @@ export default function UpcomingDatesRail({
           </p>
         </div>
         {count > 1 && (
-          <ViewToggle view={view} onChange={chooseView} label="Show dates as" />
+          <ViewToggle view={view} onChange={chooseView} label="Show dates as" modes={modes} />
         )}
       </div>
 
-      {view === "list" ? (
+      {view === "map" && geo && geo.length > 0 ? (
+        <div className="mt-3 flex flex-col gap-2">
+          <ContextMap results={geo} label={`Map of ${eventName} dates`} tall onResult={(r) => setOpenId(r.key.replace(/^occ:/, ""))} />
+          {geo.length < count && (
+            <p className="text-xs font-semibold text-ink/50">
+              {geo.length} of {count} dates on the map · {count - geo.length} without {count - geo.length === 1 ? "a location" : "locations"}
+            </p>
+          )}
+        </div>
+      ) : view === "list" ? (
         <>
           <ul className="mt-3 flex flex-col gap-2">
             {occurrences.slice(0, listReveal.visible).map((occ) => (

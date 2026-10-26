@@ -43,7 +43,17 @@ export interface CanvasProps {
   /** In-page maps (detail pages): one finger scrolls the page, two pan
    * the map; on desktop the wheel needs a modifier. Off for /map. */
   cooperativeGestures?: boolean;
+  /** Archive and contextual maps: MapLibre's own compact attribution is
+   * shown when the map first appears and then folded back to its ⓘ
+   * button after a few seconds (as it already does on the first drag) —
+   * by pressing that control's own toggle, never by hiding it. Off for
+   * /map. */
+  autoCollapseAttribution?: boolean;
 }
+
+/** How long the full credits stay open on a map that set
+ * autoCollapseAttribution. */
+export const ATTRIBUTION_OPEN_MS = 5000;
 
 const prefersReducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -130,7 +140,7 @@ function selectedElement(f: MapFeature): HTMLElement {
   return el;
 }
 
-export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false }: CanvasProps) {
+export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false }: CanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -320,6 +330,14 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
           if (hit.length === 0) cb.current.onSelect(null);
         });
         setReady(true);
+        if (autoCollapseAttribution) {
+          window.setTimeout(() => {
+            // The attribution control's own ⓘ toggle (a <summary>), exactly
+            // what a tap does; it stays one tap away, credits unchanged.
+            const open = !disposed && container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show .maplibregl-ctrl-attrib-button");
+            if (open) open.click();
+          }, ATTRIBUTION_OPEN_MS);
+        }
       });
       map.on("moveend", (e) => {
         if (!map) return;

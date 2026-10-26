@@ -274,3 +274,53 @@ export async function brandPlaceResults(business: { id: string; slug: string }):
     place: p.place,
   }));
 }
+
+/** A Brand's Findmi Here schedule (exactly the dates its Cards / List
+ * show) as map results: each date at ITS OWN linked Location. A date with
+ * no linked Location, or whose Event withholds the venue, isn't drawn. */
+export async function scheduleResults(
+  items: { id: string; title: string; start_at: string; end_at: string | null; location_id: string | null; location_hidden?: boolean; event_id?: string | null; event_occurrence_id?: string | null; event?: { slug: string } | null }[],
+  business: { slug: string; name: string; logo_url?: string | null }
+): Promise<GeoResult[]> {
+  const mappable = items.filter((a) => a.location_id && !a.location_hidden);
+  const locs = await locationsById(mappable.map((a) => a.location_id as string));
+  const out: GeoResult[] = [];
+  for (const a of mappable) {
+    const place = placeOf(locs.get(a.location_id as string));
+    if (!place) continue;
+    const live = isEventHappeningNow(a.start_at, a.end_at);
+    const when = formatWhen(dated(a as unknown as Row)) || null;
+    out.push({
+      key: `app:${a.id}`,
+      kind: "appearance",
+      title: place.name,
+      subtitle: a.title && a.title !== business.name ? a.title : null,
+      href: a.event?.slug ? eventHref(a.event.slug, a.event_occurrence_id ?? null) : (place.href ?? `/business/${business.slug}`),
+      image: null,
+      logo: business.logo_url ?? null,
+      status: live ? "LIVE" : when,
+      live,
+      place,
+    });
+  }
+  return out;
+}
+
+/** An Event's dates (exactly the occurrences its Upcoming Dates show) as
+ * map results: each scheduled date at ITS OWN linked Location — never the
+ * parent Event pinned to one place, never an inherited venue. */
+export function occurrenceResults(
+  occurrences: { id: string; status?: string | null; start_at: string | null; end_at: string | null; location: { id: string; name: string } | null }[],
+  event: { slug: string; name: string }
+): GeoResult[] {
+  const out: GeoResult[] = [];
+  for (const o of occurrences) {
+    if (o.status && o.status !== "scheduled") continue;
+    const place = placeOf(o.location as unknown as Row | null);
+    if (!place) continue;
+    const live = isEventHappeningNow(o.start_at, o.end_at);
+    const when = formatWhen(dated(o as unknown as Row)) || null;
+    out.push({ key: `occ:${o.id}`, kind: "event", title: place.name, subtitle: event.name, href: eventHref(event.slug, o.id), image: null, logo: null, status: live ? "LIVE" : when, live, place });
+  }
+  return out;
+}

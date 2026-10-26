@@ -3,7 +3,7 @@ import ActiveFilterChips from "@/components/discover/ActiveFilterChips";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
-import { archiveBbox, archiveView } from "@/lib/archive-params";
+import { archiveBbox, archiveView, archiveViewParam } from "@/lib/archive-params";
 import { bboxParam } from "@/lib/geo-results";
 import { appearancesInBbox, GEO_LIMIT } from "@/lib/geo-results-server";
 import Link from "next/link";
@@ -110,7 +110,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const raw = await searchParams;
   const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam, geo: geoParam } = raw;
   const bbox = archiveBbox(raw as Record<string, string>);
-  const view = archiveView(raw as Record<string, string>);
+  const view = archiveView(raw as Record<string, string>, false);
+  const viewParam = archiveViewParam(raw as Record<string, string>);
   const canonicalGeo = geoParam ? await resolveCanonicalGeoScope(geoParam) : null;
   // Findmi Here Clarity pass — default is Next Up ("anytime"), not Now
   // ("live"): explicit ?when=live/today/weekend still select exactly that
@@ -233,7 +234,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
     if (next.market && next.area) p.set("area", next.area);
     if (next.q) p.set("q", next.q);
     if (bbox) p.set("bbox", bboxParam(bbox));
-    if (view !== "list") p.set("view", view);
+    if (viewParam) p.set("view", viewParam);
     const qs = p.toString();
     return qs ? `/find?${qs}` : "/find";
   }
@@ -258,7 +259,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         controls={
           <form method="get" className="flex items-center gap-2">
             {bbox && <input type="hidden" name="bbox" value={bboxParam(bbox)} />}
-            {view !== "list" && <input type="hidden" name="view" value={view} />}
+            {viewParam && <input type="hidden" name="view" value={viewParam} />}
             <input type="hidden" name="when" value={when} />
             {marketSlug && <input type="hidden" name="market" value={marketSlug} />}
             {marketSlug && areaSlug && <input type="hidden" name="area" value={areaSlug} />}

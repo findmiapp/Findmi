@@ -11,8 +11,11 @@ const view = read("src/app/(public)/event/[slug]/EventPublicView.tsx");
 const directions = read("src/components/event/DirectionsIconLink.tsx");
 
 test("heading + canonical name/address (no aggressive one-line truncation)", () => {
-  assert.match(card, /<SectionHeading id="location-heading">Location<\/SectionHeading>/);
-  assert.match(card, /<p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">\{location\.name\}<\/p>/);
+  // One shared block (the Location page renders it as variant="self");
+  // the Event page's default output is unchanged.
+  assert.match(card, /heading = "Location",\n\s+sectionId = "location",/);
+  assert.match(card, /<SectionHeading id=\{`\$\{sectionId\}-heading`\}>\{heading\}<\/SectionHeading>/);
+  assert.match(card, /\{!self && <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">\{location\.name\}<\/p>/);
   assert.doesNotMatch(card, /<p className="truncate font-display[^"]*">\{location\.name\}/, "name no longer forced onto one line");
   assert.match(card, /const street = location\.address\?\.trim\(\) \|\| null;/);
   assert.match(card, /const cityLine = cityStateZip\(location\.city, location\.state, location\.postal_code\) \|\| null;/);
@@ -25,7 +28,7 @@ test("Get Directions (accent, same maps query + tracking) and View Location (can
   assert.match(card, /const mapsQuery = \[location\.name, location\.address, cityState\(location\.city, location\.state\)\]\.filter\(Boolean\)\.join\(", "\);/, "Directions destination unchanged");
   assert.match(card, /event_name: "click_directions",\n\s+subject_type: "location",/);
   assert.match(directions, /className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1\.5 rounded-full bg-findmi px-4 text-sm font-bold text-white[^"]*"\n\s+>\n\s+\{glyph\}\n\s+Get Directions/);
-  assert.match(card, /href=\{publicLocationHref\(location\)!\}[\s\S]{0,260}View Location/, "canonical page — only when it exists (lib/location-links.ts)");
+  assert.match(card, /\{!self && publicLocationHref\(location\) && \([\s\S]{0,120}href=\{publicLocationHref\(location\)!\}[\s\S]{0,260}View Location/, "canonical page — only when it exists (lib/location-links.ts), never on the Location's own page");
   // Map Everywhere: the Findmi Map is live — the card carries the shared
   // contextual map (with its own View On Map) for a Location with real
   // coordinates; Directions above stays the external maps destination.
@@ -44,4 +47,10 @@ test("order: Location stays directly before Hosted By; mobile-safe card", () => 
   assert.equal(block.split("{locationFeatureSection}").length - 1, 1, "Location rendered once");
   assert.match(card, /className="mt-3 rounded-2xl border border-black\/5 bg-white p-3\.5 sm:max-w-xl"/, "compact; never stretched on desktop");
   assert.match(card, /<div className="min-w-0 flex-1">/, "text column can shrink — no horizontal overflow");
+});
+
+test("the Location's own page reuses the same block: map + full address + Get Directions, no repeated name, no View Location", () => {
+  const loc = read("src/app/(public)/location/[slug]/LocationPublicView.tsx");
+  assert.match(loc, /<EventLocationFeature location=\{location\} placeContext=\{placeContext\} variant="self" heading="On The Map" sectionId="map" \/>/);
+  assert.doesNotMatch(loc, /<ContextMap /, "no second, barer map implementation");
 });

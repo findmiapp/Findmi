@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
-import { archiveView, brandArchive } from "@/lib/archive-params";
+import { archiveView, archiveViewParam, brandArchive } from "@/lib/archive-params";
 import { bboxParam } from "@/lib/geo-results";
 import { brandsInBbox, GEO_LIMIT } from "@/lib/geo-results-server";
 import Link from "next/link";
@@ -43,11 +43,8 @@ const SORT_OPTIONS: { value: BusinessSort; label: string }[] = [
   { value: "newest", label: "Newest" },
   { value: "az", label: "A–Z" },
 ];
-// Browse Mode rail sizes — bounded per-rail query counts (Section 11 of
-// the Browse Mode pass): a rail is a discovery preview, not the full
-// filtered grid, so it never needs Results Mode's PAGE_SIZE/Load More.
+// Featured rail size — a bounded discovery preview above the result set.
 const FEATURED_RAIL_LIMIT = 12;
-const CATEGORY_RAIL_LIMIT = 10;
 
 interface Params {
   q?: string;
@@ -104,6 +101,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   // flat result set, never the rails.
   const archive = await brandArchive(params as Record<string, string>);
   const view = archiveView(params as Record<string, string>);
+  const viewParam = archiveViewParam(params as Record<string, string>);
   const isBrowseMode = archive.isBrowseMode;
 
   const [categories, markets] = await Promise.all([getCategories(), getConsumerVisibleMarketsWithAreas()]);
@@ -114,7 +112,8 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   let hasMore = false;
   let businesses: BusinessWithCategories[] = [];
   let appearanceHints = new Map<string, NextAppearanceHint>();
-  if (!isBrowseMode) {
+  // The result set — the same flat set the Map draws, in every view.
+  {
     fetched = archive.bbox
       ? // Search This Area: Brands with a real presence inside the area, in List order.
         (await brandsInBbox(await searchBusinesses({ ...archive.search, limit: GEO_LIMIT }), archive.bbox)).slice(0, limit + 1)
@@ -142,8 +141,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   // for home visibility AND that actually have an eligible business in
   // the selected geography — never a giant taxonomy wall).
   let featuredBusinesses: BusinessWithCategories[] = [];
-  let categoryRails: { category: Category; businesses: BusinessWithCategories[] }[] = [];
-  let browseAppearanceHints = new Map<string, NextAppearanceHint>();
+  let chipCategories: Category[] = [];
   // Business Card Redesign pass — BusinessLogoCard (the Featured on
   // Findmi rail only, below) needs the plural upcoming-appearances shape;
   // BusinessDiscoveryCard's own "Next Up" (category rails + the flat
@@ -172,21 +170,9 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     featuredBusinesses = featuredResult;
     const eligibleSlugs = new Set(eligibleCategories.map((c) => c.slug));
     const railCategories = homeCategories.filter((c) => eligibleSlugs.has(c.slug));
-    const rails = await Promise.all(
-      railCategories.map(async (category) => ({
-        category,
-        businesses: await searchBusinesses({
-          categorySlug: category.slug,
-          marketSlug,
-          areaSlug,
-          sort: "recommended",
-          limit: CATEGORY_RAIL_LIMIT,
-        }),
-      }))
-    );
-    categoryRails = rails.filter((r) => r.businesses.length > 0);
-    const browseIds = [...featuredBusinesses, ...categoryRails.flatMap((r) => r.businesses)].map((b) => b.id);
-    browseAppearanceHints = await getNextAppearanceHints(browseIds);
+    // Category entry points (chips) — the same bounded, geography-aware
+    // set; each lands in the filtered result set.
+    chipCategories = railCategories;
     // Preview + the card's "N Upcoming Appearances" TRUE count (distinct
     // Appearances, never the preview's length) — same as the homepage rows.
     let featuredSummaries: Awaited<ReturnType<typeof getUpcomingAppearanceSummaries>>;
@@ -212,7 +198,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   if (founding) baseParams.set("founding", "1");
   if (sort !== "recommended") baseParams.set("sort", sort);
   if (archive.bbox) baseParams.set("bbox", bboxParam(archive.bbox));
-  if (view !== "list") baseParams.set("view", view);
+  if (viewParam) baseParams.set("view", viewParam);
 
   const categoryName = categories.find((c) => c.slug === params.category)?.name;
   const selectedMarket = markets.find((m) => m.slug === params.market);
@@ -262,7 +248,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     const p = new URLSearchParams();
     if (params.q) p.set("q", params.q);
     if (archive.bbox) p.set("bbox", bboxParam(archive.bbox));
-    if (view !== "list") p.set("view", view);
+    if (viewParam) p.set("view", viewParam);
     return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
   })();
 
@@ -284,12 +270,12 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         bbox={archive.bbox}
         noun={["Brand", "Brands"]}
         title="Businesses"
-        count={isBrowseMode ? undefined : `${businesses.length === 0 && !hasMore ? 0 : `${businesses.length}${hasMore ? "+" : ""}`} business${businesses.length === 1 && !hasMore ? "" : "es"}`}
+        count={`${businesses.length === 0 && !hasMore ? 0 : `${businesses.length}${hasMore ? "+" : ""}`} business${businesses.length === 1 && !hasMore ? "" : "es"}`}
         subtitle="Search Findmi’s directory of local vendors and brands."
         controls={
           <form method="get" className="flex items-center gap-2">
             {archive.bbox && <input type="hidden" name="bbox" value={bboxParam(archive.bbox)} />}
-            {view !== "list" && <input type="hidden" name="view" value={view} />}
+            {viewParam && <input type="hidden" name="view" value={viewParam} />}
             {params.market && <input type="hidden" name="market" value={params.market} />}
             {params.market && params.area && <input type="hidden" name="area" value={params.area} />}
             {sort !== "recommended" && <input type="hidden" name="sort" value={sort} />}
@@ -315,36 +301,17 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         }
         chips={chips.length > 0 ? <ActiveFilterChips chips={chips} clearHref="/businesses" /> : null}
       >
-      {isBrowseMode ? (
-        <div className="-mx-4 mt-3 sm:-mx-6">
-          {featuredBusinesses.length === 0 && categoryRails.length === 0 ? (
-            <div className="mx-4 mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center sm:mx-6">
-              <p className="text-sm text-ink/60">
-                No businesses yet{marketAreaLabel ? ` in ${marketAreaLabel}` : ""}. Check back soon.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Business Directory Visual Rhythm pass — compact category
-                  chip strip, same bounded category set the rails below
-                  already resolved (never the full taxonomy, never a
-                  second query). Preserves market/area via the same
-                  buildBusinessesHref helper the rail View All links use;
-                  picking one always lands in the existing Results Mode —
-                  no new filtering logic. "All" just re-lands on this same
-                  Browse Mode view (market/area only, no category). */}
-              {categoryRails.length > 0 && (
+      {/* Unrefined visit: category entry points + Featured on Findmi above
+          the result set. Curation never replaces the result set — List and
+          Map are always the same Brands (see lib/archive-params). */}
+      {isBrowseMode && (chipCategories.length > 0 || featuredBusinesses.length > 0) && (
+        <div className="-mx-4 mt-1 sm:-mx-6">
+              {chipCategories.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto px-4 pb-1 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <Link
-                    href={buildBusinessesHref({ market: marketSlug, area: areaSlug })}
-                    className="shrink-0 whitespace-nowrap rounded-full border border-findmi/30 bg-findmi-50 px-3.5 py-1.5 text-xs font-semibold text-findmi-700"
-                  >
-                    All
-                  </Link>
-                  {categoryRails.map(({ category }) => (
+                  {chipCategories.map((category) => (
                     <Link
                       key={category.id}
-                      href={buildBusinessesHref({ category: category.slug, market: marketSlug, area: areaSlug })}
+                      href={buildBusinessesHref({ category: category.slug, market: marketSlug, area: areaSlug, view: viewParam ?? undefined })}
                       className="shrink-0 whitespace-nowrap rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-xs font-semibold text-ink transition hover:border-findmi/40 hover:bg-findmi-50 hover:text-findmi-700"
                     >
                       {category.name}
@@ -354,24 +321,9 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
               )}
 
               {featuredBusinesses.length > 0 && (
-                // Featured on Findmi — the active promotional subset (see
-                // FEATURED_RAIL_LIMIT's own note above), not the plain
-                // editorial is_featured flag /businesses?featured=1 shows.
-                // No View All: that destination is editorial-only (every
-                // is_featured business regardless of schedule), a
-                // different set than this rail — see Section 4 of this
-                // pass's own spec. Rather than imply they're the same
-                // list, or change /businesses?featured=1's own meaning,
-                // this rail simply has no View All link.
                 <Section title="Featured on Findmi" subtitle="Businesses Findmi is spotlighting right now" className="py-4">
                   <HorizontalScroller>
                     {featuredBusinesses.map((b) => (
-                      // Businesses Discovery Density pass — same BusinessLogoCard,
-                      // same rail, only the wrapper width narrowed (80vw -> ~62vw):
-                      // Featured is allowed a little more visual prominence than
-                      // an ordinary category rail, but 80vw showed only ~1 card at
-                      // a time on mobile; this is the minimum correction to make
-                      // horizontal browsing obvious without redesigning the card.
                       <div key={b.id} className="w-[62vw] max-w-[280px] shrink-0 sm:w-72">
                         <BusinessLogoCard
                           business={b}
@@ -385,36 +337,10 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                   </HorizontalScroller>
                 </Section>
               )}
-
-              {categoryRails.map(({ category, businesses: categoryBusinesses }) => (
-                <Section
-                  key={category.id}
-                  title={category.name}
-                  viewAllHref={buildBusinessesHref({ category: category.slug, market: marketSlug, area: areaSlug })}
-                  className="py-4"
-                >
-                  <HorizontalScroller>
-                    {categoryBusinesses.map((b) => (
-                      // Businesses Discovery Density pass — the new compact,
-                      // image-forward "rail" variant of BusinessDiscoveryCard,
-                      // sized to land ~2.0-2.4 cards visible at 360-430px
-                      // (BusinessLogoCard's own 80vw showed only ~1 at a time).
-                      <div key={b.id} className="w-[42vw] max-w-[170px] shrink-0 sm:w-44">
-                        <BusinessDiscoveryCard
-                          business={b}
-                          variant="rail"
-                          nextAppearance={browseAppearanceHints.get(b.id)}
-                          analyticsContext={{ pageType: "businesses", placement: `category_rail:${category.slug}` }}
-                        />
-                      </div>
-                    ))}
-                  </HorizontalScroller>
-                </Section>
-              ))}
-            </>
-          )}
         </div>
-      ) : (
+      )}
+      {isBrowseMode && <h2 className="mt-2 font-display text-lg font-bold tracking-tight text-ink">All Brands</h2>}
+      {
         <div>
           {/* Businesses Discovery V4, item 5 — compact and subordinate:
               tighter top margin (was mt-5, its own clear break from the
@@ -467,7 +393,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
             </>
           )}
         </div>
-      )}
+      }
       </ArchiveGeoShell>
       </div>
     </div>
@@ -478,10 +404,11 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
  * via the exact same /businesses?market=...&area=...&category=...
  * convention Results Mode's own chips/filters already use, landing the
  * consumer in Results Mode for that scope. */
-function buildBusinessesHref(params: { category?: string; market?: string; area?: string }): string {
+function buildBusinessesHref(params: { category?: string; market?: string; area?: string; view?: string }): string {
   const p = new URLSearchParams();
   if (params.category) p.set("category", params.category);
   if (params.market) p.set("market", params.market);
   if (params.market && params.area) p.set("area", params.area);
+  if (params.view) p.set("view", params.view);
   return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
 }

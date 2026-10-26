@@ -6,21 +6,23 @@ import { useEffect, useState } from "react";
  * from the Event page's Upcoming Dates (clean four-tile Cards icon, List
  * icon, pale-aqua active state, accessible labels). Used by Event Upcoming
  * Dates and Business Findmi Here. */
-export type EntityView = "cards" | "list";
+export type EntityView = "cards" | "list" | "map";
 
 /** Per-device view preference. SSR and first paint always use `fallback`;
  * a stored choice applies after mount, so it never blocks rendering. All
  * storage access is guarded — it can be unavailable. */
-export function useStoredView(storageKey: string, fallback: EntityView = "cards") {
+export function useStoredView(storageKey: string, fallback: EntityView = "cards", allowed: readonly EntityView[] = ["cards", "list"]) {
   const [view, setView] = useState<EntityView>(fallback);
+  const allowedKey = allowed.join(",");
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(storageKey);
-      if (stored === "cards" || stored === "list") setView(stored);
+      // A stored Map choice only applies where this section offers Map.
+      if ((stored === "cards" || stored === "list" || stored === "map") && allowedKey.split(",").includes(stored)) setView(stored);
     } catch {
       // Storage unavailable — keep the default.
     }
-  }, [storageKey]);
+  }, [storageKey, allowedKey]);
   function choose(next: EntityView) {
     setView(next);
     try {
@@ -36,10 +38,13 @@ export default function ViewToggle({
   view,
   onChange,
   label = "Show as",
+  modes = ["cards", "list"],
 }: {
   view: EntityView;
   onChange: (next: EntityView) => void;
   label?: string;
+  /** Map is offered only where the section's own data can be mapped. */
+  modes?: readonly EntityView[];
 }) {
   // Event Compact Essentials pass — visible words (CARDS | LIST), not tiny
   // unlabeled icons: a ~110px segmented control, pale-aqua selected side.
@@ -49,8 +54,9 @@ export default function ViewToggle({
         [
           { mode: "cards" as const, text: "Cards" },
           { mode: "list" as const, text: "List" },
+          { mode: "map" as const, text: "Map" },
         ]
-      ).map(({ mode, text }) => (
+      ).filter(({ mode }) => modes.includes(mode)).map(({ mode, text }) => (
         <button
           key={mode}
           type="button"

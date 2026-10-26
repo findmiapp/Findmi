@@ -19,7 +19,21 @@ const DiscoveryMapCanvas = dynamic(() => import("./DiscoveryMapCanvas"), {
   loading: () => <div className="h-full w-full bg-[#eef0ef]" />,
 });
 
-export default function ContextMap({ results, label, tall = false, listPlaces = true }: { results: GeoResult[]; label: string; tall?: boolean; listPlaces?: boolean }) {
+export default function ContextMap({
+  results,
+  label,
+  tall = false,
+  listPlaces = true,
+  onResult,
+}: {
+  results: GeoResult[];
+  label: string;
+  tall?: boolean;
+  listPlaces?: boolean;
+  /** A section that owns its own detail view (a schedule's quick view)
+   * opens it from the selected marker's cards; View still links out. */
+  onResult?: (result: GeoResult) => void;
+}) {
   const holder = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -60,7 +74,7 @@ export default function ContextMap({ results, label, tall = false, listPlaces = 
   return (
     <div data-context-map className="flex flex-col gap-2">
       <div ref={holder} className={`relative overflow-hidden rounded-2xl border border-black/5 bg-[#eef0ef] ${tall ? "h-64 sm:h-80" : "h-40 sm:h-48"}`}>
-        {visible && <DiscoveryMapCanvas features={features} selectedId={selected} onSelect={setSelected} onViewportChange={() => undefined} initialBbox={bbox} cooperativeGestures label={label} />}
+        {visible && <DiscoveryMapCanvas features={features} selectedId={selected} onSelect={setSelected} onViewportChange={() => undefined} initialBbox={bbox} cooperativeGestures autoCollapseAttribution label={label} />}
         <Link href={mapHref} className="absolute right-2 top-2 z-10 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm hover:border-black/20">
           View On Map
         </Link>
@@ -68,7 +82,7 @@ export default function ContextMap({ results, label, tall = false, listPlaces = 
       {picked.length > 0 && (
         <div className="flex flex-col gap-2">
           {picked.map((r) => (
-            <GeoResultCard key={r.key} result={r} compact />
+            <GeoResultCard key={r.key} result={r} compact onSelect={onResult} />
           ))}
         </div>
       )}

@@ -238,7 +238,7 @@ test("Map → List keeps context: the place selected on the Map is brought into 
   const listBtn = [...sheet(a.host).querySelectorAll("button")].find((b) => b.textContent.trim() === "List");
   globalThis.__scrolledTo = null;
   await act(async () => listBtn.click());
-  assert.equal(a.pushes.at(-1), "/events", "List is the default (never written)");
+  assert.equal(a.pushes.at(-1), "/events?view=list", "an explicit List — Map-first is only a fresh visit's default");
   await a.render("list");
   await settle();
   assert.equal(globalThis.__scrolledTo, "ev:tabli");
