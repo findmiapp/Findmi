@@ -80,7 +80,7 @@ test("migration: integrity — only kind='event_format' can be linked; Formats a
   // from its parent's, so no Format can be a parent either (a child would
   // have to be an event_format, which can't have a parent).
   const files = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.at(-1), "20261115000000_location_geocode_automation.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1, Brand Intelligence V1.1, Brand Intelligence V1.2, Discovery Intelligence V1, Canonical Entity Geography) */);
+  assert.equal(files.at(-1), "20261116000000_taxonomy_v2_foundation.sql" /* later passes (… Event date/time precision, Identity & Authorship V1, Brand Audit V1, Brand Intelligence V1.1, Brand Intelligence V1.2, Discovery Intelligence V1, Canonical Entity Geography) */);
 });
 
 // ── PERSISTENCE ───────────────────────────────────────────────────────────

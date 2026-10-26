@@ -400,6 +400,7 @@ test("regression: P3/P4 import semantics unchanged — one logo/cover URL per pr
   // No migration for this pass: nothing after Phase 0B touches Brand
   // Import or Business media (later migrations are unrelated features).
   for (const f of migrations.filter((f) => f > "20261012020000_business_select_privacy_boundary.sql")) {
-    assert.doesNotMatch(read(join("supabase/migrations", f)).replace(/--.*$/gm, ""), /brand_import|logo_url|cover_image_url|alter table (public\.)?businesses/i, f);
+    // (Taxonomy V2 Pass 1's businesses.business_models column is unrelated to media — allowed by name.)
+    assert.doesNotMatch(read(join("supabase/migrations", f)).replace(/--.*$/gm, "").replace(/alter table public\.businesses add (column if not exists business_models|constraint businesses_business_models_check)[^;]*;/g, ""), /brand_import|logo_url|cover_image_url|alter table (public\.)?businesses/i, f);
   }
 });

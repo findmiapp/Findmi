@@ -678,7 +678,10 @@ test("no schema migration for P4 (later, unrelated migrations never touch Brand 
   const PHASE_0B = "20261012020000_business_select_privacy_boundary.sql";
   assert.ok(files.includes(PHASE_0B));
   for (const f of files.filter((f) => f > PHASE_0B)) {
-    const sql = read(join("supabase/migrations", f)).replace(/--.*$/gm, "");
+    // Taxonomy V2 Pass 1 adds one unrelated classification column
+    // (businesses.business_models) — allowed by name; anything else on
+    // businesses, Brand Import or media still fails.
+    const sql = read(join("supabase/migrations", f)).replace(/--.*$/gm, "").replace(/alter table public\.businesses add (column if not exists business_models|constraint businesses_business_models_check)[^;]*;/g, "");
     assert.doesNotMatch(sql, /brand_import|public\.businesses\s*(add|alter|drop)|alter table (public\.)?businesses/i, f);
   }
 });

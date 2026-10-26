@@ -112,5 +112,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261115000000_location_geocode_automation.sql");
+  assert.equal(files.at(-1), "20261116000000_taxonomy_v2_foundation.sql");
 });
