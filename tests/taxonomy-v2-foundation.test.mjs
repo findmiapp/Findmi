@@ -278,9 +278,13 @@ test("no accidental activation: nothing in the app reads V2 tables or imports th
   };
   walk(join(ROOT, "src"));
   const V2_TABLES = /from\("(taxonomy_terms|topics|(business|location|event|product|appearance|category)_topics|taxonomy_aliases|location_categories|location_hours[a-z_]*|attribute_definitions|attribute_definition_categories|event_type_assignments|event_mechanic_assignments|taxonomy_legacy_mappings|classification_suggestions|classification_field_sources)"\)/;
+  // Pass 3B: the internal, server-only compatibility layer in src/lib/taxonomy
+  // reads V2 by design; nothing outside it may (and nothing imports it yet —
+  // see tests/taxonomy-v2-compat.test.mjs).
+  const INTERNAL = join(ROOT, "src", "lib", "taxonomy");
   for (const f of files) {
     const src = readFileSync(f, "utf8");
-    assert.doesNotMatch(src, V2_TABLES, f);
+    if (!f.startsWith(INTERNAL)) assert.doesNotMatch(src, V2_TABLES, f);
     if (!f.endsWith(join("taxonomy", "v2.ts"))) assert.doesNotMatch(src, /lib\/taxonomy\/v2|taxonomy\/v2"/, `${f} imports V2`);
   }
   // V1 discovery still uses its own vocabulary.
