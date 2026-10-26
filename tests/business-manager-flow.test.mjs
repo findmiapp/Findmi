@@ -60,7 +60,7 @@ test("1. managerHref: every destination resolves to its exact Manager URL", () =
     profile: `${base}?tab=profile`,
     "public-actions": `${base}?tab=profile#public-actions`,
     announcement: `${base}?tab=profile#announcement`,
-    gallery: `${base}?tab=profile#gallery`,
+    gallery: `${base}?tab=gallery`,
     "inquiry-settings": `${base}?tab=inquiries`,
     products: `${base}?tab=products`,
     schedule: `${base}?tab=findmi-here&view=upcoming`,
@@ -347,10 +347,12 @@ test("42. no backend terms in More / Quick Actions / Search labels", () => {
 
 // ── 8. Public Profile ──────────────────────────────────────────────────────
 
-test("43. Public Profile is one destination: details, Public Actions, Gallery, Links, Announcement", () => {
+test("43. Public Profile is one destination: details, Public Actions, Links, Announcement; Photos is linked, not embedded", () => {
   assert.match(PAGE, /<nav aria-label="Public Profile sections"/);
-  for (const a of ["#details", "#public-actions", "#gallery", "#links", "#announcement"]) assert.ok(PAGE.includes(`["${a}", `), a);
-  for (const id of ['Panel id="details"', 'Panel id="gallery"', 'Panel id="links"', 'id="announcement"']) assert.ok(PAGE.includes(id), id);
+  for (const a of ["#details", "#public-actions", "#links", "#announcement"]) assert.ok(PAGE.includes(`["${a}", `), a);
+  for (const id of ['Panel id="details"', 'Panel id="links"', 'id="announcement"']) assert.ok(PAGE.includes(id), id);
+  assert.ok(!PAGE.includes('["#gallery", ') && !PAGE.includes('Panel id="gallery"'), "the gallery is no longer a Profile section");
+  assert.match(PAGE, /<Link href=\{managerHref\(id, "gallery"\)\}[^>]*>\s*Photos/, "Profile's Photos entry opens the Photos destination");
 });
 
 test("44. Panel takes an id with a sticky-safe scroll margin", () => {

@@ -538,6 +538,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const findUsFilter = parseAvailabilityFilter({ q: rawSearchParams.fq, status: rawSearchParams.fs, relationship: rawSearchParams.fr, imported: rawSearchParams.fi });
   const onLocations = onFindmiHere && presenceView === "locations";
   const onProfile = activeTab === "profile";
+  const onGallery = activeTab === "gallery";
   const onProducts = activeTab === "products";
   const onSettings = activeTab === "settings";
   const onPerformance = activeTab === "performance";
@@ -1346,8 +1347,23 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // Growth's one-line Targets status (two head counts).
   const targetsPursuitPromise = whenP(needsGrowth, () => getTargetPursuit(admin, id), { total: 0, pursuing: 0 });
   const marketsPromise = whenP(onHome || onSettings, loadMarkets, noMarkets);
-  const galleryPromise = rowsWhen(onProfile || onHome, () =>
+  const galleryPromise = rowsWhen(onHome, () =>
     admin.from("business_images").select("url").eq("business_id", id).order("display_order", { ascending: true, nullsFirst: false })
+  );
+  // Photos edits the saved gallery as a whole list (a save replaces it), so
+  // a failed read must never look like an empty gallery: null = couldn't
+  // load, and the Photos view then offers no Save.
+  const photosPromise = whenP(
+    onGallery,
+    async () => {
+      const { data, error: readError } = await admin
+        .from("business_images")
+        .select("url")
+        .eq("business_id", id)
+        .order("display_order", { ascending: true, nullsFirst: false });
+      return readError || !data ? null : data.map((r) => r.url as string);
+    },
+    null as string[] | null
   );
   // Command Center V1 — Home's dashboard view-model resolves the Appearances
   // above (standalone AND Event-linked alike) into one flat, presentation-ready
@@ -1378,7 +1394,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const [
     categories,
     categoryRows,
-    galleryRows,
+    ,
     businessHandle,
     qrByEntity,
     referralPartner,
@@ -1407,8 +1423,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   ] = await Promise.all([
     whenP(onProfile || onProducts, () => getCategories(), [] as Awaited<ReturnType<typeof getCategories>>),
     rowsWhen(onProfile || onHome, () => admin.from("business_categories").select("category_id").eq("business_id", id).order("category_id").limit(1)),
-    // Existing gallery table (business_images) — the Pro-only gallery field
-    // previews it, and Home's cards fall back to it for imagery.
+    // Existing gallery table (business_images) — read for Home, whose cards
+    // fall back to it for imagery (through dashboardPromise above). Photos
+    // reads its own copy (photosPromise).
     galleryPromise,
     whenP(onHome, () => getEntityHandle(admin, "business", id), null as Awaited<ReturnType<typeof getEntityHandle>>),
     whenP(onUpcoming || onProducts, loadQrByEntity, {
@@ -1481,7 +1498,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
-  const galleryImages = galleryRows.map((r) => r.url);
+  const photos = await photosPromise;
   const growthSummary = needsGrowth
     ? growthSummaryFor({
         audit: brandAudit?.available ? brandAudit.summary : null,
@@ -2019,7 +2036,6 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             {[
               ["#details", "Details"],
               ["#public-actions", "Public Actions"],
-              ["#gallery", "Photos"],
               ["#links", "Contact & Links"],
               ["#announcement", "Announcement"],
             ].map(([href, label]) => (
@@ -2027,13 +2043,23 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                 {label}
               </a>
             ))}
+            {/* Photos is its own destination (?tab=gallery), not a section
+                of this page. */}
+            <Link href={managerHref(id, "gallery")} className="flex min-h-10 items-center gap-1 text-accent hover:underline">
+              Photos
+              <ChevronIcon direction="right" className="h-3 w-3" />
+            </Link>
           </nav>
           {/* ?tab=profile&created=1 shows the same confirmation the
               Overview shows (Brand onboarding now completes on Account
               Home — /account?created=<id>, VCL A2). */}
           {created && (
             <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
-              Business created! Add your logo, photos and links below to finish your profile.
+              Business created! Add your logo and links below, and your photos in{" "}
+              <Link href={managerHref(id, "gallery")} className="font-bold underline underline-offset-2">
+                Photos
+              </Link>
+              , to finish your profile.
             </p>
           )}
           <Panel id="details" title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
@@ -2190,27 +2216,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             </div>
           )}
 
-          {/* ── Gallery + Links & Contact (Owner Shell V3 — consolidated
-              into Profile). Free Tier Entitlement Reset V1 — no longer
-              Pro-gated; the UpgradeLockedTab branch that used to cover
-              both for Free is removed. Same MemberGalleryField/
-              updateBusinessGallery and updateBusinessLinks/Announcement
-              forms, both unchanged, now rendered for every business.
-              ──────────────────────────────────────────────────────── */}
-          {/* Business Manager V4 — Gallery and Contact & Links are already
-              two fully separate forms with their own submit actions; at
-              desktop they sit side by side as two distinct cards instead
-              of stacking full-width, real grouping rather than one long
-              scroll — no change to either form's fields or action. */}
-          <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
-            <Panel id="gallery" title="Gallery">
-              <form action={galleryAction} className="flex flex-col gap-4">
-                <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
-                <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
-                  Save Gallery
-                </button>
-              </form>
-            </Panel>
+          {/* ── Contact & Links (Owner Shell V3 — consolidated into Profile).
+              Free Tier Entitlement Reset V1 — no longer Pro-gated. Gallery
+              used to sit beside it here; it is its own Photos destination
+              again (?tab=gallery, below). ─────────────────────────────── */}
+          <div className="lg:max-w-2xl">
             <Panel id="links" title="Contact & Links">
               <form action={linksAction} className="flex flex-col gap-4">
                 <UnsavedChangesGuard />
@@ -2355,6 +2365,37 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               </div>
             </Panel>
           </div>
+          </div>
+        )}
+
+        {/* ── Photos ───────────────────────────────────────────────── */}
+        {/* Photos (?tab=gallery) — the Business gallery as its own
+            destination (it had been a panel inside Public Profile). Same
+            business_images list and updateBusinessGallery save, now with
+            reordering; the save returns here with Saved. or its error. */}
+        {activeTab === "gallery" && (
+          <div className="flex flex-col gap-4 lg:max-w-3xl">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Photos</h1>
+              {business.slug && (
+                <Link href={`/business/${business.slug}`} className="flex min-h-10 items-center gap-1 text-metadata font-bold text-accent hover:underline">
+                  View Public Page
+                  <ChevronIcon direction="right" className="h-3 w-3" />
+                </Link>
+              )}
+            </div>
+            <p className="-mt-2 text-body text-muted">The photo gallery on your public page, in the order shown here.</p>
+            {photos ? (
+              <section aria-label="Photo gallery" className={cardClass}>
+                <form action={galleryAction}>
+                  <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={photos} />
+                </form>
+              </section>
+            ) : (
+              <p className="max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">
+                We couldn&rsquo;t load your photos right now, so editing is paused to keep your gallery safe. Refresh the page to try again.
+              </p>
+            )}
           </div>
         )}
 

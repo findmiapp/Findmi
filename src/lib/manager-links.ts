@@ -53,7 +53,7 @@ export function managerHref(businessId: string, d: ManagerDestination): string {
     case "announcement":
       return `${b}?tab=profile#announcement`;
     case "gallery":
-      return `${b}?tab=profile#gallery`;
+      return `${b}?tab=gallery`;
     case "inquiry-settings":
       return `${b}?tab=inquiries`;
     case "products":

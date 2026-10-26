@@ -63,7 +63,8 @@ test("destination grouping: Growth tabs are one destination, Performance + QR ar
   assert.equal(NAV.canonicalTab(null), "overview");
   assert.equal(NAV.canonicalTab("bogus"), "overview");
   assert.equal(NAV.canonicalTab("referral"), "overview");
-  assert.equal(NAV.canonicalTab("gallery"), "profile");
+  assert.equal(NAV.canonicalTab("gallery"), "gallery");
+  assert.equal(NAV.canonicalTab("links"), "profile");
   assert.equal(NAV.canonicalTab("followers"), "performance");
   assert.equal(NAV.sectionForTab("opportunities"), "growth");
   assert.equal(NAV.sectionForTab("qr"), "performance");

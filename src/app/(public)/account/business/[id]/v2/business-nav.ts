@@ -50,8 +50,8 @@ export function destinationGroup(tab: string | null | undefined): string {
 }
 
 /** Existing tab key -> V2 section. Anything not promoted to primary
- * navigation (Profile, QR, Settings, Inquiries, Orders, Referral) lives
- * under More, so its section highlights there. Pure, so the server shell and
+ * navigation (Profile, Photos, QR, Settings, Inquiries, Orders, Referral)
+ * lives under More, so its section highlights there. Pure, so the server shell and
  * the client navigation share one answer. */
 export function sectionForTab(tab: string): BusinessSection {
   switch (tab) {
@@ -79,7 +79,8 @@ const navLabel = (tab: string): string => BUSINESS_NAV.find((n) => n.tab === tab
 /** Destinations listed in the More menu (everything not in the primary
  * navigation), with their existing labels. */
 export const BUSINESS_MORE_TABS = {
-  profile: { label: "Public Profile", description: "What people see: details, photos, Public Actions and Announcement" },
+  profile: { label: "Public Profile", description: "What people see: details, Public Actions, links and Announcement" },
+  gallery: { label: "Photos", description: "Add, remove and arrange your photo gallery" },
   performance: { label: navLabel("performance"), description: "Views, actions and how people find you" },
   products: { label: "Products", description: "Your catalog, and where each product is available" },
   growth: { label: "Growth", description: "Goals, Targets, Opportunities and Ideas" },
@@ -91,9 +92,10 @@ export const BUSINESS_MORE_TABS = {
 
 /** Old tab key -> new canonical destination. A visit to any of these keys
  * redirects immediately (before the page's heavier data fetching) rather
- * than rendering a second, now-dead copy of content that moved. */
+ * than rendering a second, now-dead copy of content that moved. `gallery`
+ * is NOT here: Photos is its own destination again (it had been folded into
+ * Public Profile, where it was hard to find). */
 export const LEGACY_TAB_REDIRECTS: Record<string, string> = {
-  gallery: "profile",
   links: "profile",
   plan: "settings",
   market: "settings",
@@ -110,6 +112,7 @@ export const VALID_BUSINESS_TAB_KEYS: ReadonlySet<string> = new Set<string>([
   "opportunities",
   "qr",
   "profile",
+  "gallery",
   "orders",
   "settings",
   "inquiries",

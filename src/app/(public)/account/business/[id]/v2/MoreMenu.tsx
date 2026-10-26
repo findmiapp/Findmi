@@ -36,6 +36,7 @@ export default function MoreMenu({
   const to = (d: Parameters<typeof managerHref>[1]) => managerHref(businessId, d);
   const manage: MoreLink[] = [
     { href: to("profile"), label: T.profile.label, description: T.profile.description, icon: <NavIcon name="storefront" className="h-5 w-5" /> },
+    { href: to("gallery"), label: T.gallery.label, description: T.gallery.description, icon: <PhotosGlyph className="h-5 w-5" /> },
     { href: to("products"), label: T.products.label, description: T.products.description, icon: <NavIcon name="tag" className="h-5 w-5" />, desktopHidden: true },
     { href: to("schedule"), label: "Schedule", description: "Your upcoming appearances and Events", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
     { href: to("find-us"), label: "Findmi Here", description: "Where customers can find you, and the places you track", icon: <NavIcon name="pin" className="h-5 w-5" /> },
@@ -113,6 +114,16 @@ function ChatGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
       <path d="M4.5 6.5a2 2 0 012-2h11a2 2 0 012 2v8a2 2 0 01-2 2H10l-4.5 3.5v-3.5h0a2 2 0 01-1-1.7V6.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PhotosGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="9" cy="10" r="1.6" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4 17l5-4.5 3.5 3 3-2.5L20 17" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
     </svg>
   );
 }

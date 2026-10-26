@@ -239,13 +239,18 @@ export default function BusinessHome({
 
       {/* K. Public Profile — a utility row, not an operational section. */}
       <section aria-labelledby="findmi-link" className="border-t border-black/[0.06] pt-4">
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 id="findmi-link" className="text-label font-bold uppercase text-subtle">
             Public Profile Link
           </h2>
-          <Link href={managerHref(businessId, "profile")} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
-            Manage Public Profile
-          </Link>
+          <div className="flex shrink-0 items-baseline gap-4">
+            <Link href={managerHref(businessId, "gallery")} className="text-metadata font-semibold text-accent hover:underline">
+              Photos
+            </Link>
+            <Link href={managerHref(businessId, "profile")} className="text-metadata font-semibold text-accent hover:underline">
+              Manage Public Profile
+            </Link>
+          </div>
         </div>
         <div className="mt-1.5">
           <FindmiUrlCard entityType="business" entityId={businessId} entityLabel={businessName} currentHandle={businessHandle} action={updateHandleAction} compact />

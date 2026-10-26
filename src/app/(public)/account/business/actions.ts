@@ -407,28 +407,63 @@ export async function updateBusinessLinks(businessId: string, formData: FormData
 }
 
 /**
- * Gallery tab save — Free Tier Entitlement Reset V1: no longer Pro
- * only. Reuses the exact same business_images table and
- * delete-then-reinsert-on-save shape the original combined action (and
- * admin's saveBusiness) already used — current config, not economic
- * history, so a wholesale replace on every save is correct. Existing
- * upload validation/storage rules (see uploadMemberBusinessImage) are
- * unchanged — only the plan gate on saving the gallery list itself is
- * removed.
+ * Photos (Gallery) save — replaces this Business's business_images list with
+ * the submitted one, in submitted order (display_order 0..n-1). Free Tier
+ * Entitlement Reset V1: no plan gate. Upload validation/storage rules (see
+ * uploadMemberBusinessImage) are unchanged.
+ *
+ * Failure safety, without a transaction (no RPC or migration in this pass):
+ * the new rows are INSERTED FIRST, in one statement (all or nothing), and
+ * only then are the Business's other rows deleted, in one statement. So:
+ *   - insert fails  -> nothing changed; the previous gallery stands.
+ *   - delete fails  -> the rows just inserted are removed again, so the
+ *                      previous gallery stands; if even that clean-up
+ *                      fails, the owner is told the gallery needs checking.
+ * Every failure returns to Photos with ?error= and never ?saved=1, and the
+ * owner's unsaved edits stay on screen (MemberGalleryField). What remains
+ * non-atomic: between the two statements readers can briefly see old and
+ * new rows together, and a crash between them can leave both until the
+ * next save, which replaces them. True atomicity needs a database
+ * transaction (an RPC), which this pass deliberately doesn't add.
  */
+const GALLERY_NOT_SAVED = "Your photos weren't saved — your gallery is unchanged. Please try again.";
+const GALLERY_NEEDS_CHECK = "Your photos weren't saved, and your gallery may show some photos twice. Please save again.";
+
 export async function updateBusinessGallery(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=gallery`;
   const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
+  const fail = (message: string): never => redirect(appendQuery(redirectPath, { error: message }));
 
   const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
-  await admin.from("business_images").delete().eq("business_id", businessId);
+
+  let insertedIds: string[] = [];
   if (galleryUrls.length > 0) {
-    await admin
+    const { data: inserted, error: insertError } = await admin
       .from("business_images")
-      .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })));
+      .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })))
+      .select("id");
+    if (insertError || !inserted || inserted.length !== galleryUrls.length) {
+      // One statement: on error nothing was inserted. A short result
+      // without an error shouldn't happen; undo whatever did land.
+      if (!insertError && inserted?.length) {
+        await admin.from("business_images").delete().in("id", inserted.map((r) => r.id as string));
+      }
+      fail(GALLERY_NOT_SAVED);
+    }
+    insertedIds = inserted!.map((r) => r.id as string);
   }
 
-  revalidatePath(redirectPath);
+  // Everything of this Business's gallery that isn't the list just saved.
+  let removeOld = admin.from("business_images").delete().eq("business_id", businessId);
+  if (insertedIds.length > 0) removeOld = removeOld.not("id", "in", `(${insertedIds.join(",")})`);
+  const { error: deleteError } = await removeOld;
+  if (deleteError) {
+    if (insertedIds.length === 0) fail(GALLERY_NOT_SAVED);
+    const { error: undoError } = await admin.from("business_images").delete().in("id", insertedIds);
+    fail(undoError ? GALLERY_NEEDS_CHECK : GALLERY_NOT_SAVED);
+  }
+
+  revalidatePath(`/account/business/${businessId}`);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }
