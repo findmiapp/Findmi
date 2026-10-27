@@ -29,7 +29,7 @@ import {
   getUpcomingEvents,
 } from "@/lib/data";
 import { getPublishedHomepageBulletins } from "@/lib/homepage-bulletins";
-import { findPrimaryBusinessesRowId, getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
+import { findPrimaryBusinessesRowId, getVisibleHomepageRows, isLegacyFeedRow, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import {
   getSiteSections,
   resolveHeroImageSlots,
@@ -105,7 +105,7 @@ export default async function HomePage({
   // applyOccurrenceOverride, getBusinessesForEvent,
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
-  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletins, momentFeed] = await Promise.all([
+  const [nextRaw, heroFallbackBrands, allHomepageRows, siteSections, markets, featuredLocations, bulletins, momentFeed] = await Promise.all([
     getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
@@ -117,6 +117,12 @@ export default async function HomePage({
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
+
+  // Pages + Sections V1A safety guard — the homepage's legacy paths (the
+  // Brands row, the products rail, the "other rows" loop) only ever see
+  // feed rows of a known content type. A future Section type, or a Group,
+  // never reaches them (fail closed — nothing renders, nothing is guessed).
+  const homepageRows = allHomepageRows.filter(isLegacyFeedRow);
 
   // Homepage Appearance Eligibility pass — resolved BEFORE resolvedRows so
   // the one row it identifies can require a qualifying current/upcoming

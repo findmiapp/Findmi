@@ -1,12 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckboxField, TextField, TextareaField } from "@/components/admin/Fields";
+import { TextField, TextareaField } from "@/components/admin/Fields";
+import ImageField from "@/components/admin/ImageField";
+import { guidePath } from "@/lib/guides";
 import DiscoverySectionCard from "@/components/admin/DiscoverySectionCard";
 import DiscoverySectionMovePanel from "@/components/admin/DiscoverySectionMovePanel";
 import { getAllCategories, getCuratedItemPreviews } from "@/lib/admin/queries";
 import { getAdminDiscoveryPage } from "@/lib/discovery-pages";
 import { getAdminHomepageRows, type HomepageRow } from "@/lib/homepage-rows";
-import { createSection, deleteDiscoveryPage, deleteSection, saveDiscoveryPage, saveSection } from "../actions";
+import { createSection, deleteDiscoveryPage, deleteSection, saveDiscoveryPage, saveSection, setDiscoveryPagePublished } from "../actions";
+
+const SAVED_MESSAGES: Record<string, string> = {
+  created: "Section added — configure it below.",
+  page_created: "Page created — add its details and Sections, then preview it.",
+  published: "Published — the Page is now public.",
+  unpublished: "Unpublished — the Page is a draft again and no longer public.",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -99,7 +108,7 @@ export default async function DiscoveryPageEditor({
     <div>
       <div className="flex items-center gap-2 text-sm text-ink/45">
         <Link href="/admin/site/pages" className="hover:underline">
-          Discovery Pages
+          Pages
         </Link>
         <span>/</span>
         <span>{page.internal_name}</span>
@@ -111,26 +120,75 @@ export default async function DiscoveryPageEditor({
       )}
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          {saved === "created" ? "Section added — configure it below." : "Saved."}
+          {SAVED_MESSAGES[saved] ?? "Saved."}
         </p>
       )}
 
-      {/* Page Settings */}
+      {/* Page status + publication (normal Pages) */}
+      {!page.is_system && (
+        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-black/10 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+              Status
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                  page.is_published ? "bg-findmi-50 text-findmi-700" : "bg-black/5 text-ink/50"
+                }`}
+              >
+                {page.is_published ? "Published" : "Draft"}
+              </span>
+            </p>
+            <p className="mt-1 break-all text-xs text-ink/50">
+              {page.is_published ? (
+                <>
+                  Public at{" "}
+                  <Link href={guidePath(page.slug)} className="font-semibold text-findmi-700 hover:underline">
+                    {guidePath(page.slug)}
+                  </Link>
+                </>
+              ) : (
+                <>Not public. Once published: {guidePath(page.slug)}</>
+              )}
+              {page.published_at && <> · First published {new Date(page.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</>}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/admin/site/pages/${page.id}/preview`}
+              className="inline-flex min-h-10 items-center rounded-full border border-black/15 px-4 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+            >
+              Preview
+            </Link>
+            <form action={setDiscoveryPagePublished.bind(null, page.id, !page.is_published)}>
+              <button
+                type="submit"
+                className={`inline-flex min-h-10 items-center rounded-full px-4 text-xs font-bold uppercase tracking-wide transition ${
+                  page.is_published ? "border border-red-200 text-red-700 hover:border-red-300" : "bg-findmi text-white hover:bg-findmi-600"
+                }`}
+              >
+                {page.is_published ? "Unpublish" : "Publish"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Page Details */}
       <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
-        <p className="font-display text-sm font-semibold tracking-tight text-ink">Page Settings</p>
+        <p className="font-display text-sm font-semibold tracking-tight text-ink">Page Details</p>
         {page.is_system ? (
           <p className="mt-1 text-xs text-ink/45">
             System page — route <code className="rounded bg-black/5 px-1 py-0.5">/</code>, always published,
             can&rsquo;t be deleted or moved off its route.
           </p>
         ) : (
-          <p className="mt-1 text-xs text-ink/45">No public route yet (Phase 3) — safe to configure freely.</p>
+          <p className="mt-1 text-xs text-ink/45">Saving never publishes or unpublishes — use Publish / Unpublish above.</p>
         )}
 
         <form action={saveDiscoveryPage.bind(null, page.id, page.is_system)} className="mt-3 flex flex-col gap-3">
-          <TextField label="Internal name" name="internal_name" defaultValue={page.internal_name} required />
-          <TextField label="Public title" name="title" defaultValue={page.title} required />
-          <TextareaField label="Description" name="description" defaultValue={page.description} rows={2} />
+          <TextField label="Internal Name" name="internal_name" defaultValue={page.internal_name} required hint="Only shown in Admin." />
+          <TextField label="Title" name="title" defaultValue={page.title} required />
+          <TextareaField label="Description" name="description" defaultValue={page.description} rows={3} />
 
           {page.is_system ? (
             <p className="rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 text-xs text-ink/50">
@@ -138,13 +196,27 @@ export default async function DiscoveryPageEditor({
             </p>
           ) : (
             <>
-              <TextField label="Slug" name="slug" defaultValue={page.slug} />
-              <CheckboxField
-                label="Published"
-                name="is_published"
-                defaultChecked={page.is_published}
-                hint="No public route reads this yet in Phase 1 — it only gates whether this page's visible sections could ever be publicly readable."
-              />
+              <TextField label="Slug" name="slug" defaultValue={page.slug} hint={`Public address: ${guidePath(page.slug)}`} />
+
+              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Hero</p>
+              <ImageField label="Hero Image" name="hero_image_url" defaultValue={page.hero_image_url} />
+              <TextField label="Hero Image Alt Text" name="hero_image_alt" defaultValue={page.hero_image_alt} hint="Describes the image for screen readers." />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField label="CTA Label" name="cta_label" defaultValue={page.cta_label} placeholder="e.g. Get Race Info" />
+                <TextField label="CTA Destination" name="cta_url" defaultValue={page.cta_url} placeholder="https://… or /events" hint="https:// link or a Findmi path starting with /." />
+              </div>
+
+              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Coverage Dates</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField label="Starts" name="starts_on" type="date" defaultValue={page.starts_on} />
+                <TextField label="Ends" name="ends_on" type="date" defaultValue={page.ends_on} />
+              </div>
+              <p className="-mt-1 text-xs text-ink/45">Shown on the Guide. Dates never publish or unpublish it; after the end date it stays public, marked as a past Guide.</p>
+
+              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Search &amp; Sharing</p>
+              <TextField label="SEO Title" name="seo_title" defaultValue={page.seo_title} hint="Defaults to the Title." />
+              <TextareaField label="SEO Description" name="seo_description" defaultValue={page.seo_description} rows={2} />
+              <ImageField label="Share Image" name="og_image_url" defaultValue={page.og_image_url} />
             </>
           )}
 
@@ -156,9 +228,9 @@ export default async function DiscoveryPageEditor({
 
           <button
             type="submit"
-            className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            className="self-start rounded-full bg-ink px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-ink/85"
           >
-            Save Settings
+            Save Page
           </button>
         </form>
 
@@ -194,7 +266,7 @@ export default async function DiscoveryPageEditor({
       )}
 
       <div className="mt-6 rounded-2xl border border-dashed border-black/15 bg-black/[0.015] p-4">
-        <p className="text-sm font-semibold text-ink">Add a section</p>
+        <p className="text-sm font-semibold text-ink">Add A Section</p>
         <form action={createSection.bind(null, pageId)} className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
             <TextField label="Heading" name="title" placeholder="e.g. Happening This Weekend" />

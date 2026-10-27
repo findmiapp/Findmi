@@ -24,6 +24,21 @@ export interface DiscoveryPage {
   category_slug: string | null;
   market_slug: string | null;
   area_slug: string | null;
+  /** Pages + Sections V1A — public Guide fields (migration
+   * discovery_pages_guides_v1a). Optional in the type so code reading a row
+   * from before that migration still type-checks; null when unset. */
+  hero_image_url?: string | null;
+  hero_image_alt?: string | null;
+  cta_label?: string | null;
+  cta_url?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  og_image_url?: string | null;
+  /** Editorial coverage dates (YYYY-MM-DD) — never publish / unpublish. */
+  starts_on?: string | null;
+  ends_on?: string | null;
+  /** Set when the Page is first published. */
+  published_at?: string | null;
   created_at: string;
   updated_at: string;
 }

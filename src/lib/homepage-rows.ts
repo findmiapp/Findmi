@@ -35,6 +35,7 @@ import {
   type FeaturedProduct,
 } from "./data";
 import type { BusinessWithCategories, EventWithCategories, FindmiEvent } from "./types";
+import { isLegacyFeedRow } from "./section-types";
 
 export type HomepageRowContentType = "businesses" | "events" | "products" | "business_showcase";
 export type HomepageRowMode = "dynamic" | "curated" | "hybrid";
@@ -44,6 +45,10 @@ export type HomepageRowTimeWindow = "now" | "weekend" | "anytime";
  * level of child feed sections — never itself a feed, never nested under
  * another group (enforced by DB trigger, see the migration). */
 export type HomepageRowSectionType = "feed" | "group";
+
+// Pages + Sections V1A — the fail-closed rule every legacy path uses (see
+// lib/section-types.ts): only a feed row of a known content type resolves.
+export { LEGACY_FEED_CONTENT_TYPES, isLegacyFeedRow } from "./section-types";
 
 export interface HomepageRow {
   id: string;
@@ -151,7 +156,7 @@ export async function getVisibleHomepageRows(pageId?: string): Promise<HomepageR
  * is never "primary" and stays a plain editorial/dynamic feed, unaffected. */
 export function findPrimaryBusinessesRowId(rows: HomepageRow[]): string | null {
   const candidates = rows
-    .filter((r) => r.is_visible && r.parent_id === null && r.content_type === "businesses")
+    .filter((r) => r.is_visible && r.parent_id === null && isLegacyFeedRow(r) && r.content_type === "businesses")
     .sort((a, b) => a.sort_order - b.sort_order);
   return candidates[0]?.id ?? null;
 }
@@ -174,7 +179,10 @@ export type ResolvedHomepageRow =
   /** A Group section has no content of its own — its children (resolved
    * separately by the caller, one resolveHomepageRowItems call per child)
    * are the content. See the doc comment on this function. */
-  | { contentType: "group"; items: [] };
+  | { contentType: "group"; items: [] }
+  /** Any row that isn't a known feed — a future Section type or an
+   * unexpected value. Resolves to nothing; renderers skip it. */
+  | { contentType: "unsupported"; items: [] };
 
 /** Turns one row's configuration into real content. Dynamic mode calls the
  * same shared query functions every other feed on the site uses (with the
@@ -233,6 +241,12 @@ export async function resolveHomepageRowItems(
     return { contentType: "group", items: [] };
   }
 
+  // Fail closed: only a feed row of a known content type is resolved —
+  // never let an unknown type fall through to the products branch below.
+  if (!isLegacyFeedRow(row)) {
+    return { contentType: "unsupported", items: [] };
+  }
+
   if (row.content_type === "business_showcase") {
     return { contentType: "business_showcase", items: [] };
   }
@@ -271,8 +285,9 @@ export async function resolveHomepageRowItems(
     return { contentType: "events", items };
   }
 
-  // products (the only remaining content_type; content_type is guaranteed
-  // non-null here since section_type "group" already returned above)
+  if (row.content_type !== "products") {
+    return { contentType: "unsupported", items: [] };
+  }
   const items =
     row.mode === "curated"
       ? await getProductsByIds(row.curated_ids)

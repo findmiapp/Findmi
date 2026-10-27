@@ -26,14 +26,14 @@ export default async function DiscoveryPagesListPage({
           Site Editor
         </Link>
         <span>/</span>
-        <span>Discovery Pages</span>
+        <span>Pages</span>
       </div>
-      <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Discovery Pages</h1>
+      <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Pages</h1>
       <p className="mt-1 max-w-xl text-sm text-ink/50">
-        The canonical Page + Section foundation (Phase 1). Homepage is the reserved system page — it
-        always renders at <code className="rounded bg-black/5 px-1 py-0.5">/</code> and can&rsquo;t be
-        unpublished or deleted. Any other page you create here starts unpublished — it has no public
-        route yet.
+        Guides and other editorial Pages, built from Sections. A published Page is public at{" "}
+        <code className="rounded bg-black/5 px-1 py-0.5">/guides/your-slug</code>. New Pages start as drafts.
+        Homepage is the reserved system page — it always renders at{" "}
+        <code className="rounded bg-black/5 px-1 py-0.5">/</code> and can&rsquo;t be unpublished or deleted.
       </p>
 
       {error && (
@@ -41,7 +41,7 @@ export default async function DiscoveryPagesListPage({
       )}
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          {saved === "created" ? "Page created — configure it below." : "Saved."}
+          {saved === "created" || saved === "page_created" ? "Page created — configure it below." : "Saved."}
         </p>
       )}
 
@@ -66,12 +66,12 @@ export default async function DiscoveryPagesListPage({
                       p.is_published ? "bg-findmi-50 text-findmi-700" : "bg-black/5 text-ink/45"
                     }`}
                   >
-                    {p.is_published ? "Published" : "Unpublished"}
+                    {p.is_published ? "Published" : "Draft"}
                   </span>
                 )}
               </span>
               <span className="mt-0.5 block truncate text-xs text-ink/45">
-                {p.is_system ? "Route: /" : `Internal slug: ${p.slug} (no public route yet)`}
+                {p.is_system ? "Route: /" : `/guides/${p.slug}`}
               </span>
             </span>
             <ChevronRightGlyph className="h-4 w-4 shrink-0 text-ink/30" />
@@ -80,9 +80,9 @@ export default async function DiscoveryPagesListPage({
       </div>
 
       <div className="mt-8 rounded-2xl border border-dashed border-black/15 bg-black/[0.015] p-4">
-        <p className="text-sm font-semibold text-ink">Create a page</p>
+        <p className="text-sm font-semibold text-ink">Create A Page</p>
         <p className="mt-1 text-xs text-ink/45">
-          Starts unpublished, for configuring and verifying sections before anything is public.
+          Starts as a draft, so you can add Sections and preview it before anything is public.
         </p>
         <form action={createDiscoveryPage} className="mt-3 flex flex-col gap-3">
           <TextField label="Internal name" name="internal_name" placeholder="e.g. Food Trucks Test Page" required />
@@ -91,7 +91,7 @@ export default async function DiscoveryPagesListPage({
             label="Slug (optional)"
             name="slug"
             placeholder="Defaults from the internal name"
-            hint="Internal identifier only in Phase 1 — no public route reads it yet."
+            hint="The public address once published: /guides/your-slug."
           />
           <TextareaField label="Description (optional)" name="description" rows={2} />
           <div className="grid gap-3 sm:grid-cols-3">

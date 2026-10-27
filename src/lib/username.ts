@@ -16,7 +16,7 @@ const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 const RESERVED_USERNAMES = new Set([
   "about", "account", "accounts", "admin", "administrator", "api", "app",
   "business", "businesses", "cart", "checkout", "claim", "discover",
-  "event", "events", "find", "findmi", "forgot-password", "help", "join",
+  "event", "events", "find", "findmi", "forgot-password", "guide", "guides", "help", "join",
   "location", "locations", "login", "logout", "marketplace", "me",
   "null", "orders", "people", "person", "privacy", "privacy-choices", "product", "products",
   "profile", "redeem", "reset-password", "root", "saved", "settings",

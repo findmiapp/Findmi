@@ -1,6 +1,7 @@
 import { applyLocationDiscoveryFilter } from "@/lib/location-eligibility";
 import type { MetadataRoute } from "next";
 import { getSupabase } from "@/lib/supabase";
+import { guideSitemapEntries, getPublishedGuideSlugs } from "@/lib/guides";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
 
@@ -34,10 +35,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // — publication_status is deliberately NOT a public-visibility gate for
   // Events (see getEventBySlug), and Locations have no publication_status
   // column at all. Same existing rules, not new lifecycle semantics.
-  const [{ data: businesses }, { data: events }, { data: locations }] = await Promise.all([
+  const [{ data: businesses }, { data: events }, { data: locations }, guides] = await Promise.all([
     supabase.from("businesses").select("slug, updated_at").eq("is_demo", false).eq("publication_status", "live"),
     supabase.from("events").select("slug").eq("is_demo", false),
     applyLocationDiscoveryFilter(supabase.from("locations").select("slug")),
+    // Pages + Sections V1A — published, non-system Guide Pages only (drafts
+    // never; RLS also hides them from this anon read).
+    getPublishedGuideSlugs(supabase),
   ]);
 
   const businessRoutes: MetadataRoute.Sitemap = (businesses ?? []).map((b) => ({
@@ -53,5 +57,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     url: `${siteUrl}/location/${l.slug}`,
   }));
 
-  return [...staticRoutes, ...businessRoutes, ...eventRoutes, ...locationRoutes];
+  return [...staticRoutes, ...businessRoutes, ...eventRoutes, ...locationRoutes, ...guideSitemapEntries(guides, siteUrl)];
 }

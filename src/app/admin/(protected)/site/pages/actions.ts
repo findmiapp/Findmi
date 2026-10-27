@@ -12,6 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
+import { recordAdminAudit } from "@/lib/admin/audit";
+import { guidePath, nextPublishedAt, validateGuideDetails } from "@/lib/guides";
 import type { HomepageRowContentType, HomepageRowMode, HomepageRowSectionType, HomepageRowTimeWindow } from "@/lib/homepage-rows";
 
 const LIST_PATH = "/admin/site/pages";
@@ -22,6 +24,30 @@ function pagePath(pageId: string) {
 const CONTENT_TYPES: HomepageRowContentType[] = ["businesses", "events", "products", "business_showcase"];
 const MODES: HomepageRowMode[] = ["dynamic", "curated", "hybrid"];
 const TIME_WINDOWS: HomepageRowTimeWindow[] = ["now", "weekend", "anytime"];
+
+// Pages + Sections V1A — every Page / Section change is recorded in
+// admin_audit_events (shared admin actor; no individual identity). Logging
+// is best-effort and never blocks the change itself.
+async function auditPage(supabase: SupabaseClient, action: string, pageId: string, detail: Record<string, unknown> = {}) {
+  await recordAdminAudit(supabase, { action, actor: { kind: "admin" }, targetType: "discovery_page", targetId: pageId, detail });
+}
+async function auditSection(supabase: SupabaseClient, action: string, sectionId: string, pageId: string, detail: Record<string, unknown> = {}) {
+  await recordAdminAudit(supabase, { action, actor: { kind: "admin" }, targetType: "page_section", targetId: sectionId, detail: { page_id: pageId, ...detail } });
+}
+
+/** Revalidates a Page's editor and its public surfaces. */
+async function revalidatePage(pageId: string, slug?: string | null) {
+  revalidatePath(pagePath(pageId));
+  revalidatePath(LIST_PATH);
+  revalidatePath("/");
+  if (slug) revalidatePath(guidePath(slug));
+  revalidatePath("/sitemap.xml");
+}
+
+async function pageSlug(supabase: SupabaseClient, pageId: string): Promise<string | null> {
+  const { data } = await supabase.from("discovery_pages").select("slug").eq("id", pageId).maybeSingle();
+  return (data as { slug: string } | null)?.slug ?? null;
+}
 
 // ── Discovery Pages ─────────────────────────────────────────────────────
 
@@ -54,15 +80,17 @@ export async function createDiscoveryPage(formData: FormData) {
     .single();
   if (error || !data) redirect(errorRedirectUrl(LIST_PATH, error?.message ?? "Could not create page."));
 
+  await auditPage(supabase, "page_create", data.id, { slug });
   revalidatePath(LIST_PATH);
-  redirect(`${pagePath(data.id)}?saved=created`);
+  redirect(`${pagePath(data.id)}?saved=page_created`);
 }
 
-/** The reserved Homepage system page's slug/publication are intentionally
- * NOT accepted from this form at all (rather than accepted-then-rejected)
- * — the page editor renders them as a read-only "System page" line
- * instead of editable inputs. The DB triggers (see migration
- * discovery_pages_foundation) are the hard backstop either way. */
+/** Saves a Page's details. Publication is NOT part of this form — it
+ * changes only through the explicit Publish / Unpublish actions below, so
+ * saving never publishes or unpublishes anything. The reserved Homepage
+ * system page's slug/publication are never accepted here (the editor shows
+ * them read-only; the DB triggers are the hard backstop), and it has no
+ * Guide fields. */
 export async function saveDiscoveryPage(id: string, isSystem: boolean, formData: FormData) {
   const supabase = await requireAdminSupabase();
 
@@ -76,7 +104,19 @@ export async function saveDiscoveryPage(id: string, isSystem: boolean, formData:
     updated_at: new Date().toISOString(),
   };
   if (!isSystem) {
-    payload.is_published = bool(formData, "is_published");
+    const details = validateGuideDetails({
+      hero_image_url: str(formData, "hero_image_url"),
+      hero_image_alt: str(formData, "hero_image_alt"),
+      cta_label: str(formData, "cta_label"),
+      cta_url: str(formData, "cta_url"),
+      seo_title: str(formData, "seo_title"),
+      seo_description: str(formData, "seo_description"),
+      og_image_url: str(formData, "og_image_url"),
+      starts_on: str(formData, "starts_on"),
+      ends_on: str(formData, "ends_on"),
+    });
+    if (!details.ok) redirect(errorRedirectUrl(pagePath(id), details.error));
+    Object.assign(payload, details.value);
     const slugRaw = str(formData, "slug");
     if (slugRaw) {
       const base = resolveSlugInput(slugRaw, payload.title as string) || "page";
@@ -87,12 +127,36 @@ export async function saveDiscoveryPage(id: string, isSystem: boolean, formData:
     }
   }
 
+  const before = await pageSlug(supabase, id);
   const { error } = await supabase.from("discovery_pages").update(payload).eq("id", id);
   if (error) redirect(errorRedirectUrl(pagePath(id), error.message));
 
-  revalidatePath(pagePath(id));
-  revalidatePath("/");
+  await auditPage(supabase, "page_update", id, { slug: (payload.slug as string | undefined) ?? before });
+  await revalidatePage(id, before);
+  if (payload.slug && payload.slug !== before) revalidatePath(guidePath(payload.slug as string));
   redirect(`${pagePath(id)}?saved=settings`);
+}
+
+/** Publish / Unpublish a normal Page. published_at records the FIRST
+ * publication (kept on unpublish and re-publish). Coverage dates never
+ * publish or unpublish anything. The system Homepage is always published. */
+export async function setDiscoveryPagePublished(id: string, publish: boolean) {
+  const supabase = await requireAdminSupabase();
+  const { data: page } = await supabase.from("discovery_pages").select("id, slug, is_system, is_published, published_at").eq("id", id).maybeSingle();
+  if (!page) redirect(LIST_PATH);
+  if (page.is_system) redirect(errorRedirectUrl(pagePath(id), "The Homepage is a system page and is always published."));
+  if (page.is_published === publish) redirect(`${pagePath(id)}?saved=${publish ? "published" : "unpublished"}`);
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("discovery_pages")
+    .update({ is_published: publish, published_at: nextPublishedAt(page.published_at, publish, now), updated_at: now })
+    .eq("id", id);
+  if (error) redirect(errorRedirectUrl(pagePath(id), error.message));
+
+  await auditPage(supabase, publish ? "page_publish" : "page_unpublish", id, { slug: page.slug });
+  await revalidatePage(id, page.slug);
+  redirect(`${pagePath(id)}?saved=${publish ? "published" : "unpublished"}`);
 }
 
 export async function deleteDiscoveryPage(id: string, isSystem: boolean) {
@@ -108,6 +172,7 @@ export async function deleteDiscoveryPage(id: string, isSystem: boolean) {
     redirect(errorRedirectUrl(pagePath(id), "Delete or move this page's sections first."));
   }
 
+  await auditPage(supabase, "page_delete", id);
   revalidatePath(LIST_PATH);
   revalidatePath("/");
   redirect(LIST_PATH);
@@ -177,31 +242,39 @@ export async function createSection(pageId: string, formData: FormData) {
     .limit(1);
   const nextOrder = (existing?.[0]?.sort_order ?? 0) + 10;
 
-  const { error } = await supabase.from("homepage_rows").insert({
-    page_id: pageId,
-    title,
-    section_type: sectionType,
-    content_type: sectionType === "feed" ? "businesses" : null,
-    mode: "dynamic",
-    is_visible: true,
-    sort_order: nextOrder,
-  });
-  if (error) redirect(errorRedirectUrl(pagePath(pageId), error.message));
+  const { data: created, error } = await supabase
+    .from("homepage_rows")
+    .insert({
+      page_id: pageId,
+      title,
+      section_type: sectionType,
+      content_type: sectionType === "feed" ? "businesses" : null,
+      mode: "dynamic",
+      is_visible: true,
+      sort_order: nextOrder,
+    })
+    .select("id")
+    .single();
+  if (error || !created) redirect(errorRedirectUrl(pagePath(pageId), error?.message ?? "Could not add the section."));
 
-  revalidatePath(pagePath(pageId));
-  revalidatePath("/");
+  await auditSection(supabase, "page_section_create", created.id, pageId, { section_type: sectionType });
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
   redirect(`${pagePath(pageId)}?saved=created`);
 }
 
 export async function saveSection(id: string, pageId: string, formData: FormData) {
   const supabase = await requireAdminSupabase();
   const fields = readSectionFields(formData);
+  const { data: before } = await supabase.from("homepage_rows").select("is_visible").eq("id", id).maybeSingle();
 
   const { error } = await supabase.from("homepage_rows").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) redirect(errorRedirectUrl(pagePath(pageId), error.message));
 
-  revalidatePath(pagePath(pageId));
-  revalidatePath("/");
+  await auditSection(supabase, "page_section_update", id, pageId, { section_type: fields.section_type, content_type: fields.content_type, mode: fields.mode });
+  if (before && before.is_visible !== fields.is_visible) {
+    await auditSection(supabase, fields.is_visible ? "page_section_show" : "page_section_hide", id, pageId);
+  }
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
   redirect(`${pagePath(pageId)}?saved=${id}`);
 }
 
@@ -210,9 +283,10 @@ export async function deleteSection(id: string, pageId: string) {
   // Deleting a Group detaches (never deletes) its children — see the
   // migration's parent_id ON DELETE SET NULL — they simply return to top
   // level, same as an explicit "Return to Top Level" on each of them.
-  await supabase.from("homepage_rows").delete().eq("id", id);
-  revalidatePath(pagePath(pageId));
-  revalidatePath("/");
+  const { error } = await supabase.from("homepage_rows").delete().eq("id", id);
+  if (error) redirect(errorRedirectUrl(pagePath(pageId), error.message));
+  await auditSection(supabase, "page_section_delete", id, pageId);
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
   redirect(pagePath(pageId));
 }
 
@@ -286,45 +360,46 @@ function setPositionIn(ids: string[], id: string, position: number): string[] {
   return next;
 }
 
-async function reorderWithinSiblings(id: string, pageId: string, compute: (ids: string[]) => string[]) {
+async function reorderWithinSiblings(id: string, pageId: string, compute: (ids: string[]) => string[], move: string) {
   const supabase = await requireAdminSupabase();
   const meta = await fetchRowMeta(supabase, id);
   if (!meta) redirect(pagePath(pageId));
 
   const ids = await fetchSiblingIds(supabase, pageId, meta.parent_id);
-  await renumberSiblings(supabase, compute(ids));
+  const next = compute(ids);
+  await renumberSiblings(supabase, next);
 
-  revalidatePath(pagePath(pageId));
-  revalidatePath("/");
+  await auditSection(supabase, "page_section_move", id, pageId, { move, position: next.indexOf(id) + 1 });
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
   redirect(pagePath(pageId));
 }
 
 export async function moveSectionUp(id: string, pageId: string) {
-  await reorderWithinSiblings(id, pageId, (ids) => moveByDelta(ids, id, -1));
+  await reorderWithinSiblings(id, pageId, (ids) => moveByDelta(ids, id, -1), "up");
 }
 export async function moveSectionDown(id: string, pageId: string) {
-  await reorderWithinSiblings(id, pageId, (ids) => moveByDelta(ids, id, 1));
+  await reorderWithinSiblings(id, pageId, (ids) => moveByDelta(ids, id, 1), "down");
 }
 export async function moveSectionTop(id: string, pageId: string) {
-  await reorderWithinSiblings(id, pageId, (ids) => moveToEdge(ids, id, "start"));
+  await reorderWithinSiblings(id, pageId, (ids) => moveToEdge(ids, id, "start"), "top");
 }
 export async function moveSectionBottom(id: string, pageId: string) {
-  await reorderWithinSiblings(id, pageId, (ids) => moveToEdge(ids, id, "end"));
+  await reorderWithinSiblings(id, pageId, (ids) => moveToEdge(ids, id, "end"), "bottom");
 }
 export async function placeSectionBefore(id: string, pageId: string, formData: FormData) {
   const targetId = str(formData, "target_id");
   if (!targetId) redirect(pagePath(pageId));
-  await reorderWithinSiblings(id, pageId, (ids) => placeRelative(ids, id, targetId, "before"));
+  await reorderWithinSiblings(id, pageId, (ids) => placeRelative(ids, id, targetId, "before"), "before");
 }
 export async function placeSectionAfter(id: string, pageId: string, formData: FormData) {
   const targetId = str(formData, "target_id");
   if (!targetId) redirect(pagePath(pageId));
-  await reorderWithinSiblings(id, pageId, (ids) => placeRelative(ids, id, targetId, "after"));
+  await reorderWithinSiblings(id, pageId, (ids) => placeRelative(ids, id, targetId, "after"), "after");
 }
 export async function setSectionPosition(id: string, pageId: string, formData: FormData) {
   const position = num(formData, "position");
   if (position == null) redirect(pagePath(pageId));
-  await reorderWithinSiblings(id, pageId, (ids) => setPositionIn(ids, id, position));
+  await reorderWithinSiblings(id, pageId, (ids) => setPositionIn(ids, id, position), "position");
 }
 
 /** Cross-parent moves: renumbers BOTH the old and new sibling sets — the
@@ -349,8 +424,8 @@ async function moveAcrossParent(id: string, pageId: string, newParentId: string 
   await renumberSiblings(supabase, await fetchSiblingIds(supabase, pageId, oldParentId));
   await renumberSiblings(supabase, await fetchSiblingIds(supabase, pageId, newParentId));
 
-  revalidatePath(pagePath(pageId));
-  revalidatePath("/");
+  await auditSection(supabase, "page_section_move", id, pageId, { move: newParentId ? "into_group" : "to_top_level" });
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
   redirect(pagePath(pageId));
 }
 

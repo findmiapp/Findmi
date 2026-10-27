@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     .select("*")
     .eq("id", rowId)
     .eq("is_visible", true)
+    .eq("section_type", "feed") // Pages + Sections V1A: never a future Section type
     .eq("content_type", "businesses")
     .maybeSingle();
   if (!row) return NextResponse.json({ businesses: [] });
