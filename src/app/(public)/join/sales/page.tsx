@@ -5,7 +5,8 @@ import SubmitButton from "./SubmitButton";
 import ChevronIcon from "@/components/ChevronIcon";
 
 export const metadata: Metadata = {
-  title: "Talk to Findmi Sales",
+  // absolute: already names Findmi; skip the root "%s | Findmi" template.
+  title: { absolute: "Talk to Findmi Sales" },
   robots: { index: false },
 };
 // Anonymous submissions, and the success/error state depends entirely on

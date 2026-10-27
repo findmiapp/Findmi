@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Welcome to Findmi",
+  // absolute: already names Findmi; skip the root "%s | Findmi" template.
+  title: { absolute: "Welcome to Findmi" },
   robots: { index: false },
 };
 // Session-sensitive — must never be statically or ISR-cached.

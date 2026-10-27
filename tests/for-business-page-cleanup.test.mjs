@@ -27,7 +27,7 @@ const CREATE = read("src/app/(public)/account/business/actions.ts");
 
 test("1/2. /join/business still exists and functions as the public For Business landing page", () => {
   assert.match(RAW_PAGE, /export default async function JoinPage/);
-  assert.match(RAW_PAGE, /title: "Findmi for Business"/);
+  assert.match(RAW_PAGE, /title: \{ absolute: "Findmi for Business" \}/);
 });
 
 test("3/4. Contains a clear free Business CTA, and the primary creation CTA reaches the canonical Add A Business flow", () => {

@@ -23,7 +23,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 const PAGE_SIZE = 24;
 
 export const metadata: Metadata = {
-  title: "Findmi Moments",
+  title: "Moments",
   description: "Real experiences at Findmi Businesses, Events and Locations, shared by people who were there.",
 };
 
