@@ -112,5 +112,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261117000000_taxonomy_v2_staged_categories.sql");
+  assert.equal(files.at(-1), "20261118000000_taxonomy_v2_admin_curation.sql");
 });

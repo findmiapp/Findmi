@@ -206,9 +206,13 @@ test("current V1 reads unchanged: no app code reads the V2 tables; V1 data reade
   };
   walk(join(ROOT, "src"));
   const V2 = /from\("(category_tree_v2|business_category_assignments|event_category_assignments|product_category_assignments|location_categories|taxonomy_legacy_mappings|classification_suggestions)"\)/;
+  // The internal, server-only Taxonomy modules (Pass 3B compatibility
+  // layer, Pass 4A Admin write library) read / write V2 by design; nothing
+  // else in the app may.
+  const INTERNAL = join(ROOT, "src", "lib", "taxonomy");
   for (const f of files) {
     const src = readFileSync(f, "utf8");
-    assert.doesNotMatch(src, V2, f);
+    if (!f.startsWith(INTERNAL)) assert.doesNotMatch(src, V2, f);
     if (!/taxonomy[\\/]v2(-legacy)?\.ts$/.test(f)) assert.doesNotMatch(src, /lib\/taxonomy\/v2|taxonomy\/v2-legacy/, `${f} imports V2`);
   }
   // V1 public readers rely on RLS (anon client) and are not edited.

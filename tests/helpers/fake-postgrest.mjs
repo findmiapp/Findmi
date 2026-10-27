@@ -1,7 +1,7 @@
 // In-memory fake of the Supabase service-role client — the PostgREST subset the
 // discovery / Target readers use: embeds (incl. !inner, nested), dotted filters on
 // embeds, eq/neq/ilike/is/in/not/gte/contains, or() with ilike/eq/in/is/gte/and(), limit,
-// insert (business_targets' unique key emulated), update. Shared by tests only.
+// insert (business_targets' unique key emulated), update, delete. Shared by tests only.
 
 const FK = { locations: "location_id", opportunity_listings: "listing_id", markets: "market_id", market_areas: "market_area_id", categories: "category_id", businesses: "business_id", events: "event_id" };
 
@@ -109,7 +109,9 @@ export function fakeDb(tables, newId = "00000099-0000-4000-8000-000000000000") {
             return resolve({ data: null, error: null });
           }
           if (call.op === "update") {
-            for (const r of rows.filter((r) => matched.some((m) => m.id === r.id))) Object.assign(r, call.payload);
+            // Match on the filters themselves (not `id`): join tables with a
+            // composite key have no id column.
+            for (const r of rows.filter((r) => preds.every((p) => p(shape(tables, r, fields))))) Object.assign(r, call.payload);
             return resolve({ data: returning ? matched.map((r) => ({ id: r.id })) : null, error: null });
           }
           const data = matched.slice(0, limit);

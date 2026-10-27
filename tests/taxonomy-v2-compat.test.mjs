@@ -618,11 +618,12 @@ test("batching: a bounded number of reads per table, independent of entity count
   for (const c of calls) perTable[c.table] = (perTable[c.table] ?? 0) + 1;
   const chunks = Math.ceil(450 / C.ID_CHUNK);
   for (const [table, count] of Object.entries(perTable)) assert.equal(count, chunks, `${table}: one read per ${C.ID_CHUNK} ids`);
-  assert.deepEqual(Object.keys(perTable).sort(), ["event_categories", "event_category_assignments", "event_formats", "event_mechanic_assignments", "event_topics", "event_type_assignments", "events"]);
+  // Pass 4A: + one batched read of the curation markers.
+  assert.deepEqual(Object.keys(perTable).sort(), ["classification_field_sources", "event_categories", "event_category_assignments", "event_formats", "event_mechanic_assignments", "event_topics", "event_type_assignments", "events"]);
   // Narrowed dimensions read fewer tables.
   const narrow = fakeDb(t);
   await C.loadClassifications("event", many.slice(0, 10), { client: narrow, reference, dimensions: ["experience_mechanic"] });
-  assert.deepEqual([...new Set(narrow.calls.map((c) => c.table))].sort(), ["event_categories", "event_formats", "event_mechanic_assignments"]);
+  assert.deepEqual([...new Set(narrow.calls.map((c) => c.table))].sort(), ["classification_field_sources", "event_categories", "event_formats", "event_mechanic_assignments"]);
 });
 
 // ------------------------------------------------------------ aliases

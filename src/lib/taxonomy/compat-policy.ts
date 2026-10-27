@@ -23,6 +23,21 @@
 // compatibility module), review_required mapping targets, intentionally
 // unmapped rows, retired mappings, and Mechanic → Benefit hints.
 //
+// CURATION (Pass 4A) — a per-entity, per-dimension override of union_live.
+// Once an entity's dimension is curated (a durable classification_field_sources
+// row on the dimension's curation field — see CURATION_FIELD in
+// cardinality.ts), its effective value is its durable V2 values ONLY: V1
+// derivation (and, for Topics, Category implication) no longer contributes,
+// so a value removed or replaced on purpose cannot come back from V1. A
+// curated single dimension answers with its one canonical value. Explicit
+// empty = curated with no values. Uncurated entities / dimensions behave
+// exactly as before. V1 data is never touched.
+//
+// RETIRED VOCABULARY — inference never produces a value that can't be newly
+// assigned (retired Topic, deprecated term or Category). A value an entity
+// already holds explicitly stays effective, with its status, until it is
+// deliberately removed or remapped.
+//
 // SHARED EVENT COLUMNS — events.benefits, events.audience, events.entry_modes
 // are read by the live V1 Map AND are the V2 storage for Benefit / Audience /
 // Entry Mode. V1's normalizers (src/lib/discovery/attributes.ts) drop V2-only
@@ -115,6 +130,19 @@ export function isDurableFor(dimension: CompatDimension, source: string | null |
   if (source === "migration") return !COMPAT_POLICY[dimension].v1Backed;
   if (source == null) return true;
   return (DURABLE_SOURCES as readonly string[]).includes(source);
+}
+
+/** Whether a classification_field_sources source on a curation field marks
+ * the dimension as curated: only a confirmed (durable) writer can take a
+ * dimension over from V1 inference — never 'migration' or 'suggestion'. */
+export const isCurationSource = (source: string | null | undefined): boolean => (DURABLE_SOURCES as readonly string[]).includes(source ?? "");
+
+/** A curated SINGLE dimension answers with its one canonical value: the
+ * explicit primary, else the only value. Several values without a primary
+ * (only possible mid-write) stay visible so they can be repaired. */
+export function curatedSingle<T extends { id: string }>(values: readonly Classified<T, Provenance>[], explicitPrimaryIds: ReadonlySet<string>): Classified<T, Provenance>[] {
+  const one = choosePrimary(values, explicitPrimaryIds);
+  return one ? [one] : [...values];
 }
 
 // ------------------------------------------------------------ provenance
@@ -273,7 +301,9 @@ export interface V2CategoryRef {
   /** Internal label (V2 display name, else the row's name). Never render it
    * publicly — use publicCategoryLabel(). */
   label: string;
-  status: "active" | "staged";
+  /** active / staged (V2-only, never public) / hidden / deprecated
+   * (retired). */
+  status: "active" | "staged" | "hidden" | "deprecated";
   depth: number;
   /** V2 tree parent (category_tree_v2) — never V1 parent_id. */
   parentId: string | null;
@@ -305,6 +335,9 @@ export interface TopicRef {
   name: string;
   kind: "subject" | "occasion";
   broaderTopicId: string | null;
+  /** draft / active / retired — an explicit assignment keeps showing a
+   * retired Topic, labelled by this. */
+  status: string;
 }
 
 export interface TopicSet {

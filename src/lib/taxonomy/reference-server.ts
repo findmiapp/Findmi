@@ -50,8 +50,11 @@ export interface TaxonomyReference {
   withDescendants(categoryId: string): string[];
   term(id: string): TermRef | undefined;
   termBySlug(vocabulary: TermVocabulary, slug: string): TermRef | undefined;
-  /** Active Topics only; a draft or retired Topic never classifies. */
+  /** Any Topic by id, with its status: an explicit assignment of a Topic
+   * that was later retired still resolves (and is labelled by status). */
   topic(id: string): TopicRef | undefined;
+  /** Active Topics only — inference (V1 mappings, Category implication) and
+   * new selection never use a draft or retired Topic. */
   topicBySlug(slug: string): TopicRef | undefined;
   topics(): TopicRef[];
   topicAppliesTo(topicId: string, entity: TaxonomyEntityType): boolean;
@@ -112,7 +115,7 @@ export async function buildTaxonomyReference(client: SupabaseClient): Promise<Ta
       kind: str(t.kind) as V2CategoryKind,
       slug: str(row.slug),
       label: (typeof t.display_name === "string" && t.display_name) || str(row.name),
-      status: row.status === "staged" ? "staged" : "active",
+      status: row.status === "staged" || row.status === "hidden" || row.status === "deprecated" ? row.status : "active",
       depth: Number(t.depth ?? 1),
       parentId: parentOf.get(id) ?? null,
       ancestorIds: ancestors(id),
@@ -132,7 +135,6 @@ export async function buildTaxonomyReference(client: SupabaseClient): Promise<Ta
 
   const topicById = new Map<string, TopicRow>();
   for (const t of topics) {
-    if (t.status !== "active") continue;
     topicById.set(str(t.id), {
       id: str(t.id),
       slug: str(t.slug),
@@ -143,7 +145,8 @@ export async function buildTaxonomyReference(client: SupabaseClient): Promise<Ta
       status: str(t.status),
     });
   }
-  const topicBySlug = new Map([...topicById.values()].map((t) => [t.slug, t]));
+  const activeTopics = [...topicById.values()].filter((t) => t.status === "active");
+  const topicBySlug = new Map(activeTopics.map((t) => [t.slug, t]));
   const declared = new Map<string, string[]>();
   for (const ct of catTopics) declared.set(str(ct.category_id), [...(declared.get(str(ct.category_id)) ?? []), str(ct.topic_id)]);
 
@@ -160,7 +163,7 @@ export async function buildTaxonomyReference(client: SupabaseClient): Promise<Ta
   }
 
   const toTopicRef = (t: TopicRow | undefined): TopicRef | undefined =>
-    t && { id: t.id, slug: t.slug, name: t.name, kind: t.kind, broaderTopicId: t.broaderTopicId };
+    t && { id: t.id, slug: t.slug, name: t.name, kind: t.kind, broaderTopicId: t.broaderTopicId, status: t.status };
 
   return {
     v1Category: (id) => v1.get(id),
@@ -176,12 +179,12 @@ export async function buildTaxonomyReference(client: SupabaseClient): Promise<Ta
     termBySlug: (vocabulary, slug) => termBySlug.get(`${vocabulary}:${slug}`),
     topic: (id) => toTopicRef(topicById.get(id)),
     topicBySlug: (slug) => toTopicRef(topicBySlug.get(slug)),
-    topics: () => [...topicById.values()].map((t) => toTopicRef(t)!),
+    topics: () => activeTopics.map((t) => toTopicRef(t)!),
     topicAppliesTo: (id, entity) => Boolean(topicById.get(id)?.appliesTo.includes(entity)),
     impliedTopics(categoryId) {
       const node = nodes.get(categoryId);
       if (!node) return [];
-      return [categoryId, ...node.ancestorIds].flatMap((via) => (declared.get(via) ?? []).filter((t) => topicById.has(t)).map((topicId) => ({ topicId, viaCategoryId: via })));
+      return [categoryId, ...node.ancestorIds].flatMap((via) => (declared.get(via) ?? []).filter((t) => topicById.get(t)?.status === "active").map((topicId) => ({ topicId, viaCategoryId: via })));
     },
     mapping: (kind, slug) => mappingByKey.get(`${kind}:${slug}`),
   };

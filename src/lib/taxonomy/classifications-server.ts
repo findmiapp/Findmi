@@ -7,9 +7,11 @@ import {
   OPPORTUNITY_TYPE_CATEGORY,
   asContext,
   choosePrimary,
+  curatedSingle,
   deriveFromLegacy,
   effectiveTopics,
   expandNarrowerTopicIds,
+  isCurationSource,
   isDurableFor,
   mergeClassified,
   v2Audience,
@@ -32,6 +34,7 @@ import {
   type V2CategoryRef,
 } from "./compat-policy";
 import { loadTaxonomyReference, type TaxonomyReference, type TermRef } from "./reference-server";
+import { CURATION_FIELD, isAssignable } from "./cardinality";
 import type { Audience, Benefit, BusinessModel, EntryMode, PriceKind, Setting, TaxonomyEntityType, TermVocabulary, V2CategoryKind } from "./v2";
 import type { LegacyKind } from "./v2-legacy";
 
@@ -45,6 +48,11 @@ import type { LegacyKind } from "./v2-legacy";
 // reads the clock, hours, geography or classification_suggestions.
 //
 // Not wired into any live surface in Pass 3B.
+//
+// Pass 4A: per entity + dimension CURATION (see compat-policy.ts) — one
+// extra batched read of the curation markers in classification_field_sources;
+// a curated dimension drops V1 derivation (and Topic implication) for that
+// entity only.
 
 export type ClassifiedEntity = TaxonomyEntityType | "opportunity";
 
@@ -63,6 +71,9 @@ export interface CategoryClassification {
   categories: Classified<V2CategoryRef>[];
   primaryCategory: Classified<V2CategoryRef> | null;
   topics: TopicSet;
+  /** Dimensions whose explicit V2 values are authoritative for this entity
+   * (V1 inference off). */
+  curated: CompatDimension[];
 }
 export interface BusinessClassification extends CategoryClassification {
   businessModels: Classified<BusinessModel>[];
@@ -92,6 +103,7 @@ export interface EventClassification {
   age: { min: number | null; max: number | null };
   /** Raw V1 state, untouched, for V1 surfaces and audits. */
   legacy: { categories: string[]; formats: string[]; isFree: boolean | null; familyFriendly: boolean | null };
+  curated: CompatDimension[];
 }
 export interface AppearanceClassification {
   /** The Appearance's OWN classification — never inherited. */
@@ -180,6 +192,21 @@ async function fieldSources(c: Ctx, entityType: string, ids: readonly string[], 
   return out;
 }
 
+/** The curation fields to read for the dimensions this request needs. */
+const curationFields = (c: Ctx, dims: readonly CompatDimension[]): string[] => [...new Set(dims.filter((d) => c.need(d) && CURATION_FIELD[d]).map((d) => CURATION_FIELD[d]!))];
+
+/** Field sources → entity → the dimensions (of `dims`) it has curated. */
+function curatedFrom(sources: Map<string, Map<string, string>>, dims: readonly CompatDimension[]): Map<string, Set<CompatDimension>> {
+  const out = new Map<string, Set<CompatDimension>>();
+  for (const [id, fields] of sources) {
+    const set = new Set<CompatDimension>();
+    for (const d of dims) if (CURATION_FIELD[d] && isCurationSource(fields.get(CURATION_FIELD[d]!))) set.add(d);
+    if (set.size) out.set(id, set);
+  }
+  return out;
+}
+const NONE: ReadonlySet<CompatDimension> = new Set();
+
 /** V1 link rows → LegacyLink (V1 kind + slug from the categories row). */
 function legacyLinks(c: Ctx, rows: readonly Row[], entityCol: string, kind: LegacyKind | "event_format", store: string): LegacyLink[] {
   const out: LegacyLink[] = [];
@@ -203,13 +230,14 @@ const derive = (c: Ctx, links: readonly LegacyLink[]): Map<string, DerivedTarget
 
 // ------------------------------------------------------------ shared builders
 
-function buildCategories(c: Ctx, dimension: CategoryDimension, derived: readonly DerivedTarget[], v2Rows: readonly Row[], store: string): { categories: Classified<V2CategoryRef>[]; primaryCategory: Classified<V2CategoryRef> | null } {
+function buildCategories(c: Ctx, dimension: CategoryDimension, derived: readonly DerivedTarget[], v2Rows: readonly Row[], store: string, curated: ReadonlySet<CompatDimension> = NONE): { categories: Classified<V2CategoryRef>[]; primaryCategory: Classified<V2CategoryRef> | null } {
   const kind = CATEGORY_DIMENSION_KIND[dimension];
+  const isCurated = curated.has(dimension);
   const items: Classified<V2CategoryRef>[] = [];
-  for (const t of derived) {
+  for (const t of isCurated ? [] : derived) {
     if (t.dimension !== "category" || t.categoryKind !== kind) continue;
     const node = c.ref.categoryBySlug(kind, t.value);
-    if (node) items.push({ value: node, provenance: [t.provenance] });
+    if (node && isAssignable("category", node.status)) items.push({ value: node, provenance: [t.provenance] });
   }
   const explicitPrimary = new Set<string>();
   for (const r of v2Rows) {
@@ -220,7 +248,9 @@ function buildCategories(c: Ctx, dimension: CategoryDimension, derived: readonly
     if (r.is_primary === true) explicitPrimary.add(node.id);
   }
   const merged = pruneDerivedAncestors(mergeClassified(items, (n) => n.id));
-  return { categories: merged, primaryCategory: choosePrimary(merged, explicitPrimary) as Classified<V2CategoryRef> | null };
+  // The Event Category is SINGLE: once curated, one canonical value.
+  const categories = isCurated && dimension === "event_domain" ? (curatedSingle(merged, explicitPrimary) as Classified<V2CategoryRef>[]) : merged;
+  return { categories, primaryCategory: choosePrimary(categories, explicitPrimary) as Classified<V2CategoryRef> | null };
 }
 
 /** A purely V1-derived ancestor is redundant when one of its descendants is
@@ -231,12 +261,13 @@ function pruneDerivedAncestors(items: Classified<V2CategoryRef>[]): Classified<V
   return items.filter((i) => !ancestorsOfOthers.has(i.value.id) || i.provenance.some((p) => p.kind === "assigned"));
 }
 
-function buildTerms(c: Ctx, dimension: "event_type" | "experience_mechanic", vocabulary: TermVocabulary, derived: readonly DerivedTarget[], v2Rows: readonly Row[], store: string): { items: Classified<TermRef>[]; explicitPrimary: Set<string> } {
+function buildTerms(c: Ctx, dimension: "event_type" | "experience_mechanic", vocabulary: TermVocabulary, derived: readonly DerivedTarget[], v2Rows: readonly Row[], store: string, curated: ReadonlySet<CompatDimension> = NONE): { items: Classified<TermRef>[]; explicitPrimary: Set<string> } {
+  const isCurated = curated.has(dimension);
   const items: Classified<TermRef>[] = [];
-  for (const t of derived) {
+  for (const t of isCurated ? [] : derived) {
     if (t.dimension !== dimension) continue;
     const term = c.ref.termBySlug(vocabulary, t.value);
-    if (term) items.push({ value: term, provenance: [t.provenance] });
+    if (term && isAssignable("term", term.status)) items.push({ value: term, provenance: [t.provenance] });
   }
   const explicitPrimary = new Set<string>();
   for (const r of v2Rows) {
@@ -246,12 +277,16 @@ function buildTerms(c: Ctx, dimension: "event_type" | "experience_mechanic", voc
     items.push({ value: term, provenance: [{ kind: "assigned", source: str(r.source) as AssignedSource, store }] });
     if (r.is_primary === true) explicitPrimary.add(term.id);
   }
-  return { items: mergeClassified(items, (t) => t.id), explicitPrimary };
+  const merged = mergeClassified(items, (t) => t.id);
+  // Event Type is SINGLE: once curated, one canonical value.
+  return { items: isCurated && dimension === "event_type" ? (curatedSingle(merged, explicitPrimary) as Classified<TermRef>[]) : merged, explicitPrimary };
 }
 
-function buildTopics(c: Ctx, entity: TaxonomyEntityType, derived: readonly DerivedTarget[], v2Rows: readonly Row[], store: string, categories: readonly Classified<V2CategoryRef>[]): TopicSet {
+function buildTopics(c: Ctx, entity: TaxonomyEntityType, derived: readonly DerivedTarget[], v2Rows: readonly Row[], store: string, categories: readonly Classified<V2CategoryRef>[], curated: ReadonlySet<CompatDimension> = NONE): TopicSet {
+  // Curated Topics: explicit rows only — no V1 derivation, no implication.
+  const isCurated = curated.has("topic");
   const explicit: Classified<TopicRef>[] = [];
-  for (const t of derived) {
+  for (const t of isCurated ? [] : derived) {
     if (t.dimension !== "topic") continue;
     const topic = c.ref.topicBySlug(t.value);
     if (topic && c.ref.topicAppliesTo(topic.id, entity)) explicit.push({ value: topic, provenance: [t.provenance] });
@@ -262,7 +297,7 @@ function buildTopics(c: Ctx, entity: TaxonomyEntityType, derived: readonly Deriv
     if (topic && c.ref.topicAppliesTo(topic.id, entity)) explicit.push({ value: topic, provenance: [{ kind: "assigned", source: str(r.source) as AssignedSource, store }] });
   }
   const implied: Classified<TopicRef>[] = [];
-  for (const cat of categories) {
+  for (const cat of isCurated ? [] : categories) {
     for (const { topicId, viaCategoryId } of c.ref.impliedTopics(cat.value.id)) {
       const topic = c.ref.topic(topicId);
       if (topic && c.ref.topicAppliesTo(topicId, entity)) implied.push({ value: topic, provenance: [{ kind: "implied", categoryId: cat.value.id, viaCategoryId }] });
@@ -280,40 +315,51 @@ const EMPTY_TOPICS: TopicSet = { explicit: [], implied: [] };
 
 async function loadBusinesses(c: Ctx, ids: readonly string[]): Promise<Map<string, BusinessClassification>> {
   const needCat = c.need("business_category") || c.need("topic");
+  const dims: CompatDimension[] = ["business_category", "topic", "business_model"];
   const [v1, v2, topics, rows, sources] = await Promise.all([
     needCat || c.need("business_model") ? selectIn(c.client, "business_categories", "business_id, category_id", "business_id", ids) : [],
     needCat ? selectIn(c.client, "business_category_assignments", "business_id, category_id, is_primary, source", "business_id", ids) : [],
     c.need("topic") ? selectIn(c.client, "business_topics", "business_id, topic_id, source", "business_id", ids) : [],
     c.need("business_model") ? selectIn(c.client, "businesses", "id, business_models", "id", ids) : [],
-    c.need("business_model") ? fieldSources(c, "business", ids, ["business_models"]) : new Map<string, Map<string, string>>(),
+    fieldSources(c, "business", ids, curationFields(c, dims)),
   ]);
   const derived = derive(c, legacyLinks(c, v1, "business_id", "business", "business_categories"));
+  const curatedBy = curatedFrom(sources, dims);
   const v2By = group(v2, "business_id"), topicsBy = group(topics, "business_id"), rowBy = group(rows, "id");
   const out = new Map<string, BusinessClassification>();
   for (const id of new Set(ids)) {
     const d = derived.get(id) ?? [];
-    const cats = buildCategories(c, "business_category", d, v2By.get(id) ?? [], "business_category_assignments");
-    const models: Classified<BusinessModel>[] = d.filter((t) => t.dimension === "business_model").flatMap((t) => v2BusinessModels([t.value]).map((value) => ({ value, provenance: [t.provenance] as OwnProvenance[] })));
+    const cur = curatedBy.get(id) ?? NONE;
+    const cats = buildCategories(c, "business_category", d, v2By.get(id) ?? [], "business_category_assignments", cur);
+    // business_models is written as a whole set, so its provenance row is
+    // also its curation marker.
+    const models: Classified<BusinessModel>[] = cur.has("business_model")
+      ? []
+      : d.filter((t) => t.dimension === "business_model").flatMap((t) => v2BusinessModels([t.value]).map((value) => ({ value, provenance: [t.provenance] as OwnProvenance[] })));
     const colSource = sources.get(id)?.get("business_models") ?? null;
     if (isDurableFor("business_model", colSource)) models.push(...assignedColumn(v2BusinessModels(rowBy.get(id)?.[0]?.business_models), "businesses.business_models", colSource));
-    out.set(id, { ...cats, topics: buildTopics(c, "business", d, topicsBy.get(id) ?? [], "business_topics", cats.categories), businessModels: mergeClassified(models, (m) => m) });
+    out.set(id, { ...cats, topics: buildTopics(c, "business", d, topicsBy.get(id) ?? [], "business_topics", cats.categories, cur), businessModels: mergeClassified(models, (m) => m), curated: [...cur] });
   }
   return out;
 }
 
 async function loadLocations(c: Ctx, ids: readonly string[]): Promise<Map<string, LocationClassification>> {
-  const [rows, v2, topics] = await Promise.all([
+  const dims: CompatDimension[] = ["location_category", "topic"];
+  const [rows, v2, topics, sources] = await Promise.all([
     selectIn(c.client, "locations", c.need("attribute") ? "id, category_id, attributes" : "id, category_id", "id", ids),
     selectIn(c.client, "location_categories", "location_id, category_id, is_primary, source", "location_id", ids),
     c.need("topic") ? selectIn(c.client, "location_topics", "location_id, topic_id, source", "location_id", ids) : [],
+    fieldSources(c, "location", ids, curationFields(c, dims)),
   ]);
+  const curatedBy = curatedFrom(sources, dims);
   const derived = derive(c, legacyLinks(c, rows.filter((r) => r.category_id).map((r) => ({ location_id: r.id, category_id: r.category_id })), "location_id", "location", "locations.category_id"));
   const v2By = group(v2, "location_id"), topicsBy = group(topics, "location_id"), rowBy = group(rows, "id");
   const out = new Map<string, LocationClassification>();
   for (const id of new Set(ids)) {
     const d = derived.get(id) ?? [];
-    const cats = buildCategories(c, "location_category", d, v2By.get(id) ?? [], "location_categories");
-    out.set(id, { ...cats, topics: buildTopics(c, "location", d, topicsBy.get(id) ?? [], "location_topics", cats.categories), attributes: obj(rowBy.get(id)?.[0]?.attributes) });
+    const cur = curatedBy.get(id) ?? NONE;
+    const cats = buildCategories(c, "location_category", d, v2By.get(id) ?? [], "location_categories", cur);
+    out.set(id, { ...cats, topics: buildTopics(c, "location", d, topicsBy.get(id) ?? [], "location_topics", cats.categories, cur), attributes: obj(rowBy.get(id)?.[0]?.attributes), curated: [...cur] });
   }
   return out;
 }
@@ -323,7 +369,8 @@ const EVENT_COLUMNS = "id, benefits, audience, entry_modes, setting, price_kind,
 async function loadEvents(c: Ctx, ids: readonly string[]): Promise<Map<string, EventClassification>> {
   const needTax = ["event_domain", "event_type", "experience_mechanic", "topic"].some((d) => c.need(d as CompatDimension));
   const needCols = ["audience", "entry_mode", "benefit", "setting", "price"].some((d) => c.need(d as CompatDimension));
-  const [cats, fmts, eca, eta, ema, topics, rows] = await Promise.all([
+  const dims: CompatDimension[] = ["event_domain", "event_type", "experience_mechanic", "topic"];
+  const [cats, fmts, eca, eta, ema, topics, rows, sources] = await Promise.all([
     needTax ? selectIn(c.client, "event_categories", "event_id, category_id", "event_id", ids) : [],
     needTax ? selectIn(c.client, "event_formats", "event_id, category_id", "event_id", ids) : [],
     c.need("event_domain") || c.need("topic") ? selectIn(c.client, "event_category_assignments", "event_id, category_id, is_primary, source", "event_id", ids) : [],
@@ -331,7 +378,9 @@ async function loadEvents(c: Ctx, ids: readonly string[]): Promise<Map<string, E
     c.need("experience_mechanic") ? selectIn(c.client, "event_mechanic_assignments", "event_id, term_id, source", "event_id", ids) : [],
     c.need("topic") ? selectIn(c.client, "event_topics", "event_id, topic_id, source", "event_id", ids) : [],
     needCols ? selectIn(c.client, "events", EVENT_COLUMNS, "id", ids) : [],
+    fieldSources(c, "event", ids, curationFields(c, dims)),
   ]);
+  const curatedBy = curatedFrom(sources, dims);
   const links = [...legacyLinks(c, cats, "event_id", "event", "event_categories"), ...legacyLinks(c, fmts, "event_id", "event_format", "event_formats")];
   const derived = derive(c, links);
   const linksBy = groupBy(links, (l) => l.entityId);
@@ -339,9 +388,10 @@ async function loadEvents(c: Ctx, ids: readonly string[]): Promise<Map<string, E
   const out = new Map<string, EventClassification>();
   for (const id of new Set(ids)) {
     const d = derived.get(id) ?? [];
-    const dom = buildCategories(c, "event_domain", d, ecaBy.get(id) ?? [], "event_category_assignments");
-    const types = buildTerms(c, "event_type", "event_type", d, etaBy.get(id) ?? [], "event_type_assignments");
-    const mechanics = buildTerms(c, "experience_mechanic", "experience_mechanic", d, emaBy.get(id) ?? [], "event_mechanic_assignments");
+    const cur = curatedBy.get(id) ?? NONE;
+    const dom = buildCategories(c, "event_domain", d, ecaBy.get(id) ?? [], "event_category_assignments", cur);
+    const types = buildTerms(c, "event_type", "event_type", d, etaBy.get(id) ?? [], "event_type_assignments", cur);
+    const mechanics = buildTerms(c, "experience_mechanic", "experience_mechanic", d, emaBy.get(id) ?? [], "event_mechanic_assignments", cur);
     const row = rowBy.get(id)?.[0] ?? {};
     const own = linksBy.get(id) ?? [];
 
@@ -364,7 +414,7 @@ async function loadEvents(c: Ctx, ids: readonly string[]): Promise<Map<string, E
       types: types.items,
       primaryType: choosePrimary(types.items, types.explicitPrimary) as Classified<TermRef> | null,
       mechanics: mechanics.items,
-      topics: c.need("topic") ? buildTopics(c, "event", d, topicsBy.get(id) ?? [], "event_topics", dom.categories) : EMPTY_TOPICS,
+      topics: c.need("topic") ? buildTopics(c, "event", d, topicsBy.get(id) ?? [], "event_topics", dom.categories, cur) : EMPTY_TOPICS,
       audience: assignedColumn(v2Audience(row.audience), "events.audience", null),
       entryModes: assignedColumn(v2EntryModes(row.entry_modes), "events.entry_modes", null),
       benefits: assignedColumn(v2Benefits(row.benefits), "events.benefits", null),
@@ -378,18 +428,22 @@ async function loadEvents(c: Ctx, ids: readonly string[]): Promise<Map<string, E
         isFree: bool(row.is_free),
         familyFriendly: bool(row.family_friendly),
       },
+      curated: [...cur],
     });
   }
   return out;
 }
 
 async function loadProducts(c: Ctx, ids: readonly string[]): Promise<Map<string, ProductClassification>> {
-  const [rows, v1, v2, topics] = await Promise.all([
+  const dims: CompatDimension[] = ["product_category", "topic"];
+  const [rows, v1, v2, topics, sources] = await Promise.all([
     selectIn(c.client, "products", "id, product_type, attributes, audience", "id", ids),
     selectIn(c.client, "product_categories", "product_id, category_id", "product_id", ids),
     selectIn(c.client, "product_category_assignments", "product_id, category_id, is_primary, source", "product_id", ids),
     c.need("topic") ? selectIn(c.client, "product_topics", "product_id, topic_id, source", "product_id", ids) : [],
+    fieldSources(c, "product", ids, curationFields(c, dims)),
   ]);
+  const curatedBy = curatedFrom(sources, dims);
   // Services are not Products: they get no V2 Product classification at all.
   const products = new Map(rows.filter((r) => r.product_type !== "service").map((r) => [str(r.id), r]));
   const derived = derive(c, legacyLinks(c, v1.filter((r) => products.has(str(r.product_id))), "product_id", "product", "product_categories"));
@@ -397,12 +451,14 @@ async function loadProducts(c: Ctx, ids: readonly string[]): Promise<Map<string,
   const out = new Map<string, ProductClassification>();
   for (const [id, row] of products) {
     const d = derived.get(id) ?? [];
-    const cats = buildCategories(c, "product_category", d, v2By.get(id) ?? [], "product_category_assignments");
+    const cur = curatedBy.get(id) ?? NONE;
+    const cats = buildCategories(c, "product_category", d, v2By.get(id) ?? [], "product_category_assignments", cur);
     out.set(id, {
       ...cats,
-      topics: buildTopics(c, "product", d, topicsBy.get(id) ?? [], "product_topics", cats.categories),
+      topics: buildTopics(c, "product", d, topicsBy.get(id) ?? [], "product_topics", cats.categories, cur),
       attributes: obj(row.attributes),
       audience: assignedColumn(v2Audience(row.audience), "products.audience", null),
+      curated: [...cur],
     });
   }
   return out;
