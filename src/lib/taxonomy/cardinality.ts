@@ -85,7 +85,10 @@ export const CLASSIFICATION_RULES: readonly DimensionRule[] = [
   rule("location", "topic", "multi", "topic"),
   rule("location", "attribute", "multi", "attribute", { write: "deferred" }),
 
-  rule("event", "category", "single", "event_domain", { required: true }),
+  // Optional at the taxonomy layer: "explicitly unclassified" must be
+  // representable (drafts, incomplete imports, records awaiting review).
+  // Requiring one for published Events is a later publication concern.
+  rule("event", "category", "single", "event_domain"),
   rule("event", "event_type", "single", "event_type"),
   rule("event", "experience_mechanic", "multi", "experience_mechanic"),
   rule("event", "topic", "multi", "topic"),

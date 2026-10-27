@@ -221,7 +221,7 @@ test("contract: every approved entity × dimension, SINGLE / MULTI, required, pr
     ["location", "category", "multi", false, true, "admin"],
     ["location", "topic", "multi", false, false, "admin"],
     ["location", "attribute", "multi", false, false, "deferred"],
-    ["event", "category", "single", true, false, "admin"],
+    ["event", "category", "single", false, false, "admin"],
     ["event", "event_type", "single", false, false, "admin"],
     ["event", "experience_mechanic", "multi", false, false, "admin"],
     ["event", "topic", "multi", false, false, "admin"],
@@ -361,8 +361,6 @@ test("6. explicit empty survives for optional SINGLE dimensions; required ones r
   await W.removeAssignment(target("appearance", AP.own, "appearance_type"), TERM.booth.id, s.opts);
   assert.equal((await load(s, "appearance", AP.own)).own.appearanceType, null);
   // Required.
-  assert.equal((await W.clearSingle(target("event", E.food, "category"), s.opts)).code, "required");
-  assert.equal((await W.removeAssignment(target("event", E.food, "category"), CAT.e_food.id, s.opts)).code, "required");
   assert.equal((await W.clearSingle(target("opportunity", OP.act, "opportunity_category"), s.opts)).code, "required");
   // Two inferred Types can't be curated as-is: choose one.
   const s2 = await setup();
@@ -504,6 +502,52 @@ test("failure-safe order: a failure at any curation step leaves the effective se
   r = await W.addAssignment(target("event", E.food, "experience_mechanic"), TERM.popup.id, { ...s.opts, client });
   assert.equal(r.ok, false);
   assert.match(r.error, /simulated failure/);
+});
+
+test("Event Category is SINGLE + optional: an inferred Category can be cleared to an explicit empty V1 can't refill, and set again", async () => {
+  const s = await setup();
+  // 1. Inferred before curation (V1 Food & Drink).
+  let e = await load(s, "event", E.food);
+  assert.deepEqual(slugs(e.domains), ["food-drink"]);
+  assert.equal(e.domains[0].provenance[0].kind, "legacy");
+  assert.deepEqual(e.curated, []);
+  // 2. Admin clears it (clearSingle, or removing the current value).
+  assert.deepEqual(await W.clearSingle(target("event", E.food, "category"), s.opts), { ok: true, changed: true });
+  // 3. Explicitly empty.
+  e = await load(s, "event", E.food);
+  assert.deepEqual(e.domains, []);
+  assert.equal(e.primaryDomain, null);
+  assert.deepEqual(e.curated, ["event_domain"]);
+  assert.equal(marker(s, "event", E.food, "categories").source, "admin");
+  assert.deepEqual(s.t.event_category_assignments.filter((x) => x.event_id === E.food), []);
+  // 4. V1 can't resurrect it — even after another V1 edit; V1 data untouched.
+  assert.deepEqual(s.t.event_categories.filter((x) => x.event_id === E.food).map((x) => x.category_id), [CAT.e_food.id]);
+  s.t.event_categories.push({ event_id: E.food, category_id: CAT.e_arts.id });
+  e = await load(s, "event", E.food);
+  assert.deepEqual(e.domains, [], "Food & Drink / Arts & Culture stay out of the curated empty");
+  assert.deepEqual(v1Writes(s.db), []);
+  // 5. Other Event dimensions keep normal Pass 3B inference.
+  assert.deepEqual(slugs(e.types).sort(), ["exhibition", "market"]);
+  assert.deepEqual(slugs(e.mechanics), ["sampling"]);
+  assert.deepEqual(slugs((await load(s, "event", E.market)).domains), [], "another Event (no V1 Category) unaffected");
+  // Clearing again is a no-op.
+  assert.deepEqual(await W.clearSingle(target("event", E.food, "category"), s.opts), { ok: true, changed: false });
+  // 6. Explicitly assigned again later.
+  assert.deepEqual(await W.replaceSingle(target("event", E.food, "category"), CAT.e_arts.id, s.opts), { ok: true, changed: true });
+  e = await load(s, "event", E.food);
+  assert.deepEqual(slugs(e.domains), ["arts-culture"]);
+  assert.deepEqual(e.domains[0].provenance, [{ kind: "assigned", source: "admin", store: "event_category_assignments" }]);
+  assert.equal(e.primaryDomain.value.slug, "arts-culture");
+  // 7. Replace still works, and removing the current value clears it.
+  await W.replaceSingle(target("event", E.food, "category"), CAT.se_shopping.id, s.opts);
+  assert.deepEqual(slugs((await load(s, "event", E.food)).domains), ["shopping-style"]);
+  assert.equal(s.t.event_category_assignments.filter((x) => x.event_id === E.food).length, 1);
+  assert.deepEqual(await W.removeAssignment(target("event", E.food, "category"), CAT.se_shopping.id, s.opts), { ok: true, changed: true });
+  assert.deepEqual((await load(s, "event", E.food)).domains, []);
+  // Removing the inferred value directly also curates to empty.
+  const s2 = await setup();
+  assert.deepEqual(await W.removeAssignment(target("event", E.food, "category"), CAT.e_food.id, s2.opts), { ok: true, changed: true });
+  assert.deepEqual((await load(s2, "event", E.food)).domains, []);
 });
 
 // ------------------------------------------------------------ E. retired vocabulary
