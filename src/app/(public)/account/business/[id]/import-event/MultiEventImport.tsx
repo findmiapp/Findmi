@@ -275,6 +275,23 @@ export default function MultiEventImport({
           </ul>
         </div>
       );
+    // Each saved Event's public page (only Events that are live).
+    const viewable = outcome.result.results.flatMap((r) => (r.outcome.ok && r.outcome.publicHref ? [{ title: r.title || r.outcome.title, href: r.outcome.publicHref }] : []));
+    const viewLinks = viewable.length > 0 && (
+      <div>
+        <p className="text-label font-bold uppercase text-subtle">View Events · {viewable.length}</p>
+        <ul className="mt-1 flex flex-col divide-y divide-black/[0.05]">
+          {viewable.map((v, i) => (
+            <li key={`${v.href}-${i}`} className="flex min-h-11 items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-metadata text-secondary">{v.title}</span>
+              <Link href={v.href} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
+                View Event
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
     if (operator) {
       const s = operatorImportSummary(outcome.result.results, outcome.existingRows, operator.stats);
       const rows: [string, number, string | null][] = [
@@ -298,6 +315,7 @@ export default function MultiEventImport({
               ))}
             </dl>
             {group("New Events", summary.added)}
+            {viewLinks}
             {summary.attention.length > 0 && (
               <div>
                 <p className="text-label font-bold uppercase text-subtle">Not Saved · {summary.attention.length}</p>
@@ -343,6 +361,7 @@ export default function MultiEventImport({
           {group("Added", summary.added)}
           {group("Requests Sent", summary.connected)}
           {group(operator ? "Already on Findmi" : "Already on Your Schedule", summary.already)}
+          {viewLinks}
           {summary.attention.length > 0 && (
             <div>
               <p className="text-label font-bold uppercase text-subtle">Needs Attention · {summary.attention.length}</p>

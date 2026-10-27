@@ -4,7 +4,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { isPageManagerRole } from "@/lib/capabilities";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { getHostEventEligibility } from "@/lib/entitlements";
+import { getHostAuthority } from "@/lib/event-hosting";
 import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import EventScheduleFields from "@/components/scheduling/EventScheduleFields";
 import { getActiveMarkets } from "@/lib/data";
@@ -159,7 +159,9 @@ export default async function AddEventPage({
   // feature. A staff member still sees the Business context (back link +
   // wording) with the reason they can't host; anyone who isn't a member at
   // all just sees the plain form, as before.
-  const hostEligibility = businessIdParam && admin ? await getHostEventEligibility(admin, user.id, businessIdParam) : null;
+  // Admin Manage-As (lib/event-hosting.ts): an Admin explicitly operating
+  // the Business may host for it — the real Owner/Manager check runs first.
+  const hostEligibility = businessIdParam && admin ? await getHostAuthority(admin, user.id, businessIdParam) : null;
   const businessContext =
     hostEligibility && (hostEligibility.ok || hostEligibility.reason !== "not_member") ? hostEligibility.business : null;
   // Free Event Creation — only hosting AS a Business is gated (Owner/

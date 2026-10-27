@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
-import { analyzeEventImport, analyzeEventImportImage, analyzeEventImportText, commitEventImport } from "./actions";
+import { analyzeEventImport, analyzeEventImportImage, analyzeEventImportText, commitEventImport, previewImportEventImage, uploadImportEventCover } from "./actions";
+import EventCoverUpload from "@/components/event/EventCoverUpload";
+import { imageVariantUrl } from "@/lib/image-variants";
+import { safePreviewSrc } from "@/lib/event-import/preview-src";
 import MultiEventImport from "./MultiEventImport";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
 import { AttendanceEditor, EventCategoryEditor, EventFormatEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
@@ -70,7 +73,12 @@ type Step =
   | { kind: "url"; error: string | null }
   | { kind: "review"; candidate: EventCandidate; matches: EventImportMatches; warnings: string[] }
   | { kind: "multi"; source: ImportSource; events: SourceEventAnalysis[]; warnings: string[] }
-  | { kind: "done"; message: string; viewHref: string };
+  | { kind: "done"; message: string; viewHref: string; publicHref: string | null; hosted: boolean; participantsHref: string | null };
+
+/** Event artwork chosen in Review. "detected" = the image found on the
+ * source; "flyer" = the analyzed flyer itself; "upload" = an image uploaded
+ * from the device (already in Findmi storage); "none" = no Event image. */
+type CoverChoice = "detected" | "flyer" | "upload" | "none";
 
 function prettyDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
@@ -103,9 +111,10 @@ export default function EventImporter({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [step, setStep] = useState<Step>({ kind: "url", error: null });
   const [review, setReview] = useState<EventImportReview | null>(null);
-  const [useImage, setUseImage] = useState(true);
-  // The uploaded flyer as the Event image — only when the owner chooses it.
-  const [useFlyer, setUseFlyer] = useState(false);
+  // Event artwork — never tied to how the Event was read: the detected
+  // image, the analyzed flyer, or a different image uploaded right here.
+  const [cover, setCover] = useState<CoverChoice>("none");
+  const [uploadedCover, setUploadedCover] = useState<string | null>(null);
   // The owner has answered "How is your Business involved?" (required when
   // the source names a different organizer and the import began as Hosting).
   const [relationshipConfirmed, setRelationshipConfirmed] = useState(false);
@@ -188,8 +197,8 @@ export default function EventImporter({
     setReview(defaults);
     setInitialPast(pastReviewOccurrences(result.candidate, result.matches));
     setReviewVersion((v) => v + 1);
-    setUseImage(Boolean(result.candidate.imageUrl));
-    setUseFlyer(false);
+    setCover(result.candidate.imageUrl ? "detected" : "none");
+    setUploadedCover(null);
     setRelationshipConfirmed(false);
     setSaveError(null);
     setStep({ kind: "review", candidate: result.candidate, matches: result.matches, warnings: result.warnings });
@@ -258,7 +267,8 @@ export default function EventImporter({
     }
     setSaveError(null);
     // An Event already on Findmi keeps its own image.
-    const flyerChosen = useFlyer && step.candidate.origin === "image" && imageFile && !review.useEventId;
+    const flyerChosen = cover === "flyer" && step.candidate.origin === "image" && imageFile && !review.useEventId;
+    const chosenImageUrl = review.useEventId ? null : cover === "detected" ? review.imageUrl : cover === "upload" ? uploadedCover : null;
     startSave(async () => {
       try {
         let flyer: FormData | null = null;
@@ -268,12 +278,22 @@ export default function EventImporter({
           flyer = new FormData();
           flyer.append("image", await preprocessImageForUpload(imageFile!));
         }
-        const outcome = await commitEventImport(businessId, { ...review, intent: intent!, imageUrl: flyerChosen ? null : useImage ? review.imageUrl : null }, flyer);
+        const outcome = await commitEventImport(businessId, { ...review, intent: intent!, imageUrl: flyerChosen ? null : chosenImageUrl }, flyer);
         if (!outcome.ok) {
           setSaveError(outcome.error);
           return;
         }
-        setStep({ kind: "done", message: successMessage(outcome.kind, outcome.title, businessName, intent!, outcome.kind === "scheduled" && outcome.newEvent === true), viewHref: outcome.viewHref });
+        const hosted = outcome.kind !== "requested" && outcome.hosted === true;
+        setStep({
+          kind: "done",
+          message: successMessage(outcome.kind, outcome.title, businessName, intent!, outcome.kind === "scheduled" && outcome.newEvent === true),
+          viewHref: outcome.viewHref,
+          publicHref: outcome.publicHref ?? null,
+          hosted,
+          // A hosted Event's next step: who's participating (the Event
+          // Manager's existing Participating Businesses step).
+          participantsHref: hosted && outcome.eventId ? `/account/event/${outcome.eventId}?tab=participants&business_id=${encodeURIComponent(businessId)}` : null,
+        });
       } catch {
         setSaveError("Couldn’t save it. Please try again.");
       }
@@ -308,9 +328,23 @@ export default function EventImporter({
         <section role="status" className="rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
           <p className="text-card-title font-semibold text-findmi-700">{step.message}</p>
         </section>
+        {step.participantsHref && (
+          <section className="rounded-2xl border border-black/[0.08] bg-white p-4">
+            <p className="text-card-title font-semibold text-primary">Participating Businesses</p>
+            <p className="mt-1 text-metadata text-muted">Add the Businesses taking part — vendors, pop-ups, partners. Each one is invited, and shows on the Event once they&rsquo;re confirmed.</p>
+            <Link href={step.participantsHref} className={`mt-3 ${secondaryButtonClass}`}>
+              Add Participating Businesses
+            </Link>
+          </section>
+        )}
         <div className="flex flex-col gap-2">
-          <Link href={step.viewHref} className={primaryButtonClass}>
-            View
+          {step.publicHref && (
+            <Link href={step.publicHref} className={primaryButtonClass}>
+              View Event
+            </Link>
+          )}
+          <Link href={step.viewHref} className={step.publicHref ? secondaryButtonClass : primaryButtonClass}>
+            {step.hosted ? "Manage Event" : step.publicHref ? "View Your Schedule" : "View"}
           </Link>
           <button type="button" onClick={addAnother} className={secondaryButtonClass}>
             Add Another
@@ -548,29 +582,28 @@ export default function EventImporter({
             maxLength={EVENT_DESCRIPTION_MAX}
           />
         </div>
-        {candidate.origin === "image" && (
-          <fieldset className="flex flex-col gap-2">
-            <legend className={labelClass}>Your Uploaded Image</legend>
-            {imagePreview && (
-              // eslint-disable-next-line @next/next/no-img-element -- a local preview of the chosen file
-              <img src={imagePreview} alt="Your uploaded image" className="max-h-56 w-auto max-w-full self-start rounded-xl object-contain" />
-            )}
-            {usingExisting ? (
-              <p className="text-metadata text-muted">The Event already on Findmi keeps its own image.</p>
-            ) : (
-              <>
-                <Choice checked={useFlyer} onChange={() => setUseFlyer(true)} title="Use This Image For The Event" line="It becomes the Event image when you add the Event." />
-                <Choice checked={!useFlyer} onChange={() => setUseFlyer(false)} title="Don’t Use This Image" line="It was only used to read these details and won’t be saved." />
-              </>
-            )}
-          </fieldset>
-        )}
-        {review.imageUrl && !usingExisting && !(candidate.origin === "image" && useFlyer) && (
-          <label className="flex items-center gap-2 text-metadata text-secondary">
-            <input type="checkbox" checked={useImage} onChange={(e) => setUseImage(e.target.checked)} className="h-5 w-5 accent-findmi" />
-            Use the event image from the page
-          </label>
-        )}
+        <fieldset className="flex flex-col gap-2" data-event-artwork>
+          <legend className={labelClass}>Event Image</legend>
+          {usingExisting ? (
+            <p className="text-metadata text-muted">The Event already on Findmi keeps its own image.</p>
+          ) : (
+            <>
+              <CoverPreview cover={cover} businessId={businessId} detectedUrl={review.imageUrl} flyerPreview={imagePreview} uploadedUrl={uploadedCover} />
+              {review.imageUrl && <Choice checked={cover === "detected"} onChange={() => setCover("detected")} title="Use Detected Image" line="The image Findmi found for this Event." />}
+              {candidate.origin === "image" && imageFile && <Choice checked={cover === "flyer"} onChange={() => setCover("flyer")} title="Use Your Uploaded Flyer" line="The image you gave Findmi to read." />}
+              {uploadedCover && <Choice checked={cover === "upload"} onChange={() => setCover("upload")} title="Use Your Uploaded Image" line="The image you uploaded here." />}
+              <Choice checked={cover === "none"} onChange={() => setCover("none")} title="No Image" line="Add one later from the Event Manager." />
+              <EventCoverUpload
+                upload={(form) => uploadImportEventCover(businessId, form)}
+                hasImage={Boolean(uploadedCover)}
+                onUploaded={(url) => {
+                  setUploadedCover(url);
+                  setCover("upload");
+                }}
+              />
+            </>
+          )}
+        </fieldset>
         <div>
           <label htmlFor="source" className={labelClass}>
             Event Link
@@ -692,6 +725,37 @@ export default function EventImporter({
           {intent === "hosting" ? "Create Manually Instead" : "Add Manually Instead"}
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** The chosen Event image, previewed: the detected source image only as the
+ * server's verified data-URI preview (a third-party URL never renders
+ * directly), the flyer as its local preview, an upload from Findmi storage. */
+function CoverPreview({ cover, businessId, detectedUrl, flyerPreview, uploadedUrl }: { cover: CoverChoice; businessId: string; detectedUrl: string | null; flyerPreview: string | null; uploadedUrl: string | null }) {
+  const [detected, setDetected] = useState<{ url: string; src: string | null; failed: boolean } | null>(null);
+  useEffect(() => {
+    if (cover !== "detected" || !detectedUrl || detected?.url === detectedUrl) return;
+    let live = true;
+    setDetected({ url: detectedUrl, src: null, failed: false });
+    previewImportEventImage(businessId, detectedUrl)
+      .then((r) => live && setDetected({ url: detectedUrl, src: safePreviewSrc(r.preview), failed: !safePreviewSrc(r.preview) }))
+      .catch(() => live && setDetected({ url: detectedUrl, src: null, failed: true }));
+    return () => {
+      live = false;
+    };
+  }, [cover, detectedUrl, businessId, detected?.url]);
+
+  const src = cover === "detected" ? (detected?.url === detectedUrl ? detected?.src : null) : cover === "flyer" ? flyerPreview : cover === "upload" && uploadedUrl ? imageVariantUrl(uploadedUrl, "card") : null;
+  if (cover === "none") return null;
+  return (
+    <div className="flex aspect-[4/3] w-full max-w-xs items-center justify-center overflow-hidden rounded-xl border border-black/[0.06] bg-black/[0.03]">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- preview only (data: URI or Findmi storage)
+        <img src={src} alt="Chosen Event image" className="h-full w-full object-contain" />
+      ) : (
+        <span className="px-3 text-center text-microcopy text-muted">{cover === "detected" && detected?.failed ? "Preview unavailable — the image is checked again when you add the Event." : "Loading preview…"}</span>
+      )}
     </div>
   );
 }

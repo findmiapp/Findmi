@@ -36,7 +36,8 @@ import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { asOperatorAnalysis } from "@/lib/event-import/operator";
 import { normalizeReview, persistDiscoveryEvent, type SourceEventDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
-import { previewEventImage, recoverEventImage, type EventImagePreview } from "@/lib/event-import/media";
+import { isStoredEventImageUrl, previewEventImage, recoverEventImage, storeUploadedEventImage, uploadedEventImageError, type EventImagePreview } from "@/lib/event-import/media";
+import { EVENT_IMPORT_IMAGE_MAX_BYTES } from "@/lib/event-import/types";
 import { brandImageFailureReason, fetchVerifiedBrandImage, previewBrandCandidateResult, storeBrandImage, type BrandPreviewResult } from "@/lib/brand-images";
 import { createImportedLocation, defaultLocationImportDeps, readLocationWebsite } from "@/lib/location-import/server";
 import { applyEntityMedia, entityMediaState, findEntityMedia, readMatchesBusiness, type EntityMediaKind, type EntityMediaRow, type EntityMediaState, type FindMediaResult } from "@/lib/entity-media";
@@ -179,6 +180,8 @@ function discoveryDeps(admin: SupabaseClient): SourceEventDeps {
   return {
     admin,
     storeImage: async (url) => {
+      // A cover uploaded in Review is already verified + in Findmi storage.
+      if (isStoredEventImageUrl(admin, url)) return url;
       const stored = await recoverEventImage(admin, url);
       return stored.ok ? stored.url : null;
     },
@@ -239,7 +242,7 @@ export async function adminCommitEventImportBatch(
  * also added as an "other" participant. */
 async function resolveOtherBusinessIds(admin: SupabaseClient, review: EventImportReview, primaryBusinessId: string | null): Promise<string[]> {
   const chosen = Object.values(review.otherBusinessChoices ?? {}).filter((c): c is { id: string; name: string } => c !== "ignored" && Boolean(c?.id));
-  const ids = [...new Set(chosen.map((c) => c.id))].filter((id) => UUID.test(id) && id !== primaryBusinessId).slice(0, 10);
+  const ids = [...new Set(chosen.map((c) => c.id))].filter((id) => UUID.test(id) && id !== primaryBusinessId).slice(0, 25);
   if (ids.length === 0) return [];
   const { data } = await admin.from("businesses").select("id").in("id", ids);
   const valid = new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
@@ -644,4 +647,15 @@ function mediaSkipMessage(skip: { reason: string; detail?: string }): string {
   if (skip.reason === "already_set") return "Already set — a value was added to this field while Find Media was open.";
   if (skip.reason === "storage_failed") return "The image was verified but couldn't be saved to Findmi storage. Try again.";
   return `The image could no longer be verified (${skip.detail ?? "it changed or is no longer reachable"}). Try Find Media again.`;
+}
+
+/** Admin Event Import — Upload Image / Replace Image for one Event in
+ * Review. The SAME Event image path the Business importer uses
+ * (storeUploadedEventImage), so Admin and Business imports never keep
+ * separate media systems. Returns the Findmi URL the review then carries. */
+export async function adminUploadEventCover(form: FormData): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const admin = await adminClient();
+  if (!admin) return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  const stored = await storeUploadedEventImage(admin, form instanceof FormData ? form.get("image") : null, EVENT_IMPORT_IMAGE_MAX_BYTES);
+  return stored.ok ? stored : { ok: false, error: uploadedEventImageError(stored.reason) };
 }

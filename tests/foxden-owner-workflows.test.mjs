@@ -178,9 +178,10 @@ test("flyer image: analysis never stores it; stored only when chosen, through th
   assert.ok(!/storeUploadedEventImage/.test(actions.match(/export async function analyzeEventImportImage[\s\S]*?\n\}/)[0]));
   assert.match(actions, /if \(flyer && !normalized\.value\.useEventId\) \{\s*const stored = await storeUploadedEventImage/, "stored only when chosen, never when joining");
   const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
-  assert.match(ui, /const \[useFlyer, setUseFlyer\] = useState\(false\)/, "default: not used");
-  assert.match(ui, /Use This Image For The Event/);
-  assert.match(ui, /Don’t Use This Image/);
+  // Reliability pass: the flyer is one of the Event Image choices — never the default.
+  assert.match(ui, /setCover\(result\.candidate\.imageUrl \? "detected" : "none"\)/, "default: not used");
+  assert.match(ui, /Use Your Uploaded Flyer/);
+  assert.match(ui, /title="No Image"/);
   assert.match(ui, /preprocessImageForUpload\(imageFile!\)/, "reduced with the existing helper (HEIC passes through)");
 
   const admin = fakeStorageAdmin();
@@ -404,7 +405,7 @@ test("complete review in both relationship states: every Event field renders wha
   const ui = read("src/app/(public)/account/business/[id]/import-event/EventImporter.tsx");
   const review = ui.slice(ui.indexOf("// ── Review ──"));
   assert.ok(!/joiningExisting/.test(ui), "no relationship-dependent collapse of the Event fields");
-  for (const field of ['htmlFor="title"', 'htmlFor="description"', "Your Uploaded Image", 'htmlFor="source"', "<WhenWhereEditor", "<AttendanceEditor", "<EventCategoryEditor", "<EventFormatEditor", 'id="organizer"']) {
+  for (const field of ['htmlFor="title"', 'htmlFor="description"', "Event Image</legend>", 'htmlFor="source"', "<WhenWhereEditor", "<AttendanceEditor", "<EventCategoryEditor", "<EventFormatEditor", 'id="organizer"']) {
     assert.ok(review.includes(field), field);
   }
   assert.ok(!/\{!usingExisting && \(\s*<div>\s*<label htmlFor="description"/.test(review), "description is not hidden for a matched Event");

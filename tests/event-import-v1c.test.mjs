@@ -265,7 +265,7 @@ test("the batch action validates and saves each Event independently through the 
   const actions = read("src/app/(public)/account/business/[id]/import-event/actions.ts");
   assert.match(actions, /export async function commitEventImportBatch\(/);
   assert.match(actions, /for \(const review of reviews\) \{\s*results\.push\(\{ title: [^}]+, outcome: await commitOne\(ctx, businessId, review, emailVerified\) \}\);/);
-  assert.match(actions, /async function commitOne\([\s\S]*?const normalized = normalizeReview\(review\);\s*if \(!normalized\.ok\) return normalized;[\s\S]*?try \{\s*return await persistEventImport/);
+  assert.match(actions, /async function commitOne\([\s\S]*?const normalized = normalizeReview\(review\);\s*if \(!normalized\.ok\) return normalized;[\s\S]*?try \{\s*const outcome = await persistEventImport/);
   assert.match(actions, /if \(reviews\.length > BATCH_MAX\)/);
 });
 

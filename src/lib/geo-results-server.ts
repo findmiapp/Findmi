@@ -27,14 +27,21 @@ function respond(all: number, results: GeoResult[], truncated = false): GeoRespo
   return { results, total: all, truncated };
 }
 
-async function locationsById(ids: string[]): Promise<Map<string, Row>> {
+/** `inContext`: the Location is drawn as the place of a public date that
+ * already names it (a Business's own schedule) — so an unlisted Location
+ * (is_demo) is kept, unlinked, per the Location eligibility rule
+ * (lib/location-eligibility.ts: an attached Location "is still shown in
+ * context — it just isn't rendered as a clickable Location card or link";
+ * placeOf only links discoverable ones). Discovery surfaces keep the default
+ * (listed Locations only). Archived / trashed never. */
+async function locationsById(ids: string[], opts: { inContext?: boolean } = {}): Promise<Map<string, Row>> {
   const supabase = getSupabase();
   const out = new Map<string, Row>();
   const want = [...new Set(ids.filter(Boolean))];
   if (!supabase || !want.length) return out;
   for (let i = 0; i < want.length; i += 150) {
     const { data } = await supabase.from("locations").select(LOC_COLS).in("id", want.slice(i, i + 150));
-    for (const r of (data ?? []) as Row[]) if (!r.archived_at && !r.trashed_at && r.is_demo !== true) out.set(r.id as string, r);
+    for (const r of (data ?? []) as Row[]) if (!r.archived_at && !r.trashed_at && (opts.inContext || r.is_demo !== true)) out.set(r.id as string, r);
   }
   return out;
 }
@@ -289,7 +296,8 @@ export async function scheduleResults(
   business: { slug: string; name: string; logo_url?: string | null }
 ): Promise<GeoResult[]> {
   const mappable = items.filter((a) => a.location_id && !a.location_hidden);
-  const locs = await locationsById(mappable.map((a) => a.location_id as string));
+  // The Business's own published dates: their Locations are drawn in context.
+  const locs = await locationsById(mappable.map((a) => a.location_id as string), { inContext: true });
   const out: GeoResult[] = [];
   for (const a of mappable) {
     const place = placeOf(locs.get(a.location_id as string));

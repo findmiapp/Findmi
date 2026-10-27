@@ -4,14 +4,15 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
-import { getHostEventEligibility } from "@/lib/entitlements";
+import { createHostedEvent, getHostAuthority } from "@/lib/event-hosting";
+import { eventHref } from "@/lib/event-links";
 import { analyzeEventImage, analyzeEventText, analyzeEventUrl, defaultEventImportDeps } from "@/lib/event-import/engine";
 import { readEventImportImage } from "@/lib/event-import/image-source";
 import { publicImportAnalysis } from "@/lib/event-import/diagnostics";
 import { normalizeReview, persistEventImport, type PersistDeps } from "@/lib/event-import/persist";
 import type { EventImportAnalysis, EventImportOutcome, EventImportReview } from "@/lib/event-import/types";
 import { applyBusinessToEvent } from "@/lib/event-participation";
-import { recoverEventImage, storeUploadedEventImage } from "@/lib/event-import/media";
+import { isStoredEventImageUrl, previewEventImage, recoverEventImage, storeUploadedEventImage, uploadedEventImageError, type EventImagePreview } from "@/lib/event-import/media";
 import { EVENT_IMPORT_IMAGE_MAX_BYTES } from "@/lib/event-import/types";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -89,12 +90,23 @@ function persistDepsFor(ctx: Ctx, businessId: string, storedFlyerUrl: string | n
     businessId,
     businessName: business.name,
     applyToEvent: (eventId) => applyBusinessToEvent(admin, { eventId, businessId, userId: user.id }),
-    canHost: async () => (await getHostEventEligibility(admin, user.id, businessId)).ok,
+    // Real Owner/Manager first; an Admin explicitly operating this Business
+    // (Manage-As) as the audited fallback — never a fabricated membership
+    // (lib/event-hosting.ts).
+    canHost: async () => (await getHostAuthority(admin, user.id, businessId)).ok,
+    createHostedEvent: async (e) => {
+      const authority = await getHostAuthority(admin, user.id, businessId);
+      if (!authority.ok) return { ok: false, code: "host_not_authorized" };
+      return createHostedEvent(admin, { ...e, userId: user.id, viaAdmin: authority.viaAdmin, hostBusinessId: businessId });
+    },
     // The one Event image path (lib/event-import/media.ts) — Event art
     // rules, not the Brand header rules.
     storeImage: async (url) => {
-      // The owner's own flyer, already verified + stored by this commit.
+      // The owner's own flyer, already verified + stored by this commit, or
+      // a cover uploaded in Review (already verified + stored by
+      // uploadImportEventCover) — never fetched and copied a second time.
       if (storedFlyerUrl && url === storedFlyerUrl) return storedFlyerUrl;
+      if (isStoredEventImageUrl(admin, url)) return url;
       const stored = await recoverEventImage(admin, url);
       return stored.ok ? stored.url : null;
     },
@@ -136,19 +148,51 @@ async function commitOne(ctx: Ctx, businessId: string, review: EventImportReview
   if (normalized.value.intent === "participating" && normalized.value.useEventId && !(await emailVerified())) {
     return { ok: false, error: "Verify your email before asking to join an Event." };
   }
-  // "Use This Image For The Event": the uploaded flyer is stored only now,
+  // "Use Your Uploaded Flyer": the uploaded flyer is stored only now,
   // only because the owner chose it, and only for a NEW Event (joining an
   // existing Event never changes its image).
   let flyerUrl: string | null = null;
   if (flyer && !normalized.value.useEventId) {
     const stored = await storeUploadedEventImage(ctx.admin, flyer, EVENT_IMPORT_IMAGE_MAX_BYTES);
-    if (!stored.ok) return { ok: false, error: stored.reason === "unsuitable" ? "That image can't be used as the Event image (it's too small or too narrow). Choose “Don’t Use This Image” to continue." : "Couldn't use that image. Try again, or choose “Don’t Use This Image”." };
+    if (!stored.ok) return { ok: false, error: stored.reason === "unsuitable" ? "That image can't be used as the Event image (it's too small or too narrow). Choose another image, or “No Image”, to continue." : "Couldn't use that image. Try again, or choose “No Image”." };
     flyerUrl = stored.url;
   }
   try {
-    return await persistEventImport(flyerUrl ? { ...normalized.value, imageUrl: flyerUrl } : normalized.value, persistDepsFor(ctx, businessId, flyerUrl));
+    const outcome = await persistEventImport(flyerUrl ? { ...normalized.value, imageUrl: flyerUrl } : normalized.value, persistDepsFor(ctx, businessId, flyerUrl));
+    // Joining an Event already on Findmi: its public page, when it's live.
+    if (outcome.ok && !outcome.publicHref && normalized.value.useEventId) return { ...outcome, ...(await publicLink(ctx.admin, normalized.value.useEventId)) };
+    return outcome;
   } catch {
     return { ok: false, error: "Couldn't save it. Please try again." };
+  }
+}
+
+async function publicLink(admin: Ctx["admin"], eventId: string): Promise<{ publicHref?: string; eventId?: string }> {
+  const { data } = await admin.from("events").select("id, slug, is_demo, trashed_at").eq("id", eventId).maybeSingle();
+  const ev = data as { id: string; slug: string; is_demo: boolean; trashed_at: string | null } | null;
+  return ev && !ev.is_demo && !ev.trashed_at ? { publicHref: eventHref(ev.slug), eventId: ev.id } : {};
+}
+
+/** Event artwork chosen in Review — Upload Image / Replace Image. The file
+ * goes through the ONE Event image path (storeUploadedEventImage: real-bytes
+ * validation, HEIC conversion, Event-image fit, Findmi storage) and comes
+ * back as a Findmi URL the review then carries as its image. */
+export async function uploadImportEventCover(businessId: string, form: FormData): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const ctx = await authorize(businessId);
+  if (!ctx) return { ok: false, error: "You don't have access to this Business." };
+  const stored = await storeUploadedEventImage(ctx.admin, form instanceof FormData ? form.get("image") : null, EVENT_IMPORT_IMAGE_MAX_BYTES);
+  return stored.ok ? stored : { ok: false, error: uploadedEventImageError(stored.reason) };
+}
+
+/** A verified preview of the image detected on the source (a third-party
+ * URL never renders directly — CSP): the same check the save path uses. */
+export async function previewImportEventImage(businessId: string, url: string): Promise<EventImagePreview> {
+  const ctx = await authorize(businessId);
+  if (!ctx || typeof url !== "string" || !/^https:\/\//i.test(url)) return { preview: null, reason: "fetch_failed" };
+  try {
+    return await previewEventImage(url);
+  } catch {
+    return { preview: null, reason: "fetch_failed" };
   }
 }
 

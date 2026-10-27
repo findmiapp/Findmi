@@ -1,10 +1,12 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
+import EventCoverUpload from "@/components/event/EventCoverUpload";
+import { imageVariantUrl } from "@/lib/image-variants";
 import Link from "next/link";
 import MultiEventImport, { type OperatorBusiness, type OperatorImportMode } from "@/app/(public)/account/business/[id]/import-event/MultiEventImport";
 import { AttendanceEditor, inputClass, sectionClass } from "@/app/(public)/account/business/[id]/import-event/ReviewParts";
-import { RelationField } from "@/components/admin/RelationPicker";
+import { EntitySearchAdd, RelationField } from "@/components/admin/RelationPicker";
 import EventLocationCreate from "@/components/admin/location-import/EventLocationCreate";
 import { EVENT_IMPORT_FAILURE_COPY, type EventImportAnalysis, type EventImportReview, type ImportSource, type SourceEventAnalysis } from "@/lib/event-import/types";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
@@ -29,6 +31,7 @@ import {
   adminApplyEntityMedia,
   adminPreviewBusinessRead,
   adminPreviewEventImage,
+  adminUploadEventCover,
   adminPrepareBusiness,
   adminProcessBusinessRead,
   adminStartBusinessReads,
@@ -132,7 +135,19 @@ async function limitedPreview(url: string): Promise<ImagePreviewState> {
 /** A source Event image in Admin Review: ONLY the server-made, verified
  * data-URI preview reaches the browser (never `url` itself — that stays
  * persistence input for recoverEventImage). */
+/** An Event cover uploaded in Review is already in Findmi storage (shown
+ * directly, CSP allows it); anything else is a source URL. */
+const FINDMI_STORED_IMAGE = /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/[^\s?#]+$/i;
+
 function VerifiedEventImagePreview({ url, className, compact = false }: { url: string; className: string; compact?: boolean }) {
+  if (FINDMI_STORED_IMAGE.test(url)) {
+    // eslint-disable-next-line @next/next/no-img-element -- preview of a Findmi-stored upload
+    return <img src={imageVariantUrl(url, "card")} alt="Event image preview" className={className} />;
+  }
+  return <SourceEventImagePreview url={url} className={className} compact={compact} />;
+}
+
+function SourceEventImagePreview({ url, className, compact = false }: { url: string; className: string; compact?: boolean }) {
   const [state, setState] = useState<ImagePreviewState>(() => eventPreviewCache.get(url) ?? { status: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -967,6 +982,54 @@ function OtherBusinessSection({
   );
 }
 
+/** Participating Businesses — any canonical Business the operator adds by
+ * search (not only ones the source named). Stored on this Event's own
+ * review in the SAME otherBusinessChoices map the "Also Named" matches use
+ * (key "participant:<id>"), so they reach the SAME validated, de-duplicated
+ * event_businesses write (approved, all dates) and, on an Event already on
+ * Findmi, Review Existing Event's participant apply — never a second
+ * participation path. */
+const PARTICIPANT_CHOICE_PREFIX = "participant:";
+
+function ParticipatingBusinessesSection({ review, set, primaryId }: { review: EventImportReview; set: (patch: Partial<EventImportReview>) => void; primaryId: string | null }) {
+  const choices = review.otherBusinessChoices ?? {};
+  const chosen = Object.values(choices).filter((c): c is { id: string; name: string } => c !== "ignored" && Boolean(c?.id));
+  const added = Object.entries(choices).flatMap(([key, c]) => (key.startsWith(PARTICIPANT_CHOICE_PREFIX) && c !== "ignored" && c?.id ? [{ key, ...c }] : []));
+  const taken = new Set([...chosen.map((c) => c.id), ...(primaryId ? [primaryId] : [])]);
+  return (
+    <section className="flex flex-col gap-2 rounded-xl border border-black/[0.08] p-3" data-participating-businesses>
+      <p className="text-label font-bold uppercase text-subtle">Participating Businesses</p>
+      <p className="-mt-1 text-microcopy text-muted">Vendors, pop-ups and partners taking part. Each is added as an approved participant for every date.</p>
+      <EntitySearchAdd
+        entity="businesses"
+        placeholder="Search Businesses…"
+        excludeIds={taken}
+        onAdd={(r) => set({ otherBusinessChoices: { ...choices, [`${PARTICIPANT_CHOICE_PREFIX}${r.value}`]: { id: r.value, name: r.label } } })}
+      />
+      {added.length > 0 && (
+        <ul className="flex flex-col divide-y divide-black/[0.05]">
+          {added.map((b) => (
+            <li key={b.key} className="flex min-h-11 items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-metadata font-semibold text-primary">{b.name}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = { ...choices };
+                  delete next[b.key];
+                  set({ otherBusinessChoices: next });
+                }}
+                className="shrink-0 text-metadata font-semibold text-muted hover:text-red-600"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function OtherBusinessCandidate({
   name,
   choice,
@@ -1118,11 +1181,14 @@ function EventDetails({
           <span className="font-semibold text-primary">No Event Image Found</span> · Generic Brand/Site Image Ignored. The Event Link&rsquo;s only image is the site&rsquo;s standard {candidate.imageGuard.evidence === "page_logo" ? "logo" : "image"}, not Event creative. Add the Event&rsquo;s own flyer below if you have it.
         </p>
       )}
-      {!review.imageUrl && candidate.imageUrl && (
+      {review.imageUrl !== candidate.imageUrl && candidate.imageUrl && (
         <button type="button" onClick={() => set({ imageUrl: candidate.imageUrl })} className="w-fit text-metadata font-semibold text-accent hover:underline">
-          Use the Event Link&rsquo;s Image
+          Use Detected Image
         </button>
       )}
+      {/* Upload / Replace from the device — the same Event image path the
+          Business importer uses (no detected image required). */}
+      <EventCoverUpload upload={adminUploadEventCover} hasImage={Boolean(review.imageUrl)} onUploaded={(url) => set({ imageUrl: url })} />
       <EventImageUrlField id={id} review={review} set={set} />
       <div>
         <label htmlFor={`${id}-description`} className="mb-1 block text-label font-bold uppercase text-subtle">
@@ -1147,6 +1213,7 @@ function EventDetails({
         preps={otherBusinessPreps}
         ensure={ensureOtherBusinessPrep}
       />
+      <ParticipatingBusinessesSection review={review} set={set} primaryId={business?.id ?? null} />
       {(s?.programming?.length ?? 0) > 0 && (
         <section className="rounded-xl border border-dashed border-black/15 p-3">
           <p className="text-label font-bold uppercase text-subtle">Programming · Not Currently Saved To Findmi</p>

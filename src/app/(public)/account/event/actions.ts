@@ -16,7 +16,7 @@ import { ORGANIZER_APPROVAL_BLOCKED_MESSAGE, organizerApprovalBlocked } from "@/
 import { isEmailVerified, requireEventMember, requireLocationMember } from "@/lib/permissions";
 import { eventCreationContext } from "@/lib/capabilities";
 import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
-import { getHostEventEligibility } from "@/lib/entitlements";
+import { createHostedEvent, getHostAuthority } from "@/lib/event-hosting";
 import { errorRedirectUrl, errorRedirectUrlWithFields, isoToLocalDateTime, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -257,11 +257,15 @@ export async function createMemberEvent(formData: FormData) {
   };
 
   const hostBusinessId = preservedFields.business_id;
+  // Admin Manage-As: an Admin explicitly operating the host Business may
+  // host for it (lib/event-hosting.ts) — never as a fabricated owner.
+  let hostViaAdmin = false;
   if (hostBusinessId) {
     // Hosting is scoped to the host Business itself: Owner or Manager of
     // it. Not a Pro feature.
-    const eligibility = await getHostEventEligibility(admin, user.id, hostBusinessId);
-    if (!eligibility.ok) {
+    const eligibility = await getHostAuthority(admin, user.id, hostBusinessId);
+    if (eligibility.ok) hostViaAdmin = eligibility.viaAdmin;
+    else {
       const businessName = eligibility.business?.name ?? "this Business";
       fail(
         eligibility.reason === "role"
@@ -355,19 +359,23 @@ export async function createMemberEvent(formData: FormData) {
     }
   }
 
-  const { data: created, error } = await admin.rpc("create_owned_event", {
-    p_user_id: user.id,
-    p_name: name,
-    p_slug: slug,
-    p_start_at: startIso,
-    p_end_at: endIso,
-    p_market_id: effectiveMarketId,
-    p_requested_market_text: effectiveRequestedMarketText,
-    p_host_business_id: hostBusinessId ?? null,
-  });
+  const created = hostBusinessId
+    ? await createHostedEvent(admin, { userId: user.id, viaAdmin: hostViaAdmin, name: name!, slug, startAt: startIso!, endAt: endIso!, marketId: effectiveMarketId, hostBusinessId })
+    : await admin
+        .rpc("create_owned_event", {
+          p_user_id: user.id,
+          p_name: name,
+          p_slug: slug,
+          p_start_at: startIso,
+          p_end_at: endIso,
+          p_market_id: effectiveMarketId,
+          p_requested_market_text: effectiveRequestedMarketText,
+          p_host_business_id: null,
+        })
+        .then(({ data, error }) => (error || !data ? { ok: false as const, code: error?.message ?? "" } : { ok: true as const, id: (data as { id: string }).id, viaAdmin: false }));
 
-  if (error || !created) {
-    const message = CREATE_EVENT_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your event. Please try again.";
+  if (!created.ok) {
+    const message = CREATE_EVENT_FRIENDLY_ERROR[created.code] ?? "Couldn't create your event. Please try again.";
     fail(message);
   }
 
@@ -375,7 +383,7 @@ export async function createMemberEvent(formData: FormData) {
   // Live by default: create_owned_event() still writes the old review
   // state; publish what it just created (lib/event-publication.ts).
   const published = await publishCreatedEvent(admin, eventId);
-  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: "owner_created" });
+  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: hostViaAdmin ? "admin_managed_host" : "owner_created" });
 
   // create_owned_event() has no p_market_area_id parameter (Area wasn't
   // part of that RPC's original signature) — rather than widen the RPC,
@@ -524,13 +532,15 @@ export async function createMemberEvent(formData: FormData) {
   await notifyAdmin({
     subject: `New Event on Findmi: ${name}`,
     heading: published ? "New Event published" : "New Event created (not yet public)",
-    body: [`Event: ${name}`, `Starts: ${new Date((created as { start_at: string }).start_at).toLocaleString()}`, "Source: Host an Event"],
+    body: [`Event: ${name}`, `Starts: ${new Date(startIso!).toLocaleString()}`, "Source: Host an Event"],
     actionLabel: "View in Admin",
     actionUrl: `/admin/events/${eventId}`,
   });
 
   revalidatePath("/account");
-  redirect(hostBusinessId ? `/account/event/${eventId}?business_id=${encodeURIComponent(hostBusinessId)}` : `/account/event/${eventId}`);
+  // created=1 → the Event Manager's next steps (View Event, Participating
+  // Businesses) right after creation.
+  redirect(hostBusinessId ? `/account/event/${eventId}?business_id=${encodeURIComponent(hostBusinessId)}&created=1` : `/account/event/${eventId}?created=1`);
 }
 
 // ── EVENT DETAILS ─────────────────────────────────────────────────────────

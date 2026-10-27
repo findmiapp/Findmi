@@ -83,7 +83,7 @@ export default function AppearanceFindMiHere({
 
       <div className="mt-3">
         {view === "map" && geo ? (
-          <ScheduleMap geo={geo} total={appearances.length} name={business.name} onOpen={setOpenId} />
+          <ScheduleMap geo={geo} total={appearances.length} name={business.name} slug={business.slug} onOpen={setOpenId} />
         ) : view === "cards" ? (
           <AppearanceCarousel
             appearances={appearances}
@@ -125,13 +125,14 @@ export default function AppearanceFindMiHere({
 
 /** Where can I find this Brand? — the schedule's own dates on the shared
  * contextual map; tapping a date opens the same quick view as Cards. */
-function ScheduleMap({ geo, total, name, onOpen }: { geo: GeoResult[]; total: number; name: string; onOpen: (id: string) => void }) {
+function ScheduleMap({ geo, total, name, slug, onOpen }: { geo: GeoResult[]; total: number; name: string; slug: string; onOpen: (id: string) => void }) {
   const unmapped = total - geo.length;
   if (geo.length === 0)
     return <p className="rounded-2xl border border-black/5 bg-black/[0.015] p-4 text-center text-sm text-ink/60">None of these dates are at a placed Findmi Location yet — Cards and List show them all.</p>;
   return (
     <div className="flex flex-col gap-2">
-      <ContextMap results={geo} label={`Map of where to find ${name}`} tall initialSelect="first" onResult={(r) => onOpen(r.key.replace(/^app:/, ""))} />
+      {/* View On Map = THIS Business's upcoming schedule on the full map. */}
+      <ContextMap results={geo} label={`Map of where to find ${name}`} tall initialSelect="first" scope={{ brand: slug }} onResult={(r) => onOpen(r.key.replace(/^app:/, ""))} />
       {unmapped > 0 && (
         <p className="text-xs font-semibold text-ink/50">
           {geo.length} of {total} dates on the map · {unmapped} without {unmapped === 1 ? "a location" : "locations"}

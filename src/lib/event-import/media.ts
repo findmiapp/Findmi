@@ -121,6 +121,28 @@ export async function storeUploadedEventImage(admin: SupabaseClient, file: unkno
   }
 }
 
+/** True for an image already in Findmi's own Event-image storage (an Event
+ * cover uploaded in Review by uploadImportEventCover / adminUploadEventCover)
+ * — the save path keeps it as-is instead of fetching and copying it again.
+ * Exact public-bucket prefix only; no path tricks. */
+export function isStoredEventImageUrl(admin: SupabaseClient, url: string): boolean {
+  if (typeof url !== "string" || url.length > 2048 || url.includes("..") || /[?#\s]/.test(url)) return false;
+  try {
+    const prefix = admin.storage.from(UPLOAD_BUCKET).getPublicUrl("").data.publicUrl.replace(/\/?$/, "/");
+    return /^https:\/\//i.test(prefix) && url.startsWith(prefix) && url.length > prefix.length;
+  } catch {
+    return false;
+  }
+}
+
+/** Plain-language reason an uploaded Event cover wasn't accepted. */
+export function uploadedEventImageError(reason: EventImageRejection | "too_large"): string {
+  if (reason === "too_large") return "That image is too large. Choose a smaller one.";
+  if (reason === "unsuitable") return "That image is too small or too narrow for an Event image.";
+  if (reason === "invalid_file" || reason === "type_mismatch" || reason === "unreadable") return "That file isn't a supported image.";
+  return "Couldn't upload that image. Please try again.";
+}
+
 /** The one call every Event import path uses: fetch → verify → store. */
 export async function recoverEventImage(admin: SupabaseClient, url: string, deps: EventImageDeps = defaultDeps): Promise<{ ok: true; url: string } | { ok: false; reason: EventImageRejection }> {
   const verified = await fetchVerifiedEventImage(url, deps);

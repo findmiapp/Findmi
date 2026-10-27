@@ -362,7 +362,8 @@ test("Business importer persistence is unchanged by the shared createSourceEvent
   };
   const input = { intent: "participating", title: "Knix", description: null, imageUrl: null, sourceUrl: null, occurrences: [{ start: "2026-10-17T16:00:00.000Z", end: "2026-10-18T00:00:00.000Z", place: { name: "LAVAN", address: null, city: "New York", state: "NY", postalCode: null, locationId: null } }], useEventId: null, asEvent: true, organizer: null, attendance: null, locationVisibility: null, categoryId: null, formatIds: [] };
   const out = await P.persistEventImport(input, deps);
-  assert.deepEqual(out, { ok: true, kind: "scheduled", title: "Knix", viewHref: `/account/business/${BIZ.Knix}?tab=findmi-here`, newEvent: true });
+  // Reliability pass: the new Event's public page travels with the outcome (View Event).
+  assert.deepEqual(out, { ok: true, kind: "scheduled", title: "Knix", viewHref: `/account/business/${BIZ.Knix}?tab=findmi-here`, newEvent: true, publicHref: "/event/knix", eventId: "events-1" });
   assert.equal(client.ops.find((o) => o.table === "event_businesses").rows[0].business_id, BIZ.Knix);
   assert.deepEqual(calls.map((c) => c[0]), ["propagate", "notify"]);
 });

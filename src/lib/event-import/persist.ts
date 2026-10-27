@@ -35,6 +35,7 @@ import { cleanOccurrenceDetails } from "./occurrence-details";
 import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPlace } from "./types";
 import type { EventApplicationResult } from "../event-participation";
 import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
+import { eventHref } from "../event-links";
 import { parseLocationVisibility, type LocationVisibility } from "../event-attendance";
 import { existingEventCategoryIds } from "../event-categories-server";
 import { cleanEventFormatIds } from "../event-formats";
@@ -346,6 +347,11 @@ export interface PersistDeps {
   businessName: string;
   applyToEvent: (eventId: string) => Promise<EventApplicationResult>;
   canHost: () => Promise<boolean>;
+  /** Creates the hosted Event through the path the caller's hosting
+   * authority allows (lib/event-hosting.ts createHostedEvent): a real
+   * Owner/Manager via create_owned_event, an Admin operating the Business
+   * with no fabricated ownership. Absent → create_owned_event directly. */
+  createHostedEvent?: (input: { name: string; slug: string; startAt: string; endAt: string; marketId: string | null }) => Promise<{ ok: true; id: string; viaAdmin: boolean } | { ok: false; code: string }>;
   /** Verifies + re-hosts a remote image in Findmi storage; null on any failure. */
   storeImage: (url: string) => Promise<string | null>;
   /** Existing active Market/Area for typed city/state (never creates one). */
@@ -524,7 +530,7 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   await deps.propagateDates(created.eventId, created.occurrenceIds);
 
   await deps.notifyNewEvent(created.eventId, input.title, input.occurrences[0].start, input.occurrences[0].date);
-  return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true };
+  return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true, publicHref: eventHref(created.slug), eventId: created.eventId };
 }
 
 /** What creating a source Event needs — no initiating Business, no user. */
@@ -547,7 +553,7 @@ async function createSourceEvent(
    * just below — never a second participation path, never written to
    * event_occurrence_businesses or synced to Findmi Here independently. */
   additionalParticipantBusinessIds: string[] = []
-): Promise<{ ok: true; eventId: string; occurrenceIds: string[] } | { ok: false; error: string; field?: string }> {
+): Promise<{ ok: true; eventId: string; slug: string; occurrenceIds: string[] } | { ok: false; error: string; field?: string }> {
   const { admin } = deps;
   const slug = await deps.uniqueEventSlug(input.title);
   if (!slug) return { ok: false, error: "Add the event's name.", field: "title" };
@@ -641,7 +647,7 @@ async function createSourceEvent(
     await admin.from("events").update({ trashed_at: new Date().toISOString() }).eq("id", eventId);
     return { ok: false, error: "Couldn't add this Event's dates. Please try again." };
   }
-  return { ok: true, eventId, occurrenceIds: ids };
+  return { ok: true, eventId, slug, occurrenceIds: ids };
 }
 
 /** Admin Event Import — an OPERATOR discovery import of a public
@@ -678,8 +684,11 @@ export async function persistDiscoveryEvent(
 
   const created = await createSourceEvent(input, deps, businessId, otherBusinessIds);
   if (!created.ok) return created;
-  if (businessId) await deps.propagateDates(created.eventId, created.occurrenceIds);
-  return { ok: true, kind: "scheduled", title: input.title, viewHref: adminHref(created.eventId), newEvent: true };
+  // Every approved all-dates participant (the reviewed Business AND any
+  // other participating Business) gets its Event-linked date rows — not
+  // only when a primary Business was chosen.
+  if (businessId || otherBusinessIds.length > 0) await deps.propagateDates(created.eventId, created.occurrenceIds);
+  return { ok: true, kind: "scheduled", title: input.title, viewHref: adminHref(created.eventId), newEvent: true, publicHref: eventHref(created.slug), eventId: created.eventId };
 }
 
 /** One event_occurrences insert: the real calendar date always, exact
@@ -780,22 +789,31 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     eventCanonicalGeo.status === "resolved" || eventCanonicalGeo.status === "partial" ? { geo_place_key: eventCanonicalGeo.keys.place, geo_zcta_key: eventCanonicalGeo.keys.zcta, geo_state_key: eventCanonicalGeo.keys.state, geo_resolution: "import" } : {};
   const occurrenceGeoFields = await resolveOccurrenceGeoFields(snaps);
 
-  const { data: created, error } = await admin.rpc("create_owned_event", {
-    p_user_id: deps.userId,
-    p_name: input.title,
-    p_slug: slug,
-    p_start_at: range.start_at,
-    p_end_at: range.end_at,
-    p_market_id: geo?.marketId ?? null,
-    p_requested_market_text: null,
-    p_host_business_id: businessId,
-  });
-  if (error || !created) return { ok: false, error: "Couldn't create your Event. Please try again." };
-  const eventId = (created as { id: string }).id;
+  let eventId: string;
+  let viaAdmin = false;
+  if (deps.createHostedEvent) {
+    const made = await deps.createHostedEvent({ name: input.title, slug, startAt: range.start_at, endAt: range.end_at, marketId: geo?.marketId ?? null });
+    if (!made.ok) return { ok: false, error: "Couldn't create your Event. Please try again." };
+    eventId = made.id;
+    viaAdmin = made.viaAdmin;
+  } else {
+    const { data: created, error } = await admin.rpc("create_owned_event", {
+      p_user_id: deps.userId,
+      p_name: input.title,
+      p_slug: slug,
+      p_start_at: range.start_at,
+      p_end_at: range.end_at,
+      p_market_id: geo?.marketId ?? null,
+      p_requested_market_text: null,
+      p_host_business_id: businessId,
+    });
+    if (error || !created) return { ok: false, error: "Couldn't create your Event. Please try again." };
+    eventId = (created as { id: string }).id;
+  }
   // Live by default (the RPC still writes the old review state).
   await publishCreatedEvent(admin, eventId);
   // Hosted by the importing Business itself: organization-provided.
-  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: "business_hosted_import", sourceUrl: input.sourceUrl });
+  await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: viaAdmin ? "admin_managed_hosted_import" : "business_hosted_import", sourceUrl: input.sourceUrl });
 
   const cover = input.imageUrl ? await deps.storeImage(input.imageUrl) : null;
   // Best-effort detail fill — the Event already exists either way.
@@ -834,5 +852,5 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
   }
 
   await deps.notifyNewEvent(eventId, input.title, first.start, first.date);
-  return { ok: true, kind: "scheduled", title: input.title, viewHref: `/account/event/${eventId}?business_id=${encodeURIComponent(businessId)}` };
+  return { ok: true, kind: "scheduled", title: input.title, viewHref: `/account/event/${eventId}?business_id=${encodeURIComponent(businessId)}`, publicHref: eventHref(slug), eventId, hosted: true };
 }

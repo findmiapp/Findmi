@@ -92,7 +92,9 @@ test("3. the source URL stays separate: Review keeps it for saving, and saving s
   };
   await P.persistDiscoveryEvent(normalized.value, null, { admin: client, storeImage: async (u) => (stored.push(u), "https://x.supabase.co/stored.webp"), geography: async () => null, uniqueEventSlug: async () => "ga", propagateDates: async () => {}, findEventBySourceUrl: async () => null });
   assert.deepEqual(stored, [SOURCE], "recoverEventImage gets the original source URL");
-  assert.match(ACTIONS, /storeImage: async \(url\) => \{\n\s+const stored = await recoverEventImage\(admin, url\);/);
+  // A cover uploaded in Review (already in Findmi storage) is kept as-is;
+  // every source URL still goes through recoverEventImage.
+  assert.match(ACTIONS, /storeImage: async \(url\) => \{[\s\S]{0,160}if \(isStoredEventImageUrl\(admin, url\)\) return url;\n\s+const stored = await recoverEventImage\(admin, url\);/);
   assert.doesNotMatch(CLIENT, /set\(\{ imageUrl: (?:state|preview|src)/, "a preview is never written into the review's imageUrl");
 });
 
@@ -106,7 +108,9 @@ test("6. Review and Review Existing Event render only through the verified previ
   assert.match(CLIENT, /<VerifiedEventImagePreview url=\{review\.imageUrl\}/);
   assert.match(CLIENT, /\{c\.field === "image" && c\.kind !== "same" && <VerifiedEventImagePreview url=\{c\.proposed\}/);
   const imgs = [...CLIENT.matchAll(/<img\s+src=\{([^}]+)\}/g)].map((m) => m[1]);
-  assert.deepEqual(imgs.sort(), ["previews.cover", "previews.logo", "verifiedPreview"], "the only raw <img> tags are verified logo/cover previews (Brand Import's, and Find Media's)");
+  // …plus a cover uploaded in Review, which is already in Findmi storage (CSP allows it).
+  assert.deepEqual(imgs.sort(), ['imageVariantUrl(url, "card")', "previews.cover", "previews.logo", "verifiedPreview"], "the only raw <img> tags are verified logo/cover previews (Brand Import's, and Find Media's) and a Findmi-stored upload");
+  assert.match(CLIENT, /if \(FINDMI_STORED_IMAGE\.test\(url\)\) \{/, "only a Findmi-stored image renders directly");
   // Find Media's preview is the server-verified data URI, through the same filter.
   assert.match(CLIENT, /const verifiedPreview = c \? safePreviewSrc\(c\.preview\) : null;/);
   assert.match(CLIENT, /return \(\n\s+<ImagePreviewView/);

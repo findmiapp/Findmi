@@ -124,6 +124,7 @@ export default async function ManageEventPage({
     add_end_time?: string;
     add_location_id?: string;
     business_id?: string;
+    created?: string;
   }>;
 }) {
   const { id } = await params;
@@ -136,6 +137,7 @@ export default async function ManageEventPage({
     add_end_time: addEndTime,
     add_location_id: addLocationId,
     business_id: businessIdParam,
+    created,
   } = await searchParams;
   const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
@@ -304,6 +306,7 @@ export default async function ManageEventPage({
     : null;
 
   const publicHref = !event.is_demo ? `/event/${event.slug}` : null;
+  const justCreated = created === "1";
   const selectedMarket = markets.find((m) => m.id === event.market_id) ?? null;
   // Event Rejection State pass — a rejected event must never keep showing
   // "In Review"/"waiting for review" copy; publication_status is the
@@ -447,6 +450,27 @@ export default async function ManageEventPage({
       {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
       {saved && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">Saved.</p>
+      )}
+
+      {/* Right after Host An Event: the two next steps — see it live, and
+          add who's participating (this Manager's existing Participants tab). */}
+      {justCreated && !error && (
+        <section role="status" className="mt-4 flex flex-col gap-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4" data-event-created>
+          <p className="text-body font-semibold text-findmi-700">Your Event is on Findmi.</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {publicHref && (
+              <Link href={publicHref} className="inline-flex min-h-11 items-center justify-center rounded-full bg-findmi px-5 text-metadata font-bold text-white transition hover:bg-findmi-600">
+                View Event
+              </Link>
+            )}
+            <Link
+              href={appendQuery(`/account/event/${id}`, { tab: "participants", ...(businessContext ? { business_id: businessContext.id } : {}) })}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-black/10 bg-white px-5 text-metadata font-semibold text-primary transition hover:border-black/25"
+            >
+              Add Participating Businesses
+            </Link>
+          </div>
+        </section>
       )}
 
       <div className="mt-5">

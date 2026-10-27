@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { calendarDayOfMonth, calendarMonthAbbrev, compareChronological, formatCalendarDate, hasEnded, todayIn } from "@/lib/event-time";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { eventHref } from "@/lib/event-links";
+import { SCHEDULE_MAP_GAP_LABEL, scheduleMapGap } from "@/lib/schedule-map";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
@@ -747,7 +749,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     // Location Connections pass — the real Findmi Location this
     // standalone appearance is linked to, if any (embedded via the FK for
     // the Edit form's own AccountRelationField default).
-    location: { id: string; name: string; city: string | null; state: string | null } | null;
+    location: { id: string; name: string; city: string | null; state: string | null; latitude?: number | null; longitude?: number | null } | null;
   };
   let appearances: OwnAppearance[] = [];
   // Owner Action UX pass — carries name/date/venue as separate fields
@@ -871,7 +873,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       !needsSchedule ? skipped : admin
         .from("appearances")
         .select(
-          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, created_at, location:locations(id, name, city, state)"
+          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, created_at, location:locations(id, name, city, state, latitude, longitude)"
         )
         .eq("business_id", id)
         .neq("status", "canceled")
@@ -2840,12 +2842,20 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                           )}
                         </p>
                       </div>
-                      <Link
-                        href={`/account/event/${h.id}?business_id=${encodeURIComponent(id)}`}
-                        className="shrink-0 text-metadata font-semibold text-accent hover:underline"
-                      >
-                        Manage
-                      </Link>
+                      <div className="flex shrink-0 flex-col items-end">
+                        <Link
+                          href={`/account/event/${h.id}?business_id=${encodeURIComponent(id)}`}
+                          className="inline-flex min-h-9 items-center text-metadata font-semibold text-accent hover:underline"
+                        >
+                          Manage
+                        </Link>
+                        {/* Published (no review status) → its public page. */}
+                        {!h.statusLabel && (
+                          <Link href={eventHref(h.slug)} className="inline-flex min-h-9 items-center text-metadata font-semibold text-muted hover:text-primary hover:underline">
+                            View Event
+                          </Link>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -2929,6 +2939,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                                     real location_id won't flow onto any
                                     Location page. Never shown publicly. */}
                                 {!a.event_id && !a.location && " · Not linked to a Findmi place"}
+                                {/* Same rule as the public schedule map —
+                                    a date it can't draw is flagged here. */}
+                                {scheduleMapGap(a) && (a.event_id || a.location) && (
+                                  <span className="font-semibold text-amber-800"> · {SCHEDULE_MAP_GAP_LABEL[scheduleMapGap(a)!]}</span>
+                                )}
                                 {a.participationStatus && (
                                   <>
                                     {" · "}

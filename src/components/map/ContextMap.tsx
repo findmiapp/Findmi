@@ -26,6 +26,7 @@ export default function ContextMap({
   listPlaces = true,
   onResult,
   initialSelect,
+  scope,
 }: {
   results: GeoResult[];
   label: string;
@@ -39,6 +40,10 @@ export default function ContextMap({
    * "first" selects the place of the first result (callers pass results in
    * their own order, e.g. a schedule's earliest date first). */
   initialSelect?: "single" | "first";
+  /** What these results ARE, carried into the full map so "View On Map"
+   * keeps meaning the same thing (e.g. one Business's upcoming schedule),
+   * never generic discovery around the area. See contextMapHref. */
+  scope?: ContextMapScope;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -86,7 +91,7 @@ export default function ContextMap({
   const single = places.length === 1;
   const selectedFeature = features.find((f) => f.id === selectedId) ?? null;
   const picked = selectedFeature ? results.filter((r) => selectedFeature.keys.includes(r.key)) : [];
-  const mapHref = single && places[0].place.href ? `/map?place=${encodeURIComponent(places[0].place.href.replace("/location/", ""))}` : `/map?bbox=${bbox.map((x) => Math.round(x * 1e4) / 1e4).join(",")}`;
+  const mapHref = contextMapHref(bbox, single ? places[0].place.href : null, scope);
 
   return (
     <div data-context-map className="flex flex-col gap-2">
@@ -126,4 +131,28 @@ export default function ContextMap({
       )}
     </div>
   );
+}
+
+/** A scoped context: the full map shows only this Brand's upcoming dated
+ * activity (its Events and Pop-Ups — the same Brand filter /map already
+ * has), framed on these results. */
+export interface ContextMapScope {
+  brand: string;
+}
+
+/** "View On Map" for a context map (pure). Scoped → the same scope on the
+ * full map (Brand filter + dated kinds), framed on these results; otherwise
+ * the single listed Place, else the area around the results. */
+export function contextMapHref(bbox: Bbox, singlePlaceHref: string | null, scope?: ContextMapScope): string {
+  const box = bbox.map((x) => Math.round(x * 1e4) / 1e4).join(",");
+  if (scope?.brand) {
+    const p = new URLSearchParams();
+    p.append("type", "event");
+    p.append("type", "appearance");
+    p.set("brand", scope.brand);
+    p.set("bbox", box);
+    return `/map?${p.toString()}`;
+  }
+  if (singlePlaceHref) return `/map?place=${encodeURIComponent(singlePlaceHref.replace("/location/", ""))}`;
+  return `/map?bbox=${box}`;
 }
