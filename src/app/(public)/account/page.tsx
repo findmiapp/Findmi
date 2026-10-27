@@ -52,7 +52,8 @@ import WorldTileCard, { WORLD_KIND_LABEL, PlaceFallbackGlyph, type WorldTile } f
 import FromBrandsSection from "./FromBrandsSection";
 
 export const metadata: Metadata = {
-  title: "My Findmi",
+  // absolute: already names Findmi; skip the root "%s | Findmi" template.
+  title: { absolute: "My Findmi" },
   robots: { index: false },
 };
 // Authenticated, per-user content — must never be statically or

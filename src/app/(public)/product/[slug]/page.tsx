@@ -57,7 +57,7 @@ export async function generateMetadata({
   const url = `${getPublicOrigin()}/product/${product.slug}`;
 
   return {
-    // absolute: already brand-suffixed; skip the root "%s · Findmi" template.
+    // absolute: already brand-suffixed; skip the root "%s | Findmi" template.
     title: { absolute: `${product.name} | ${product.business.name} | Findmi` },
     description,
     alternates: { canonical: url },

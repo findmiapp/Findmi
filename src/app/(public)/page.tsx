@@ -46,7 +46,7 @@ import { toJsonLdScript } from "@/lib/jsonLd";
 export const revalidate = 60;
 
 // Homepage title/description/canonical/share card. `title.absolute` so the
-// root "%s · Findmi" template never appends a second brand name.
+// root "%s | Findmi" template never appends a second brand name.
 export const metadata = HOME_METADATA;
 
 // Brands We Love admin-control pass — a "businesses" Homepage Row's

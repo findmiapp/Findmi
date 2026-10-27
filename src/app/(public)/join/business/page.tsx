@@ -70,7 +70,8 @@ import {
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Findmi for Business",
+  // absolute: already names Findmi; skip the root "%s | Findmi" template.
+  title: { absolute: "Findmi for Business" },
   description: "Show customers who you are, what you offer and where you'll be next, all in one Findmi page.",
 };
 

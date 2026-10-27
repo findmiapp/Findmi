@@ -48,7 +48,8 @@ const JOIN_PERSON_LOOP = ["Discover", "Save & Follow", "Organize", "Experience",
 const JOIN_BUSINESS_LOOP = ["Create Or Claim", "Publish Your Presence", "Show Where You’re Appearing", "Connect", "Grow"] as const;
 
 export const metadata: Metadata = {
-  title: "Join Findmi",
+  // absolute: already names Findmi; skip the root "%s | Findmi" template.
+  title: { absolute: "Join Findmi" },
   description: "One Findmi account, multiple ways to use Findmi: discover, follow, save and capture real experiences — and add or claim a Business whenever you're ready.",
 };
 

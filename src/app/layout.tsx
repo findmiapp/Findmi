@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: HOME_TITLE,
-    template: "%s · Findmi",
+    template: "%s | Findmi",
   },
   description: HOME_DESCRIPTION,
   openGraph: {

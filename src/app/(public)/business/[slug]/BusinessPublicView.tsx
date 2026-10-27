@@ -203,7 +203,7 @@ export async function generateBusinessMetadata(slug: string): Promise<Metadata> 
 
   return {
     // absolute: the name already carries the brand suffix, so the root
-    // "%s · Findmi" template would otherwise repeat it.
+    // "%s | Findmi" template would otherwise repeat it.
     title: { absolute: `${business.name} | Findmi` },
     description,
     alternates: { canonical: url },

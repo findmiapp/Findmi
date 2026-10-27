@@ -5,7 +5,8 @@ import MembershipConfirmation from "./MembershipConfirmation";
 import { SuccessPanel, UnverifiedPanel } from "./panels";
 
 export const metadata: Metadata = {
-  title: "Welcome to Findmi",
+  // absolute: already names Findmi; skip the root "%s | Findmi" template.
+  title: { absolute: "Welcome to Findmi" },
   robots: { index: false },
 };
 
