@@ -40,8 +40,14 @@ import {
 import { DISCOVERY_TIME_TABS, WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
+import { HOME_METADATA, siteEntityGraph } from "@/lib/site-identity";
+import { toJsonLdScript } from "@/lib/jsonLd";
 
 export const revalidate = 60;
+
+// Homepage title/description/canonical/share card. `title.absolute` so the
+// root "%s · Findmi" template never appends a second brand name.
+export const metadata = HOME_METADATA;
 
 // Brands We Love admin-control pass — a "businesses" Homepage Row's
 // title/subtitle come straight from homepage_rows (admin-editable at
@@ -201,6 +207,7 @@ export default async function HomePage({
 
   return (
     <div>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLdScript(siteEntityGraph()) }} />
       {/* Weather / Local Context — unchanged, directly below the header. */}
       <HomeWeather context={weatherContext} />
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { HOME_DESCRIPTION, HOME_TITLE, SHARE_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site-identity";
 
 // One typeface for the whole app — headings included. Both prior display
 // treatments (Space Grotesk, then Plus Jakarta Sans) read as geometric/
@@ -24,24 +25,24 @@ import "./globals.css";
 // `font-display` both keep resolving to exactly the same Inter as before.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
-// `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
-// a hosting dashboard — still falls back instead of producing an invalid URL.
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
-
+// Defaults for every route that doesn't set its own. The homepage sets
+// its full metadata (canonical, Twitter card) itself; see lib/site-identity.
+// The openGraph block is only a fallback: a page that sets its own
+// openGraph replaces it wholesale (Next merges metadata shallowly), so
+// Business/Event/Product share images are unaffected.
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "Findmi: Find what you're looking for. And where it'll be next.",
+    default: HOME_TITLE,
     template: "%s · Findmi",
   },
-  description:
-    "Findmi helps you discover brands, vendors, mobile businesses, and events, and always know where they'll be next.",
+  description: HOME_DESCRIPTION,
   openGraph: {
-    title: "Findmi",
-    description:
-      "Find what you're looking for. And where it'll be next.",
-    siteName: "Findmi",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    siteName: SITE_NAME,
     type: "website",
+    images: [SHARE_IMAGE],
   },
 };
 

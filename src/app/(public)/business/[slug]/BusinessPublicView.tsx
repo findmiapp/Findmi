@@ -202,7 +202,9 @@ export async function generateBusinessMetadata(slug: string): Promise<Metadata> 
   const url = await resolveCanonicalUrl(business.id, business.slug);
 
   return {
-    title: `${business.name} | Findmi`,
+    // absolute: the name already carries the brand suffix, so the root
+    // "%s · Findmi" template would otherwise repeat it.
+    title: { absolute: `${business.name} | Findmi` },
     description,
     alternates: { canonical: url },
     // Owner-preview pages (not yet approved — see resolveOwnerPreviewBusiness)
