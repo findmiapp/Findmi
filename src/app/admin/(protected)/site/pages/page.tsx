@@ -82,26 +82,20 @@ export default async function DiscoveryPagesListPage({
       <div className="mt-8 rounded-2xl border border-dashed border-black/15 bg-black/[0.015] p-4">
         <p className="text-sm font-semibold text-ink">Create A Page</p>
         <p className="mt-1 text-xs text-ink/45">
-          Starts as a draft, so you can add Sections and preview it before anything is public.
+          Starts as a draft, so you can add Sections and preview it before anything is public. The Admin-only internal name defaults from the Title.
         </p>
         <form action={createDiscoveryPage} className="mt-3 flex flex-col gap-3">
-          <TextField label="Internal name" name="internal_name" placeholder="e.g. Food Trucks Test Page" required />
-          <TextField label="Public title (optional)" name="title" placeholder="Defaults to the internal name" />
+          <TextField label="Title" name="title" placeholder="e.g. NYC Marathon Week 2026 Guide" required />
           <TextField
-            label="Slug (optional)"
+            label="Slug (Optional)"
             name="slug"
-            placeholder="Defaults from the internal name"
+            placeholder="Defaults from the Title"
             hint="The public address once published: /guides/your-slug."
           />
-          <TextareaField label="Description (optional)" name="description" rows={2} />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <TextField label="Category (optional)" name="category_slug" placeholder="e.g. food-trucks" />
-            <TextField label="Market (optional)" name="market_slug" />
-            <TextField label="Area (optional)" name="area_slug" />
-          </div>
+          <TextareaField label="Description (Optional)" name="description" rows={2} />
           <button
             type="submit"
-            className="self-start rounded-full bg-ink px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-ink/85"
+            className="min-h-11 self-start rounded-full bg-ink px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-ink/85"
           >
             + Create Page
           </button>

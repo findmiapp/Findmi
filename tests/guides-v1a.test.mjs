@@ -253,8 +253,9 @@ test("14 + 15. Admin Preview renders drafts with the SAME renderer; the public r
   assert.match(PREVIEW, /getGuideSectionRows\(page\.id, getAdminSupabase\(\)\)/);
   assert.match(PREVIEW, /<GuideView page=\{page\} sections=\{sections\} today=\{todayIn\(\)\} \/>/);
   assert.match(PREVIEW, /robots: \{ index: false, follow: false \}/);
-  assert.match(PREVIEW, /Admin Preview/);
-  assert.match(PREVIEW, /Draft — not public/);
+  // V1B compacted the bar to one line; same states, shorter copy.
+  assert.match(PREVIEW, /Admin Preview · Published/);
+  assert.match(PREVIEW, /Draft Preview · Not Public/);
   assert.match(PREVIEW, /Back To Editor/);
   assert.match(PREVIEW, /export const dynamic = "force-dynamic";/);
   assert.match(read("src/middleware.ts"), /\/admin/, "behind the Admin middleware gate");

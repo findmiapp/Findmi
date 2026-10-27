@@ -13,10 +13,18 @@ export default function ImageField({
   name,
   defaultValue,
   onChange,
+  variant = "url",
+  hint,
 }: {
   label: string;
   name: string;
   defaultValue?: string | null;
+  /** Pages + Sections V1B — "media": the image itself leads (wide preview,
+   * Upload / Change / Remove), with the stored link behind "Use A Link
+   * Instead". Same field name and value either way. Default "url" is the
+   * original layout every existing caller keeps. */
+  variant?: "url" | "media";
+  hint?: string;
   /** Optional — lets a parent that renders a live preview (e.g.
    * BulletinForm) track the current URL too, instead of only the input
    * this already renders. Every existing caller omits this and is
@@ -57,6 +65,47 @@ export default function ImageField({
         setError("Upload failed. Please check your connection and try again.");
       }
     });
+  }
+
+  if (variant === "media") {
+    return (
+      <div>
+        <span className="mb-1.5 block text-sm font-medium text-ink">{label}</span>
+        <input type="hidden" name={name} value={url} />
+        {url ? (
+          <div className="relative aspect-[16/9] w-full max-w-sm overflow-hidden rounded-xl border border-black/10 bg-black/5">
+            {/* eslint-disable-next-line @next/next/no-img-element -- preview only, arbitrary/mid-edit URLs shouldn't need next/image's remote-host allowlist */}
+            <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
+          </div>
+        ) : (
+          <div className="flex aspect-[16/9] w-full max-w-sm items-center justify-center rounded-xl border border-dashed border-black/15 bg-black/[0.02] text-xs text-ink/40">No image</div>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-black/10 px-4 text-xs font-semibold text-ink/70 transition hover:border-ink/30">
+            {isPending ? "Uploading…" : url ? "Change" : "Upload Image"}
+            <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={isPending} />
+          </label>
+          {url && (
+            <button type="button" onClick={() => setUrl("")} className="inline-flex min-h-10 items-center rounded-full px-3 text-xs font-semibold text-red-600 hover:underline">
+              Remove
+            </button>
+          )}
+        </div>
+        <details className="mt-2">
+          <summary className="cursor-pointer select-none text-xs font-semibold text-ink/50">Use A Link Instead</summary>
+          <input autoCapitalize="none"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://…"
+            aria-label={`${label} link`}
+            className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+          />
+        </details>
+        {hint && <p className="mt-1.5 text-xs text-ink/45">{hint}</p>}
+        {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
+      </div>
+    );
   }
 
   return (

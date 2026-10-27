@@ -48,6 +48,9 @@ export interface DiscoveryItem {
   haystack: string;
   /** Related ids for bounded personal ranking (Brand, Place, Event). */
   related: string[];
+  /** The canonical Location this item happens at / is (Pop-Ups and
+   * Places), when known — used to map it. Optional; never invented. */
+  location_id?: string | null;
 }
 
 /** A resolved Census geography as a predicate: an item matches when its

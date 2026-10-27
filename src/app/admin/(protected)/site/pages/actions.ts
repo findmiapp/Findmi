@@ -15,6 +15,18 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { guidePath, nextPublishedAt, validateGuideDetails } from "@/lib/guides";
 import type { HomepageRowContentType, HomepageRowMode, HomepageRowSectionType, HomepageRowTimeWindow } from "@/lib/homepage-rows";
+import { getVocabulary } from "@/lib/discovery/server";
+import {
+  applyRefAction,
+  defaultEntityConfig,
+  entityConfigFromForm,
+  mapConfigFromForm,
+  parseSectionConfig,
+  richTextConfigFromForm,
+  type EntityRef,
+  type SectionConfig,
+} from "@/lib/page-sections";
+import { ENTITY_REF_KINDS, ENTITY_SCOPES, ENTITY_SCOPE_LABELS, SECTION_LIMITS, isPageSectionKind, type EntityScope, type PageSectionKind } from "@/lib/section-types";
 
 const LIST_PATH = "/admin/site/pages";
 function pagePath(pageId: string) {
@@ -53,8 +65,10 @@ async function pageSlug(supabase: SupabaseClient, pageId: string): Promise<strin
 
 export async function createDiscoveryPage(formData: FormData) {
   const supabase = await requireAdminSupabase();
-  const internalName = str(formData, "internal_name") ?? "New Page";
-  const title = str(formData, "title") ?? internalName;
+  // Pages + Sections V1B — Title first; the Admin-only internal name
+  // defaults from it (still editable later under Page Settings).
+  const title = str(formData, "title") ?? str(formData, "internal_name") ?? "New Page";
+  const internalName = str(formData, "internal_name") ?? title;
   const base = resolveSlugInput(str(formData, "slug"), title) || "page";
   const slug = await ensureUniqueSlug(base, async (candidate) => {
     const { data } = await supabase.from("discovery_pages").select("id").eq("slug", candidate).maybeSingle();
@@ -94,13 +108,16 @@ export async function createDiscoveryPage(formData: FormData) {
 export async function saveDiscoveryPage(id: string, isSystem: boolean, formData: FormData) {
   const supabase = await requireAdminSupabase();
 
+  const title = str(formData, "title") ?? "Untitled Page";
+  const context = await validateMarketArea(str(formData, "market_slug"), str(formData, "area_slug"));
+  if (!context.ok) redirect(errorRedirectUrl(pagePath(id), context.error));
   const payload: Record<string, unknown> = {
-    internal_name: str(formData, "internal_name") ?? "Untitled Page",
-    title: str(formData, "title") ?? "Untitled Page",
+    internal_name: str(formData, "internal_name") ?? title,
+    title,
     description: str(formData, "description"),
     category_slug: str(formData, "category_slug"),
-    market_slug: str(formData, "market_slug"),
-    area_slug: str(formData, "area_slug"),
+    market_slug: context.market,
+    area_slug: context.area,
     updated_at: new Date().toISOString(),
   };
   if (!isSystem) {
@@ -228,10 +245,44 @@ function readSectionFields(formData: FormData) {
   };
 }
 
+/** An editor URL with query params (an error included) and a Section anchor. */
+function editorUrl(pageId: string, params: Record<string, string>, sectionId?: string) {
+  return `${pagePath(pageId)}?${new URLSearchParams(params).toString()}${sectionId ? `#section-${sectionId}` : ""}`;
+}
+
+/** Market / Area slugs from the selectors: the Market must exist and the
+ * Area must belong to it (an Area never stands alone). Blank = none. */
+async function validateMarketArea(market: string | null, area: string | null): Promise<{ ok: true; market: string | null; area: string | null } | { ok: false; error: string }> {
+  if (!market) return { ok: true, market: null, area: null };
+  const vocab = await getVocabulary();
+  if (!vocab.marketRows.some((m) => m.slug === market)) return { ok: false, error: "Choose a Market from the list." };
+  if (area && !vocab.areaRows.some((a) => a.slug === area && a.market === market)) return { ok: false, error: "That Area isn't part of the chosen Market." };
+  return { ok: true, market, area: area ?? null };
+}
+
+/** What "+ Add Section" offers (author-facing), and what each creates. */
+const SECTION_CHOICES: Record<string, { sectionType: HomepageRowSectionType | PageSectionKind; title: string; config: SectionConfig["config"] | Record<string, never>; contentType: HomepageRowContentType | null }> = {
+  ...Object.fromEntries(ENTITY_SCOPES.map((scope) => [scope, { sectionType: "entity_results" as const, title: ENTITY_SCOPE_LABELS[scope], config: defaultEntityConfig(scope), contentType: null }])),
+  rich_text: { sectionType: "rich_text", title: "About This Guide", config: { body: "" }, contentType: null },
+  map: { sectionType: "map", title: "Explore The Map", config: { sections: [] }, contentType: null },
+  group: { sectionType: "group", title: "New Group", config: {}, contentType: null },
+  feed: { sectionType: "feed", title: "New Section", config: {}, contentType: "businesses" },
+};
+
 export async function createSection(pageId: string, formData: FormData) {
   const supabase = await requireAdminSupabase();
-  const sectionType: HomepageRowSectionType = str(formData, "section_type") === "group" ? "group" : "feed";
-  const title = str(formData, "title") ?? (sectionType === "group" ? "New Group" : "New Section");
+  const { data: page } = await supabase.from("discovery_pages").select("id, is_system").eq("id", pageId).maybeSingle();
+  if (!page) redirect(LIST_PATH);
+  // The legacy select (section_type) and the V1B chooser (kind) both land here.
+  const kind = str(formData, "kind") ?? (str(formData, "section_type") === "group" ? "group" : "feed");
+  const choice = SECTION_CHOICES[kind];
+  if (!choice) redirect(errorRedirectUrl(pagePath(pageId), "Choose a Section type."));
+  // V1B Section types render on Guide Pages only — the Homepage keeps its
+  // own composition (see lib/section-types.ts).
+  if (page.is_system && isPageSectionKind(choice.sectionType)) redirect(errorRedirectUrl(pagePath(pageId), "The Homepage only supports its existing Section types."));
+
+  const { count } = await supabase.from("homepage_rows").select("id", { count: "exact", head: true }).eq("page_id", pageId);
+  if ((count ?? 0) >= SECTION_LIMITS.sectionsPerPage) redirect(errorRedirectUrl(pagePath(pageId), `A Page can have up to ${SECTION_LIMITS.sectionsPerPage} Sections.`));
 
   const { data: existing } = await supabase
     .from("homepage_rows")
@@ -246,26 +297,126 @@ export async function createSection(pageId: string, formData: FormData) {
     .from("homepage_rows")
     .insert({
       page_id: pageId,
-      title,
-      section_type: sectionType,
-      content_type: sectionType === "feed" ? "businesses" : null,
+      title: str(formData, "title") ?? choice.title,
+      section_type: choice.sectionType,
+      content_type: choice.contentType,
       mode: "dynamic",
       is_visible: true,
       sort_order: nextOrder,
+      ...(isPageSectionKind(choice.sectionType) ? { config: choice.config } : {}),
     })
     .select("id")
     .single();
   if (error || !created) redirect(errorRedirectUrl(pagePath(pageId), error?.message ?? "Could not add the section."));
 
-  await auditSection(supabase, "page_section_create", created.id, pageId, { section_type: sectionType });
+  await auditSection(supabase, "page_section_create", created.id, pageId, { section_type: choice.sectionType, kind });
   await revalidatePage(pageId, await pageSlug(supabase, pageId));
-  redirect(`${pagePath(pageId)}?saved=created`);
+  redirect(editorUrl(pageId, { saved: "created", edit: created.id }, created.id));
+}
+
+// ── V1B Sections (Entity Results / Text & Editorial / Map) ──────────────
+
+async function loadV1bSection(supabase: SupabaseClient, id: string, pageId: string) {
+  const { data } = await supabase.from("homepage_rows").select("id, page_id, section_type, is_visible, config").eq("id", id).eq("page_id", pageId).maybeSingle();
+  const row = data as { id: string; page_id: string; section_type: string; is_visible: boolean; config: unknown } | null;
+  if (!row || !isPageSectionKind(row.section_type)) redirect(errorRedirectUrl(pagePath(pageId), "That Section can't be edited here."));
+  return row as typeof row & { section_type: PageSectionKind };
+}
+
+/** Saves an Entity Results / Text & Editorial / Map Section. The type is
+ * fixed at creation; the config is validated before anything is written,
+ * so an invalid form never overwrites a working Section. */
+export async function savePageSection(id: string, pageId: string, formData: FormData) {
+  const supabase = await requireAdminSupabase();
+  const row = await loadV1bSection(supabase, id, pageId);
+  const editError = (message: string) => editorUrl(pageId, { edit: id, error: message }, id);
+
+  let raw: unknown;
+  let market: string | null = null;
+  let area: string | null = null;
+  if (row.section_type === "entity_results") {
+    const current = parseSectionConfig("entity_results", row.config);
+    const scopeRaw = current.ok && current.value.kind === "entity_results" ? current.value.config.scope : str(formData, "scope");
+    const scope = (ENTITY_SCOPES as readonly string[]).includes(scopeRaw ?? "") ? (scopeRaw as EntityScope) : null;
+    if (!scope) redirect(editError("This Section has no valid content type."));
+    raw = entityConfigFromForm(scope, formData);
+    const context = await validateMarketArea(str(formData, "market_slug"), str(formData, "area_slug"));
+    if (!context.ok) redirect(editError(context.error));
+    market = context.market;
+    area = context.area;
+  } else if (row.section_type === "rich_text") raw = richTextConfigFromForm(formData);
+  else raw = mapConfigFromForm(formData);
+
+  const parsed = parseSectionConfig(row.section_type, raw);
+  if (!parsed.ok) redirect(editError(`Not saved — ${parsed.error}`));
+  const isVisible = bool(formData, "is_visible");
+
+  const { error } = await supabase
+    .from("homepage_rows")
+    .update({
+      title: str(formData, "title") ?? "Untitled Section",
+      subtitle: str(formData, "subtitle"),
+      is_visible: isVisible,
+      market_slug: market,
+      area_slug: market ? area : null,
+      config: parsed.value.config,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) redirect(editError(error.message));
+
+  const detail = parsed.value.kind === "entity_results" ? { scope: parsed.value.config.scope, mode: parsed.value.config.mode } : {};
+  await auditSection(supabase, "page_section_update", id, pageId, { section_type: row.section_type, ...detail });
+  if (row.is_visible !== isVisible) await auditSection(supabase, isVisible ? "page_section_show" : "page_section_hide", id, pageId);
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
+  redirect(editorUrl(pageId, { saved: "section" }, id));
+}
+
+/** Show / Hide from the collapsed Section card (any Section type). */
+export async function setSectionVisible(id: string, pageId: string, visible: boolean) {
+  const supabase = await requireAdminSupabase();
+  const { error } = await supabase.from("homepage_rows").update({ is_visible: visible, updated_at: new Date().toISOString() }).eq("id", id).eq("page_id", pageId);
+  if (error) redirect(errorRedirectUrl(pagePath(pageId), error.message));
+  await auditSection(supabase, visible ? "page_section_show" : "page_section_hide", id, pageId);
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
+  redirect(`${pagePath(pageId)}#section-${id}`);
+}
+
+const REF_ACTIONS = ["pin", "unpin", "exclude", "restore", "include", "remove"] as const;
+
+/** Preview Results actions: pin / unpin, exclude / restore, include /
+ * remove one entity. Stable ids only ("kind:id"); the stored config is
+ * re-validated after the change. */
+export async function updateSectionRef(id: string, pageId: string, formData: FormData) {
+  const supabase = await requireAdminSupabase();
+  const row = await loadV1bSection(supabase, id, pageId);
+  const back = editorUrl(pageId, { results: id }, id);
+  const backError = (message: string) => editorUrl(pageId, { results: id, error: message }, id);
+  const action = str(formData, "ref_action") as (typeof REF_ACTIONS)[number] | null;
+  const [kind, entityId] = (str(formData, "ref") ?? "").split(":");
+  const current = row.section_type === "entity_results" ? parseSectionConfig("entity_results", row.config) : null;
+  if (!current?.ok || current.value.kind !== "entity_results" || !action || !REF_ACTIONS.includes(action) || !(ENTITY_REF_KINDS as readonly string[]).includes(kind) || !entityId) {
+    redirect(backError("That change couldn't be applied."));
+  }
+  let next;
+  try {
+    next = applyRefAction(current.value.config, action, { kind: kind as EntityRef["kind"], id: entityId });
+  } catch {
+    redirect(backError("That change couldn't be applied."));
+  }
+  const { error } = await supabase.from("homepage_rows").update({ config: next, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) redirect(backError(error.message));
+  await auditSection(supabase, "page_section_update", id, pageId, { ref_action: action, ref: `${kind}:${entityId}` });
+  await revalidatePage(pageId, await pageSlug(supabase, pageId));
+  redirect(back);
 }
 
 export async function saveSection(id: string, pageId: string, formData: FormData) {
   const supabase = await requireAdminSupabase();
   const fields = readSectionFields(formData);
-  const { data: before } = await supabase.from("homepage_rows").select("is_visible").eq("id", id).maybeSingle();
+  const { data: before } = await supabase.from("homepage_rows").select("is_visible, section_type").eq("id", id).maybeSingle();
+  // The legacy Feed / Group form never rewrites a V1B Section.
+  if (before && isPageSectionKind(before.section_type)) redirect(errorRedirectUrl(pagePath(pageId), "That Section can't be edited with this form."));
 
   const { error } = await supabase.from("homepage_rows").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) redirect(errorRedirectUrl(pagePath(pageId), error.message));

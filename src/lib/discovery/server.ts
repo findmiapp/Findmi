@@ -198,116 +198,130 @@ export const getCandidates = cache(async (market: string | undefined, area: stri
   ]);
   const tax = await taxonomyFor([...new Set([...events.map((e) => e.id), ...appearances.map((a) => a.event_id).filter((x): x is string => Boolean(x))])], vocab);
   const items: DiscoveryItem[] = [];
-  if (want.has("event")) {
-    for (const e of events) {
-      const r = e as unknown as Row;
-      const t = tax.get(e.id);
-      items.push({
-        kind: "event",
-        id: e.id,
-        title: e.name,
-        href: eventHref(e.slug),
-        image: e.cover_image_url,
-        subtitle: e.venue_name ?? ([e.city, e.state].filter(Boolean).join(", ") || null),
-        start_at: e.start_at,
-        end_at: e.end_at,
-        start_date: e.start_date ?? null,
-        end_date: e.end_date ?? null,
-        created_at: str(r.created_at),
-        categories: t?.categories ?? [],
-        formats: t?.formats ?? [],
-        is_free: typeof r.is_free === "boolean" ? r.is_free : null,
-        family_friendly: typeof r.family_friendly === "boolean" ? r.family_friendly : null,
-        rsvp: Boolean(e.rsvp_enabled && e.rsvp_url),
-        tickets: Boolean(e.tickets_enabled && e.tickets_url),
-        city: e.city,
-        state: e.state,
-        postal_code: e.postal_code ?? null,
-        area: e.market_area_id ? (areaSlugById.get(e.market_area_id) ?? null) : null,
-        is_featured: Boolean(e.is_featured),
-        has_description: Boolean(e.description && e.description.length > 40),
-        haystack: words(e.name, e.venue_name, e.organizer_name, e.city),
-        related: [e.id, ...(e.host_business_id ? [e.host_business_id] : [])],
-      });
-    }
-  }
+  if (want.has("event")) for (const e of events) items.push(eventToItem(e, tax.get(e.id), areaSlugById));
   const eventById = new Map(events.map((e) => [e.id, e]));
-  if (want.has("appearance")) {
-    for (const a of appearances) {
-      const r = a as unknown as Row;
-      const ev = a.event_id ? eventById.get(a.event_id) : undefined;
-      const t = a.event_id ? tax.get(a.event_id) : undefined;
-      items.push({
-        kind: "appearance",
-        id: a.id,
-        title: a.title || a.business.name,
-        href: `/business/${a.business.slug}`,
-        image: a.flyer_image_url ?? a.business.cover_image_url ?? a.business.logo_url ?? null,
-        subtitle: [a.business.name, a.location?.name ?? a.venue_name].filter(Boolean).join(" · ") || null,
-        start_at: a.start_at,
-        end_at: a.end_at,
-        start_date: null,
-        end_date: null,
-        created_at: str(r.created_at),
-        categories: t?.categories ?? [],
-        formats: t?.formats ?? [],
-        is_free: ev ? (((ev as unknown as Row).is_free as boolean | null) ?? null) : null,
-        family_friendly: ev ? (((ev as unknown as Row).family_friendly as boolean | null) ?? null) : null,
-        rsvp: false,
-        tickets: false,
-        city: a.city,
-        state: a.state,
-        postal_code: str(r.postal_code),
-        area: (str(r.market_area_id) && areaSlugById.get(r.market_area_id as string)) || (ev?.market_area_id ? (areaSlugById.get(ev.market_area_id) ?? null) : null),
-        is_featured: false,
-        has_description: Boolean(a.description && a.description.length > 40),
-        haystack: words(a.title, a.business.name, a.venue_name, a.location?.name, a.city),
-        related: [a.business.id, ...(a.location?.id ? [a.location.id] : []), ...(a.event_id ? [a.event_id] : [])],
-      });
-    }
-  }
-  for (const l of want.has("place") ? places : []) {
-    items.push({
-      kind: "place",
-      id: l.id,
-      title: l.name,
-      href: `/location/${l.slug}`,
-      image: l.cover_image_url ?? null,
-      subtitle: [l.category?.name, l.city].filter(Boolean).join(" · ") || null,
-      start_at: null, end_at: null, start_date: null, end_date: null,
-      created_at: str((l as unknown as Row).created_at),
-      categories: [], formats: [], is_free: null, family_friendly: null, rsvp: false, tickets: false,
-      city: l.city, state: l.state, postal_code: l.postal_code ?? null,
-      area: l.market_area_id ? (areaSlugById.get(l.market_area_id) ?? null) : null,
-      is_featured: false,
-      has_description: Boolean(l.description && l.description.length > 40),
-      haystack: words(l.name, l.category?.name, l.city),
-      related: [l.id],
-    });
-  }
-  for (const b of want.has("business") ? brands : []) {
-    const r = b as unknown as Row;
-    items.push({
-      kind: "business",
-      id: b.id,
-      title: b.name,
-      href: `/business/${b.slug}`,
-      image: b.cover_image_url ?? b.logo_url ?? null,
-      logo: b.logo_url ?? null,
-      subtitle: b.short_description ?? (b.categories?.[0]?.name ?? null),
-      start_at: null, end_at: null, start_date: null, end_date: null,
-      created_at: str(r.created_at),
-      categories: [], formats: [], is_free: null, family_friendly: null, rsvp: false, tickets: false,
-      city: b.city, state: b.state, postal_code: b.postal_code ?? null,
-      area: str(r.market_area_id) ? (areaSlugById.get(r.market_area_id as string) ?? null) : null,
-      is_featured: Boolean(b.is_featured),
-      has_description: Boolean(b.description && b.description.length > 40),
-      haystack: words(b.name, b.short_description, ...(b.categories ?? []).map((c) => c.name)),
-      related: [b.id],
-    });
-  }
+  if (want.has("appearance")) for (const a of appearances) items.push(appearanceToItem(a, a.event_id ? tax.get(a.event_id) : undefined, a.event_id ? eventById.get(a.event_id) : undefined, areaSlugById));
+  for (const l of want.has("place") ? places : []) items.push(placeToItem(l, areaSlugById));
+  for (const b of want.has("business") ? brands : []) items.push(businessToItem(b, areaSlugById));
   return items;
 });
+
+// ------------------------------------------------------------ item mappers
+// One DiscoveryItem shape per canonical entity, shared by the candidate
+// fetch above and by anything that loads specific entities by id (Pages +
+// Sections V1B Entity Results: pins / includes).
+
+type EventRow = Awaited<ReturnType<typeof getEventsDiscovery>>[number];
+type AppearanceRow = Awaited<ReturnType<typeof getFindMiHereFeed>>[number];
+type PlaceRow = Awaited<ReturnType<typeof getLocations>>[number];
+type BusinessRow = Awaited<ReturnType<typeof searchBusinesses>>[number];
+type Taxonomy = { categories: string[]; formats: string[] } | undefined;
+
+export function eventToItem(e: EventRow, t: Taxonomy, areaSlugById: ReadonlyMap<string, string>): DiscoveryItem {
+  const r = e as unknown as Row;
+  return {
+    kind: "event",
+    id: e.id,
+    title: e.name,
+    href: eventHref(e.slug),
+    image: e.cover_image_url,
+    subtitle: e.venue_name ?? ([e.city, e.state].filter(Boolean).join(", ") || null),
+    start_at: e.start_at,
+    end_at: e.end_at,
+    start_date: e.start_date ?? null,
+    end_date: e.end_date ?? null,
+    created_at: str(r.created_at),
+    categories: t?.categories ?? [],
+    formats: t?.formats ?? [],
+    is_free: typeof r.is_free === "boolean" ? r.is_free : null,
+    family_friendly: typeof r.family_friendly === "boolean" ? r.family_friendly : null,
+    rsvp: Boolean(e.rsvp_enabled && e.rsvp_url),
+    tickets: Boolean(e.tickets_enabled && e.tickets_url),
+    city: e.city,
+    state: e.state,
+    postal_code: e.postal_code ?? null,
+    area: e.market_area_id ? (areaSlugById.get(e.market_area_id) ?? null) : null,
+    is_featured: Boolean(e.is_featured),
+    has_description: Boolean(e.description && e.description.length > 40),
+    haystack: words(e.name, e.venue_name, e.organizer_name, e.city),
+    related: [e.id, ...(e.host_business_id ? [e.host_business_id] : [])],
+  };
+}
+
+export function appearanceToItem(a: AppearanceRow, t: Taxonomy, ev: EventRow | undefined, areaSlugById: ReadonlyMap<string, string>): DiscoveryItem {
+  const r = a as unknown as Row;
+  return {
+    kind: "appearance",
+    id: a.id,
+    title: a.title || a.business.name,
+    href: `/business/${a.business.slug}`,
+    image: a.flyer_image_url ?? a.business.cover_image_url ?? a.business.logo_url ?? null,
+    subtitle: [a.business.name, a.location?.name ?? a.venue_name].filter(Boolean).join(" · ") || null,
+    start_at: a.start_at,
+    end_at: a.end_at,
+    start_date: null,
+    end_date: null,
+    created_at: str(r.created_at),
+    categories: t?.categories ?? [],
+    formats: t?.formats ?? [],
+    is_free: ev ? (((ev as unknown as Row).is_free as boolean | null) ?? null) : null,
+    family_friendly: ev ? (((ev as unknown as Row).family_friendly as boolean | null) ?? null) : null,
+    rsvp: false,
+    tickets: false,
+    city: a.city,
+    state: a.state,
+    postal_code: str(r.postal_code),
+    area: (str(r.market_area_id) && areaSlugById.get(r.market_area_id as string)) || (ev?.market_area_id ? (areaSlugById.get(ev.market_area_id) ?? null) : null),
+    is_featured: false,
+    has_description: Boolean(a.description && a.description.length > 40),
+    haystack: words(a.title, a.business.name, a.venue_name, a.location?.name, a.city),
+    related: [a.business.id, ...(a.location?.id ? [a.location.id] : []), ...(a.event_id ? [a.event_id] : [])],
+    location_id: a.location?.id ?? a.location_id ?? null,
+  };
+}
+
+export function placeToItem(l: PlaceRow, areaSlugById: ReadonlyMap<string, string>): DiscoveryItem {
+  return {
+    kind: "place",
+    id: l.id,
+    title: l.name,
+    href: `/location/${l.slug}`,
+    image: l.cover_image_url ?? null,
+    subtitle: [l.category?.name, l.city].filter(Boolean).join(" · ") || null,
+    start_at: null, end_at: null, start_date: null, end_date: null,
+    created_at: str((l as unknown as Row).created_at),
+    categories: [], formats: [], is_free: null, family_friendly: null, rsvp: false, tickets: false,
+    city: l.city, state: l.state, postal_code: l.postal_code ?? null,
+    area: l.market_area_id ? (areaSlugById.get(l.market_area_id) ?? null) : null,
+    is_featured: false,
+    has_description: Boolean(l.description && l.description.length > 40),
+    haystack: words(l.name, l.category?.name, l.city),
+    related: [l.id],
+    location_id: l.id,
+  };
+}
+
+export function businessToItem(b: BusinessRow, areaSlugById: ReadonlyMap<string, string>): DiscoveryItem {
+  const r = b as unknown as Row;
+  return {
+    kind: "business",
+    id: b.id,
+    title: b.name,
+    href: `/business/${b.slug}`,
+    image: b.cover_image_url ?? b.logo_url ?? null,
+    logo: b.logo_url ?? null,
+    subtitle: b.short_description ?? (b.categories?.[0]?.name ?? null),
+    start_at: null, end_at: null, start_date: null, end_date: null,
+    created_at: str(r.created_at),
+    categories: [], formats: [], is_free: null, family_friendly: null, rsvp: false, tickets: false,
+    city: b.city, state: b.state, postal_code: b.postal_code ?? null,
+    area: str(r.market_area_id) ? (areaSlugById.get(r.market_area_id as string) ?? null) : null,
+    is_featured: Boolean(b.is_featured),
+    has_description: Boolean(b.description && b.description.length > 40),
+    haystack: words(b.name, b.short_description, ...(b.categories ?? []).map((c) => c.name)),
+    related: [b.id],
+  };
+}
 
 // ------------------------------------------------------------ personal
 

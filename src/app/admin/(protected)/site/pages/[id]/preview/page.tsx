@@ -40,17 +40,17 @@ export default async function GuidePreviewPage({ params }: { params: Promise<{ i
   const { sections } = await resolveGuide(page, buildGuideSections(rows));
   return (
     <div>
-      <div className="sticky top-0 z-30 -mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <p className="text-sm font-bold text-amber-900">
-          Admin Preview <span className="font-semibold text-amber-800/80">· {page.is_published ? "Published" : "Draft — not public"}</span>
-        </p>
-        <div className="flex items-center gap-3 text-sm font-semibold">
+      {/* Pages + Sections V1B — one compact line (was a tall wrapped block
+          on mobile): preview state, public link when published, back. */}
+      <div className="sticky top-0 z-30 -mx-4 mb-2 flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50/95 px-4 py-1.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <p className="min-w-0 truncate text-xs font-bold text-amber-900">{page.is_published ? "Admin Preview · Published" : "Draft Preview · Not Public"}</p>
+        <div className="flex shrink-0 items-center gap-1">
           {page.is_published && (
-            <Link href={guidePath(page.slug)} className="text-amber-900 underline underline-offset-2">
-              Open Public Page
+            <Link href={guidePath(page.slug)} className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-amber-900 underline underline-offset-2">
+              Public Page
             </Link>
           )}
-          <Link href={editorHref} className="rounded-full bg-ink px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-white">
+          <Link href={editorHref} className="inline-flex min-h-9 items-center rounded-full bg-ink px-3 text-[11px] font-bold uppercase tracking-wide text-white">
             Back To Editor
           </Link>
         </div>

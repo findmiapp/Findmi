@@ -46,8 +46,14 @@ async function locationsById(ids: string[]): Promise<Map<string, Row>> {
  * Event whose organizer withholds the venue has no Location here. */
 export async function eventGeo(params: EventDiscoveryParams): Promise<GeoResponse> {
   const rows = await getEventsDiscoveryRows(params);
+  return respond(rows.length, eventRowResults(rows.slice(0, GEO_LIMIT)), rows.length > GEO_LIMIT);
+}
+
+type EventDiscoveryRow = Awaited<ReturnType<typeof getEventsDiscoveryRows>>[number];
+
+function eventRowResults(rows: readonly EventDiscoveryRow[]): GeoResult[] {
   const out: GeoResult[] = [];
-  for (const r of rows.slice(0, GEO_LIMIT)) {
+  for (const r of rows) {
     const place = placeOf(r.occurrenceLocation as unknown as Row);
     if (!place) continue;
     const live = isEventHappeningNow(r.effectiveStart, r.effectiveEnd);
@@ -66,7 +72,7 @@ export async function eventGeo(params: EventDiscoveryParams): Promise<GeoRespons
       place,
     });
   }
-  return respond(rows.length, out, rows.length > GEO_LIMIT);
+  return out;
 }
 
 // ---------------------------------------------------------------- Places
@@ -323,4 +329,35 @@ export function occurrenceResults(
     out.push({ key: `occ:${o.id}`, kind: "event", title: place.name, subtitle: event.name, href: eventHref(event.slug, o.id), image: null, logo: null, status: live ? "LIVE" : when, live, place });
   }
   return out;
+}
+
+// ---------------------------------------------------------------- Guide Map
+
+/** Pages + Sections V1B — a Guide's Map Section: the entities its Results
+ * Sections render, projected through the SAME rules as every archive map
+ * (an Event's upcoming date Location, respecting hidden venues; a Pop-Up's
+ * Location; a Brand's real presence; a Place itself). Anything without a
+ * real Location simply isn't drawn. Products are not mapped here. */
+export async function geoForItems(items: readonly { kind: string; id: string; title: string; subtitle: string | null; href: string; image: string | null; logo?: string | null; start_at: string | null; end_at: string | null; location_id?: string | null }[]): Promise<GeoResult[]> {
+  const ids = (kind: string) => [...new Set(items.filter((i) => i.kind === kind).map((i) => i.id))];
+  const eventIds = new Set(ids("event"));
+  const brandIds = ids("business");
+  const [eventRows, presence, locs] = await Promise.all([
+    eventIds.size ? getEventsDiscoveryRows({ when: "anytime", limit: 200 }) : Promise.resolve([]),
+    brandIds.length ? brandPresence(brandIds) : Promise.resolve([]),
+    locationsById(items.filter((i) => i.kind === "appearance" || i.kind === "place").map((i) => i.location_id ?? "")),
+  ]);
+  const out: GeoResult[] = eventRowResults(eventRows.filter((r) => eventIds.has(r.event.id)));
+  for (const i of items) {
+    if (i.kind !== "appearance" && i.kind !== "place") continue;
+    const place = placeOf(i.location_id ? locs.get(i.location_id) : null);
+    if (!place) continue;
+    const live = i.kind === "appearance" && isEventHappeningNow(i.start_at, i.end_at);
+    const when = i.kind === "appearance" ? formatWhen(dated(i as unknown as Row)) || null : null;
+    out.push({ key: `${i.kind === "place" ? "loc" : "app"}:${i.id}`, kind: i.kind, title: i.title, subtitle: i.subtitle, href: i.href, image: i.image, logo: i.logo ?? null, status: live ? "LIVE" : when, live, place });
+  }
+  const brands = items.filter((i) => i.kind === "business").map((i) => ({ id: i.id, slug: i.href.replace(/^\/business\//, ""), name: i.title, logo_url: i.logo ?? null, cover_image_url: i.image }));
+  out.push(...brandResults(brands, presence));
+  const seen = new Set<string>();
+  return out.filter((r) => (seen.has(r.key) ? false : (seen.add(r.key), true)));
 }

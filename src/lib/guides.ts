@@ -12,7 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Metadata } from "next";
 import { getSupabase } from "./supabase";
 import { validateCustomDestination } from "./navigation";
-import { isLegacyFeedRow } from "./section-types";
+import { isLegacyFeedRow, isPageSectionKind } from "./section-types";
+import { parseSectionConfig, type SectionConfig } from "./page-sections";
 import type { DiscoveryPage } from "./discovery-pages";
 import type { HomepageRow } from "./homepage-rows";
 
@@ -59,23 +60,40 @@ export function guideSitemapEntries(rows: readonly { slug: string; updated_at: s
  * homepage-only row. */
 export const GUIDE_FEED_TYPES = ["businesses", "events", "products"] as const;
 
-export type GuideSectionNode = { kind: "feed"; row: HomepageRow } | { kind: "group"; row: HomepageRow; children: HomepageRow[] };
+export type GuideSectionNode =
+  | { kind: "feed"; row: HomepageRow }
+  | { kind: "block"; row: HomepageRow; section: SectionConfig }
+  | { kind: "group"; row: HomepageRow; children: HomepageRow[] };
 
 const renderableFeed = (r: HomepageRow) => r.is_visible && isLegacyFeedRow(r) && (GUIDE_FEED_TYPES as readonly string[]).includes(r.content_type ?? "");
 
+/** Pages + Sections V1B — a visible Entity Results / Text & Editorial /
+ * Map Section with a VALID config, parsed; null for anything else (an
+ * invalid or missing config fails closed, never guessed). */
+export function guideBlockOf(r: HomepageRow): SectionConfig | null {
+  if (!r.is_visible || !isPageSectionKind(r.section_type) || r.content_type !== null) return null;
+  const parsed = parseSectionConfig(r.section_type, r.config);
+  return parsed.ok ? parsed.value : null;
+}
+
+const renderableChild = (r: HomepageRow) => renderableFeed(r) || guideBlockOf(r) !== null;
+
 /** The Section tree a Guide renders, from a Page's rows: visible top-level
- * Sections in sort_order; a Group with its visible feed children (in their
- * own order). Unknown / unsupported rows are skipped (fail closed); a Group
- * with nothing renderable is dropped. */
+ * Sections in sort_order; a Group with its visible renderable children (in
+ * their own order). Unknown / unsupported rows are skipped (fail closed); a
+ * Group with nothing renderable is dropped. */
 export function buildGuideSections(rows: readonly HomepageRow[]): GuideSectionNode[] {
   const bySort = (a: HomepageRow, b: HomepageRow) => a.sort_order - b.sort_order;
   const out: GuideSectionNode[] = [];
   for (const row of rows.filter((r) => r.parent_id === null && r.is_visible).sort(bySort)) {
     if (row.section_type === "group") {
-      const children = rows.filter((r) => r.parent_id === row.id && renderableFeed(r)).sort(bySort);
+      const children = rows.filter((r) => r.parent_id === row.id && renderableChild(r)).sort(bySort);
       if (children.length) out.push({ kind: "group", row, children });
     } else if (renderableFeed(row)) {
       out.push({ kind: "feed", row });
+    } else {
+      const section = guideBlockOf(row);
+      if (section) out.push({ kind: "block", row, section });
     }
   }
   return out;

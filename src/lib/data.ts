@@ -4416,10 +4416,13 @@ export interface LocationsDiscoveryOptions {
    * preview from happenings that have a usable image, filtered BEFORE the
    * per-Location top-3 slice. Off everywhere else. */
   requireActivityImages?: boolean;
+  /** Pages + Sections V1B — only these Locations (an editor's picks), still
+   * through the same public discovery eligibility filter. */
+  ids?: string[];
 }
 
 export async function getLocations(options: LocationsDiscoveryOptions = {}): Promise<LocationWithCategory[]> {
-  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo, bbox, requireCoverImage = false, requireActivityImages = false } = options;
+  const { limit = 20, q, categorySlug, marketSlug, areaSlug, canonicalGeo, bbox, requireCoverImage = false, requireActivityImages = false, ids } = options;
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -4483,6 +4486,10 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     query = rollupFilter ? query.or(`market_id.eq.${marketId},${rollupFilter}`) : query.eq("market_id", marketId);
   }
   if (categoryId) query = query.eq("category_id", categoryId);
+  if (ids) {
+    if (ids.length === 0) return [];
+    query = query.in("id", ids);
+  }
   if (bbox) query = query.gte("longitude", bbox[0]).lte("longitude", bbox[2]).gte("latitude", bbox[1]).lte("latitude", bbox[3]);
   if (q?.trim()) {
     const pattern = `%${q.trim()}%`;

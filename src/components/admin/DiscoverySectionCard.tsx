@@ -58,7 +58,7 @@ export default function DiscoverySectionCard({
   deleteAction: () => void;
   movePanel: ReactNode;
 }) {
-  const [sectionType, setSectionType] = useState<HomepageRowSectionType>(row.section_type);
+  const [sectionType, setSectionType] = useState<HomepageRowSectionType>(row.section_type === "group" ? "group" : "feed");
   const [contentType, setContentType] = useState<HomepageRowContentType>(row.content_type ?? "businesses");
   const [mode, setMode] = useState<HomepageRowMode>(row.mode);
 

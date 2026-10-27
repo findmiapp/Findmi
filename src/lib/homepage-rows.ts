@@ -35,7 +35,7 @@ import {
   type FeaturedProduct,
 } from "./data";
 import type { BusinessWithCategories, EventWithCategories, FindmiEvent } from "./types";
-import { isLegacyFeedRow } from "./section-types";
+import { isLegacyFeedRow, type PageSectionKind } from "./section-types";
 
 export type HomepageRowContentType = "businesses" | "events" | "products" | "business_showcase";
 export type HomepageRowMode = "dynamic" | "curated" | "hybrid";
@@ -72,7 +72,13 @@ export interface HomepageRow {
   page_id: string;
   /** Non-null only for a child of a top-level Group on the same page. */
   parent_id: string | null;
-  section_type: HomepageRowSectionType;
+  /** Pages + Sections V1B adds Entity Results / Text & Editorial / Map
+   * (Guide Pages only — see lib/section-types.ts). */
+  section_type: HomepageRowSectionType | PageSectionKind;
+  /** Pages + Sections V1B — validated per-type settings of a V1B Section
+   * (lib/page-sections.ts); {} for feed / group rows. Optional so rows
+   * read before the V1B migration still type-check. */
+  config?: unknown;
   /** Section-level Market/Area override — falls back to the section's
    * page context when null (see resolveEffectiveSectionContext in
    * lib/discovery-pages.ts). Not yet consumed by any public route in

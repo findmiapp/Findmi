@@ -1125,6 +1125,37 @@ export async function getCuratedItemPreviews(
   });
 }
 
+/** Pages + Sections V1B — labels for the entities an Entity Results Section
+ * references (pins, includes, exclusions, Brand / Place filters), keyed
+ * "kind:id". Admin-only read; a reference that no longer exists simply has
+ * no entry (the editor shows it as unavailable). */
+export async function getEntityRefPreviews(refs: { kind: string; id: string }[]): Promise<Map<string, CuratedItemPreview>> {
+  const out = new Map<string, CuratedItemPreview>();
+  const supabase = getAdminSupabase();
+  if (!supabase || refs.length === 0) return out;
+  const ids = (kind: string) => [...new Set(refs.filter((r) => r.kind === kind).map((r) => r.id))];
+  const [events, appearances, businesses, places, products] = await Promise.all([
+    ids("event").length ? supabase.from("events").select("id, name, venue_name, cover_image_url").in("id", ids("event")) : null,
+    ids("appearance").length ? supabase.from("appearances").select("id, title, start_at, business:businesses(name, logo_url)").in("id", ids("appearance")) : null,
+    ids("business").length ? supabase.from("businesses").select("id, name, city, state, logo_url").in("id", ids("business")) : null,
+    ids("place").length ? supabase.from("locations").select("id, name, city, state, logo_url").in("id", ids("place")) : null,
+    ids("product").length ? supabase.from("products").select("id, name, image_url, business:businesses(name)").in("id", ids("product")) : null,
+  ]);
+  type R = Record<string, unknown>;
+  const one = (v: unknown) => (Array.isArray(v) ? v[0] : v) as R | null;
+  const place = (r: R) => [r.city, r.state].filter(Boolean).join(", ") || undefined;
+  for (const r of (events?.data ?? []) as R[]) out.set(`event:${r.id}`, { value: `event:${r.id}`, label: String(r.name), sublabel: (r.venue_name as string) || "Event", image_url: (r.cover_image_url as string) ?? null });
+  for (const r of (appearances?.data ?? []) as R[]) {
+    const b = one(r.business);
+    const when = r.start_at ? new Date(r.start_at as string).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }) : null;
+    out.set(`appearance:${r.id}`, { value: `appearance:${r.id}`, label: String(r.title || b?.name || "Pop-Up"), sublabel: ["Pop-Up", b?.name, when].filter(Boolean).join(" · "), image_url: (b?.logo_url as string) ?? null });
+  }
+  for (const r of (businesses?.data ?? []) as R[]) out.set(`business:${r.id}`, { value: `business:${r.id}`, label: String(r.name), sublabel: place(r), image_url: (r.logo_url as string) ?? null });
+  for (const r of (places?.data ?? []) as R[]) out.set(`place:${r.id}`, { value: `place:${r.id}`, label: String(r.name), sublabel: place(r), image_url: (r.logo_url as string) ?? null });
+  for (const r of (products?.data ?? []) as R[]) out.set(`product:${r.id}`, { value: `product:${r.id}`, label: String(r.name), sublabel: (one(r.business)?.name as string) ?? undefined, image_url: (r.image_url as string) ?? null });
+  return out;
+}
+
 // ── Pro Invite / Complimentary Access Codes ────────────────────────────────
 // Admin-only reads against pro_invites/pro_invite_redemptions (both RLS-
 // enabled with zero policies — service_role via getAdminSupabase() is the
