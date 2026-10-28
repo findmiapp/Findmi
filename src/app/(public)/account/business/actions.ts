@@ -13,6 +13,7 @@ import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { createOpportunity, resolveOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
 import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
 import { applyBusinessToEvent } from "@/lib/event-participation";
+import { HOST_ALREADY_CONNECTED, isEventHost } from "@/lib/event-roles";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile, type ImageValidationResult } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
@@ -717,6 +718,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
     // same invariant. Same outcomes and messages as before.
     const result = await applyBusinessToEvent(admin, { eventId: a, businessId, userId: user?.id ?? null, note });
     if (result === "unavailable") redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
+    if (result === "is_host") redirect(appendQuery(redirectPath, { error: HOST_ALREADY_CONNECTED }));
     if (result === "already_approved") redirect(appendQuery(redirectPath, { error: "You're already a confirmed participant in that event." }));
     addedNow = result === "approved_now";
   } else if (kind === "occ") {
@@ -724,11 +726,15 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
     const occurrenceId = b;
     const { data: occurrence } = await admin
       .from("event_occurrences")
-      .select("id, event_id")
+      .select("id, event_id, event:events(host_business_id)")
       .eq("id", occurrenceId)
       .eq("event_id", eventId)
       .maybeSingle();
     if (!occurrence) redirect(appendQuery(redirectPath, { error: "That date is no longer available." }));
+    // A hosted Event's dates are already the host's (lib/event-roles.ts).
+    const occEvent = (occurrence as { event: { host_business_id: string | null } | { host_business_id: string | null }[] | null }).event;
+    const occHost = (Array.isArray(occEvent) ? occEvent[0] : occEvent)?.host_business_id ?? null;
+    if (isEventHost(occHost, businessId)) redirect(appendQuery(redirectPath, { error: HOST_ALREADY_CONNECTED }));
 
     const { data: existingRow } = await admin
       .from("event_occurrence_businesses")

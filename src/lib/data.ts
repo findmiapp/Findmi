@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { connectedEventIds, participantsExcludingHost } from "./event-roles";
 import { isCheckoutSupportedMethod } from "./commerce/fulfillment-support";
 import { applyMarketplaceProductFilter, isMarketplaceBusinessEligible } from "./commerce/marketplace-eligibility";
 import { buildVisibleAreaTree } from "./area-visibility";
@@ -1795,14 +1796,33 @@ export async function getBusinessFindmiHereActivity(
   ]);
   if (!supabase) return { upcoming, past, featuredEvents: [] };
 
-  const [{ data: eventLinks }, { data: occurrenceLinks }] = await Promise.all([
+  const [{ data: eventLinks }, { data: occurrenceLinks }, { data: hostedRows }] = await Promise.all([
     supabase.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved"),
     supabase
       .from("event_occurrence_businesses")
       .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo, logo_url, cover_image_url), venue_name, address, city, state)")
       .eq("business_id", businessId)
       .eq("status", "approved"),
+    // Events this Business HOSTS (events.host_business_id) — canonical on
+    // their own (lib/event-roles.ts): a hosted, published Event is on the
+    // host's profile without any participant row or Appearance. Public
+    // only; a pending / rejected Event stays private to its managers.
+    supabase
+      .from("events")
+      .select("id")
+      .eq("host_business_id", businessId)
+      .eq("publication_status", "live")
+      .eq("is_demo", false)
+      .is("archived_at", null)
+      .is("trashed_at", null)
+      .limit(200),
   ]);
+  // Hosting is Event-level connection, exactly like approved Event-level
+  // participation (rule 2 below): the Event's own dates.
+  const eventLinkIds = connectedEventIds(
+    ((hostedRows ?? []) as { id: string }[]).map((r) => r.id),
+    ((eventLinks ?? []) as { event_id: string }[]).map((l) => l.event_id)
+  );
 
   const occurrences = ((occurrenceLinks ?? []) as unknown as { occurrence: ActivityOccurrence | ActivityOccurrence[] | null }[])
     .map((r) => (Array.isArray(r.occurrence) ? (r.occurrence[0] ?? null) : r.occurrence))
@@ -1811,7 +1831,7 @@ export async function getBusinessFindmiHereActivity(
   const rows = [...upcoming, ...past];
   const eventIds = new Set<string>();
   for (const r of rows) if (r.event_id) eventIds.add(r.event_id);
-  for (const l of (eventLinks ?? []) as { event_id: string }[]) eventIds.add(l.event_id);
+  for (const id of eventLinkIds) eventIds.add(id);
   for (const o of occurrences) eventIds.add(o.event_id);
   if (eventIds.size === 0) return { upcoming, past, featuredEvents: [] };
 
@@ -1825,7 +1845,7 @@ export async function getBusinessFindmiHereActivity(
   const reconciled = reconcileBusinessActivity({
     businessId,
     rows,
-    eventLinkIds: ((eventLinks ?? []) as { event_id: string }[]).map((l) => l.event_id),
+    eventLinkIds,
     occurrences,
     events,
   });
@@ -1835,10 +1855,7 @@ export async function getBusinessFindmiHereActivity(
   // events map is public-only already (is_demo = false here; RLS hides
   // archived/trashed). Used only as the Business hero's fallback after the
   // Business's own pick (lib/business-hero.ts).
-  const approvedEventIds = new Set<string>([
-    ...((eventLinks ?? []) as { event_id: string }[]).map((l) => l.event_id),
-    ...occurrences.map((o) => o.event_id),
-  ]);
+  const approvedEventIds = new Set<string>([...eventLinkIds, ...occurrences.map((o) => o.event_id)]);
   const featuredEvents: EditorialFeaturedEvent[] = editorialFeaturedEventsFor(events.values(), approvedEventIds);
 
   const now = Date.now();
@@ -2872,24 +2889,32 @@ export interface EventBusinessListing extends BusinessWithCategories {
  * full list (not a separate pool) — the event page decides how to
  * highlight them; this just carries the flag along. Ordered by the
  * founder-set display_order, nulls last, then name. */
+/** The Event's PARTICIPATING Businesses (approved event_businesses). The
+ * host is never one of them (lib/event-roles.ts) — it's shown as Host —
+ * so a participant row that exists for the host is left out here. */
 export async function getBusinessesForEvent(eventId: string): Promise<EventBusinessListing[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("event_businesses")
-    .select(`featured, offering_text, display_order, businesses(${PUBLIC_BUSINESS_COLUMNS})`)
-    .eq("event_id", eventId)
-    .eq("status", "approved")
-    .order("display_order", { ascending: true, nullsFirst: false });
+  const [{ data, error }, { data: hostRow }] = await Promise.all([
+    supabase
+      .from("event_businesses")
+      .select(`business_id, featured, offering_text, display_order, businesses(${PUBLIC_BUSINESS_COLUMNS})`)
+      .eq("event_id", eventId)
+      .eq("status", "approved")
+      .order("display_order", { ascending: true, nullsFirst: false }),
+    supabase.from("events").select("host_business_id").eq("id", eventId).maybeSingle(),
+  ]);
   logPublicQueryError("getBusinessesForEvent", error);
+  const hostBusinessId = (hostRow as { host_business_id: string | null } | null)?.host_business_id ?? null;
 
   type Row = {
+    business_id: string;
     featured: boolean;
     offering_text: string | null;
     display_order: number | null;
     businesses: Business | Business[] | null;
   };
-  const rows = ((data ?? []) as unknown as Row[])
+  const rows = participantsExcludingHost((data ?? []) as unknown as Row[], hostBusinessId)
     .map((row) => {
       const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
       const b = business as (Business & { is_demo?: boolean }) | null;

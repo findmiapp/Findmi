@@ -1,4 +1,5 @@
 import "server-only";
+import { isEventHost } from "./event-roles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createOpportunity } from "./opportunities";
 import { ensureEventAppearance } from "./appearance-event-sync";
@@ -39,7 +40,10 @@ export const ORGANIZER_APPROVAL_BLOCKED_MESSAGE = "This Business hasn\u2019t ask
  * Every non-approved outcome also records its Opportunity/Conversation
  * (best-effort; createOpportunity dedupes), exactly as before.
  * The caller is responsible for authorizing the Business member. */
-export type EventApplicationResult = "unavailable" | "already_approved" | "approved_now" | "already_applied" | "applied";
+/** "is_host": the Business hosts this Event (events.host_business_id) — it
+ * is already connected as Host and never joins its own Event as a
+ * participant (lib/event-roles.ts). Nothing is written. */
+export type EventApplicationResult = "unavailable" | "is_host" | "already_approved" | "approved_now" | "already_applied" | "applied";
 
 export async function applyBusinessToEvent(
   admin: SupabaseClient,
@@ -51,13 +55,14 @@ export async function applyBusinessToEvent(
   // with it). Rejected, archived and trashed Events are never joinable.
   const { data: event } = await admin
     .from("events")
-    .select("id, is_demo, publication_status")
+    .select("id, is_demo, publication_status, host_business_id")
     .eq("id", eventId)
     .is("trashed_at", null)
     .is("archived_at", null)
     .maybeSingle();
-  const ev = event as { id: string; is_demo: boolean; publication_status: string | null } | null;
+  const ev = event as { id: string; is_demo: boolean; publication_status: string | null; host_business_id: string | null } | null;
   if (!ev || (ev.is_demo && ev.publication_status !== "pending_review")) return "unavailable";
+  if (isEventHost(ev.host_business_id, businessId)) return "is_host";
 
   const { data: existingRow } = await admin
     .from("event_businesses")

@@ -1,5 +1,6 @@
 "use server";
 
+import { HOST_ALREADY_CONNECTED, isEventHost } from "@/lib/event-roles";
 import { recordProvenance } from "@/lib/provenance";
 import { isCreateScheduleMode, parseScheduleDates, resolveCreateSchedule } from "@/lib/event-create-schedule";
 import { cleanOccurrenceDetails } from "@/lib/event-import/occurrence-details";
@@ -1623,6 +1624,10 @@ async function inviteBusinessToEvent(
   input: { eventId: string; businessId: string; userId: string | null; note?: string; scope?: EventParticipationScope; selectedDateIds?: string[] }
 ): Promise<string | null> {
   const { eventId, businessId } = input;
+  // The host is already connected as Host (lib/event-roles.ts) — never a
+  // participant of its own Event, so it can't be invited to it.
+  const { data: hostRow } = await admin.from("events").select("host_business_id").eq("id", eventId).maybeSingle();
+  if (isEventHost((hostRow as { host_business_id: string | null } | null)?.host_business_id, businessId)) return HOST_ALREADY_CONNECTED;
   const scope = input.scope ?? "all_dates";
   const { count: occurrenceCount } = await admin.from("event_occurrences").select("id", { count: "exact", head: true }).eq("event_id", eventId);
   const effectiveScope: EventParticipationScope = (occurrenceCount ?? 0) > 0 ? scope : "all_dates";

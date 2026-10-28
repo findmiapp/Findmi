@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { EVENT_ROLE_LABELS, inviteExclusionIds, participantsExcludingHost } from "@/lib/event-roles";
 import { compareChronological, formatCalendarDate, hasEnded } from "@/lib/event-time";
 import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import Link from "next/link";
@@ -218,7 +219,13 @@ export default async function ManageEventPage({
   // Event Formats V1 — the vocabulary and this Event's current Formats.
   const [formats, selectedFormatIds] = await Promise.all([getAllCategories("event_format"), getEventFormatIds(admin, id)]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
-  const { event, participants, occurrences } = result;
+  const { event, occurrences } = result;
+  // Business ↔ Event roles (lib/event-roles.ts): the host is connected as
+  // HOST through events.host_business_id alone — shown once, as Host, never
+  // in the participant roster and never an invite candidate (a participant
+  // row created for the host by hand earlier is left in the database).
+  const hostBusinessId = hostBusiness?.id ?? null;
+  const participants = participantsExcludingHost(result.participants, hostBusinessId);
   // Public Actions settings (Details) — owners / managers only.
   const publicActionsEditor = tab === "details" && canManageEventPage ? await getPublicActionsEditorData(admin!, "event", id) : null;
 
@@ -950,7 +957,7 @@ export default async function ManageEventPage({
               <div className="mt-4 rounded-2xl border border-black/10 p-4">
                 <AddParticipantSearch
                   eventId={id}
-                  excludeIds={participants.map((p) => p.business_id)}
+                  excludeIds={inviteExclusionIds(hostBusinessId, result.participants.map((p) => p.business_id))}
                   effectiveDates={effectiveScheduleDates}
                 />
               </div>
@@ -971,10 +978,20 @@ export default async function ManageEventPage({
               </div>
             )}
 
+            {hostBusiness && (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-findmi-200 bg-findmi-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-body font-semibold text-primary">{hostBusiness.name}</p>
+                  <p className="text-metadata text-findmi-700">Hosting this Event · already connected</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-findmi px-2.5 py-1 text-microcopy font-bold uppercase tracking-wide text-white">{EVENT_ROLE_LABELS.host}</span>
+              </div>
+            )}
+
             <div className="border-t border-black/5 pt-6">
-              <p className="text-label font-bold uppercase text-subtle">Roster</p>
+              <p className="text-label font-bold uppercase text-subtle">Participating Businesses</p>
               {participants.length === 0 ? (
-                <p className="mt-2 text-body text-muted">No participating businesses yet.</p>
+                <p className="mt-2 text-body text-muted">{hostBusiness ? "No other participating businesses yet." : "No participating businesses yet."}</p>
               ) : (
                 <ul className="mt-3 flex flex-col divide-y divide-black/[0.06]">
                   {participants.map((p) => (

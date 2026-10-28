@@ -168,7 +168,9 @@ test("the Business page uses the shared resolver with the activity's approved Fe
   const view = read("src/app/(public)/business/[slug]/BusinessPublicView.tsx");
   assert.match(view, /resolveBusinessHero\(appearances, \{ overrideId: featuredOverrideId, featuredEvents: activity\.featuredEvents \}\)/);
   const data = read("src/lib/data.ts");
-  assert.match(data, /const approvedEventIds = new Set<string>\(\[\s*\.\.\.\(\(eventLinks \?\? \[\]\)[\s\S]*?\.\.\.occurrences\.map\(\(o\) => o\.event_id\),\s*\]\);/);
+  // Consolidation (Good Organics fix): Event-level connection = hosted ∪
+  // approved participation (lib/event-roles.ts connectedEventIds).
+  assert.match(data, /const approvedEventIds = new Set<string>\(\[\.\.\.eventLinkIds, \.\.\.occurrences\.map\(\(o\) => o\.event_id\)\]\);/);
   assert.match(data, /editorialFeaturedEventsFor\(events\.values\(\), approvedEventIds\)/);
   assert.match(data, /\.from\("event_businesses"\)\.select\("event_id"\)\.eq\("business_id", businessId\)\.eq\("status", "approved"\)/, "approved participation only");
   // Never written: featuring doesn't touch the Business's own pick or hosting.

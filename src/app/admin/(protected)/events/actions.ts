@@ -1,5 +1,6 @@
 "use server";
 
+import { HOST_ALREADY_CONNECTED, isEventHost } from "@/lib/event-roles";
 import { eventAttributesFromForm } from "@/lib/discovery/attributes";
 import { recordProvenance } from "@/lib/provenance";
 import { decideEventCategoryWrite } from "@/lib/event-categories";
@@ -566,7 +567,12 @@ export async function saveEvent(id: string | null, formData: FormData) {
   // the current roster; "removed_business_id" carries anything explicitly
   // removed this submit, so the server never needs to diff against the
   // full businesses table to know what changed.
-  const participantIds = formData.getAll("participant_business_id").map(String);
+  // The host is connected as Host (events.host_business_id) and never
+  // written as a participant of its own Event (lib/event-roles.ts). An
+  // existing participant row for the host is simply left as it is.
+  const { data: hostRow } = await supabase.from("events").select("host_business_id").eq("id", eventId as string).maybeSingle();
+  const eventHostId = (hostRow as { host_business_id: string | null } | null)?.host_business_id ?? null;
+  const participantIds = formData.getAll("participant_business_id").map(String).filter((businessId) => !isEventHost(eventHostId, businessId));
   const removedIds = formData.getAll("removed_business_id").map(String);
 
   const toUpsert = participantIds.map((businessId) => {
@@ -751,6 +757,8 @@ export async function saveEvent(id: string | null, formData: FormData) {
  * ultimate guarantee either way. */
 export async function addOccurrenceVendor(eventId: string, occurrenceId: string, businessId: string) {
   const supabase = await requireAdminSupabase();
+  const { data: hostRow } = await supabase.from("events").select("host_business_id").eq("id", eventId).maybeSingle();
+  if (isEventHost((hostRow as { host_business_id: string | null } | null)?.host_business_id, businessId)) redirect(errorRedirectUrl(`/admin/events/${eventId}`, HOST_ALREADY_CONNECTED));
   // Multi-Occurrence Participating Business pass, verification fix —
   // event_occurrence_businesses.status defaults to 'approved' (an admin-
   // added occurrence vendor is public immediately unless explicitly

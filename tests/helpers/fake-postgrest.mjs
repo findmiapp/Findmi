@@ -76,12 +76,16 @@ export function fakeDb(tables, newId = "00000099-0000-4000-8000-000000000000") {
         in: (c, vals) => pred("in", c, (x) => vals.includes(x)),
         not: (c, op, v) => pred("not", c, (x) => (x ?? null) !== v),
         gte: (c, v) => pred("gte", c, (x) => x != null && String(x) >= String(v)),
+        gt: (c, v) => pred("gt", c, (x) => x != null && String(x) > String(v)),
+        lt: (c, v) => pred("lt", c, (x) => x != null && String(x) < String(v)),
+        lte: (c, v) => pred("lte", c, (x) => x != null && String(x) <= String(v)),
         contains: (c, vals) => pred("contains", c, (x) => Array.isArray(x) && vals.every((v) => x.includes(v))),
         or(expr) { call.filters.push(`or ${expr}`); const ps = splitTop(expr).map(orTerm); preds.push((r) => ps.some((p) => p(r))); return chain; },
         order() { return chain; },
         range() { return chain; },
         limit(n) { limit = n; return chain; },
         insert(payload) { call.op = "insert"; call.payload = payload; return chain; },
+        upsert(payload, opts = {}) { call.op = "upsert"; call.payload = payload; call.onConflict = opts.onConflict ?? "id"; call.ignoreDuplicates = Boolean(opts.ignoreDuplicates); return chain; },
         update(payload) { call.op = "update"; call.payload = payload; return chain; },
         delete() { call.op = "delete"; return chain; },
         maybeSingle() { single = "maybe"; return chain; },
@@ -100,6 +104,16 @@ export function fakeDb(tables, newId = "00000099-0000-4000-8000-000000000000") {
             const created = { id: newId, status: "target", ...p };
             (tables[table] ??= []).push(created);
             return resolve({ data: { ...created }, error: null });
+          }
+          if (call.op === "upsert") {
+            const keys = call.onConflict.split(",");
+            const list = (tables[table] ??= []);
+            for (const p of Array.isArray(call.payload) ? call.payload : [call.payload]) {
+              const hit = list.find((r) => keys.every((k) => r[k] === p[k]));
+              if (hit && !call.ignoreDuplicates) Object.assign(hit, p);
+              else if (!hit) list.push({ ...p });
+            }
+            return resolve({ data: null, error: null });
           }
           const fields = parseSelect(call.select ?? "*");
           const shaped = rows.map((r) => shape(tables, r, fields));

@@ -412,7 +412,8 @@ async function persistParticipating(input: NormalizedImport, deps: PersistDeps):
     // applies to that Event (unchanged V1 policy); nothing is duplicated.
     const result = await deps.applyToEvent(input.useEventId);
     if (result === "unavailable") return { ok: false, error: "That Findmi Event is no longer available. Import it as a new item instead." };
-    if (result === "already_approved") return { ok: true, kind: "already", title: input.title, viewHref: scheduleHref };
+    // Hosted by this Business already — it's on the schedule as Host.
+    if (result === "already_approved" || result === "is_host") return { ok: true, kind: "already", title: input.title, viewHref: scheduleHref };
     if (result === "approved_now") return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref };
     return { ok: true, kind: "requested", title: input.title, viewHref: scheduleHref };
   }
@@ -523,7 +524,8 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   if (existing) {
     const result = await deps.applyToEvent(existing.id);
     if (result === "unavailable") return { ok: false, error: "That Event is already on Findmi but isn't open for new participants right now." };
-    if (result === "already_approved") return { ok: true, kind: "already", title: input.title, viewHref: scheduleHref };
+    // Hosted by this Business already — it's on the schedule as Host.
+    if (result === "already_approved" || result === "is_host") return { ok: true, kind: "already", title: input.title, viewHref: scheduleHref };
     if (result === "approved_now") return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref };
     return { ok: true, kind: "requested", title: input.title, viewHref: scheduleHref };
   }

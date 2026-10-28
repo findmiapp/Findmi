@@ -16,6 +16,8 @@ const js = (src) => ({ url: `data:text/javascript,${encodeURIComponent(src)}`, s
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "server-only") return js("export{}");
+    // Pure Business ↔ Event role rules (no I/O) — the real module.
+    if (specifier === "./event-roles" && context.parentURL?.endsWith("/event-participation.ts")) return next(new URL("../src/lib/event-roles.ts", import.meta.url).href, context);
     if (specifier === "./opportunities" && context.parentURL?.endsWith("/event-participation.ts")) return js("export async function createOpportunity(){}");
     if (specifier === "./appearance-event-sync" && context.parentURL?.endsWith("/event-participation.ts")) return js("export async function ensureEventAppearance(){}");
     if (specifier === "next/headers") return js("export const cookies=async()=>({get:()=>undefined,set(){},delete(){}});");

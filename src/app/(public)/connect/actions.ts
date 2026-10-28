@@ -25,6 +25,7 @@
 // Business/Event Manager actions already use. Only the entry point (a
 // public page instead of a Manager tab) and the redirect target are new.
 
+import { HOST_ALREADY_CONNECTED, isEventHost } from "@/lib/event-roles";
 import { COMMERCIAL_INQUIRY_SUBJECT } from "@/lib/commercial-inquiries-domain";
 import { recordInquiryReply } from "@/lib/commercial-inquiries";
 import { redirect } from "next/navigation";
@@ -494,8 +495,10 @@ export async function applyToEventPublic(
   if ("error" in sender) return sender;
   const { userId, admin } = sender;
 
-  const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
+  const { data: event } = await admin.from("events").select("id, host_business_id").eq("id", eventId).eq("is_demo", false).maybeSingle();
   if (!event) return { error: "That event is no longer available." };
+  // The host never applies to its own Event (lib/event-roles.ts).
+  if (isEventHost((event as { host_business_id: string | null }).host_business_id, actingBusinessId)) return { error: HOST_ALREADY_CONNECTED };
 
   const { data: occurrenceRows } = await admin.from("event_occurrences").select("id").eq("event_id", eventId);
   const allOccurrenceIds = ((occurrenceRows ?? []) as { id: string }[]).map((o) => o.id);
