@@ -9,6 +9,8 @@ import {
   getTodayOnFindmi,
 } from "@/lib/admin/dashboard-queries";
 import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
+import { countProfileReviews } from "@/lib/admin/profile-reviews";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { formatTime } from "@/lib/format";
 import { imageVariantUrl } from "@/lib/image-variants";
 import AdminGlobalSearch from "./AdminGlobalSearch";
@@ -61,7 +63,7 @@ function relativeDate(iso: string): string {
 }
 
 export default async function AdminDashboardPage() {
-  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity, locationsAwaiting, today, intelligence] =
+  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity, locationsAwaiting, today, intelligence, profileReviews] =
     await Promise.all([
       getDashboardCounts(),
       getDashboardNeedsAttention(),
@@ -74,6 +76,8 @@ export default async function AdminDashboardPage() {
       // Opportunity Intelligence (Brand Intelligence V1.1) — null when the
       // V1 tables aren't there yet; never blocks the dashboard.
       getIntelligenceSummary().catch(() => null),
+      // Profile Approvals — links/contact/announcements/buttons held for review.
+      countProfileReviews(getAdminSupabase()).catch(() => 0),
     ]);
 
   // Every real, existing queue with a working list/filter. Zero-count
@@ -98,6 +102,7 @@ export default async function AdminDashboardPage() {
         // Not publicly listed yet (member submissions and Quick Created
         // Locations, e.g. from Admin Event Import) — getLocationsAwaitingReview.
         { label: "Location awaiting review", pluralLabel: "Locations awaiting review", count: locationsAwaiting?.total ?? 0, href: "/admin/locations?review=1" },
+        { label: "profile update awaiting approval", pluralLabel: "profile updates awaiting approval", count: profileReviews, href: "/admin/profile-reviews" },
       ]
     : [];
   const activeAttentionItems = attentionQueue.filter((item) => item.count > 0);

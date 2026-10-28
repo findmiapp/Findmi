@@ -148,7 +148,7 @@ export default function LocationImporter({ categories }: { categories: Category[
           </ul>
         )}
         <div className="flex flex-wrap gap-2">
-          <Link href="/admin/locations?review=1" className="rounded-full bg-findmi px-4 py-2 text-metadata font-semibold text-white">
+          <Link href="/admin/locations?draft=1" className="rounded-full bg-findmi px-4 py-2 text-metadata font-semibold text-white">
             Review Locations
           </Link>
           <Link href="/admin/locations" className="rounded-full border border-black/10 px-4 py-2 text-metadata font-semibold text-primary">

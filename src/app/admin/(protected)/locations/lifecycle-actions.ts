@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { str } from "@/lib/admin/form-helpers";
-import { cleanLocationIds, describeLocationPublication, setLocationPublication, type LocationPublicationResult } from "@/lib/admin/location-publication";
+import { cleanLocationIds, describeLocationPublication, notifyLocationManagers, setLocationPublication, type LocationPublicationResult } from "@/lib/admin/location-publication";
+import { locationReviewDecision } from "@/lib/location-review";
 
 /** Admin Content Lifecycle + Bulk Management V2 — Locations. Same
  * archived_at/trashed_at model as Products/Businesses/Events. Locations
@@ -58,6 +59,33 @@ export async function bulkSetLocationsPublished(
   } catch {
     return { ok: false, error: "Couldn't update these Locations. Nothing was reported as changed — try again." };
   }
+}
+
+/** Needs Review → Reject: review_status 'rejected', still unlisted. Only
+ * Locations actually pending review change (idempotent); nothing else is
+ * written and nothing is deleted. Managers are told (best-effort). */
+export async function bulkRejectLocations(ids: string[]): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  let supabase: SupabaseClient;
+  try {
+    supabase = await requireAdminSupabase();
+  } catch {
+    return { ok: false, error: "Your Admin session has ended. Sign in again." };
+  }
+  const clean = cleanLocationIds(ids);
+  if (clean.length === 0) return { ok: false, error: "No locations selected." };
+  const { data, error } = await supabase
+    .from("locations")
+    .update(locationReviewDecision("reject"))
+    .in("id", clean)
+    .eq("review_status", "pending_review")
+    .select("id, name");
+  if (error) return { ok: false, error: "Couldn't reject these Locations. Nothing was changed — try again." };
+  const rejected = (data ?? []) as { id: string; name: string }[];
+  await Promise.all(rejected.map((l) => notifyLocationManagers(supabase, l.id, l.name, "rejected").catch(() => undefined)));
+  revalidatePath(LOCATIONS_LIST);
+  revalidatePath("/admin");
+  const skipped = clean.length - rejected.length;
+  return { ok: true, message: `${rejected.length} Location${rejected.length === 1 ? "" : "s"} rejected.${skipped ? ` ${skipped} weren't pending review and were left unchanged.` : ""}` };
 }
 
 export async function bulkArchiveLocations(formData: FormData) {

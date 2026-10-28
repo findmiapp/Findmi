@@ -228,12 +228,13 @@ test("7. Quick Edit keeps the existing bulk Category edit (metadata only — no 
 
 test("9, 10 & 11. filters: All Active / Needs Review (Draft) / Published / Archived / Trash over the canonical columns", () => {
   const q = read("src/lib/admin/queries.ts");
-  assert.match(q, /if \(needsReview\) query = query\.eq\("is_demo", true\);\n\s+else if \(publishedOnly\) query = query\.eq\("is_demo", false\);/);
+  assert.match(q, /if \(needsReview\) query = query\.eq\("review_status", "pending_review"\);\n\s+else if \(publishedOnly\) query = query\.eq\("is_demo", false\);/);
+  assert.match(q, /if \(filters\.needsReview\) query = query\.eq\("review_status", "pending_review"\);\n\s+else if \(filters\.draftsOnly\) query = query\.eq\("is_demo", true\);/);
   assert.match(q, /if \(lifecycle === "archived"\) query = query\.not\("archived_at", "is", null\)\.is\("trashed_at", null\);\n\s+else if \(lifecycle === "trashed"\) query = query\.not\("trashed_at", "is", null\);\n\s+else query = query\.is\("archived_at", null\)\.is\("trashed_at", null\);/);
   const page = read("src/app/admin/(protected)/locations/page.tsx");
-  assert.match(page, /const publishedOnly = !needsReview && published === "1" && lifecycleTab === "active";/);
-  assert.match(page, /getAdminLocationList\(\{ q, lifecycle: lifecycleTab, needsReview, publishedOnly, sort, page \}\)/);
-  for (const label of ["All Active", "Archived", "Trash", "Needs Review", "Published"]) assert.ok(page.includes(label), label);
+  assert.match(page, /const publishedOnly = !needsReview && !draftsOnly && published === "1" && lifecycleTab === "active";/);
+  assert.match(page, /getAdminLocationList\(\{ q, lifecycle: lifecycleTab, needsReview, draftsOnly, publishedOnly, sort, page \}\)/);
+  for (const label of ["All Active", "Archived", "Trash", "Needs Review", "Drafts", "Published"]) assert.ok(page.includes(label), label);
   // A refresh after Publish re-reads the server list, so Needs Review drops published rows.
   assert.match(read("src/app/admin/(protected)/locations/LocationBulkActionBar.tsx"), /router\.refresh\(\);/);
 });
@@ -263,8 +264,9 @@ test("20. phone toolbar: 2-column grid of ≥40px touch targets, no hover-only o
   const bar = read("src/app/admin/(protected)/locations/LocationBulkActionBar.tsx");
   assert.match(bar, /const pill = "flex min-h-10 items-center justify-center rounded-full/);
   assert.match(bar, /className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"/);
-  const order = ["Publish${", "Unpublish{", "label={`Archive", "label={`Move To Trash", "<QuickEditForm"].map((s) => bar.indexOf(s));
-  assert.ok(order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])), "Publish · Unpublish · Archive · Trash · Quick Edit");
+  // Needs Review swaps Publish/Unpublish for Approve/Reject in the same slots.
+  const order = ['"Publish"}${', "Reject{", "Unpublish{", "label={`Archive", "label={`Move To Trash", "<QuickEditForm"].map((s) => bar.indexOf(s));
+  assert.ok(order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])), "Publish/Approve · Reject/Unpublish · Archive · Trash · Quick Edit");
   assert.doesNotMatch(bar, /onMouseEnter|onHover|title=/);
   assert.match(read("src/app/admin/(protected)/locations/LocationBulkListClient.tsx"), /className="h-5 w-5 shrink-0" aria-label=\{`Select \$\{l\.name\}`\}/);
 });

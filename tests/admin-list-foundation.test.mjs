@@ -115,7 +115,7 @@ const names = (p) => p.rows.map((r) => r.name);
 // 60 Locations: "Loc 0001"… with a mix of states; "Iron23" deep in the list.
 function locations() {
   const rows = [];
-  for (let n = 1; n <= 60; n++) rows.push({ id: uid(n), name: `Loc ${pad(n)}`, city: "Brooklyn", address: `${n} Main St`, is_demo: n % 3 === 0, archived_at: null, trashed_at: null });
+  for (let n = 1; n <= 60; n++) rows.push({ id: uid(n), name: `Loc ${pad(n)}`, city: "Brooklyn", address: `${n} Main St`, is_demo: n % 3 === 0, review_status: n % 6 === 0 ? "pending_review" : null, archived_at: null, trashed_at: null });
   rows.push({ id: uid(900), name: "Zz Iron23 Gym", city: "Queens", address: "1 Iron Way", is_demo: false, archived_at: null, trashed_at: null });
   rows.push({ id: uid(901), name: "Archived Spot", city: "Bronx", address: "x", is_demo: false, archived_at: day(1), trashed_at: null });
   rows.push({ id: uid(902), name: "Trashed Spot", city: "Bronx", address: "x", is_demo: false, archived_at: null, trashed_at: day(2) });
@@ -276,10 +276,14 @@ test("15. Locations: search runs before pagination (Iron23 is found from page 1)
 
 test("16–17. Locations: Needs Review / Published / Archived / Trash compose with sort + page", async () => {
   globalThis.__DB = fakeDb({ locations: locations() });
+  // Needs Review = the canonical moderation state; unlisted Drafts are their own view.
   const review = await Q.getAdminLocationList({ needsReview: true, sort: "za", page: 1 });
-  assert.equal(review.total, 20);
-  assert.ok(review.rows.every((r) => r.is_demo === true));
+  assert.equal(review.total, 10);
+  assert.ok(review.rows.every((r) => r.review_status === "pending_review"));
   assert.equal(names(review)[0], "Loc 0060");
+  const drafts = await Q.getAdminLocationList({ draftsOnly: true, sort: "az", page: 1 });
+  assert.equal(drafts.total, 20);
+  assert.ok(drafts.rows.every((r) => r.is_demo === true));
   const pub = await Q.getAdminLocationList({ publishedOnly: true, sort: "az", page: 2 });
   assert.equal(pub.total, 41);
   assert.ok(pub.rows.every((r) => r.is_demo === false && !r.archived_at && !r.trashed_at));

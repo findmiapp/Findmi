@@ -349,7 +349,9 @@ export async function getLocationsAwaitingReview(limit = 5): Promise<{ items: { 
   const { data, count, error } = await supabase
     .from("locations")
     .select("id, name", { count: "exact" })
-    .eq("is_demo", true)
+    // The canonical moderation state — never inferred from is_demo (an
+    // unlisted Location is not necessarily a review submission).
+    .eq("review_status", "pending_review")
     .is("archived_at", null)
     .is("trashed_at", null)
     // No created_at on locations in production — alphabetical, never a

@@ -31,7 +31,7 @@ export type AdminBusiness = Business & { is_demo: boolean };
 // same "admin/owner-facing only" reasoning; see EventPublicationStatus's
 // own comment in lib/types.ts.
 export type AdminEvent = FindmiEvent & { is_demo: boolean; publication_status: EventPublicationStatus; created_at: string };
-export type AdminLocation = FindmiLocation & { is_demo: boolean };
+export type AdminLocation = FindmiLocation & { is_demo: boolean; review_status?: "pending_review" | "approved" | "rejected" | null };
 export type AdminAppearance = Appearance;
 export type AdminProduct = Product;
 
@@ -686,8 +686,8 @@ export async function getEventOptionById(id: string | null): Promise<SelectOptio
 export async function getAdminLocations(
   q?: string,
   lifecycle: "active" | "archived" | "trashed" = "active",
-  /** Only Locations awaiting review: active and not publicly listed
-   * (is_demo = true) — the same set Admin Home counts. */
+  /** Only Locations awaiting review — review_status = 'pending_review', the
+   * canonical moderation state (never inferred from is_demo). */
   needsReview = false,
   /** Only Published Locations (active and publicly listed, is_demo = false). */
   publishedOnly = false
@@ -695,7 +695,7 @@ export async function getAdminLocations(
   const supabase = getAdminSupabase();
   if (!supabase) return [];
   let query = supabase.from("locations").select("*").order("name");
-  if (needsReview) query = query.eq("is_demo", true);
+  if (needsReview) query = query.eq("review_status", "pending_review");
   else if (publishedOnly) query = query.eq("is_demo", false);
   if (q) {
     const term = `%${q}%`;
@@ -711,9 +711,12 @@ export async function getAdminLocations(
 export interface LocationListFilters {
   q?: string;
   lifecycle?: "active" | "archived" | "trashed";
-  /** Only Locations awaiting review: active and not publicly listed
-   * (is_demo = true) — the same set Admin Home counts. */
+  /** Only Locations awaiting review: review_status = 'pending_review' (the
+   * canonical moderation state) — the same set Admin Home counts. */
   needsReview?: boolean;
+  /** Only Draft Locations: active but not publicly listed (is_demo = true),
+   * whatever their review state. */
+  draftsOnly?: boolean;
   /** Only Published Locations (active and publicly listed, is_demo = false). */
   publishedOnly?: boolean;
   /** A–Z / Z–A only — see LOCATION_SORT (locations has no created_at). */
@@ -732,7 +735,8 @@ export async function getAdminLocationList(filters: LocationListFilters = {}): P
   const sort = filters.sort ?? LOCATION_SORT.defaultKey;
   return fetchAdminPage<AdminLocation>(() => {
     let query = supabase.from("locations").select("*", { count: "exact" });
-    if (filters.needsReview) query = query.eq("is_demo", true);
+    if (filters.needsReview) query = query.eq("review_status", "pending_review");
+    else if (filters.draftsOnly) query = query.eq("is_demo", true);
     else if (filters.publishedOnly) query = query.eq("is_demo", false);
     if (filters.q) {
       const term = `%${filters.q}%`;

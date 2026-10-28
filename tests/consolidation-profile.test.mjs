@@ -72,3 +72,31 @@ test("Profile editor IA: Details · Photos · Contact & Links · Announcement ·
   assert.match(ACTIONS, /allowedColumns\.filter\(\(column\) => formData\.has\(column\)\)/, "absent fields are never nulled");
   assert.match(ACTIONS, /export async function updateBusinessBrandImages/);
 });
+
+// ── Admin queues + Event → Location link ───────────────────────────────
+
+test("Admin Locations: Needs Review is review_status; Drafts is is_demo; Reject keeps it unlisted", () => {
+  const q = read("src/lib/admin/queries.ts");
+  assert.match(q, /if \(filters\.needsReview\) query = query\.eq\("review_status", "pending_review"\);/);
+  assert.match(read("src/lib/admin/dashboard-queries.ts"), /\.eq\("review_status", "pending_review"\)/);
+  const life = read("src/app/admin/(protected)/locations/lifecycle-actions.ts");
+  assert.match(life, /\.update\(locationReviewDecision\("reject"\)\)\n\s+\.in\("id", clean\)\n\s+\.eq\("review_status", "pending_review"\)/);
+  assert.match(read("src/app/admin/(protected)/locations/LocationBulkActionBar.tsx"), /\{reviewQueue \? \(/);
+});
+
+test("Admin Profile Approvals: queue page, Approve / Hide decisions only change visibility, dashboard count, nav", () => {
+  const actions = read("src/app/admin/(protected)/profile-reviews/actions.ts");
+  assert.match(actions, /const admin = await requireAdminSupabase\(\);/);
+  assert.match(actions, /update\(\{ public_field_status: map \}\)/);
+  assert.match(actions, /update\(\{ admin_status: decision \}\)/);
+  assert.doesNotMatch(actions, /\.delete\(/, "nothing is deleted");
+  assert.match(read("src/lib/admin/profile-reviews.ts"), /return \{ ready: false, businesses: \[\], buttons: \[\] \}/, "tolerates the migration not applied yet");
+  assert.match(read("src/app/admin/(protected)/page.tsx"), /href: "\/admin\/profile-reviews"/);
+  assert.match(read("src/components/admin/adminNavItems.ts"), /href: "\/admin\/profile-reviews", label: "Profile Approvals"/);
+});
+
+test("Event page: the Location name links to the Location (listed only), View Location kept", () => {
+  const f = read("src/components/event/EventLocationFeature.tsx");
+  assert.match(f, /publicLocationHref\(location\) \? \(\n\s+<Link href=\{publicLocationHref\(location\)!\} className="hover:text-findmi-700 hover:underline">\n\s+\{location\.name\}/);
+  assert.match(f, /View Location/);
+});

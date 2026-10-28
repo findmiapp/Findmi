@@ -11,6 +11,7 @@ import {
   bulkRestoreLocationsFromArchive,
   bulkRestoreLocationsFromTrash,
   bulkSetLocationsPublished,
+  bulkRejectLocations,
   bulkTrashLocations,
 } from "./lifecycle-actions";
 
@@ -89,6 +90,7 @@ export function publishConfirmMessage(count: number, publish: boolean): string {
 
 export default function LocationBulkActionBar({
   view,
+  reviewQueue = false,
   selectedIds,
   categories,
   keepSelected,
@@ -96,6 +98,8 @@ export default function LocationBulkActionBar({
   // No "paused" view — Locations have no Pause concept at all (no
   // publication_status/is_active column exists).
   view: "active" | "archived" | "trashed" | "other";
+  /** Needs Review: adds Reject (review_status → rejected; stays unlisted). */
+  reviewQueue?: boolean;
   selectedIds: string[];
   categories: Category[];
   /** Keeps only these rows selected (failed rows, for a retry). */
@@ -142,6 +146,23 @@ export default function LocationBulkActionBar({
     });
   }
 
+  function reject() {
+    const ids = [...selectedIds];
+    const noun = `${ids.length} Location${ids.length === 1 ? "" : "s"}`;
+    if (ids.length === 0 || !confirm(`Reject ${noun}?\n\nThey stay unlisted. Nothing is deleted and every Event and Business link is kept.`)) return;
+    setNotice(null);
+    startTransition(async () => {
+      const r = await bulkRejectLocations(ids).catch(() => null);
+      if (!r || !r.ok) {
+        setNotice({ tone: "warn", text: r && !r.ok ? r.error : "Couldn't reach Findmi — nothing was changed. Try again." });
+        return;
+      }
+      setNotice({ tone: "ok", text: r.message });
+      keepSelected?.([]);
+      router.refresh();
+    });
+  }
+
   const count = selectedIds.length;
   return (
     <div className="flex w-full flex-col gap-2 sm:w-auto" data-location-bulk-bar="">
@@ -150,11 +171,17 @@ export default function LocationBulkActionBar({
           one row from sm up. */}
       <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         <button type="button" disabled={count === 0 || pending} onClick={() => setPublished(true)} className={`${pill} bg-findmi text-white hover:bg-findmi-600`}>
-          {pending ? "Saving…" : `Publish${count ? ` (${count})` : ""}`}
+          {pending ? "Saving…" : `${reviewQueue ? "Approve" : "Publish"}${count ? ` (${count})` : ""}`}
         </button>
-        <button type="button" disabled={count === 0 || pending} onClick={() => setPublished(false)} className={`${pill} border border-findmi/40 text-findmi-700 hover:bg-findmi-50`}>
-          Unpublish{count ? ` (${count})` : ""}
-        </button>
+        {reviewQueue ? (
+          <button type="button" disabled={count === 0 || pending} onClick={reject} className={`${pill} border border-black/15 text-ink/70 hover:border-black/25`}>
+            Reject{count ? ` (${count})` : ""}
+          </button>
+        ) : (
+          <button type="button" disabled={count === 0 || pending} onClick={() => setPublished(false)} className={`${pill} border border-findmi/40 text-findmi-700 hover:bg-findmi-50`}>
+            Unpublish{count ? ` (${count})` : ""}
+          </button>
+        )}
         <FormAction action={bulkArchiveLocations} ids={selectedIds} label={`Archive${count ? ` (${count})` : ""}`} tone="default" />
         <FormAction
           action={bulkTrashLocations}

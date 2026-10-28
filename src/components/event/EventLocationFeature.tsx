@@ -76,7 +76,17 @@ export default function EventLocationFeature({
               // Its own page: just enough identity for the address — no logo.
               <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-primary">{location.name}</p>
             ) : (
-              <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">{location.name}</p>
+              <p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">
+                {/* The name itself opens the Location (listed ones only — never
+                    a dead link); View Location below stays as the clear action. */}
+                {publicLocationHref(location) ? (
+                  <Link href={publicLocationHref(location)!} className="hover:text-findmi-700 hover:underline">
+                    {location.name}
+                  </Link>
+                ) : (
+                  location.name
+                )}
+              </p>
             )}
             {(street || cityLine) && (
               <div className="mt-1 flex items-start gap-1.5">

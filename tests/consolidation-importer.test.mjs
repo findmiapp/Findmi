@@ -349,3 +349,12 @@ test("U. an article that genuinely describes several Events is surfaced as AMBIG
   assert.match(read("src/app/(public)/account/business/[id]/import-event/MultiEventImport.tsx"), /new Set\(source\.ambiguous \? \[\] : defaultSelection\(events, intent\)\)/);
   assert.match(read("src/lib/event-import/engine.ts"), /This article mentions several Events, so Findmi can't tell which one you mean\./);
 });
+
+test("build guard: the client Event importer never reaches server-only code (schedule → text-clean, not brand-website-extract)", () => {
+  const read = (f) => readFileSync(f, "utf8");
+  const schedule = read("src/lib/event-import/schedule.ts");
+  assert.match(schedule, /import \{ cleanText \} from "\.\.\/text-clean";/);
+  assert.doesNotMatch(schedule, /brand-website-extract|business-matching/);
+  assert.doesNotMatch(read("src/lib/text-clean.ts"), /^import /m, "dependency-free");
+  for (const f of ["src/lib/event-import/review.ts", "src/lib/event-import/temporal.ts"]) assert.doesNotMatch(read(f), /server-only|business-matching|brand-website-extract/, f);
+});

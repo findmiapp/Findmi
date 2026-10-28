@@ -395,11 +395,12 @@ test("Import Complete counts only real outcomes", () => {
   assert.deepEqual(RES.tallyLocationImport(["existing", "created", "created", "unresolved", "failed", "skipped"]), { submitted: 6, existingMatched: 1, created: 2, needsResolution: 1, failed: 1, awaitingReview: 2 });
   const ui = read("src/app/admin/(protected)/locations/import/LocationImporter.tsx");
   for (const label of ["Locations Submitted", "Existing Locations Matched", "New Locations Created", "Ambiguous / Needs Resolution", "Failed", "Awaiting Review (Not Listed)"]) assert.ok(ui.includes(label), label);
-  for (const href of ['href="/admin/locations?review=1"', 'href="/admin/locations"']) assert.ok(ui.includes(href));
+  for (const href of ['href="/admin/locations?draft=1"', 'href="/admin/locations"']) assert.ok(ui.includes(href));
   assert.match(ui, /Import More/);
   // One at a time so an earlier creation is found by the next duplicate check.
   assert.match(ui, /for \(const row of rows\) \{[\s\S]*?await adminCreateImportedLocation\(createInputFromDraft\(row\.draft\), row\.decision\.force\)/);
-  assert.match(read("src/lib/admin/queries.ts"), /if \(needsReview\) query = query\.eq\("is_demo", true\);/, "created (is_demo) Locations land in Needs Review");
+  // Admin-created Locations are unlisted Drafts (review_status null) — never the member review queue.
+  assert.match(read("src/lib/admin/queries.ts"), /else if \(filters\.draftsOnly\) query = query\.eq\("is_demo", true\);/, "created (is_demo) Locations land in Drafts");
 });
 
 // ── EVENT IMPORT INTEGRATION ────────────────────────────────────────────

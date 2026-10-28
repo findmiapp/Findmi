@@ -308,7 +308,7 @@ export default function MultiEventImport({
         ["Existing Events Reviewed / Skipped", s.existingEvents, null],
         ["Existing Events Updated", s.existingEventsUpdated, null],
         ["Businesses Created · Awaiting Review", s.businessesCreated, "/admin/businesses?published=pending_review"],
-        ["Locations Created · Awaiting Review", s.locationsCreated, "/admin/locations?review=1"],
+        ["Locations Created · Awaiting Review", s.locationsCreated, "/admin/locations?draft=1"],
       ];
       return (
         <div className="flex flex-col gap-4">
@@ -351,7 +351,7 @@ export default function MultiEventImport({
               <Link href="/admin/businesses?published=pending_review" className={secondaryButtonClass}>
                 Review Businesses
               </Link>
-              <Link href="/admin/locations?review=1" className={secondaryButtonClass}>
+              <Link href="/admin/locations?draft=1" className={secondaryButtonClass}>
                 Review Locations
               </Link>
             </div>

@@ -124,6 +124,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
       {
         items: [
           { href: "/admin/claims", label: "Claims", hint: "Ownership claims" },
+          { href: "/admin/profile-reviews", label: "Profile Approvals", hint: "Links, contact, announcements and buttons awaiting review" },
           { href: "/admin/market-requests", label: "Market Requests", hint: "Geography requested but not yet a Market" },
         ],
       },

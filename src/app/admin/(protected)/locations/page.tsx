@@ -22,22 +22,24 @@ const LIFECYCLE_TABS = [
 export default async function AdminLocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string; published?: string; sort?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string; review?: string; draft?: string; published?: string; sort?: string; page?: string }>;
 }) {
   const params = await searchParams;
-  const { q, lifecycle, result, review, published } = params;
+  const { q, lifecycle, result, review, draft, published } = params;
   // A–Z / Z–A only: locations has no created_at, so Newest / Oldest
   // aren't offered (see LOCATION_SORT).
   const sort = parseAdminSort(params.sort, LOCATION_SORT);
   const page = parseAdminPage(params.page);
   const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value ?? "active";
-  // "Needs Review": active Locations not publicly listed yet (Admin Home's
-  // queue) — their rows read DRAFT. "Published": active and publicly listed.
+  // "Needs Review": Locations submitted for review (review_status =
+  // 'pending_review' — Admin Home's queue). "Drafts": active but not
+  // publicly listed, whatever their review state. "Published": listed.
   const needsReview = review === "1" && lifecycleTab === "active";
-  const publishedOnly = !needsReview && published === "1" && lifecycleTab === "active";
+  const draftsOnly = !needsReview && draft === "1" && lifecycleTab === "active";
+  const publishedOnly = !needsReview && !draftsOnly && published === "1" && lifecycleTab === "active";
 
   const [list, categories] = await Promise.all([
-    getAdminLocationList({ q, lifecycle: lifecycleTab, needsReview, publishedOnly, sort, page }),
+    getAdminLocationList({ q, lifecycle: lifecycleTab, needsReview, draftsOnly, publishedOnly, sort, page }),
     getAllCategories("location"),
   ]);
   // Every view link / search keeps the chosen sort and resets to page 1.
@@ -81,7 +83,7 @@ export default async function AdminLocationsPage({
           Events, minus the Paused tab which doesn't apply here. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {LIFECYCLE_TABS.map((tab) => {
-          const active = lifecycleTab === tab.value && !needsReview && !publishedOnly;
+          const active = lifecycleTab === tab.value && !needsReview && !draftsOnly && !publishedOnly;
           const href = viewHref({ lifecycle: tab.value !== "active" ? tab.value : null });
           return (
             <Link
@@ -104,6 +106,14 @@ export default async function AdminLocationsPage({
           Needs Review
         </Link>
         <Link
+          href={viewHref({ draft: "1" })}
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+            draftsOnly ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+          }`}
+        >
+          Drafts
+        </Link>
+        <Link
           href={viewHref({ published: "1" })}
           className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
             publishedOnly ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
@@ -114,8 +124,8 @@ export default async function AdminLocationsPage({
       </div>
       {needsReview && (
         <p className="mt-3 text-sm text-ink/60">
-          Draft — not publicly listed yet, so Events show these by name and address only. Select the ones that are ready and Publish them
-          together (or open one to check it first).
+          Submitted by Businesses and members for review. Approve (Publish) the ones that are ready, or Reject them — rejected Locations stay
+          unlisted and keep every Event and Business link.
         </p>
       )}
 
@@ -126,6 +136,7 @@ export default async function AdminLocationsPage({
         <Form action={PATH} className="w-full sm:max-w-sm">
           {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
           {needsReview && <input type="hidden" name="review" value="1" />}
+          {draftsOnly && <input type="hidden" name="draft" value="1" />}
           {publishedOnly && <input type="hidden" name="published" value="1" />}
           {keep && <input type="hidden" name="sort" value={keep} />}
           <input autoCapitalize="none"
@@ -143,6 +154,7 @@ export default async function AdminLocationsPage({
         <LocationBulkListClient
           locations={list.rows}
           view={lifecycleTab}
+          reviewQueue={needsReview}
           categories={categories}
           scopeKey={adminListScopeKey(params)}
           emptyMessage={
@@ -152,6 +164,8 @@ export default async function AdminLocationsPage({
               ? "No Locations match this search."
               : needsReview
               ? "No Locations need review."
+              : draftsOnly
+              ? "No Draft Locations."
               : publishedOnly
               ? "No Published Locations yet."
               : "No Locations in this view."

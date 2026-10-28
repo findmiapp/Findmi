@@ -15,7 +15,7 @@
 // small grammar is left for the Business (or the AI step, whose output is
 // re-read through this same parser) rather than guessed.
 import { localDateTimeToIso } from "../admin/form-helpers";
-import { cleanText } from "../brand-website-extract";
+import { cleanText } from "../text-clean";
 import { APP_TIMEZONE, dateKeyInZone } from "../format";
 import { EMPTY_VENUE, venueKey, type ImportedOccurrence, type ImportedVenue } from "./types";
 

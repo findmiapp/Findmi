@@ -11,12 +11,15 @@ import { LOCATION_LIFECYCLE_LABEL, LOCATION_LIFECYCLE_TONE, locationLifecycleSta
 export default function LocationBulkListClient({
   locations,
   view,
+  reviewQueue = false,
   categories,
   scopeKey,
   emptyMessage = "No Locations in this view.",
 }: {
   locations: AdminLocation[];
   view: "active" | "archived" | "trashed" | "other";
+  /** Needs Review: the bar adds Reject. */
+  reviewQueue?: boolean;
   categories: Category[];
   /** The page's URL scope — selection clears when it changes. */
   scopeKey?: string;
@@ -27,7 +30,7 @@ export default function LocationBulkListClient({
       items={locations}
       scopeKey={scopeKey}
       emptyMessage={emptyMessage}
-      renderBulkBar={(selectedIds, _clear, keepSelected) => <LocationBulkActionBar view={view} selectedIds={selectedIds} categories={categories} keepSelected={keepSelected} />}
+      renderBulkBar={(selectedIds, _clear, keepSelected) => <LocationBulkActionBar view={view} reviewQueue={reviewQueue} selectedIds={selectedIds} categories={categories} keepSelected={keepSelected} />}
       renderRow={(l, selected, toggle) => (
         <div
           key={l.id}
@@ -44,6 +47,11 @@ export default function LocationBulkListClient({
           </Link>
           {/* Lifecycle badge from the canonical columns: PUBLISHED / DRAFT /
               ARCHIVED / TRASHED (lib/admin/location-lifecycle.ts). */}
+          {(l.review_status === "pending_review" || l.review_status === "rejected") && (
+            <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-800">
+              {l.review_status === "pending_review" ? "Pending Review" : "Rejected"}
+            </span>
+          )}
           <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${LOCATION_LIFECYCLE_TONE[locationLifecycleState(l)]}`}>
             {LOCATION_LIFECYCLE_LABEL[locationLifecycleState(l)]}
           </span>

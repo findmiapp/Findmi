@@ -91,21 +91,22 @@ test("3. hidden-location Events still never show a place or a Location link", ()
 
 // ── ADMIN HOME + ADMIN LOCATIONS ──────────────────────────────────────────
 
-test("4 + 5. Admin Home counts active, unlisted Locations (Quick Created ones included) and links to Needs Review", () => {
+test("4 + 5. Admin Home counts Locations submitted for review (review_status, never is_demo) and links to Needs Review", () => {
   const fn = DASH.slice(DASH.indexOf("export async function getLocationsAwaitingReview"));
   const body = fn.slice(0, fn.indexOf("\n}\n"));
   assert.match(body, /\.select\("id, name", \{ count: "exact" \}\)/);
   assert.doesNotMatch(body, /location_members/, "Quick Create grants no membership — it must still be counted");
-  assert.match(body, /\.eq\("is_demo", true\)\n\s+\.is\("archived_at", null\)\n\s+\.is\("trashed_at", null\)/);
+  assert.match(body, /\.eq\("review_status", "pending_review"\)\n\s+\.is\("archived_at", null\)\n\s+\.is\("trashed_at", null\)/);
+  assert.doesNotMatch(body.replace(/\/\/.*$/gm, ""), /is_demo/, "is_demo is the listed flag, not the moderation state");
   assert.match(HOME, /\{ label: "Location awaiting review", pluralLabel: "Locations awaiting review", count: locationsAwaiting\?\.total \?\? 0, href: "\/admin\/locations\?review=1" \}/);
   // Zero-count queues stay hidden, as for every other row.
   assert.match(HOME, /const activeAttentionItems = attentionQueue\.filter\(\(item\) => item\.count > 0\);/);
 });
 
 test("6. Admin Locations → Needs Review lists exactly that set, with address and a Draft badge", () => {
-  assert.match(QUERIES, /if \(needsReview\) query = query\.eq\("is_demo", true\);/);
+  assert.match(QUERIES, /if \(needsReview\) query = query\.eq\("review_status", "pending_review"\);/);
   assert.match(LOC_PAGE, /const needsReview = review === "1" && lifecycleTab === "active";/);
-  assert.match(LOC_PAGE, /getAdminLocationList\(\{ q, lifecycle: lifecycleTab, needsReview, publishedOnly, sort, page \}\)/);
+  assert.match(LOC_PAGE, /getAdminLocationList\(\{ q, lifecycle: lifecycleTab, needsReview, draftsOnly, publishedOnly, sort, page \}\)/);
   assert.match(LOC_PAGE, />\n\s+Needs Review\n\s+<\/Link>/);
   const list = read("src/app/admin/(protected)/locations/LocationBulkListClient.tsx");
   // Lifecycle pass: the active unlisted state reads DRAFT (lib/admin/location-lifecycle.ts).
@@ -146,6 +147,6 @@ test("8. Import Complete counts only real outcomes", () => {
   assert.equal((CLIENT.match(/record\("/g) ?? []).length, 5, "no other place counts a creation");
   assert.match(MULTI, /<p className="text-card-title font-semibold text-findmi-700">Import Complete<\/p>/);
   for (const label of ["New Events", "Existing Events Reviewed / Skipped", "Existing Events Updated", "Businesses Created · Awaiting Review", "Locations Created · Awaiting Review"]) assert.ok(MULTI.includes(`"${label}"`), label);
-  assert.match(MULTI, /href="\/admin\/locations\?review=1" className=\{secondaryButtonClass\}>\n\s+Review Locations/);
+  assert.match(MULTI, /href="\/admin\/locations\?draft=1" className=\{secondaryButtonClass\}>\n\s+Review Locations/);
   assert.match(MULTI, /href="\/admin\/businesses\?published=pending_review" className=\{secondaryButtonClass\}>\n\s+Review Businesses/);
 });

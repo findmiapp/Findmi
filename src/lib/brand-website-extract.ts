@@ -183,29 +183,8 @@ export interface BrandPageSignals {
 
 // ── Text normalization ────────────────────────────────────────────────────
 
-// eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
-const INVISIBLE = /[­؜ᅟᅠ឴឵᠎​-‏‪-‮⁠-⁯ㅤ︀-️﻿ﾠ]/g;
-
-/** Normalizes one untrusted string to plain, single-line display text, or
- * null. Over-long values are cut at a word boundary. */
-export function cleanText(value: unknown, max: number): string | null {
-  if (typeof value !== "string") return null;
-  let s = value
-    .slice(0, max * 8)
-    .normalize("NFKC")
-    .replace(CONTROL, " ")
-    .replace(INVISIBLE, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!s || /[<>]/.test(s)) return null;
-  if (s.length > max) {
-    const cut = s.slice(0, max + 1);
-    const space = cut.lastIndexOf(" ");
-    s = (space >= max * 0.6 ? cut.slice(0, space) : s.slice(0, max)).replace(/[\s,;:–—-]+$/, "");
-  }
-  return s || null;
-}
+export { cleanText } from "./text-clean";
+import { cleanText } from "./text-clean";
 
 const GENERIC_DESCRIPTION =
   /^(welcome to\b|official (web)?site\b|official (online )?store\b|shop (the latest|now|our)\b|free shipping\b|sign up\b|subscribe\b|home ?page\b)/i;

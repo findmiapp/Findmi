@@ -15,7 +15,8 @@ test("heading + canonical name/address (no aggressive one-line truncation)", () 
   // the Event page's default output is unchanged.
   assert.match(card, /heading = "Location",\n\s+sectionId = "location",/);
   assert.match(card, /<SectionHeading id=\{`\$\{sectionId\}-heading`\}>\{heading\}<\/SectionHeading>/);
-  assert.match(card, /\) : \(\n\s+<p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">\{location\.name\}<\/p>/, "Event variant name unchanged");
+  // Consolidation pass: same styling, and the name now links to a listed Location.
+  assert.match(card, /\) : \(\n\s+<p className="line-clamp-2 break-words font-display text-card-title-lg font-bold leading-snug text-primary">[\s\S]{0,500}?\{location\.name\}/, "Event variant name styling unchanged");
   assert.doesNotMatch(card, /<p className="truncate font-display[^"]*">\{location\.name\}/, "name no longer forced onto one line");
   assert.match(card, /const street = location\.address\?\.trim\(\) \|\| null;/);
   assert.match(card, /const cityLine = cityStateZip\(location\.city, location\.state, location\.postal_code\) \|\| null;/);
