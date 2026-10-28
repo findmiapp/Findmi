@@ -89,6 +89,7 @@ import {
   setMemberProductActive,
   submitProductToMarketplace,
   toggleFeaturedAppearance,
+  updateMemberProductCommerce,
   updateBusinessGallery,
   updateBusinessBrandImages,
   updateBusinessLinks,
@@ -98,6 +99,11 @@ import {
   updateOwnerAppearance,
 } from "../../actions";
 import { getEntityHandle } from "@/lib/handles";
+import MarketplaceReadinessPanel from "@/components/MarketplaceReadinessPanel";
+import { loadMarketplaceReadiness } from "@/lib/commerce/marketplace-readiness-server";
+import type { MarketplaceReadiness } from "@/lib/commerce/marketplace-eligibility";
+import { getProductWantCounts, type ProductDemand } from "@/lib/product-wants";
+import { getUpcomingAppearanceOptionsForBusiness, type SelectOption } from "@/lib/admin/queries";
 import MemberImageField from "../MemberImageField";
 import MemberGalleryField from "../MemberGalleryField";
 import MemberProductActiveButton from "../MemberProductActiveButton";
@@ -1223,9 +1229,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     // product may appear in broader FindMi Marketplace/discovery
     // surfaces, not whether its content is approved.
     marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
-    /** Purchasable through Findmi checkout (a Marketplace requirement). */
-    checkoutReady: boolean;
+    /** The ONE Marketplace rule's answer (both gates + exact blockers). */
+    readiness: MarketplaceReadiness;
+    /** Aggregate demand only — never who. */
+    demand: ProductDemand;
+    /** Checkout setup form defaults (owner-managed commerce fields). */
+    commerce: { purchasable: boolean; soldOut: boolean; pickupEnabled: boolean; pickupPrice: string; eventPickupIds: string[] };
   };
+  let productPickupAppearances: SelectOption[] = [];
   let products: OwnProduct[] = [];
   let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
   // Free Tier Entitlement Reset V1 — fetched for every business now. The
@@ -1239,7 +1250,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       admin
         .from("products")
         .select(
-          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes, marketplace_status, purchasable"
+          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes, marketplace_status, purchasable, inventory_status, archived_at, trashed_at"
         )
         .eq("business_id", id)
         // Admin Content Lifecycle V1 — Archive/Trash are admin-only
@@ -1253,16 +1264,28 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         .order("name"),
       getProductCategories(),
       // Marketplace needs real Findmi checkout (lib/commerce/marketplace-eligibility.ts).
-      admin.from("businesses").select("commerce_enabled").eq("id", id).maybeSingle(),
+      admin.from("businesses").select("commerce_enabled, is_demo, publication_status").eq("id", id).maybeSingle(),
     ]);
     productCategories = fetchedProductCategories;
-    const commerceEnabled = Boolean((commerceRow as { commerce_enabled?: boolean } | null)?.commerce_enabled);
+    const businessCommerce = (commerceRow ?? null) as { commerce_enabled?: boolean; is_demo?: boolean; publication_status?: string } | null;
 
     const productIds = (productRows ?? []).map((p) => p.id);
-    const { data: categoryLinks } =
+    // Canonical readiness, aggregate demand (counts only — this is normal
+    // Business Manager access; identities never leave the server), and the
+    // owner-managed checkout setup, all in one parallel batch.
+    const [{ data: categoryLinks }, readinessById, demandById, { data: fulfillmentRows }, pickupAppearances] = await Promise.all([
       productIds.length > 0
-        ? await admin.from("product_categories").select("product_id, category_id").in("product_id", productIds)
-        : { data: [] as { product_id: string; category_id: string }[] };
+        ? admin.from("product_categories").select("product_id, category_id").in("product_id", productIds)
+        : Promise.resolve({ data: [] as { product_id: string; category_id: string }[] }),
+      loadMarketplaceReadiness(admin, productRows ?? [], () => businessCommerce),
+      getProductWantCounts(admin, productIds),
+      productIds.length > 0
+        ? admin.from("product_fulfillment_options").select("product_id, method, price, appearance_id").in("product_id", productIds).eq("enabled", true)
+        : Promise.resolve({ data: [] as { product_id: string; method: string; price: number; appearance_id: string | null }[] }),
+      getUpcomingAppearanceOptionsForBusiness(id),
+    ]);
+    productPickupAppearances = pickupAppearances;
+    const fulfillment = (fulfillmentRows ?? []) as { product_id: string; method: string; price: number; appearance_id: string | null }[];
     const categoryByProduct = new Map((categoryLinks ?? []).map((r) => [r.product_id, r.category_id]));
 
     products = (productRows ?? []).map((p) => {
@@ -1300,9 +1323,15 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         hasPendingChanges,
         editDefaults,
         marketplaceStatus,
-        // Approved is not enough on its own: the Marketplace lists only
-        // Products people can actually buy through Findmi checkout.
-        checkoutReady: Boolean((p as { purchasable?: boolean }).purchasable) && commerceEnabled,
+        readiness: readinessById.get(p.id)!,
+        demand: demandById.get(p.id) ?? { wantCount: 0, recentCount: 0 },
+        commerce: {
+          purchasable: Boolean(p.purchasable),
+          soldOut: p.inventory_status === "out_of_stock",
+          pickupEnabled: fulfillment.some((f) => f.product_id === p.id && f.method === "pickup"),
+          pickupPrice: String(fulfillment.find((f) => f.product_id === p.id && f.method === "pickup")?.price ?? ""),
+          eventPickupIds: fulfillment.filter((f) => f.product_id === p.id && f.method === "event_pickup" && f.appearance_id).map((f) => f.appearance_id!),
+        },
       };
     });
   };
@@ -2541,6 +2570,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                                 )}
                                 <span className={PRODUCT_STATUS_TONE_CLASS[status.tone]}>{status.label}</span>
                               </p>
+                              {p.demand.wantCount > 0 && (
+                                <p className="mt-0.5 truncate text-metadata text-accent">{p.demand.wantCount === 1 ? "1 person wants this" : `${p.demand.wantCount} people want this`}</p>
+                              )}
                             </div>
                             <p className="hidden truncate text-body text-muted sm:block">{priceLine ?? "—"}</p>
                             <p className={`hidden truncate text-metadata sm:block ${PRODUCT_STATUS_TONE_CLASS[status.tone]}`}>{status.label}</p>
@@ -2572,49 +2604,94 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                                 Flattened from its own nested bordered box
                                 into a plain divider section — one composer
                                 boundary (the Edit form itself), not two. */}
+                            {/* Catalog vs Marketplace vs Demand — the ONE
+                                Marketplace rule's two gates (Findmi
+                                approval, checkout readiness) with exact
+                                blockers, plus aggregate Want count. Owner
+                                transitions only: never "approved"/"paused"
+                                (admin/products/actions.ts only). */}
                             <div className="border-t border-black/10 pt-3">
                               <p className="text-label font-semibold uppercase text-subtle">Marketplace</p>
-                              <p className="mt-1 text-metadata text-muted">
-                                {p.marketplaceStatus === "catalog_only" && "Shown on your Findmi business profile only."}
-                                {p.marketplaceStatus === "submitted" && "Submitted, awaiting Findmi's decision."}
-                                {p.marketplaceStatus === "approved" &&
-                                  "Approved. May also appear across Findmi Marketplace and discovery."}
-                                {p.marketplaceStatus === "rejected" &&
-                                  "Not approved for Marketplace, still shown on your business profile."}
-                                {p.marketplaceStatus === "paused" &&
-                                  "Paused, temporarily out of Marketplace/discovery. Still shown on your business profile."}
-                              </p>
-                              {!p.checkoutReady && (p.marketplaceStatus === "approved" || p.marketplaceStatus === "submitted") && (
-                                <p className="mt-1 text-metadata font-semibold text-amber-800">
-                                  Not in the Marketplace yet: it lists only products people can buy through Findmi checkout. Contact Findmi to turn on checkout for this product.
-                                </p>
-                              )}
+                              <div className="mt-2">
+                                <MarketplaceReadinessPanel readiness={p.readiness} demand={p.demand} audience="owner" />
+                              </div>
                               {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
                                 <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
                                   <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
-                                    {p.marketplaceStatus === "rejected" ? "Resubmit to Marketplace" : "Submit to Marketplace"}
+                                    {p.marketplaceStatus === "rejected" ? "Request Marketplace Review Again" : "Request Marketplace Review"}
                                   </button>
                                 </form>
                               )}
                               {p.marketplaceStatus === "submitted" && (
                                 <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
                                   <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
-                                    Cancel Submission
+                                    Cancel Request
                                   </button>
                                 </form>
                               )}
                               {p.marketplaceStatus === "rejected" && (
                                 <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
                                   <button type="submit" className="text-metadata font-semibold text-subtle hover:underline">
-                                    Return to catalog only
+                                    Keep as catalog only
                                   </button>
                                 </form>
                               )}
                               {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
                                 <p className="mt-1 text-metadata text-subtle">
-                                  Marketplace placement is managed by Findmi and can&rsquo;t be changed here.
+                                  Marketplace approval is managed by Findmi.
                                 </p>
                               )}
+
+                              {/* Checkout setup — the commerce-readiness
+                                  fields the owner controls. */}
+                              <details className="mt-3 rounded-xl border border-black/10 bg-white px-3 py-2" open={p.readiness.approved && !p.readiness.commerceReady}>
+                                <summary className="cursor-pointer text-metadata font-semibold text-primary">Checkout Setup</summary>
+                                <form action={updateMemberProductCommerce.bind(null, id, p.id)} className="mt-2 flex flex-col gap-2 text-metadata text-ink/80">
+                                  <label className="flex items-center gap-2">
+                                    <input type="checkbox" name="purchasable" defaultChecked={p.commerce.purchasable} className="h-4 w-4" />
+                                    Sell through Findmi checkout
+                                  </label>
+                                  <label className="flex items-center gap-2">
+                                    <input type="checkbox" name="sold_out" defaultChecked={p.commerce.soldOut} className="h-4 w-4" />
+                                    Sold out
+                                  </label>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <label className="flex items-center gap-2">
+                                      <input type="checkbox" name="pickup_enabled" defaultChecked={p.commerce.pickupEnabled} className="h-4 w-4" />
+                                      Pickup
+                                    </label>
+                                    <label className="flex items-center gap-1 text-subtle">
+                                      fee $
+                                      <input
+                                        type="number"
+                                        name="pickup_price"
+                                        min="0"
+                                        step="0.01"
+                                        inputMode="decimal"
+                                        defaultValue={p.commerce.pickupPrice}
+                                        placeholder="0"
+                                        autoCapitalize="none"
+                                        className="h-8 w-20 rounded-lg border border-black/10 px-2 text-base text-ink"
+                                      />
+                                    </label>
+                                  </div>
+                                  {productPickupAppearances.length > 0 && (
+                                    <fieldset className="flex flex-col gap-1">
+                                      <legend className="text-subtle">Event Pickup at</legend>
+                                      {productPickupAppearances.map((a) => (
+                                        <label key={a.value} className="flex items-center gap-2">
+                                          <input type="checkbox" name="event_pickup_appearance_id" value={a.value} defaultChecked={p.commerce.eventPickupIds.includes(a.value)} className="h-4 w-4" />
+                                          {a.label}
+                                        </label>
+                                      ))}
+                                    </fieldset>
+                                  )}
+                                  <p className="text-subtle">Shipping and delivery aren&rsquo;t available at Findmi checkout yet. Findmi turns on checkout for your Business.</p>
+                                  <button type="submit" className="h-9 w-fit rounded-lg bg-findmi px-3 text-button font-bold text-white transition hover:bg-findmi-600">
+                                    Save Checkout Setup
+                                  </button>
+                                </form>
+                              </details>
                             </div>
 
                             <ProductFieldsForm
@@ -3753,15 +3830,15 @@ function productDisplayStatus(p: {
   moderationStatus: "pending_review" | "live" | "rejected";
   hasPendingChanges: boolean;
   marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
-  checkoutReady?: boolean;
+  readiness?: MarketplaceReadiness;
 }): { label: string; tone: "quiet" | "positive" | "attention" | "negative" } {
   if (!p.is_active) return { label: "Inactive", tone: "quiet" };
   if (p.moderationStatus === "rejected") return { label: "Not approved", tone: "negative" };
   if (p.moderationStatus === "pending_review") return { label: "Pending review", tone: "attention" };
   if (p.hasPendingChanges) return { label: "Changes pending", tone: "attention" };
   if (p.marketplaceStatus === "submitted") return { label: "Marketplace pending", tone: "attention" };
-  if (p.marketplaceStatus === "approved" && p.checkoutReady === false) return { label: "Approved · Checkout off", tone: "attention" };
-  if (p.marketplaceStatus === "approved") return { label: "Marketplace approved", tone: "positive" };
+  if (p.readiness?.eligible) return { label: "In Marketplace", tone: "positive" };
+  if (p.marketplaceStatus === "approved") return { label: "Approved · Checkout not ready", tone: "attention" };
   if (p.marketplaceStatus === "paused") return { label: "Marketplace paused", tone: "attention" };
   if (p.marketplaceStatus === "rejected") return { label: "Marketplace not approved", tone: "negative" };
   return { label: "Live", tone: "quiet" };

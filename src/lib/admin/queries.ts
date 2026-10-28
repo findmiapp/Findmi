@@ -950,7 +950,7 @@ export async function getAdminAppearanceById(id: string): Promise<AdminAppearanc
 // ---------------------------------------------------------------------
 
 export interface AdminProductRow extends AdminProduct {
-  business: { id: string; name: string } | null;
+  business: { id: string; name: string; commerce_enabled?: boolean | null; is_demo?: boolean | null; publication_status?: string | null } | null;
 }
 
 export interface ProductListFilters {
@@ -989,7 +989,7 @@ export interface ProductListFilters {
 export async function getAdminProducts(filters: ProductListFilters = {}): Promise<AdminProductRow[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  let query = supabase.from("products").select("*, business:businesses(id, name)");
+  let query = supabase.from("products").select("*, business:businesses(id, name, commerce_enabled, is_demo, publication_status)");
   if (filters.q) {
     const term = `%${filters.q}%`;
     query = query.or(`name.ilike.${term},slug.ilike.${term}`);
@@ -998,7 +998,11 @@ export async function getAdminProducts(filters: ProductListFilters = {}): Promis
   if (filters.status === "needs_review") {
     query = query.or("moderation_status.eq.pending_review,pending_changes.not.is.null").is("trashed_at", null);
   } else if (filters.status === "marketplace_review") {
-    query = query.eq("marketplace_status", "submitted").is("trashed_at", null);
+    // ONE Marketplace workflow view: everything in the Marketplace pipeline
+    // (requested, approved, paused, rejected — or set purchasable), with
+    // pending requests sorted first by the caller. Readiness comes from the
+    // canonical rule, never inferred from these fields.
+    query = query.or("marketplace_status.neq.catalog_only,purchasable.eq.true").is("trashed_at", null);
   } else if (filters.status === "archived") {
     query = query.not("archived_at", "is", null).is("trashed_at", null);
   } else if (filters.status === "trashed") {

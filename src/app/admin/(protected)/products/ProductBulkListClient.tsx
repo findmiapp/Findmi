@@ -6,6 +6,9 @@ import ProductBulkActionBar from "./ProductBulkActionBar";
 import type { AdminProductRow } from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
 import { formatDateShort, formatPrice } from "@/lib/format";
+import { MARKETPLACE_INELIGIBILITY_COPY, type MarketplaceReadiness } from "@/lib/commerce/marketplace-eligibility";
+
+type Row = AdminProductRow & { readiness: MarketplaceReadiness | null; wantCount: number };
 
 /** Admin Content Lifecycle + Bulk Management V1 — client half of the
  * products list: per-row checkbox + the existing status badges (now also
@@ -21,7 +24,7 @@ export default function ProductBulkListClient({
   view,
   categories,
 }: {
-  products: AdminProductRow[];
+  products: Row[];
   view: "active" | "paused" | "archived" | "trashed" | "other";
   categories: Category[];
 }) {
@@ -85,7 +88,23 @@ export default function ProductBulkListClient({
                 <p className="truncate text-[11px] text-ink/40">Archived {formatDateShort(p.archived_at)}</p>
               )}
               {p.trashed_at && <p className="truncate text-[11px] text-ink/40">Trashed {formatDateShort(p.trashed_at)}</p>}
+              {/* Marketplace readiness — the canonical rule's answer and its
+                  first blocker, plus demand; no manual inference. */}
+              {p.readiness && (p.readiness.approval !== "catalog_only" || p.purchasable) && (
+                <p className={`truncate text-[11px] ${p.readiness.eligible ? "text-findmi-700" : "text-amber-800"}`}>
+                  {p.readiness.eligible
+                    ? "In Marketplace · checkout ready"
+                    : `Not in Marketplace · ${MARKETPLACE_INELIGIBILITY_COPY[p.readiness.blockers[0]]}`}
+                  {p.readiness.blockers.length > 1 ? ` (+${p.readiness.blockers.length - 1} more)` : ""}
+                </p>
+              )}
+              {p.wantCount > 0 && <p className="truncate text-[11px] text-ink/55">{p.wantCount === 1 ? "1 person wants this" : `${p.wantCount} people want this`}</p>}
             </Link>
+            {p.readiness?.catalogVisible && (
+              <a href={`/product/${p.slug}`} target="_blank" rel="noopener noreferrer" className="hidden shrink-0 text-[11px] font-semibold text-findmi-700 hover:underline sm:inline">
+                Public ↗
+              </a>
+            )}
             <span className="flex shrink-0 flex-col items-end gap-1">
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
                 {badgeLabel}

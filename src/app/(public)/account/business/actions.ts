@@ -33,6 +33,7 @@ import { clearStagedBrandImages, fetchVerifiedBrandImage, loadStagedBrandImage, 
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import { isCatalogProductPublic } from "@/lib/product-catalog";
 import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
@@ -2190,11 +2191,24 @@ export async function submitProductToMarketplace(businessId: string, productId: 
 
   const { data: existing } = await admin
     .from("products")
-    .select("id, name, marketplace_status")
+    .select("id, name, marketplace_status, price, is_active, moderation_status, archived_at, trashed_at")
     .eq("id", productId)
     .eq("business_id", businessId)
     .maybeSingle();
   if (!existing) redirect(appendQuery(redirectPath, { error: "That product no longer exists." }));
+
+  // Validate what can be validated before a review is requested: the
+  // Product must already be a public catalog Product with a real price.
+  // Checkout readiness (purchasable, pickup options, Findmi enabling
+  // checkout for the Business) is shown as blockers but never blocks the
+  // REQUEST — approval and commerce readiness are separate gates, and
+  // Marketplace eligibility always requires both.
+  if (!isCatalogProductPublic(existing)) {
+    redirect(appendQuery(redirectPath, { error: "This product needs to be active and approved on your profile before requesting Marketplace review." }));
+  }
+  if (!(Number(existing.price) > 0)) {
+    redirect(appendQuery(redirectPath, { error: "Add a price before requesting Marketplace review." }));
+  }
 
   if (existing.marketplace_status === "catalog_only" || existing.marketplace_status === "rejected") {
     await admin
@@ -2220,6 +2234,59 @@ export async function submitProductToMarketplace(businessId: string, productId: 
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { marketplace_updated: "1" }));
+}
+
+/** Owner checkout setup for one Product — the commerce-readiness half of
+ * the Marketplace rule the owner controls: sell through Findmi checkout
+ * (purchasable), sold out, Pickup, and Event Pickup at this Business's own
+ * upcoming appearances. Never touches marketplace_status (approval is
+ * Findmi's), the Business-level commerce_enabled switch (Findmi turns
+ * checkout on), fees, or the shipping / local-delivery options (kept as
+ * configured — checkout can't collect an address yet). Same
+ * requireBusinessMemberWithDetails + double-scoped (id + business_id)
+ * shape as every member action here. */
+export async function updateMemberProductCommerce(businessId: string, productId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}?tab=products`;
+  const { admin } = await requireBusinessMemberWithDetails(businessId, redirectPath);
+
+  const { data: existing } = await admin.from("products").select("id, slug").eq("id", productId).eq("business_id", businessId).maybeSingle();
+  if (!existing) redirect(appendQuery(redirectPath, { error: "That product no longer exists." }));
+
+  const pickupPrice = Math.max(0, num(formData, "pickup_price") ?? 0);
+  // Only this Business's own, non-canceled, still-upcoming appearances.
+  const requested = [...new Set(formData.getAll("event_pickup_appearance_id").map(String))];
+  let appearanceIds: string[] = [];
+  if (requested.length > 0) {
+    const { data: rows } = await admin
+      .from("appearances")
+      .select("id, start_at, end_at, status")
+      .eq("business_id", businessId)
+      .in("id", requested);
+    const now = Date.now();
+    appearanceIds = ((rows ?? []) as { id: string; start_at: string; end_at: string | null; status: string | null }[])
+      .filter((a) => a.status !== "canceled" && new Date(a.end_at ?? a.start_at).getTime() >= now)
+      .map((a) => a.id);
+  }
+
+  const { error } = await admin
+    .from("products")
+    .update({ purchasable: bool(formData, "purchasable"), inventory_status: bool(formData, "sold_out") ? "out_of_stock" : "in_stock" })
+    .eq("id", productId)
+    .eq("business_id", businessId);
+  if (error) redirect(appendQuery(redirectPath, { error: "Couldn't save checkout setup. Please try again." }));
+
+  // Rebuild only the two owner-managed methods; current config, not
+  // economic history (order_items snapshot their own fulfillment).
+  await admin.from("product_fulfillment_options").delete().eq("product_id", productId).in("method", ["pickup", "event_pickup"]);
+  const options: { product_id: string; method: string; price: number; enabled: boolean; appearance_id?: string }[] = [];
+  if (bool(formData, "pickup_enabled")) options.push({ product_id: productId, method: "pickup", price: pickupPrice, enabled: true });
+  for (const appearanceId of appearanceIds) options.push({ product_id: productId, method: "event_pickup", price: 0, enabled: true, appearance_id: appearanceId });
+  if (options.length > 0) await admin.from("product_fulfillment_options").insert(options);
+
+  revalidatePath(redirectPath);
+  revalidatePath(`/product/${existing.slug}`);
+  revalidatePath("/marketplace");
+  redirect(appendQuery(`${redirectPath}&editing=${productId}`, { commerce_updated: "1" }));
 }
 
 /** Withdraws the owner's own not-yet-decided request ("submitted"), or

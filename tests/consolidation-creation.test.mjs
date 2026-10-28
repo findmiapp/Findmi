@@ -149,8 +149,11 @@ test("manual venue details are never silently disconnected: matching runs and th
 
 // ── Products ─────────────────────────────────────────────────────────────
 test("Product Marketplace submission states checkout readiness instead of silently not listing", () => {
+  // Product + Marketplace + Want pass: readiness is the canonical rule's
+  // answer (both gates + exact blockers), never a page-local formula.
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(page, /checkoutReady: Boolean\(\(p as \{ purchasable\?: boolean \}\)\.purchasable\) && commerceEnabled,/);
-  assert.match(page, /Not in the Marketplace yet: it lists only products people can buy through Findmi checkout\./);
-  assert.match(page, /if \(p\.marketplaceStatus === "approved" && p\.checkoutReady === false\) return \{ label: "Approved · Checkout off", tone: "attention" \};/);
+  assert.match(page, /loadMarketplaceReadiness\(admin, productRows \?\? \[\], \(\) => businessCommerce\)/);
+  assert.match(page, /<MarketplaceReadinessPanel readiness=\{p\.readiness\} demand=\{p\.demand\} audience="owner" \/>/);
+  assert.match(page, /if \(p\.marketplaceStatus === "approved"\) return \{ label: "Approved · Checkout not ready", tone: "attention" \};/);
+  assert.doesNotMatch(page, /checkoutReady/);
 });

@@ -2,6 +2,9 @@ import Link from "next/link";
 import { getAdminProducts, getAllCategories, getBusinessOptionById } from "@/lib/admin/queries";
 import { RelationField } from "@/components/admin/RelationPicker";
 import ProductBulkListClient from "./ProductBulkListClient";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { loadMarketplaceReadiness } from "@/lib/commerce/marketplace-readiness-server";
+import { getProductWantCounts } from "@/lib/product-wants";
 
 export const dynamic = "force-dynamic";
 
@@ -35,11 +38,26 @@ export default async function AdminProductsPage({
       ? "marketplace_review"
       : (lifecycleStatus ?? "active");
 
-  const [products, initialBusiness, categories] = await Promise.all([
+  const [listed, initialBusiness, categories] = await Promise.all([
     getAdminProducts({ q, businessId: business, status: effectiveStatus }),
     getBusinessOptionById(business ?? null),
     getAllCategories("product"),
   ]);
+  // Marketplace readiness (the one rule) + aggregate Want count per row, so
+  // Admin never infers readiness from raw fields.
+  const admin = getAdminSupabase();
+  const [readinessById, demandById] = admin
+    ? await Promise.all([loadMarketplaceReadiness(admin, listed, (p) => p.business), getProductWantCounts(admin, listed.map((p) => p.id))])
+    : [new Map(), new Map()];
+  const products = listed
+    .map((p) => ({ ...p, readiness: readinessById.get(p.id) ?? null, wantCount: demandById.get(p.id)?.wantCount ?? 0 }))
+    // Marketplace view: pending requests first, then approved-but-not-ready.
+    .sort((a, b) =>
+      marketplaceReview
+        ? Number(b.marketplace_status === "submitted") - Number(a.marketplace_status === "submitted") ||
+          Number(a.readiness?.eligible ?? false) - Number(b.readiness?.eligible ?? false)
+        : 0
+    );
 
   const barView: "active" | "paused" | "archived" | "trashed" | "other" =
     effectiveStatus === "active" || effectiveStatus === "paused" || effectiveStatus === "archived" || effectiveStatus === "trashed"
@@ -106,7 +124,7 @@ export default async function AdminProductsPage({
             marketplaceReview ? "bg-sky-500 text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
           }`}
         >
-          Marketplace Review
+          Marketplace
         </Link>
       </div>
 
