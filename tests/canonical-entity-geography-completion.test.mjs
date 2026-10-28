@@ -233,7 +233,7 @@ test("24. searchBusinesses/getLocations apply the canonical geo .or() filter BEF
 
   const locStart = data.indexOf("export async function getLocations(");
   const loc = data.slice(locStart, locStart + 6000);
-  assert.ok(loc.indexOf("geoScopeOrFilter(canonicalGeo") < loc.indexOf(".order(\"name\").limit(limit)"), "geo filter applied before the final limit");
+  assert.ok(loc.indexOf("geoScopeOrFilter(canonicalGeo") < loc.indexOf(".order(\"name\").order(\"id\").limit(limit)"), "geo filter applied before the final limit");
 
   const eventsStart = data.indexOf("export async function getEventsDiscovery(");
   const events = data.slice(eventsStart, eventsStart + 4000);

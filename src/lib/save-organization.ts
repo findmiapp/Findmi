@@ -29,7 +29,7 @@ export const SAVE_CLASSIFICATIONS: Record<OrganizableType, readonly SaveClassifi
   // (ProductWantButton). The Save sheet only offers Have for Products.
   product: [{ relation: "have", label: "Have" }],
   event: [
-    { relation: "want", label: "Interested" },
+    { relation: "want", label: "Want To Do" },
     { relation: "must_do", label: "Must Do" },
   ],
   location: [
@@ -52,12 +52,12 @@ export function isOrganizable(type: string): type is OrganizableType {
  *               are taste signals, not things you keep) — Following has
  *               its own filter so subscriptions don't flood "All"
  *   want        Things I Want — Product Want (product_wants)
- *   want-to-do  Event Want ("Interested")
+ *   want-to-do  Event Want ("Want To Do")
  *   want-to-go  Place Want
  *   must-do     Must Do (Events, Places)
  *   have-been   Have (Products) & Been (Places, Events)
  *   following   Followed Businesses, Events, Places
- *   saved       plain Save bookmarks only */
+ *   saved       plain Save bookmarks only (legacy — kept, never deleted) */
 export type SavedCollectionKey = "all" | "want" | "want-to-do" | "want-to-go" | "must-do" | "have-been" | "following" | "saved";
 
 export type LibraryEntityType = "product" | "event" | "location" | "business";
@@ -75,9 +75,11 @@ export const SAVED_COLLECTIONS: readonly LibraryFilter[] = [
   { key: "want", label: "Things I Want", relations: ["want"], entityTypes: ["product"] },
   { key: "want-to-do", label: "Want To Do", relations: ["want"], entityTypes: ["event"] },
   { key: "want-to-go", label: "Want To Go", relations: ["want"], entityTypes: ["location"] },
-  { key: "must-do", label: "Must Do", relations: ["must_do"] },
   { key: "have-been", label: "Have & Been", relations: ["have", "been"] },
   { key: "following", label: "Following", relations: [] },
+  // Legacy: Must Do is no longer offered as a primary action (lib/personal-model.ts) but
+  // existing rows stay visible here — the page hides this filter when it is empty.
+  { key: "must-do", label: "Must Do", relations: ["must_do"] },
   { key: "saved", label: "Saved", relations: [] },
 ];
 

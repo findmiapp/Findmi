@@ -110,9 +110,9 @@ test("ONE signed-in library: /saved and /my-world send signed-in people to /acco
   assert.match(read("src/app/(public)/saved/page.tsx"), /if \(authed\) router\.replace\("\/account\/saved"\);/);
   assert.match(read("src/app/(public)/my-world/page.tsx"), /syncLocalToAccountOnce\(\);\n\s+router\.replace\("\/account\/saved"\);/);
   const nav = read("src/lib/primary-nav.ts");
-  assert.match(nav, /\{ href: "\/account\/saved", label: "Saved", icon: "bookmark"/);
+  assert.match(nav, /\{ href: "\/account\/saved", label: "Your Library", icon: "bookmark"/);
   assert.doesNotMatch(nav, /label: "Saved & Following"/);
-  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.key), ["all", "want", "want-to-do", "want-to-go", "must-do", "have-been", "following", "saved"]);
+  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.key), ["all", "want", "want-to-do", "want-to-go", "have-been", "following", "must-do", "saved"]);
   const page = read("src/app/(public)/account/saved/page.tsx");
   assert.match(page, /SAVED_COLLECTIONS\.filter\(\(c\) => c\.key === "all" \|\| counts\[c\.key\] > 0/, "empty filters stay hidden — no manufactured taxonomy");
   assert.doesNotMatch(page, /My Moments/, "My Moments stays its own concept");

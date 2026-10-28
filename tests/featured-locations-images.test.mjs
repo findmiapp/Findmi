@@ -75,14 +75,14 @@ test("input Locations are not mutated (nothing is hidden or rewritten elsewhere)
 
 test("data layer: cover filter runs in the query before .limit(); activity images before the top-3 slice; both opt-in", () => {
   assert.match(DATA, /requireCoverImage = false, requireActivityImages = false/);
-  // The cover rule is now part of the canonical discovery filter (listed AND Logo AND Cover),
-  // applied to the query before the limit for every caller — see location-discovery-eligibility.test.mjs.
-  const q = DATA.indexOf('applyLocationDiscoveryFilter(supabase.from("locations").select("*, category:categories(id, name, slug)"))');
-  const lim = DATA.indexOf('await query.order("name").limit(limit)');
-  assert.ok(q > 0 && lim > q, "canonical (cover + logo) filter precedes the limit");
-  assert.match(DATA, /if \(requireImages && !hasUsableImageUrl\(e\.cover_image_url\)\) continue;/);
+  // The lane rule (listed AND Cover — Logo not required, Consolidated Finish pass) is applied
+  // to the query before the limit; every other caller keeps the full discovery rule.
+  const q = DATA.indexOf("requireCoverImage ? applyFeaturedLaneLocationFilter(baseLocationQuery) : applyLocationDiscoveryFilter(baseLocationQuery)");
+  const lim = DATA.indexOf('await query.order("name").order("id").limit(limit)');
+  assert.ok(q > 0 && lim > q, "lane / discovery filter precedes the limit");
+  assert.match(DATA, /if \(requireImages && !hasUsableImageUrl\(eventImage\)\) continue;/);
   assert.match(DATA, /if \(requireImages && !hasUsableImageUrl\(appearanceImage\)\) continue;/);
-  const filt = DATA.indexOf("if (requireImages && !hasUsableImageUrl(e.cover_image_url))");
+  const filt = DATA.indexOf("if (requireImages && !hasUsableImageUrl(eventImage))");
   const slice = DATA.indexOf(".slice(0, ACTIVITY_PREVIEW_ITEMS_PER_LOCATION)");
   assert.ok(filt > 0 && slice > filt, "image filter precedes the per-Location slice");
   assert.match(DATA, /getLocations\(\{ limit: 60, requireCoverImage: true, requireActivityImages: true \}\)/);

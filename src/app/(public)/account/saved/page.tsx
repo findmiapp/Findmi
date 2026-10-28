@@ -17,9 +17,11 @@ import { getAccountWantedProductIds } from "@/lib/product-wants";
 import { annotateMarketplaceEligibility } from "@/lib/commerce/marketplace-readiness-server";
 import { getCollectionMembers, listCollections } from "@/lib/collections";
 import CollectionActions from "./CollectionActions";
+import NewCollectionButton from "./NewCollectionButton";
+import { PERSONAL_DESTINATION_NAME } from "@/lib/personal-model";
 
 export const metadata: Metadata = {
-  title: "Saved",
+  title: PERSONAL_DESTINATION_NAME,
   robots: { index: false },
 };
 // Authenticated, per-user content — must never be statically or
@@ -32,8 +34,10 @@ type SavedProduct = Product & {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Personal Library — the ONE signed-in library (signed-in /saved and
- * /my-world route here). Everything reads the account, RLS-scoped to the
+/** Your Library (lib/personal-model.ts) — the ONE signed-in library
+ * (signed-in /saved and /my-world route here). Two tiers, visually
+ * distinct: A) Your Lists — system views defined by relationships (and the
+ * legacy Saved view); B) Collections — the person's own folders. Everything reads the account, RLS-scoped to the
  * viewer:
  *   Relationships  product_wants (Things I Want) + user_entity_relationships
  *   Saves          account_saved_* (plain bookmarks)
@@ -130,33 +134,52 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
 
   return (
     <PersonalAppShell displayName={displayName}>
-      <h1 className="font-display text-page-title font-bold text-primary">Saved</h1>
-      <p className="mt-1.5 text-body text-muted">What you want, what you&rsquo;ve saved, who you follow, and how you&rsquo;ve organized it.</p>
+      <h1 className="font-display text-page-title font-bold text-primary">{PERSONAL_DESTINATION_NAME}</h1>
+      <p className="mt-1.5 text-body text-muted">What you want, where you&rsquo;ve been, who you follow — and your own Collections.</p>
 
-      {/* Library filters — only ones that hold something (plus All and the
-          current one). */}
-      <nav aria-label="Saved filters" className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {SAVED_COLLECTIONS.filter((c) => c.key === "all" || counts[c.key] > 0 || (!openList && c.key === collection)).map((c) => {
-          const active = !openList && c.key === collection;
-          return (
-            <Link key={c.key} href={c.key === "all" ? "/account/saved" : `/account/saved?collection=${c.key}`} aria-current={active ? "page" : undefined} className={chip(active)}>
-              {c.label} · {counts[c.key]}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* A) Your Lists — system views. Only ones that hold something (plus
+          All and the current one); legacy Saved stays reachable here. */}
+      <section aria-labelledby="library-lists-heading" className="mt-5">
+        <h2 id="library-lists-heading" className="text-label font-semibold uppercase text-subtle">
+          Your Lists
+        </h2>
+        <nav aria-label="Your Lists" className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {SAVED_COLLECTIONS.filter((c) => c.key === "all" || counts[c.key] > 0 || (!openList && c.key === collection)).map((c) => {
+            const active = !openList && c.key === collection;
+            return (
+              <Link key={c.key} href={c.key === "all" ? "/account/saved" : `/account/saved?collection=${c.key}`} aria-current={active ? "page" : undefined} className={chip(active)}>
+                {c.label} · {counts[c.key]}
+              </Link>
+            );
+          })}
+        </nav>
+      </section>
 
-      {/* Collections — the person's own organization, separate from the
-          filters above. Hidden until Collections exist (or are available). */}
-      {collectionsResult.available && collectionsResult.collections.length > 0 && (
-        <section aria-label="Collections" className="mt-4">
-          <p className="text-label font-semibold uppercase text-subtle">Collections</p>
-          <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* B) Collections — the person's own folders: a different shape (tiles,
+          not chips) so they never read as one of the system lists above. */}
+      {collectionsResult.available && (
+        <section aria-labelledby="library-collections-heading" className="mt-5">
+          <h2 id="library-collections-heading" className="text-label font-semibold uppercase text-subtle">
+            Collections
+          </h2>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {collectionsResult.collections.map((c) => (
-              <Link key={c.id} href={`/account/saved?list=${c.id}`} aria-current={listId === c.id ? "page" : undefined} className={`${chip(listId === c.id)} max-w-[14rem] truncate`}>
-                {c.name} · {c.itemCount}
+              <Link
+                key={c.id}
+                href={`/account/saved?list=${c.id}`}
+                aria-current={listId === c.id ? "page" : undefined}
+                className={`flex min-h-[5.5rem] min-w-0 flex-col justify-between rounded-2xl border p-3 transition ${listId === c.id ? "border-findmi bg-findmi-50" : "border-black/10 bg-white hover:border-findmi"}`}
+              >
+                <FolderGlyph className={`h-5 w-5 ${listId === c.id ? "text-findmi-700" : "text-ink/40"}`} />
+                <span className="mt-2 min-w-0">
+                  <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
+                  <span className="block text-metadata text-muted">
+                    {c.itemCount} {c.itemCount === 1 ? "item" : "items"}
+                  </span>
+                </span>
               </Link>
             ))}
+            <NewCollectionButton />
           </div>
         </section>
       )}
@@ -168,16 +191,16 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
 
       {empty ? (
         <div className="mt-4 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
-          <p className="text-body font-semibold text-primary">{openList ? "This Collection is empty" : collection === "all" ? "Nothing saved yet" : `Nothing in ${current.label} yet`}</p>
+          <p className="text-body font-semibold text-primary">{openList ? "This Collection is empty" : collection === "all" ? "Nothing here yet" : `Nothing in ${current.label} yet`}</p>
           <p className="mt-1 text-body text-muted">
             {openList ? (
-              "Add things to it from the Want or Save sheet."
+              "Add things to it with Add to Collection on any Product, Event, Place or Business."
             ) : (
               <>
                 <Link href="/discover" className="font-medium text-accent underline underline-offset-2">
                   Start exploring
                 </Link>{" "}
-                — Want, Save or Follow anything you want to come back to.
+                — Want it, Follow it, or add it to a Collection.
               </>
             )}
           </p>
@@ -224,5 +247,13 @@ function LibrarySection({ title, children }: { title: string; children: React.Re
       <h3 className="text-label font-semibold uppercase text-subtle">{title}</h3>
       <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">{children}</div>
     </section>
+  );
+}
+
+function FolderGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2v-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
   );
 }

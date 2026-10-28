@@ -123,7 +123,7 @@ test("classifications shipped are exactly the truthful ones (no Going, no Must H
     // Personal Library pass: Product Want is the canonical product_wants
     // relationship (the Want button), never a Save classification.
     product: ["Have=have"],
-    event: ["Interested=want", "Must Do=must_do"],
+    event: ["Want To Do=want", "Must Do=must_do"],
     location: ["Want To Go=want", "Must Do=must_do", "Been Here=been"],
   });
   assert.equal(S.isOrganizable("business"), false, "Business: plain Save; Follow stays separate");
@@ -221,7 +221,7 @@ test("counts match the collection contents; no fake Must Haves collection", () =
     const m = S.collectionMembers(key, RELS, { event: ["e-saved"] });
     assert.equal(counts[key], m.product.length + m.event.length + m.location.length, key);
   }
-  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All", "Things I Want", "Want To Do", "Want To Go", "Must Do", "Have & Been", "Following", "Saved"]);
+  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All", "Things I Want", "Want To Do", "Want To Go", "Have & Been", "Following", "Must Do", "Saved"]);
   assert.equal(S.parseCollection("must-have"), "all");
   const page = read("src/app/(public)/account/saved/page.tsx");
   assert.match(page, /collectionMembers\(collection, relations, saved, followed\)/);

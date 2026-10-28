@@ -109,7 +109,7 @@ test("mobile, signed out: Search, DISCOVER, FOR BUSINESS, one Log In / Join For 
 test("mobile, signed in: DISCOVER first, then YOUR FINDMI; one Sign Out; no login actions", async () => {
   const { sections, text } = await openDrawer({ authenticated: true, businesses: [] });
   assert.deepEqual(titles(sections), ["Discover", "Your Findmi"]);
-  assert.deepEqual(sections[1].links.map(([l]) => l), ["Saved", "My Moments", "Add Moment", "Messages", "Account"]); // one Saved library (Personal Library pass)
+  assert.deepEqual(sections[1].links.map(([l]) => l), ["Your Library", "My Moments", "Add Moment", "Messages", "Account"]); // one personal library (Consolidated Finish pass: "Your Library")
   assert.equal(count(text, "Sign Out"), 1);
   assert.doesNotMatch(text, /Log In|Join For Free|For Business/);
 });
@@ -150,7 +150,7 @@ test("desktop, signed in: the account menu holds Your Findmi, Manage, Admin and 
   assert.doesNotMatch(document.querySelector("header").textContent, /Log In|Join For Free/);
   await click(document.querySelector('button[aria-label="Your Findmi"]'));
   const menu = document.querySelector('[role="menu"]');
-  assert.deepEqual([...menu.querySelectorAll("a")].map((a) => a.textContent), ["Saved", "My Moments", "Messages", "Account", "FUJIFILM", "Findmi Admin"]);
+  assert.deepEqual([...menu.querySelectorAll("a")].map((a) => a.textContent), ["Your Library", "My Moments", "Messages", "Account", "FUJIFILM", "Findmi Admin"]);
   assert.equal(count(menu.textContent, "Sign Out"), 1);
   await act(async () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })));
   assert.equal(document.querySelector('[role="menu"]'), null, "Escape closes it");

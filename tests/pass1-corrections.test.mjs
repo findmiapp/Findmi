@@ -120,8 +120,10 @@ const SRC = walk("src");
 test("consumer discovery: every public Location listing/search path goes through the canonical filter", () => {
   const data = read("src/lib/data.ts");
   const fn = (name, next) => data.slice(data.indexOf(`export async function ${name}`), data.indexOf(next));
-  assert.match(fn("getLocations", "export async function getFeaturedLocations"), /applyLocationDiscoveryFilter\(supabase\.from\("locations"\)/);
-  assert.match(fn("getLocations", "export async function getFeaturedLocations"), /discoverableLocations\(/);
+  // Default: the canonical discovery filter. Only the homepage Featured Locations lane
+  // (requireCoverImage) swaps in the lane rule (listed + Cover, Logo not required).
+  assert.match(fn("getLocations", "export async function getFeaturedLocations"), /requireCoverImage \? applyFeaturedLaneLocationFilter\(baseLocationQuery\) : applyLocationDiscoveryFilter\(baseLocationQuery\)/);
+  assert.match(fn("getLocations", "export async function getFeaturedLocations"), /requireCoverImage \? rows\.filter\(\(l\) => isFeaturedLaneLocation\(l\)\) : discoverableLocations\(rows\)/);
   assert.match(fn("searchLocations", "export async function getLocationBySlug"), /applyLocationDiscoveryFilter\(supabase\.from\("locations"\)/);
   assert.match(fn("searchLocations", "export async function getLocationBySlug"), /discoverableLocations\(/);
   // Featured Locations, Market/Area pages, the Discovery feed and JerseyCity all read through getLocations.

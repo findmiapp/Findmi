@@ -18,7 +18,7 @@ import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
-import LocationSaveButton from "@/components/LocationSaveButton";
+import EntityPersonalActions from "@/components/EntityPersonalActions";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import ChevronIcon from "@/components/ChevronIcon";
 import BrandHeading from "@/components/BrandHeading";
@@ -370,7 +370,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
 
       {/* 3. Action row — Directions (the one aqua-filled primary, flex-1)
           | Follow (aqua-outline text button, labelled Following state) |
-          Save | Share squares, then the Hours bar. Featured Event follows
+          Share square, then the Hours bar. Featured Event follows
           directly — nothing else is placed between them. Message/
           Website/Call/Contact stay in the compact contact row. No
           fabricated follower count. */}
@@ -379,7 +379,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           <div className="flex items-center gap-1.5 sm:gap-2">
             {directionsAction && <div className="flex min-w-0 flex-1">{directionsAction}</div>}
             {followButton}
-            <LocationSaveButton slug={location.slug} id={location.id} layout="square" />
             <EventShareButton
               url={canonicalUrl}
               title={location.name}
@@ -387,7 +386,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
             />
           </div>
-          {/* Personal lists (Want To Go / Must Do / Been Here) live in Save's organize sheet. */}
+          {/* Personal actions (lib/personal-model.ts): Want To Go / Been Here +
+              Add to Collection — no generic Save on Locations. */}
+          <div className="mt-2.5">
+            <EntityPersonalActions entityType="location" entityId={location.id} entityName={location.name} />
+          </div>
         </div>
         {/* Address as one full-width compact row under the actions (moved
             out of the identity block to give the name room). Opens the same

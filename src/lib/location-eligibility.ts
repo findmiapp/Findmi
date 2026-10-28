@@ -79,3 +79,17 @@ const imageColumnFilter = (column: string) => RENDERABLE_IMAGE_LIKE_PATTERNS.map
 export function applyLocationDiscoveryFilter(query: any): any {
   return query.eq("is_demo", false).or(imageColumnFilter("logo_url")).or(imageColumnFilter("cover_image_url"));
 }
+
+/** Homepage FEATURED LOCATIONS lane only (lib/data.ts getFeaturedLocations) — a
+ * merchandising lane, not discovery listing: a listed Location with a renderable Cover
+ * Image qualifies even without a Logo (the lane's card never renders one, and the
+ * Location's own page renders without it). Every other consumer surface keeps the full
+ * rule above (isLocationDiscoverable). */
+export function isFeaturedLaneLocation(location: LocationDiscoveryFields | null | undefined): boolean {
+  return Boolean(location) && location?.is_demo !== true && isRenderableImageUrl(location?.cover_image_url);
+}
+
+/** Database form of isFeaturedLaneLocation, applied before the candidate `limit()`. */
+export function applyFeaturedLaneLocationFilter(query: any): any {
+  return query.eq("is_demo", false).or(imageColumnFilter("cover_image_url"));
+}

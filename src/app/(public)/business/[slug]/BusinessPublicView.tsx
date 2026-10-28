@@ -13,7 +13,7 @@ import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import BusinessShortDescription from "@/components/BusinessShortDescription";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
-import SaveButton from "@/components/SaveButton";
+import { AddToCollectionButton } from "@/components/EntityPersonalActions";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
 import AboutThisPage from "@/components/trust/AboutThisPage";
@@ -648,7 +648,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 <MessageButton targetType="business" targetId={business.id} targetName={business.name} messagingEnabled={isDirectBusinessMessagingEnabled()} />
               )}
               <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
-              <SaveButton slug={business.slug} id={business.id} />
+              {/* Business = Follow (above). Organizing is Add to Collection —
+                  no generic Save on Businesses (lib/personal-model.ts). */}
+              <AddToCollectionButton entityType="business" entityId={business.id} entityName={business.name} />
               {/* Public Graph Integrity Pass 1 — Share as a compact,
                   icon-only utility action alongside Message/Follow/Save,
                   same footprint as Save (h-9/w-9). flex-wrap on this row

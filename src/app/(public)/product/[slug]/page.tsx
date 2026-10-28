@@ -15,7 +15,7 @@ import ContextMap from "@/components/map/ContextMap";
 import { productPlaces } from "@/lib/geo-results-server";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
-import ProductSaveButton from "@/components/ProductSaveButton";
+import EntityPersonalActions from "@/components/EntityPersonalActions";
 import ProductWantButton from "@/components/ProductWantButton";
 import ShareButton from "@/components/ShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -315,8 +315,10 @@ export default async function ProductPage({
             </div>
           )}
 
-          <div className="mt-4 flex gap-2">
-            <ProductSaveButton slug={product.slug} id={product.id} />
+          {/* Personal actions (lib/personal-model.ts): Want is the CTA above;
+              Have + Add to Collection here. No generic Save on Products. */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <EntityPersonalActions entityType="product" entityId={product.id} entityName={product.name} />
             <ShareButton
               url={canonicalUrl}
               title={product.name}

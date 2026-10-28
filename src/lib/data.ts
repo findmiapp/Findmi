@@ -9,7 +9,7 @@ import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirr
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
 import { hasUsableImageUrl, selectFeaturedLocations } from "./featured-locations";
-import { applyLocationDiscoveryFilter, discoverableLocations } from "./location-eligibility";
+import { applyFeaturedLaneLocationFilter, applyLocationDiscoveryFilter, discoverableLocations, isFeaturedLaneLocation } from "./location-eligibility";
 import {
   APP_TIMEZONE,
   formatAppearanceDateRange,
@@ -592,13 +592,14 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
   // category/marketBusinessIds above and as searchBusinesses'
   // promotionallyEligibleOnly handling.
   let eligibleIds: string[] | null = null;
+  let soonestById: ReadonlyMap<string, string> = new Map();
   if (params.requireUpcomingAppearance || params.featuredOnly) {
     const { data: liveRows } = await supabase.from("businesses").select("id").eq("is_demo", false).eq("publication_status", "live");
     const liveIds = (liveRows ?? []).map((r) => r.id as string);
     if (liveIds.length === 0) return [];
 
-    const [upcomingIds, featuredIds] = await Promise.all([
-      params.requireUpcomingAppearance ? getBusinessIdsWithUpcomingAppearance(liveIds) : Promise.resolve(new Set<string>()),
+    const [presence, featuredIds] = await Promise.all([
+      params.requireUpcomingAppearance ? getBusinessUpcomingPresence(liveIds) : Promise.resolve(new Map<string, string>()),
       params.featuredOnly
         ? supabase
             .from("businesses")
@@ -612,10 +613,11 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
     eligibleIds = composeEligibleBusinessIds(liveIds, {
       requireUpcomingAppearance: params.requireUpcomingAppearance,
       featuredOnly: params.featuredOnly,
-      upcomingIds,
+      upcomingIds: new Set(presence.keys()),
       featuredIds,
     });
     if (eligibleIds.length === 0) return [];
+    soonestById = presence;
   }
 
   let query = supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
@@ -625,61 +627,46 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
   if (marketBusinessIds) query = query.in("id", marketBusinessIds);
   if (eligibleIds) query = query.in("id", eligibleIds);
 
-  // Homepage closing-flow pass — businesses has no dedicated sort/order
-  // column (checked against the live schema; none exists), so the only
-  // real founder-controlled ordering signal here is the is_featured/
-  // founding_member tiering itself (both toggled in admin) — that stays
-  // completely authoritative and untouched below. The final `.order("name")`
-  // this used to end on was the actual problem: an alphabetical tiebreak
-  // is incidental (nothing to do with founder intent) and never varies,
-  // so the exact same businesses always occupied the same slots within a
-  // tier. Dropped in favor of a random shuffle WITHIN each tier only (see
-  // shuffleWithinFeaturedTiers below) — explicit tiers never mix. `.limit`
-  // moved to after the shuffle (was here, at the SQL level) so a fair
-  // pool of eligible businesses can rotate through the visible slots,
-  // not just whichever 8 Postgres happened to return first.
+  // businesses has no dedicated sort/order column. SQL orders by the
+  // founder-set tiers; orderHomepageBusinesses then applies the full
+  // deterministic order (tiers → soonest presence → name → id) before the
+  // limit, so the eligible pool — not Postgres' default row order — decides
+  // which businesses fill the visible slots.
   const { data, error } = await query
     .order("is_featured", { ascending: false })
     .order("founding_member", { ascending: false });
   logPublicQueryError("getHomepageRowBusinesses", error);
-  const shuffled = shuffleWithinFeaturedTiers((data as unknown as Business[]) ?? []);
-  return attachCategories(shuffled.slice(0, params.limit ?? 8));
+  const ordered = orderHomepageBusinesses((data as unknown as Business[]) ?? [], soonestById);
+  return attachCategories(ordered.slice(0, params.limit ?? 8));
 }
 
-/** Groups by the (is_featured, founding_member) tier — in the same tier
- * order the caller's own SQL `.order()` already produced — and shuffles
- * only WITHIN each tier (Fisher–Yates), never across tiers. Explicit
- * founder-set tiers (is_featured, founding_member) are never reordered
- * relative to each other; only which businesses appear first WITHIN a
- * tied tier varies. Homepage closing-flow pass — this runs once per
- * Server Component render of the "businesses" homepage row, i.e. once
- * per ISR regeneration of the homepage (revalidate = 60 in page.tsx),
- * not once per request while a generated page is still cached/fresh —
- * see this pass's own report for exactly what "random" means here. */
-function shuffleWithinFeaturedTiers(businesses: Business[]): Business[] {
-  const tiers = new Map<string, Business[]>();
-  const tierKeysInOrder: string[] = [];
-  for (const b of businesses) {
-    const key = `${b.is_featured}:${b.founding_member}`;
-    let group = tiers.get(key);
-    if (!group) {
-      group = [];
-      tiers.set(key, group);
-      tierKeysInOrder.push(key);
-    }
-    group.push(b);
-  }
-  const result: Business[] = [];
-  for (const key of tierKeysInOrder) {
-    const group = tiers.get(key)!;
-    for (let i = group.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [group[i], group[j]] = [group[j], group[i]];
-    }
-    result.push(...group);
-  }
-  return result;
+/** Consolidated Finish pass — the homepage businesses row's ONE canonical,
+ * deterministic order (replaces the old random shuffle-within-tier, which
+ * made the same request render different Brands across ISR regenerations
+ * and could push a Featured Brand past the row limit at random):
+ *   1. is_featured first, 2. founding_member first (the founder-set tiers,
+ *   unchanged), 3. soonest upcoming presence (getBusinessUpcomingPresence —
+ *   only when the row is presence-gated; others skip this key), 4. name
+ *   A–Z, 5. id. Never relies on the database's default row order. Pure. */
+export function orderHomepageBusinesses<T extends { id: string; name: string; is_featured?: boolean | null; founding_member?: boolean | null }>(
+  businesses: readonly T[],
+  soonestById: ReadonlyMap<string, string> = new Map()
+): T[] {
+  const tier = (b: T) => (b.is_featured ? 0 : 2) + (b.founding_member ? 0 : 1);
+  return [...businesses].sort((a, b) => {
+    const t = tier(a) - tier(b);
+    if (t !== 0) return t;
+    const sa = soonestById.get(a.id);
+    const sb = soonestById.get(b.id);
+    if (sa && sb && sa !== sb) return sa < sb ? -1 : 1;
+    if (sa && !sb) return -1;
+    if (!sa && sb) return 1;
+    const n = (a.name ?? "").localeCompare(b.name ?? "", "en", { sensitivity: "base" });
+    if (n !== 0) return n;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
 }
+
 
 /** Categories that can actually return a business from a specific
  * DYNAMIC "businesses" homepage row — the live-QA fix pass's proven
@@ -1065,19 +1052,61 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
  * resolvers above) because every current caller only ever needs O(1)
  * membership tests against it, not to enumerate it. */
 export async function getBusinessIdsWithUpcomingAppearance(candidateIds?: string[]): Promise<Set<string>> {
-  if (candidateIds && candidateIds.length === 0) return new Set();
+  return new Set((await getBusinessUpcomingPresence(candidateIds)).keys());
+}
+
+/** Consolidated Finish pass — the same canonical "upcoming presence" as
+ * getBusinessIdsWithUpcomingAppearance (which is just this map's key set),
+ * plus WHEN: each Business's soonest qualifying upcoming moment (ISO), so
+ * the homepage can order deterministically by it. Two sources, nothing
+ * else:
+ *   1. an Appearance — status <> 'canceled' AND end_at > now() (the rule
+ *      documented above, unchanged);
+ *   2. HOSTING an Event (events.host_business_id) that is live, listed
+ *      (not demo/archived/trashed) and has a scheduled upcoming occurrence
+ *      (occurrenceUpcomingOr — the one Event "upcoming" rule). A Business
+ *      that runs its own pop-up is exactly where you'll find it next, even
+ *      when nobody also created an Appearance row for it (RYZE, Tamagotchi
+ *      in production when this was written). A hidden-location Event still
+ *      counts: location visibility hides the place, not the Business.
+ * event_businesses participation is still never consulted (see above). */
+export async function getBusinessUpcomingPresence(candidateIds?: string[]): Promise<Map<string, string>> {
+  const presence = new Map<string, string>();
+  if (candidateIds && candidateIds.length === 0) return presence;
   const supabase = getSupabase();
-  if (!supabase) return new Set();
+  if (!supabase) return presence;
+  const nowIso = new Date().toISOString();
+  const note = (businessId: string | null | undefined, at: string | null | undefined) => {
+    if (!businessId || !at) return;
+    const prev = presence.get(businessId);
+    if (!prev || at < prev) presence.set(businessId, at);
+  };
 
-  let query = supabase
-    .from("appearances")
-    .select("business_id")
-    .neq("status", "canceled")
-    .gt("end_at", new Date().toISOString());
-  if (candidateIds) query = query.in("business_id", candidateIds);
+  let appearanceQuery = supabase.from("appearances").select("business_id, start_at").neq("status", "canceled").gt("end_at", nowIso);
+  if (candidateIds) appearanceQuery = appearanceQuery.in("business_id", candidateIds);
+  let hostedQuery = supabase
+    .from("events")
+    .select("id, host_business_id")
+    .not("host_business_id", "is", null)
+    .eq("publication_status", "live")
+    .eq("is_demo", false)
+    .is("archived_at", null)
+    .is("trashed_at", null);
+  if (candidateIds) hostedQuery = hostedQuery.in("host_business_id", candidateIds);
+  const [{ data: appearanceRows }, { data: hostedRows }] = await Promise.all([appearanceQuery, hostedQuery]);
+  for (const r of appearanceRows ?? []) note(r.business_id as string, r.start_at as string);
 
-  const { data } = await query;
-  return new Set((data ?? []).map((r) => r.business_id as string));
+  const hostByEvent = new Map((hostedRows ?? []).map((e) => [e.id as string, e.host_business_id as string]));
+  if (hostByEvent.size > 0) {
+    const { data: occurrenceRows } = await supabase
+      .from("event_occurrences")
+      .select("event_id, start_at, occurrence_date")
+      .in("event_id", [...hostByEvent.keys()])
+      .eq("status", "scheduled")
+      .or(occurrenceUpcomingOr(nowIso, todayIn(APP_TIMEZONE)));
+    for (const o of occurrenceRows ?? []) note(hostByEvent.get(o.event_id as string), (o.start_at as string | null) ?? `${o.occurrence_date as string}T00:00:00.000Z`);
+  }
+  return presence;
 }
 
 export type BusinessSort = "recommended" | "newest" | "az";
@@ -4497,10 +4526,11 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }
 
   // Consumer Location discovery: listed AND both Logo and Cover Image (lib/location-eligibility.ts).
-  // Applied in the query so the limit counts ELIGIBLE rows; `requireCoverImage` is now implied
-  // for every caller (the stricter rule covers it).
-  void requireCoverImage;
-  let query = applyLocationDiscoveryFilter(supabase.from("locations").select("*, category:categories(id, name, slug)"));
+  // Applied in the query so the limit counts ELIGIBLE rows. `requireCoverImage` (the homepage
+  // Featured Locations lane only) swaps in the lane rule instead: listed AND Cover Image, Logo
+  // not required — the lane's card never shows a logo.
+  const baseLocationQuery = supabase.from("locations").select("*, category:categories(id, name, slug)");
+  let query = requireCoverImage ? applyFeaturedLaneLocationFilter(baseLocationQuery) : applyLocationDiscoveryFilter(baseLocationQuery);
   if (areaId) {
     // Canonical Entity Geography completion pass — same read-time Area
     // rollup as getBusinessIdsInArea: a Location with no explicit
@@ -4537,8 +4567,9 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     if (geoFilter) query = query.or(geoFilter);
   }
 
-  const { data } = await query.order("name").limit(limit);
-  const locations = discoverableLocations((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
+  const { data } = await query.order("name").order("id").limit(limit);
+  const rows = (data ?? []) as (LocationWithCategory & { category: unknown })[];
+  const locations = (requireCoverImage ? rows.filter((l) => isFeaturedLaneLocation(l)) : discoverableLocations(rows)).map((l) => ({
     ...l,
     category: normalizeCategoryEmbed(l.category),
   }));
@@ -4618,6 +4649,20 @@ const ACTIVITY_PREVIEW_FETCH_PER_LOCATION_IMAGES = 12;
  * precision). The two sources are mutually exclusive categories (an
  * occurrence is never also a standalone appearance), so summing their
  * per-location counts is never a double-count. */
+type PreviewHost = { logo_url: string | null; cover_image_url: string | null; is_demo: boolean; publication_status: string };
+type OccurrencePreviewEvent = { slug: string; name: string; cover_image_url: string | null; is_demo: boolean; host?: PreviewHost | PreviewHost[] | null };
+
+/** Happening image for an Event in a Location's activity rail: the Event's own
+ * cover, else its live, listed host Business's cover, else that host's logo. */
+export function eventPreviewImage(e: OccurrencePreviewEvent): string | null {
+  if (hasUsableImageUrl(e.cover_image_url)) return e.cover_image_url;
+  const host = Array.isArray(e.host) ? (e.host[0] ?? null) : (e.host ?? null);
+  if (!host || host.is_demo || host.publication_status !== "live") return e.cover_image_url;
+  if (hasUsableImageUrl(host.cover_image_url)) return host.cover_image_url;
+  if (hasUsableImageUrl(host.logo_url)) return host.logo_url;
+  return e.cover_image_url;
+}
+
 async function getLocationActivitySummaries(
   supabase: NonNullable<ReturnType<typeof getSupabase>>,
   locationIds: string[],
@@ -4651,7 +4696,9 @@ async function getLocationActivitySummaries(
       // soonest per location in JS.
       supabase
         .from("event_occurrences")
-        .select("id, location_id, event_id, occurrence_date, start_at, event:events(slug, name, cover_image_url, is_demo)")
+        .select(
+          "id, location_id, event_id, occurrence_date, start_at, event:events(slug, name, cover_image_url, is_demo, host:businesses!events_host_business_id_fkey(logo_url, cover_image_url, is_demo, publication_status))"
+        )
         .in("location_id", locationIds)
         .eq("status", "scheduled")
         .or(occurrenceUpcomingOr(nowIso, todayIn(APP_TIMEZONE)))
@@ -4691,16 +4738,20 @@ async function getLocationActivitySummaries(
     location_id: string | null;
     occurrence_date: string;
     start_at: string | null;
-    event: { slug: string; name: string; cover_image_url: string | null; is_demo: boolean } | { slug: string; name: string; cover_image_url: string | null; is_demo: boolean }[] | null;
+    event: OccurrencePreviewEvent | OccurrencePreviewEvent[] | null;
   }[]) {
     if (!row.location_id) continue;
     const e = Array.isArray(row.event) ? (row.event[0] ?? null) : row.event;
     if (!e || e.is_demo) continue;
-    if (requireImages && !hasUsableImageUrl(e.cover_image_url)) continue;
+    // An Event's own cover first; otherwise its live host Business's real
+    // cover/logo (an existing asset, never a placeholder) — so a hosted
+    // Event without a cover doesn't leave its Location with an empty rail.
+    const eventImage = eventPreviewImage(e);
+    if (requireImages && !hasUsableImageUrl(eventImage)) continue;
     pushItem(row.location_id, {
       id: `occurrence-${row.id}`,
       title: e.name,
-      imageUrl: e.cover_image_url,
+      imageUrl: eventImage,
       startAt: row.start_at,
       date: row.occurrence_date,
       href: `/event/${e.slug}`,

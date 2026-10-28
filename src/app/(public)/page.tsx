@@ -80,6 +80,11 @@ const NATIVE_ROSE_NAME = NATIVE_ROSE_SLUG.split("-")
   .map((word) => word[0].toUpperCase() + word.slice(1))
   .join(" ");
 
+/** What's Happening — ONE capacity for both the fetch and the rail. It used to fetch 10
+ * and render only the first 6, silently dropping eligible (show_on_homepage) Events
+ * 7–10. Order is getUpcomingEvents' canonical chronological order (date → start → id). */
+const HOMEPAGE_HAPPENING_LIMIT = 10;
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -106,7 +111,7 @@ export default async function HomePage({
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
   const [nextRaw, heroFallbackBrands, allHomepageRows, siteSections, markets, featuredLocations, bulletins, momentFeed] = await Promise.all([
-    getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
+    getUpcomingEvents(HOMEPAGE_HAPPENING_LIMIT, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
@@ -146,8 +151,8 @@ export default async function HomePage({
   // a stable key. Pulled out of the generic founder-rows loop below so it
   // can anchor this pass's "where can I actually find it" moment
   // specifically, using its exact existing selection/ordering logic
-  // (is_featured/founding_member tiering, shuffle within tier only — see
-  // shuffleWithinFeaturedTiers in lib/data.ts) and its exact existing
+  // (is_featured/founding_member tiering, then the deterministic
+  // orderHomepageBusinesses in lib/data.ts) and its exact existing
   // uniform-card-width fix, completely untouched. Always the same row
   // primaryBusinessesRowId just identified above (both use the identical
   // "first visible top-level businesses row" rule — see
@@ -473,7 +478,7 @@ export default async function HomePage({
         {nextEvents.length > 0 && (
           <div className="mt-4">
             <HorizontalScroller>
-              {nextEvents.slice(0, 6).map((event, i) => (
+              {nextEvents.map((event, i) => (
                 <div key={event.id} className="w-[80vw] max-w-[330px] shrink-0 sm:w-72">
                   <HomeEventCard
                     event={event}

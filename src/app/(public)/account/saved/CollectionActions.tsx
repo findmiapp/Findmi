@@ -11,7 +11,7 @@ export default function CollectionActions({ collectionId, name }: { collectionId
   const [error, setError] = useState<string | null>(null);
 
   async function remove() {
-    if (!window.confirm(`Delete the Collection "${name}"? The items themselves stay in your Saved.`)) return;
+    if (!window.confirm(`Delete the Collection "${name}"? The items themselves, and everything you Want, Follow or have marked, stay in Your Library.`)) return;
     setBusy(true);
     setError(null);
     const res = await fetch("/api/collections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", collectionId }) }).catch(() => null);

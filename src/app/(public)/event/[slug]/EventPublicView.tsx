@@ -40,7 +40,7 @@ import FeaturedEventHeroOverlay from "@/components/FeaturedEventHeroOverlay";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
-import EventSaveButton from "@/components/EventSaveButton";
+import EntityPersonalActions from "@/components/EntityPersonalActions";
 import EventActionRow from "@/components/event/EventActionRow";
 import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
 import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
@@ -432,7 +432,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // ONCE here and reused by both the single-date action row and the
   // multi-date EventActionRow (which adds its own
   // occurrence-dependent Add to Calendar on top).
-  const saveAction = <EventSaveButton slug={event.slug} id={event.id} layout="icon" />;
+  // Consolidated Finish pass — no generic Save on Events (lib/personal-model.ts):
+  // Want To Do / Been + Add to Collection render as their own row below.
+  const saveAction = null;
+  const personalActions = <EntityPersonalActions entityType="event" entityId={event.id} entityName={event.name} />;
   const shareAction = (
     <EventShareButton
       title={event.name}
@@ -602,7 +605,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const legacyDirectionsTrack = { event_name: "click_directions" as const, subject_type: "event", subject_id: event.id, event_id: event.id };
   const legacyFollowInSecondary = Boolean(legacyPrimary || legacyDirections);
 
-  const actions = hasOccurrences ? (
+  const coreActions = hasOccurrences ? (
     <EventActionRow
       cta={ctaConfig}
       eventId={event.id}
@@ -636,7 +639,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
         {legacyPrimary && legacyDirections && (
           <DirectionsIconLink href={legacyDirections} placeName={legacyWhereName} trackPayload={legacyDirectionsTrack} />
         )}
-        {saveAction}
         {legacyEnded ? null : (
           <AddToCalendarButton
             title={event.name}
@@ -669,6 +671,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
           })}
         </div>
       ) : null}
+    </div>
+  );
+
+  const actions = (
+    <div className="flex flex-col gap-3">
+      {coreActions}
+      {personalActions}
     </div>
   );
 

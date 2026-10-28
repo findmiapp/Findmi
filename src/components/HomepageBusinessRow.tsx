@@ -178,7 +178,7 @@ export default function HomepageBusinessRow({
            ternary made every card's outer geometry depend on its
            position in the row rather than on the viewport, so which
            business rendered "wide" changed with every shuffle-within-tier
-           reshuffle (see lib/data.ts's shuffleWithinFeaturedTiers) — the
+           reshuffle (the old shuffleWithinFeaturedTiers, since replaced by the deterministic orderHomepageBusinesses in lib/data.ts) — the
            rail visibly changed card widths as a user scrolled, which read
            as broken, not as an intentional lead card. Reverted to the one
            uniform width this exact call site used before that pass
