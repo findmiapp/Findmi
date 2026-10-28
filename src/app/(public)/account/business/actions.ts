@@ -35,6 +35,7 @@ import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { STAGED_CATEGORY_STATUS } from "@/lib/category-status";
+import { bulletinFingerprint, isMissingColumnError, nextFieldStatusMap, readFieldStatusMap, type FieldValues } from "@/lib/profile-visibility";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -220,28 +221,6 @@ const PROFILE_FREE_COLUMNS = [
 ] as const;
 const PROFILE_ALLOWED_COLUMNS = PROFILE_FREE_COLUMNS;
 
-/** Links & Contact tab — Free Tier Entitlement Reset V1: no longer
- * Pro-only (was gated via requireProBusinessMember's isBusinessPro
- * check; that check is removed, see requireBusinessMemberWithDetails).
- * Core contact info and standard social links are part of a business's
- * truthful public presence, not a paid upsell. Every one of these is an
- * existing businesses column. Free Basic Profile Editing pass —
- * website_url/instagram_url moved OUT of this list, into
- * PROFILE_FREE_COLUMNS above (Profile tab is now their one home, for
- * both tiers — no longer edited here at all, avoiding two save paths for
- * the same columns). Facebook/TikTok stay here. */
-const LINKS_COLUMNS = [
-  "email",
-  "phone",
-  "facebook_url",
-  "tiktok_url",
-  "bulletin_enabled",
-  "bulletin_label",
-  "bulletin_heading",
-  "bulletin_body",
-  "bulletin_url",
-] as const;
-
 /**
  * Profile tab save — name, logo, cover image, short description, city,
  * state, postal code, category, full description, website, Instagram,
@@ -323,7 +302,11 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
     instagram_url: str(formData, "instagram_url"),
     country: str(formData, "country"),
   };
-  const payload = Object.fromEntries(allowedColumns.map((column) => [column, candidateValues[column]]));
+  // Consolidation pass — each Profile form saves ONLY its own fields
+  // (Details no longer carries logo/cover or website/Instagram), so a
+  // column the submitted form doesn't contain is left exactly as it is,
+  // never nulled. `name` is always present (required above).
+  const payload = Object.fromEntries(allowedColumns.filter((column) => formData.has(column)).map((column) => [column, candidateValues[column]]));
 
   // Exactly one category, and it must be a real, existing BUSINESS-kind
   // category — never an event/product category leaking across the
@@ -374,34 +357,83 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }
 
+/** Contact & Links: the outbound contact and social fields. Announcement:
+ * the announcement fields (its own form). Consolidation pass — Website and
+ * Instagram live with the other links again (one Contact & Links home). */
+const CONTACT_LINK_COLUMNS = ["website_url", "instagram_url", "email", "phone", "facebook_url", "tiktok_url"] as const;
+const ANNOUNCEMENT_COLUMNS = ["bulletin_enabled", "bulletin_label", "bulletin_heading", "bulletin_body", "bulletin_url"] as const;
+
 /**
- * Links & Contact tab save — email, phone, Facebook/TikTok, and the
- * announcement/bulletin fields. Free Tier Entitlement Reset V1 — no
- * longer Pro-only; any authorized business member can save these.
- * Free Basic Profile Editing pass — website_url/instagram_url no longer
- * live here; they're saved through updateBusinessProfile now (both
- * tiers, unchanged by this pass).
+ * Contact & Links / Announcement save (`section` = "links" | "announcement";
+ * each form saves only its own columns). Free Tier Entitlement Reset V1 —
+ * not Pro-only.
+ *
+ * Profile visibility (lib/profile-visibility.ts): a Business member's NEW or
+ * CHANGED link, contact detail or announcement is saved but held for Findmi
+ * review (PENDING REVIEW) before the public profile shows it; an unchanged
+ * one keeps its state; a founder Admin's edit is live. Nothing is ever
+ * deleted when Findmi hides something. A database without
+ * public_field_status yet saves exactly as before (everything live).
  */
 export async function updateBusinessLinks(businessId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}?tab=links`;
+  const announcement = formData.get("section") === "announcement";
+  const redirectPath = `/account/business/${businessId}?tab=profile`;
+  const anchor = announcement ? "#announcement" : "#links";
+  let submitter: "admin" | "business" = "business";
+  try {
+    submitter = (await requireBusinessMember(businessId)).viaAdmin ? "admin" : "business";
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to this business.";
+    redirect(appendQuery(redirectPath, { error: message }) + anchor);
+  }
   const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
-  const payload: Record<(typeof LINKS_COLUMNS)[number], string | boolean | null> = {
-    email: str(formData, "email"),
-    phone: str(formData, "phone"),
-    facebook_url: str(formData, "facebook_url"),
-    tiktok_url: str(formData, "tiktok_url"),
-    bulletin_enabled: bool(formData, "bulletin_enabled"),
-    bulletin_label: str(formData, "bulletin_label"),
-    bulletin_heading: str(formData, "bulletin_heading"),
-    bulletin_body: str(formData, "bulletin_body"),
-    bulletin_url: str(formData, "bulletin_url"),
-  };
+  const payload: Record<string, string | boolean | null> = announcement
+    ? {
+        bulletin_enabled: bool(formData, "bulletin_enabled"),
+        bulletin_label: str(formData, "bulletin_label"),
+        bulletin_heading: str(formData, "bulletin_heading"),
+        bulletin_body: str(formData, "bulletin_body"),
+        bulletin_url: str(formData, "bulletin_url"),
+      }
+    : Object.fromEntries(CONTACT_LINK_COLUMNS.filter((c) => formData.has(c)).map((c) => [c, str(formData, c)]));
+
+  const columns = [...CONTACT_LINK_COLUMNS, ...ANNOUNCEMENT_COLUMNS].join(", ");
+  const current = await admin.from("businesses").select(`${columns}, public_field_status`).eq("id", businessId).maybeSingle();
+  if (!current.error && current.data) {
+    const row = current.data as unknown as Record<string, unknown>;
+    const asText = (v: unknown) => (typeof v === "string" ? v : null);
+    const prev: FieldValues = { bulletin: bulletinFingerprint(row as never) };
+    const next: FieldValues = {};
+    if (announcement) next.bulletin = bulletinFingerprint(payload as never);
+    for (const c of CONTACT_LINK_COLUMNS) {
+      prev[c] = asText(row[c]);
+      if (c in payload) next[c] = asText(payload[c]);
+    }
+    payload.public_field_status = nextFieldStatusMap(readFieldStatusMap(row.public_field_status), prev, next, submitter) as never;
+  } else if (current.error && !isMissingColumnError(current.error, "public_field_status")) {
+    redirect(appendQuery(redirectPath, { error: current.error.message }) + anchor);
+  }
 
   const { error } = await admin.from("businesses").update(payload).eq("id", businessId);
-  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }) + anchor);
 
-  revalidatePath(redirectPath);
+  revalidatePath(`/account/business/${businessId}`);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }) + anchor);
+}
+
+/** Photos → Logo & Cover. Saves only those two columns (no name/category
+ * round-trip), through the same member authorization as every Profile save. */
+export async function updateBusinessBrandImages(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}?tab=gallery`;
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
+  const payload = Object.fromEntries((["logo_url", "cover_image_url"] as const).filter((c) => formData.has(c)).map((c) => [c, str(formData, c)]));
+  if (Object.keys(payload).length) {
+    const { error } = await admin.from("businesses").update(payload).eq("id", businessId);
+    if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+  }
+  revalidatePath(`/account/business/${businessId}`);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }

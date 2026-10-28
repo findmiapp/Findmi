@@ -681,7 +681,7 @@ test("no schema migration for P4 (later, unrelated migrations never touch Brand 
     // Taxonomy V2 Pass 1 adds one unrelated classification column
     // (businesses.business_models) — allowed by name; anything else on
     // businesses, Brand Import or media still fails.
-    const sql = read(join("supabase/migrations", f)).replace(/--.*$/gm, "").replace(/alter table public\.businesses add (column if not exists business_models|constraint businesses_business_models_check)[^;]*;/g, "");
+    const sql = read(join("supabase/migrations", f)).replace(/--.*$/gm, "").replace(/alter table public\.businesses add (column if not exists business_models|constraint businesses_business_models_check)[^;]*;/g, "").replace(/alter table public\.businesses\s+add column if not exists public_field_status[^;]*;/g, "") /* Consolidation: profile visibility, unrelated to media */;
     assert.doesNotMatch(sql, /brand_import|public\.businesses\s*(add|alter|drop)|alter table (public\.)?businesses/i, f);
   }
 });

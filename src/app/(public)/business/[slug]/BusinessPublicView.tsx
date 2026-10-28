@@ -70,6 +70,8 @@ import { collapseEventDates } from "@/lib/findmi-here";
 import { resolveBusinessHero } from "@/lib/business-hero";
 import { HIDDEN_LOCATION_COPY } from "@/lib/event-attendance";
 import { eventHref } from "@/lib/event-links";
+import { applyPublicFieldVisibility } from "@/lib/profile-visibility";
+import { readBusinessFieldStatus } from "@/lib/profile-visibility-server";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -227,6 +229,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     if (business) ownerPreview = true;
   }
   if (!business) notFound();
+  // Profile visibility — links, contact and the announcement Findmi holds
+  // for review or hid are not rendered (the stored values are untouched).
+  const fieldStatus = await readBusinessFieldStatus(getAdminSupabase(), business.id);
+  business = applyPublicFieldVisibility(business, fieldStatus);
 
   // Free Tier Entitlement Reset V1 — `pro` still resolved (still used
   // below for the couple of things that remain genuinely Pro-only on
@@ -238,7 +244,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Free Tier Entitlement Reset V1 — contact info (phone/email) is core
   // truthful business presence, not a paid upsell; fetched for every
   // business now, same as products/people/gallery below.
-  const contact = await resolveBusinessContact(business.id);
+  const contact = applyPublicFieldVisibility(await resolveBusinessContact(business.id), fieldStatus);
 
   // "Discover More Like This" surfaces OTHER businesses, not additional
   // content about this one, so it's unaffected by plan tier — fetched

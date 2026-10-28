@@ -119,5 +119,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261121010000_hotfix_event_visibility_policy_grants.sql");
+  assert.equal(files.at(-1), "20261122000000_profile_public_visibility.sql");
 });

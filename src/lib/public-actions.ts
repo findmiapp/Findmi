@@ -13,6 +13,7 @@ import {
   type PublicActionRoute,
   type PublicActionType,
 } from "./public-actions-domain";
+import { isMissingColumnError, isPublicVisibility, nextActionStatus, publicActionKey, type PublicVisibility } from "./profile-visibility";
 
 /** Public Actions — reads and writes over entity_public_actions (server-only,
  * service-role). The public page renders only what resolves to a real,
@@ -34,12 +35,19 @@ export function isMissingPublicActionsTable(error: { code?: string; message?: st
 
 /** The entity's configured actions in display order, or null when it has
  * configured none (or the table isn't there yet) — the caller then keeps the
- * entity's existing behavior. */
-export async function readPublicActions(admin: SupabaseClient, kind: TargetKind, entityId: string): Promise<PublicActionConfig[] | null> {
+ * entity's existing behavior. `liveOnly` (every public read): only actions
+ * Findmi has not held for review or hidden. `select("*")` so a database
+ * without the admin_status column yet reads every action as live. */
+export async function readPublicActions(
+  admin: SupabaseClient,
+  kind: TargetKind,
+  entityId: string,
+  opts: { liveOnly?: boolean } = {}
+): Promise<PublicActionConfig[] | null> {
   if (!UUID.test(entityId)) return null;
   const { data, error } = await admin
     .from("entity_public_actions")
-    .select("action_type, custom_label, enabled, display_order, opportunity_listing_id")
+    .select("*")
     .eq(PUBLIC_ACTION_ENTITY_COLUMN[kind], entityId)
     .order("display_order", { ascending: true })
     .limit(MAX_PUBLIC_ACTIONS);
@@ -52,19 +60,28 @@ export async function readPublicActions(admin: SupabaseClient, kind: TargetKind,
   return rows.map((r) => ({
     type: r.action_type as PublicActionType,
     label: (r.custom_label as string | null) ?? null,
-    enabled: r.enabled !== false,
+    // Held or hidden by Findmi → not on the public page (slots stay stable).
+    enabled: r.enabled !== false && (!opts.liveOnly || rowStatus(r) === "live"),
     opportunityListingId: (r.opportunity_listing_id as string | null) ?? null,
+    adminStatus: rowStatus(r),
   }));
 }
 
+function rowStatus(r: Row): PublicVisibility {
+  return isPublicVisibility(r.admin_status) ? r.admin_status : "live";
+}
+
 /** Replaces the entity's actions with this validated list (slots 1..n). The
- * caller has authorized the entity manager. */
+ * caller has authorized the entity manager. An unchanged action keeps its
+ * moderation state; a Business member's new or changed action is held for
+ * Findmi review; a founder Admin's is live. */
 export async function savePublicActions(
   admin: SupabaseClient,
   kind: TargetKind,
   entityId: string,
   actions: readonly PublicActionConfig[],
-  userId: string | null
+  userId: string | null,
+  submitter: "admin" | "business" = "business"
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const col = PUBLIC_ACTION_ENTITY_COLUMN[kind];
   for (const a of actions) {
@@ -72,6 +89,8 @@ export async function savePublicActions(
       return { ok: false, error: "That Opportunity isn't open for this page." };
     }
   }
+  const previous = new Map<string, PublicVisibility>();
+  for (const p of (await readPublicActions(admin, kind, entityId)) ?? []) previous.set(publicActionKey(p), p.adminStatus ?? "live");
   const cleared = await admin.from("entity_public_actions").delete().eq(col, entityId);
   if (cleared.error) {
     if (isMissingPublicActionsTable(cleared.error)) return { ok: false, error: "Public Actions aren't available yet." };
@@ -79,17 +98,21 @@ export async function savePublicActions(
     return { ok: false, error: "Couldn't save your actions. Please try again." };
   }
   if (!actions.length) return { ok: true };
-  const { error } = await admin.from("entity_public_actions").insert(
-    actions.slice(0, MAX_PUBLIC_ACTIONS).map((a, i) => ({
-      [col]: entityId,
-      action_type: a.type,
-      custom_label: a.label,
-      enabled: a.enabled,
-      display_order: i + 1,
-      opportunity_listing_id: a.type === "opportunity" ? a.opportunityListingId : null,
-      created_by_user_id: userId,
-    }))
-  );
+  const rows = actions.slice(0, MAX_PUBLIC_ACTIONS).map((a, i) => ({
+    [col]: entityId,
+    action_type: a.type,
+    custom_label: a.label,
+    enabled: a.enabled,
+    display_order: i + 1,
+    opportunity_listing_id: a.type === "opportunity" ? a.opportunityListingId : null,
+    created_by_user_id: userId,
+    admin_status: nextActionStatus(previous, a, submitter),
+  }));
+  let { error } = await admin.from("entity_public_actions").insert(rows);
+  // Visibility migration not applied yet → save as before (everything live).
+  if (error && isMissingColumnError(error, "admin_status")) {
+    ({ error } = await admin.from("entity_public_actions").insert(rows.map(({ admin_status: _s, ...r }) => r)));
+  }
   if (error) {
     console.error("savePublicActions failed:", error.message);
     return { ok: false, error: "Couldn't save your actions. Please try again." };
@@ -200,7 +223,7 @@ export async function loadPublicActions(
   available: PublicActionAvailability
 ): Promise<{ actions: PublicActionView[]; opportunityCount: number }> {
   if (!admin) return { actions: resolvePublicActions(kind, null, available, []), opportunityCount: 0 };
-  const [configured, openIds] = await Promise.all([readPublicActions(admin, kind, entityId), entityOpportunityIds(admin, kind, entityId)]);
+  const [configured, openIds] = await Promise.all([readPublicActions(admin, kind, entityId, { liveOnly: true }), entityOpportunityIds(admin, kind, entityId)]);
   return { actions: resolvePublicActions(kind, configured, available, openIds), opportunityCount: openIds.length };
 }
 

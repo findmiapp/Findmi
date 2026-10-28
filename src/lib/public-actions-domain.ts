@@ -179,6 +179,8 @@ export interface PublicActionConfig {
   enabled: boolean;
   /** Opportunity actions only: the listing they open. */
   opportunityListingId: string | null;
+  /** Findmi's moderation state (lib/profile-visibility.ts). Absent = live. */
+  adminStatus?: "live" | "pending_review" | "hidden";
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

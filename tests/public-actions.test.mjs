@@ -279,7 +279,7 @@ test("58/59. legacy renderer and manager controls removed", () => {
 
 test("61/62/70. Announcements stay content (one optional link on the card), separate from actions", () => {
   const m = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(m, /Share a temporary update on your profile\. Buttons visitors can tap are set in Public Actions\./);
+  assert.match(m, /Share a temporary update on your profile\. Buttons visitors can tap are set in Profile Buttons\./);
   assert.match(read(BIZ), /\{hasBulletin && \(/, "the Announcement still renders");
   assert.doesNotMatch(read("src/components/Bulletin.tsx"), /<button[^>]*>\s*\{?[A-Z]/, "no action buttons inside it");
 });
@@ -357,12 +357,12 @@ test("manager configuration: owners / managers only, in each entity's existing s
   assert.match(a, /if \(!membership\.viaAdmin && !isPageManagerRole\(membership\.role\)\) return \{ ok: false, error: "Only an owner or manager can change Public Actions\." \};/);
   assert.match(a, /const checked = validatePublicActions\(kind, items\);/);
   const m = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
-  assert.match(m, /const publicActionsEditor = onProfile && admin \? await getPublicActionsEditorData\(admin, "business", id\) : null;/, "Business: Profile");
-  assert.ok(m.indexOf("<PublicActionsEditor") > m.indexOf('{activeTab === "profile" && (') && m.indexOf("<PublicActionsEditor") < m.indexOf("Announcement</p>"), "in Profile, above the Announcement");
+  assert.match(m, /onProfile && admin \? getPublicActionsEditorData\(admin, "business", id\) : Promise\.resolve\(null\)/, "Business: Profile");
+  assert.ok(m.indexOf("<PublicActionsEditor") > m.indexOf('{activeTab === "profile" && (') && m.indexOf("<PublicActionsEditor") > m.indexOf('id="announcement"'), "in Profile, after the Announcement (Profile Buttons is last)");
   assert.match(read("src/app/(public)/account/location/[id]/page.tsx"), /tab === "profile" && canActForLocation && admin \? await getPublicActionsEditorData\(admin, "location", id\)/);
   assert.match(read("src/app/(public)/account/event/[id]/page.tsx"), /tab === "details" && canManageEventPage \? await getPublicActionsEditorData\(admin!, "event", id\)/);
   const e = read(EDITOR);
-  for (const m of ["Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your profile.", "Button Label", "Visible", "+ Add Action", "Preview", 'aria-label="Move up"', 'aria-label="Move down"', "Remove", "No actions yet, so visitors see no buttons."]) assert.ok(e.includes(m), m);
+  for (const m of ["Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your profile.", "Button Label", "Visible", "+ Add Button", "Preview", 'aria-label="Move up"', 'aria-label="Move down"', "Remove", "No actions yet, so visitors see no buttons."]) assert.ok(e.includes(m), m);
   assert.match(m, /general_inquiry: "Turn on Inquiries to use this action\."/, "dependency explained, never auto-enabled");
   assert.doesNotMatch(strip(read(ACTIONS)), /accepts_inquiries|inquiry_topics/, "saving never changes other settings");
   assert.match(e, /maxLength=\{PUBLIC_ACTION_LABEL_MAX\}/);

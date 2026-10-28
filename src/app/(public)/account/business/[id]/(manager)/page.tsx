@@ -69,6 +69,9 @@ import { isCommercialIntent } from "@/lib/commercial-intents";
 import { managerHref, originBack } from "@/lib/manager-links";
 import PublicActionsEditor from "@/components/public-actions/PublicActionsEditor";
 import { getPublicActionsEditorData } from "@/lib/public-actions";
+import VisibilityChip from "@/components/profile/VisibilityChip";
+import { bulletinFingerprint, fieldVisibility } from "@/lib/profile-visibility";
+import { readBusinessFieldStatus } from "@/lib/profile-visibility-server";
 import { getProductSets } from "@/lib/business-product-sets";
 import { PerformanceViewTabs, QrCodesView, QrSnapshot } from "../v2/PerformanceViews";
 import { respondToIdeaAction } from "../brand-audit/actions";
@@ -87,6 +90,7 @@ import {
   submitProductToMarketplace,
   toggleFeaturedAppearance,
   updateBusinessGallery,
+  updateBusinessBrandImages,
   updateBusinessLinks,
   updateBusinessProfile,
   updateMemberProduct,
@@ -485,6 +489,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const profileAction = updateBusinessProfile.bind(null, id);
   const linksAction = updateBusinessLinks.bind(null, id);
   const galleryAction = updateBusinessGallery.bind(null, id);
+  const brandImagesAction = updateBusinessBrandImages.bind(null, id);
 
   // ── What this request actually needs ───────────────────────────────────
   // The manager is one page with a `?tab=` per destination, and every
@@ -1514,7 +1519,10 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   const { qrCampaignsByAppearanceId, qrCampaignsByProductId } = qrByEntity;
   const [workspace, targetsList, targetsPursuit, growingIn, followUpTargets, discovery, inquiryRequests] = await Promise.all([workspacePromise, targetsPromise, targetsPursuitPromise, growingInPromise, followUpTargetsPromise, discoverPromise, inquiryRequestsPromise]);
   // Public Actions settings (Profile) — only read on that tab.
-  const publicActionsEditor = onProfile && admin ? await getPublicActionsEditorData(admin, "business", id) : null;
+  const [publicActionsEditor, fieldStatus] = await Promise.all([
+    onProfile && admin ? getPublicActionsEditorData(admin, "business", id) : Promise.resolve(null),
+    onProfile ? readBusinessFieldStatus(admin, id) : Promise.resolve({}),
+  ]);
   const { primaryMarket, additionalMarkets, marketLimit, activeMarketCount, overMarketAllowance, pendingMarketRequest } = markets;
   const [brandAudit, opportunityIdeas, growthGoals] = growthData;
   const currentCategoryId = categoryRows[0]?.category_id ?? "";
@@ -2058,14 +2066,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               Home — /account?created=<id>, VCL A2). */}
           {created && (
             <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
-              Business created! Add your logo and links below, and your photos in{" "}
+              Business created! Add your links below, and your logo and photos in{" "}
               <Link href={managerHref(id, "gallery")} className="font-bold underline underline-offset-2">
                 Photos
               </Link>
               , to finish your profile.
             </p>
           )}
-          <Panel id="details" title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
+          <Panel id="details" title="Details" meta={<span className="text-metadata text-subtle">What customers see</span>}>
             <form action={profileAction} className="flex flex-col gap-4">
               <UnsavedChangesGuard />
               <label className="block">
@@ -2094,14 +2102,6 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                   className={inputClass}
                 />
               </label>
-              <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
-              <MemberImageField
-                businessId={id}
-                label="Cover image"
-                name="cover_image_url"
-                defaultValue={business.cover_image_url}
-              />
-
               {/* Free Business Editing Pass 3 — city/state are basic
                   factual location context (locked product rule: Free =
                   ownership + accurate basic presence), so they're always
@@ -2152,29 +2152,6 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                   className={inputClass}
                 />
               </label>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-body font-medium text-primary">Website</span>
-                  <input autoCapitalize="none"
-                    type="url"
-                    name="website_url"
-                    defaultValue={business.website_url ?? ""}
-                    placeholder="https://…"
-                    className={inputClass}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-body font-medium text-primary">Instagram</span>
-                  <input autoCapitalize="none"
-                    type="url"
-                    name="instagram_url"
-                    defaultValue={business.instagram_url ?? ""}
-                    placeholder="https://instagram.com/…"
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-
               {/* Free/Pro Entitlement Realignment pass — country is a
                   regular Free field now (PROFILE_FREE_COLUMNS in
                   ../actions.ts authorizes the write for both tiers), so
@@ -2187,67 +2164,104 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               </label>
 
               <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
-                Save Profile
+                Save Details
               </button>
             </form>
           </Panel>
 
-          {/* Featured Appearance System — replaces the old FeaturedEventControl
-              (pick-an-Event) with a simpler, inline "Feature on profile"
-              toggle directly on each eligible row in Where I'll Be below —
-              one business, one optional manually-featured Appearance, no
-              separate picker/page. */}
-
-          {/* ── Public Actions — what visitors can DO from this profile: the
-              ONE source of the buttons under its identity (up to 3). How
-              inquiries work stays in Inquiries; the Announcement below is
-              content, not an action. ── */}
-          {publicActionsEditor && (
-            <div className="max-w-2xl">
-              <PublicActionsEditor
-                kind="business"
-                entityId={id}
-                ready={publicActionsEditor.ready}
-                opportunities={publicActionsEditor.opportunities}
-                initial={publicActionsEditor.configured}
-                unavailable={{
-                  ...(pro && business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0 ? {} : { general_inquiry: "Turn on Inquiries to use this action." }),
-                  ...(business.website_url ? {} : { website: "Add your website in Contact & Links to use this action." }),
-                }}
-                inquirySettingsHref={`${basePath}?tab=inquiries`}
-              />
+          {/* ── Photos — Logo, Cover and Gallery have one home: the Photos
+              destination (?tab=gallery). ── */}
+          <Panel id="photos" title="Photos" meta={<span className="text-metadata text-subtle">Logo, cover &amp; gallery</span>}>
+            <div className="flex items-center gap-3 px-4 py-3">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/[0.08] bg-findmi-50 text-findmi-700">
+                {business.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- small preview of the stored logo
+                  <img src={business.logo_url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-5 w-5">
+                    <rect x="3.5" y="5" width="17" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="9" cy="10" r="1.6" fill="currentColor" />
+                    <path d="m5 17 4.5-4.5 3 3 2.5-2.5L19 17" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+              <p className="min-w-0 flex-1 text-metadata text-muted">Your logo, cover image and photo gallery.</p>
+              <Link href={managerHref(id, "gallery")} className="flex h-9 shrink-0 items-center rounded-full border border-findmi-200 bg-findmi-50 px-3.5 text-metadata font-bold text-findmi-700 hover:bg-findmi-100">
+                Edit Photos
+              </Link>
             </div>
-          )}
+          </Panel>
 
-          {/* ── Contact & Links (Owner Shell V3 — consolidated into Profile).
-              Free Tier Entitlement Reset V1 — no longer Pro-gated. Gallery
-              used to sit beside it here; it is its own Photos destination
-              again (?tab=gallery, below). ─────────────────────────────── */}
+          {/* ── Contact & Links — every outbound way to reach this Business.
+              Each saved value shows whether it's on the public profile:
+              Findmi reviews new or changed links before they show
+              (lib/profile-visibility.ts). ── */}
           <div className="lg:max-w-2xl">
             <Panel id="links" title="Contact & Links">
               <form action={linksAction} className="flex flex-col gap-4">
                 <UnsavedChangesGuard />
-                {/* Free Basic Profile Editing pass — Website/Instagram
-                    moved to the Business Basics section above (both tiers
-                    edit them there now); this section keeps the rest of
-                    Contact & Links: email/phone/Facebook/TikTok/
-                    Announcement. Free Tier Entitlement Reset V1 — none of
-                    these remain Pro-only; this whole panel now renders
-                    for every business (see the doc comment above this
-                    grid). */}
+                <input type="hidden" name="section" value="links" />
+                <p className="text-metadata text-muted">New or changed links show on your profile once Findmi reviews them.</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1.5 block text-body font-medium text-primary">Email</span>
-                    <input autoCapitalize="none" type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
+                    <span className="mb-1.5 flex items-center justify-between gap-2 text-body font-medium text-primary">
+                      Website
+                      {business.website_url && <VisibilityChip status={fieldVisibility(fieldStatus, "website_url")} />}
+                    </span>
+                    <input autoCapitalize="none"
+                      type="url"
+                      name="website_url"
+                      defaultValue={business.website_url ?? ""}
+                      placeholder="https://…"
+                      className={inputClass}
+                    />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-body font-medium text-primary">Phone</span>
-                    <input autoCapitalize="none" type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
+                    <span className="mb-1.5 flex items-center justify-between gap-2 text-body font-medium text-primary">
+                      Instagram
+                      {business.instagram_url && <VisibilityChip status={fieldVisibility(fieldStatus, "instagram_url")} />}
+                    </span>
+                    <input autoCapitalize="none"
+                      type="url"
+                      name="instagram_url"
+                      defaultValue={business.instagram_url ?? ""}
+                      placeholder="https://instagram.com/…"
+                      className={inputClass}
+                    />
                   </label>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1.5 block text-body font-medium text-primary">Facebook</span>
+                    <span className="mb-1.5 flex items-center justify-between gap-2 text-body font-medium text-primary">
+                      Email
+                      {business.email && <VisibilityChip status={fieldVisibility(fieldStatus, "email")} />}
+                    </span>
+                    <input autoCapitalize="none"
+                      type="email"
+                      name="email"
+                      defaultValue={business.email ?? ""}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center justify-between gap-2 text-body font-medium text-primary">
+                      Phone
+                      {business.phone && <VisibilityChip status={fieldVisibility(fieldStatus, "phone")} />}
+                    </span>
+                    <input autoCapitalize="none"
+                      type="tel"
+                      name="phone"
+                      defaultValue={business.phone ?? ""}
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center justify-between gap-2 text-body font-medium text-primary">
+                      Facebook
+                      {business.facebook_url && <VisibilityChip status={fieldVisibility(fieldStatus, "facebook_url")} />}
+                    </span>
                     <input autoCapitalize="none"
                       type="url"
                       name="facebook_url"
@@ -2257,7 +2271,10 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                     />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-body font-medium text-primary">TikTok</span>
+                    <span className="mb-1.5 flex items-center justify-between gap-2 text-body font-medium text-primary">
+                      TikTok
+                      {business.tiktok_url && <VisibilityChip status={fieldVisibility(fieldStatus, "tiktok_url")} />}
+                    </span>
                     <input autoCapitalize="none"
                       type="url"
                       name="tiktok_url"
@@ -2267,19 +2284,25 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                     />
                   </label>
                 </div>
+                <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
+                  Save Contact &amp; Links
+                </button>
+              </form>
+            </Panel>
+          </div>
 
-                <p id="announcement" className="mt-2 scroll-mt-24 text-label font-bold uppercase text-subtle">Announcement</p>
-                <p className="-mt-2 text-metadata text-muted">Share a temporary update on your profile. Buttons visitors can tap are set in Public Actions.</p>
-                {/* Announcement Form Consistency (#16) — when "Show
-                    announcement" is off, the fields below used to look
-                    just as active/editable as when it's on, which read as
-                    "this is permanently on." Pure-CSS has-[] de-emphasis
-                    (same :has(:checked) idiom this page already uses on
-                    the plan-chooser cards) dims + disables pointer events
-                    on the fields instead — no JS, no new client
-                    component, and the fields stay in the form submission
-                    (never `disabled`) so a draft value typed before
-                    toggling off isn't silently dropped on Save. */}
+          {/* ── Announcement — a temporary update on the profile (content,
+              not a button). Its own form; reviewed like links. ── */}
+          <div className="lg:max-w-2xl">
+            <Panel
+              id="announcement"
+              title="Announcement"
+              meta={bulletinFingerprint(business) ? <VisibilityChip status={fieldVisibility(fieldStatus, "bulletin")} /> : undefined}
+            >
+              <form action={linksAction} className="flex flex-col gap-4">
+                <UnsavedChangesGuard />
+                <input type="hidden" name="section" value="announcement" />
+                <p className="text-metadata text-muted">Share a temporary update on your profile. Buttons visitors can tap are set in Profile Buttons.</p>
                 <div className="rounded-2xl border border-black/10 p-4 has-[input[name=bulletin_enabled]:not(:checked)]:[&_.announcement-fields]:pointer-events-none has-[input[name=bulletin_enabled]:not(:checked)]:[&_.announcement-fields]:opacity-40">
                   <label className="flex items-center gap-2 text-body font-medium text-primary">
                     <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
@@ -2328,23 +2351,30 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                 </div>
 
                 <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
-                  Save Links &amp; Contact
+                  Save Announcement
                 </button>
               </form>
+            </Panel>
+          </div>
 
-              {/* Business ↔ Public Parity pass — Customer Inquiries is the
-                  same "customer engagement" concept as the Announcement
-                  above (both control what a visitor can do on the public
-                  Business page), but its actual toggle/topics form lives
-                  in its own existing tab (?tab=inquiries — see that
-                  section's own note on why it stays separate). Previously
-                  only reachable via Settings, two hops from Profile, while
-                  Bulletin sat right here — this compact status Row closes
-                  that gap with zero new logic: same Row primitive
-                  Overview's own Business panel already uses for "View →"
-                  links, reading the same accepts_inquiries/inquiry_topics
-                  the public page's own canInquire check reads. */}
-              <div className="border-t border-black/[0.05] px-4 py-3">
+          {/* ── Profile Buttons — what visitors can DO from this profile: the
+              ONE source of the buttons under its identity (up to 3). How
+              inquiries work stays in Inquiry Settings. ── */}
+          {publicActionsEditor && (
+            <div className="flex max-w-2xl flex-col gap-3">
+              <PublicActionsEditor
+                kind="business"
+                entityId={id}
+                ready={publicActionsEditor.ready}
+                opportunities={publicActionsEditor.opportunities}
+                initial={publicActionsEditor.configured}
+                unavailable={{
+                  ...(pro && business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0 ? {} : { general_inquiry: "Turn on Inquiries to use this action." }),
+                  ...(business.website_url ? {} : { website: "Add your website in Contact & Links to use this action." }),
+                }}
+                inquirySettingsHref={`${basePath}?tab=inquiries`}
+              />
+              <div className="rounded-2xl border border-black/[0.08] bg-white">
                 <Row
                   label="Inquiry Settings"
                   value={
@@ -2355,19 +2385,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                   }
                   href={`${basePath}?tab=inquiries`}
                 />
-                <Row
-                  label="Public Actions"
-                  value={
-                    <span className="inline-flex items-center gap-1">
-                      Edit
-                      <ChevronIcon direction="right" className="h-3 w-3" />
-                    </span>
-                  }
-                  href="#public-actions"
-                />
               </div>
-            </Panel>
-          </div>
+            </div>
+          )}
           </div>
         )}
 
@@ -2381,7 +2401,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Photos</h1>
-                <p className="mt-0.5 text-body text-muted">Add, remove and arrange the photos on your public page.</p>
+                <p className="mt-0.5 text-body text-muted">Your logo, cover image and the photos on your public page.</p>
               </div>
               {business.slug && (
                 <Link href={`/business/${business.slug}`} className="flex min-h-10 shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
@@ -2391,6 +2411,19 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               )}
             </div>
             <ProfileSectionNav businessId={id} current="gallery" />
+            <section aria-labelledby="logo-cover-title" className={cardClass}>
+              <h2 id="logo-cover-title" className="font-display text-card-title font-bold text-primary">
+                Logo &amp; Cover
+              </h2>
+              <form action={brandImagesAction} className="mt-3 flex flex-col gap-4">
+                <UnsavedChangesGuard />
+                <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
+                <MemberImageField businessId={id} label="Cover image" name="cover_image_url" defaultValue={business.cover_image_url} />
+                <button type="submit" className={`self-start ${primaryButtonClass}`}>
+                  Save Logo &amp; Cover
+                </button>
+              </form>
+            </section>
             {photos ? (
               <section aria-label="Photo gallery" className={cardClass}>
                 <form action={galleryAction}>

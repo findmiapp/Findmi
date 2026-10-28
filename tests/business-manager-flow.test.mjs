@@ -93,7 +93,8 @@ test("3. record deep links: thread, product row, appearance", () => {
 
 test("4. 'Public Actions' lands on the Public Actions section of Public Profile", () => {
   assert.match(read("src/components/public-actions/PublicActionsEditor.tsx"), /<section id="public-actions" className="scroll-mt-24/);
-  assert.match(PAGE, /href="#public-actions"/);
+  // Profile Buttons is the last Profile section (Consolidation pass).
+  assert.match(read(`${B}/v2/ProfileSectionNav.tsx`), /\{ key: "public-actions", label: "Profile Buttons" \},\n\];/);
 });
 
 test("5. Set Your Goals opens the Goals editor step, which the page reads", () => {
@@ -670,7 +671,8 @@ test("83. guard: browser prompt on unload + confirm on in-app link taps, same-pa
 });
 
 test("84. guard sits where data loss is realistic: Profile, Links, Public Actions, Inquiry Settings, Event, Location", () => {
-  assert.equal((PAGE.match(/<UnsavedChangesGuard \/>/g) ?? []).length, 2);
+  // Details, Contact & Links, Announcement, Logo & Cover — one per form.
+  assert.equal((PAGE.match(/<UnsavedChangesGuard \/>/g) ?? []).length, 4);
   assert.match(read(`${B}/CustomerInquiriesForm.tsx`), /<UnsavedChangesGuard \/>/);
   assert.equal((read("src/app/(public)/account/event/[id]/page.tsx").match(/<UnsavedChangesGuard \/>/g) ?? []).length, 2);
   assert.equal((read("src/app/(public)/account/location/[id]/page.tsx").match(/<UnsavedChangesGuard \/>/g) ?? []).length, 2);

@@ -17,6 +17,8 @@ import {
   type PublicActionType,
 } from "@/lib/public-actions-domain";
 import { savePublicActionsAction } from "@/app/(public)/account/public-actions-actions";
+import VisibilityChip from "@/components/profile/VisibilityChip";
+import { publicActionKey, type PublicVisibility } from "@/lib/profile-visibility";
 
 type Draft = { key: number; type: PublicActionType; label: string; enabled: boolean; opportunityListingId: string | null };
 
@@ -58,6 +60,10 @@ export default function PublicActionsEditor({
   const snapshot = (rs: Draft[]) => JSON.stringify(rs.map(({ key: _key, ...r }) => r));
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(rows));
   useUnsavedChangesGuard(snapshot(rows) !== savedSnapshot);
+  // Findmi's review state of what's saved. An unchanged button keeps it; a
+  // new or changed one is reviewed before it shows (lib/profile-visibility).
+  const savedStatus = new Map<string, PublicVisibility>(initial.map((a) => [publicActionKey(a), a.adminStatus ?? "live"]));
+  const statusOf = (r: Draft): PublicVisibility => savedStatus.get(publicActionKey({ type: r.type, label: r.label.trim() || null, opportunityListingId: r.type === "opportunity" ? r.opportunityListingId : null })) ?? "pending_review";
   const types = PUBLIC_ACTIONS_BY_KIND[kind].filter((t) => t !== "opportunity" || opportunities.length > 0);
 
   const update = (key: number, patch: Partial<Draft>) => setRows((r) => r.map((x) => (x.key === key ? { ...x, ...patch } : x)));
@@ -90,14 +96,14 @@ export default function PublicActionsEditor({
       );
       if (!res.ok) return setStatus({ tone: "error", text: res.error });
       setSavedSnapshot(snapshot(rows));
-      setStatus({ tone: "ok", text: "Saved. Your page shows these now." });
+      setStatus({ tone: "ok", text: rows.some((r) => statusOf(r) === "pending_review") ? "Saved. New or changed buttons show on your page once Findmi reviews them." : "Saved. Your page shows these now." });
       router.refresh();
     });
 
   const field = "h-10 w-full min-w-0 rounded-xl border border-black/10 bg-white px-3 text-sm text-ink focus:border-ink/30 focus:outline-none";
   return (
     <section id="public-actions" className="scroll-mt-24 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Public Actions</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Profile Buttons</p>
       <p className="mt-1 text-sm text-ink/60">Choose up to {MAX_PUBLIC_ACTIONS} actions visitors can take from your profile.</p>
       {!ready && <p className="mt-3 rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-sm text-ink/60">Public Actions are almost ready. Check back soon.</p>}
       {ready && !rows.length && defaultNote && <p className="mt-3 text-sm text-ink/60">{defaultNote}</p>}
@@ -106,7 +112,10 @@ export default function PublicActionsEditor({
         {rows.map((r, i) => (
           <li key={r.key} className="flex flex-col gap-2 rounded-2xl border border-black/[0.08] p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold uppercase tracking-wide text-ink/40">Action {i + 1}</span>
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-ink/40">Button {i + 1}</span>
+                <VisibilityChip status={statusOf(r)} />
+              </span>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => move(i, -1)} disabled={i === 0 || pending} aria-label="Move up" className="flex h-8 w-8 items-center justify-center rounded-full text-ink/50 hover:bg-black/[0.04] disabled:opacity-30">
                   ↑
@@ -182,7 +191,7 @@ export default function PublicActionsEditor({
 
       {rows.length < MAX_PUBLIC_ACTIONS && (
         <button type="button" onClick={add} disabled={!ready || pending} className="mt-3 flex h-10 items-center rounded-full border border-findmi/40 px-4 text-sm font-bold text-findmi-700 hover:bg-findmi-50 disabled:opacity-50">
-          + Add Action
+          + Add Button
         </button>
       )}
 
@@ -208,7 +217,7 @@ export default function PublicActionsEditor({
 
       {status && <p className={`mt-3 text-sm font-semibold ${status.tone === "ok" ? "text-findmi-700" : "text-red-700"}`}>{status.text}</p>}
       <button type="button" onClick={save} disabled={!ready || pending || labelErrors.some(Boolean)} className="mt-4 flex h-11 items-center rounded-2xl bg-findmi px-5 text-sm font-bold text-white hover:bg-findmi-600 disabled:opacity-50">
-        {pending ? "Saving…" : "Save Public Actions"}
+        {pending ? "Saving…" : "Save Profile Buttons"}
       </button>
     </section>
   );

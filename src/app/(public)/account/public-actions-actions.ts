@@ -81,7 +81,7 @@ export async function startPublicActionAction(businessId: string, kind: string, 
   if (!ctx.businesses.some((b) => b.id === businessId)) return { ok: false, error: "Choose one of your Businesses." };
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
-  const action = (await readPublicActions(admin, kind, entityId))?.[slot - 1];
+  const action = (await readPublicActions(admin, kind, entityId, { liveOnly: true }))?.[slot - 1];
   if (!action || !action.enabled) return { ok: false, error: "That action isn't available anymore." };
   const route = actionRoute(action.type);
   if (route === "opportunity") {
@@ -114,9 +114,11 @@ export async function openEntityOpportunitiesAction(businessId: string, kind: st
  * Admin session) only. */
 export async function savePublicActionsAction(kind: string, entityId: string, items: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!isTargetKind(kind) || !UUID.test(entityId)) return { ok: false, error: "That page wasn't found." };
+  let submitter: "admin" | "business" = "business";
   try {
     const membership = kind === "business" ? await requireBusinessMember(entityId) : kind === "location" ? await requireLocationMember(entityId) : await requireEventMember(entityId);
     if (!membership.viaAdmin && !isPageManagerRole(membership.role)) return { ok: false, error: "Only an owner or manager can change Public Actions." };
+    submitter = membership.viaAdmin ? "admin" : "business";
   } catch {
     return { ok: false, error: "You don't have access to this page." };
   }
@@ -125,7 +127,7 @@ export async function savePublicActionsAction(kind: string, entityId: string, it
   const admin = getAdminSupabase();
   if (!admin) return { ok: false, error: "Server isn't configured for this action." };
   const user = await getCurrentUser().catch(() => null);
-  const saved = await savePublicActions(admin, kind, entityId, checked.value, user?.id ?? null);
+  const saved = await savePublicActions(admin, kind, entityId, checked.value, user?.id ?? null, submitter);
   if (!saved.ok) return saved;
   const { data } = await admin.from(ENTITY_TABLE[kind]).select("slug").eq("id", entityId).maybeSingle();
   const slug = (data as { slug: string | null } | null)?.slug;

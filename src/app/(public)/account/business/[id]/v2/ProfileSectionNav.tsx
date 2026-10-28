@@ -12,21 +12,24 @@ import { managerHref } from "@/lib/manager-links";
  * pill, scrolling sideways inside the track on a phone (never wrapping,
  * never widening the page), the active pill scrolled into view.
  *
- * On Public Profile the four page sections are in-page anchors and the
+ * On Public Profile the four in-page sections are in-page anchors and the
  * highlight follows the section in view; Photos is its own destination, so
  * there it is the highlighted item and the others lead back into Profile. */
 
-type Key = "details" | "public-actions" | "gallery" | "links" | "announcement";
+type Key = "details" | "gallery" | "links" | "announcement" | "public-actions";
 
+/** Findmi Consolidation pass — Details · Photos (Logo, Cover, Gallery) ·
+ * Contact & Links · Announcement · Profile Buttons. Profile Buttons is no
+ * longer the second item: identity first, then how people reach you. */
 const SECTIONS: { key: Key; label: string }[] = [
   { key: "details", label: "Details" },
-  { key: "public-actions", label: "Public Actions" },
   { key: "gallery", label: "Photos" },
   { key: "links", label: "Contact & Links" },
   { key: "announcement", label: "Announcement" },
+  { key: "public-actions", label: "Profile Buttons" },
 ];
 
-const IN_PAGE: Key[] = ["details", "public-actions", "links", "announcement"];
+const IN_PAGE: Key[] = ["details", "links", "announcement", "public-actions"];
 
 export default function ProfileSectionNav({ businessId, current }: { businessId: string; current: "profile" | "gallery" }) {
   const onProfile = current === "profile";
