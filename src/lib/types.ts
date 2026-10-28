@@ -514,6 +514,12 @@ export interface Product {
   // trashed. See the migration's own column comments for the full model.
   archived_at?: string | null;
   trashed_at?: string | null;
+  /** Server-computed by the ONE Marketplace rule (lib/commerce/
+   * marketplace-eligibility.ts → annotateMarketplaceEligibility). Only
+   * `true` when the Product can genuinely be bought through Findmi
+   * checkout right now; absent/false means show the catalog state (never
+   * a fake Add to Cart). Never read from the database. */
+  marketplace_eligible?: boolean;
 }
 
 export interface ProductFulfillmentOption {

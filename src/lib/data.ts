@@ -2,6 +2,8 @@ import { getSupabase } from "./supabase";
 import { connectedEventIds, participantsExcludingHost } from "./event-roles";
 import { isCheckoutSupportedMethod } from "./commerce/fulfillment-support";
 import { applyMarketplaceProductFilter, isMarketplaceBusinessEligible } from "./commerce/marketplace-eligibility";
+import { annotateMarketplaceEligibility, filterMarketplaceEligible } from "./commerce/marketplace-readiness-server";
+import { applyCatalogProductFilter, isCatalogBusinessPublic } from "./product-catalog";
 import { buildVisibleAreaTree } from "./area-visibility";
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
@@ -108,7 +110,10 @@ export const PUBLIC_BUSINESS_COLUMNS =
 export const PUBLIC_PRODUCT_COLUMNS =
   "id, business_id, name, slug, description, image_url, price, price_label, " +
   "product_type, external_purchase_url, is_featured, is_active, purchasable, " +
-  "inventory_status, home_sort_order, profile_sort_order";
+  "inventory_status, home_sort_order, profile_sort_order, " +
+  // Catalog / Marketplace rule inputs (lib/product-catalog.ts, lib/commerce/
+  // marketplace-eligibility.ts) — all column-granted to anon/authenticated.
+  "marketplace_status, moderation_status, archived_at, trashed_at";
 // Intentionally excluded: marketplace_fee_override_percent,
 // processing_fee_payer_override.
 
@@ -794,13 +799,15 @@ export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]
     is_demo: boolean;
     publication_status: string;
   };
-  const rows = ((data ?? []) as never[])
+  const preRows = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
     .filter((item) => isMarketplaceBusinessEligible(item.business));
+  // Exact rule incl. stock + checkout fulfillment (one shared module).
+  const rows = await filterMarketplaceEligible(supabase, preRows, (r) => r.business);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
   const productIds = rows.map((r) => r.id);
@@ -1343,16 +1350,24 @@ export async function getBusinessGalleryImagesMap(businessIds: string[]): Promis
 export async function getProductsForBusiness(businessId: string): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("products")
-    .select(PUBLIC_PRODUCT_COLUMNS)
-    .eq("business_id", businessId)
-    .eq("is_active", true)
+  // Business Product Catalog — the catalog rule only (lib/product-catalog.ts):
+  // never filtered on purchasable / marketplace_status. Each row is
+  // annotated with the canonical Marketplace answer so cards show commerce
+  // UI only for genuinely buyable Products.
+  const { data, error } = await applyCatalogProductFilter(
+    supabase
+      .from("products")
+      .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(commerce_enabled, is_demo, publication_status)`)
+      .eq("business_id", businessId)
+  )
     .order("profile_sort_order", { ascending: true, nullsFirst: false })
     .order("is_featured", { ascending: false })
     .order("name");
   logPublicQueryError("getProductsForBusiness", error);
-  return (data as unknown as Product[]) ?? [];
+  type Row = Product & { business: { commerce_enabled: boolean; is_demo: boolean; publication_status: string } | { commerce_enabled: boolean; is_demo: boolean; publication_status: string }[] | null };
+  const rows = ((data ?? []) as unknown as Row[]).map((r) => ({ ...r, business: Array.isArray(r.business) ? (r.business[0] ?? null) : r.business }));
+  const annotated = await annotateMarketplaceEligibility(supabase, rows, (r) => r.business);
+  return annotated.map(({ business: _business, ...product }) => product as Product);
 }
 
 export interface AppearanceWithEventSlug extends Appearance {
@@ -3405,14 +3420,15 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
     is_demo: boolean;
     publication_status: string;
   };
-  const rows = ((data ?? []) as never[])
+  const preRows = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => isMarketplaceBusinessEligible(item.business))
-    .slice(0, limit);
+    .filter((item) => isMarketplaceBusinessEligible(item.business));
+  // Exact rule incl. stock + checkout fulfillment (one shared module).
+  const rows = (await filterMarketplaceEligible(supabase, preRows, (r) => r.business)).slice(0, limit);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
   const productIds = rows.map((r) => r.id);
@@ -3463,13 +3479,14 @@ export interface ProductWithBusiness extends Product {
 export async function getProductBySlug(slug: string): Promise<ProductWithBusiness | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data, error } = await supabase
+  // Catalog rule (lib/product-catalog.ts) — a Product's own page is a
+  // catalog surface: visible whatever its Marketplace state.
+  const { data, error } = await applyCatalogProductFilter(supabase
     .from("products")
     .select(
-      `${PUBLIC_PRODUCT_COLUMNS}, marketplace_status, moderation_status, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, accepts_inquiries, inquiry_topics, is_demo, publication_status)`
+      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, accepts_inquiries, inquiry_topics, is_demo, publication_status)`
     )
-    .eq("slug", slug)
-    .eq("is_active", true);
+    .eq("slug", slug));
   logPublicQueryError("getProductBySlug", error);
 
   type JoinedBusiness = Omit<ProductWithBusiness["business"], "categoryName"> & {
@@ -3482,10 +3499,11 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .find((item) => item.business && !item.business.is_demo && item.business.publication_status === "live");
+    .find((item) => isCatalogBusinessPublic(item.business));
 
   if (!match) return null;
-  const { business, ...rest } = match;
+  const [annotatedMatch] = await annotateMarketplaceEligibility(supabase, [match], (r) => r.business);
+  const { business, ...rest } = annotatedMatch;
   const { is_demo: _isDemo, publication_status: _pubStatus, ...cleanBusiness } = business;
   const [categoryMap, productCategoryMap] = await Promise.all([
     getPrimaryCategoryByBusiness(supabase, [business.id]),
@@ -4125,13 +4143,15 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
   logPublicQueryError("getMarketplaceProducts", error);
 
   type JoinedBusiness = MarketplaceProduct["business"] & { is_demo: boolean; publication_status: string };
-  return ((data ?? []) as never[])
+  const preRows = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => isMarketplaceBusinessEligible(item.business))
+    .filter((item) => isMarketplaceBusinessEligible(item.business));
+  // Exact rule incl. stock + checkout fulfillment (one shared module).
+  return (await filterMarketplaceEligible(supabase, preRows, (r) => r.business))
     .slice(0, limit)
     .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
       ...rest,
@@ -4175,7 +4195,7 @@ export async function getEventProducts(eventId: string): Promise<MarketplaceProd
     // below, the same is_active-in-JS pattern this function already uses
     // rather than a !inner embed filter.
     .select(
-      `display_order, product:products(${PUBLIC_PRODUCT_COLUMNS}, marketplace_status, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))`
+      `display_order, product:products(${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))`
     )
     .eq("event_id", eventId)
     .order("display_order", { ascending: true, nullsFirst: false });
@@ -4184,7 +4204,7 @@ export async function getEventProducts(eventId: string): Promise<MarketplaceProd
   type JoinedBusiness = MarketplaceProduct["business"] & { is_demo: boolean; publication_status: string };
   type Row = { product: (Product & { business: JoinedBusiness | JoinedBusiness[] }) | null };
 
-  return ((data ?? []) as unknown as Row[])
+  const eventRows = ((data ?? []) as unknown as Row[])
     .map((row) => {
       if (!row.product) return null;
       const business = Array.isArray(row.product.business) ? row.product.business[0] : row.product.business;
@@ -4200,11 +4220,14 @@ export async function getEventProducts(eventId: string): Promise<MarketplaceProd
         Boolean(item!.business) &&
         !item!.business.is_demo &&
         item!.business.publication_status === "live"
-    )
-    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+    );
+  // Cards here show commerce UI only when the canonical rule says so.
+  return (await annotateMarketplaceEligibility(supabase, eventRows, (r) => r.business)).map(
+    ({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
       ...rest,
       business,
-    }));
+    })
+  );
 }
 
 /** Dynamic-mode products feed for a founder-configured homepage row (see
@@ -4254,14 +4277,15 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
     is_demo: boolean;
     publication_status: string;
   };
-  const rows = ((data ?? []) as never[])
+  const preRows = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => isMarketplaceBusinessEligible(item.business))
-    .slice(0, limit);
+    .filter((item) => isMarketplaceBusinessEligible(item.business));
+  // Exact rule incl. stock + checkout fulfillment (one shared module).
+  const rows = (await filterMarketplaceEligible(supabase, preRows, (r) => r.business)).slice(0, limit);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
   const productIds = rows.map((r) => r.id);

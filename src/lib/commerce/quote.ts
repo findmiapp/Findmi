@@ -108,7 +108,8 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
     new Set(fulfillmentOptions.map((o) => o.appearance_id).filter(Boolean))
   ) as string[];
   const { data: appearances } = appearanceIds.length
-    ? await supabase.from("appearances").select("*").in("id", appearanceIds)
+    ? // A canceled appearance is never a pickup option (same as public RLS).
+      await supabase.from("appearances").select("*").in("id", appearanceIds).neq("status", "canceled")
     : { data: [] as never[] };
   const appearanceById = new Map((appearances ?? []).map((a) => [a.id, a]));
 
@@ -190,10 +191,16 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
       continue;
     }
 
-    // Findmi checkout sells only Marketplace-eligible Products (approved,
-    // active, purchasable, commerce enabled) — the one rule in
-    // ./marketplace-eligibility.ts, re-checked server-side on every quote.
-    if (!isMarketplaceEligible(product as Parameters<typeof isMarketplaceEligible>[0], business as Parameters<typeof isMarketplaceEligible>[1])) {
+    // Findmi checkout sells only Marketplace-eligible Products — the one
+    // rule in ./marketplace-eligibility.ts (catalog + approval + commerce
+    // readiness: purchasable, commerce enabled, real price, in stock, a
+    // checkout-completable fulfillment option), re-checked server-side on
+    // every quote and at checkout. A cart line for any other Product (a
+    // hand-built cart, a stale tab) can never be paid for.
+    const productFulfillment = fulfillmentOptions
+      .filter((o) => o.product_id === product.id)
+      .map((o) => ({ method: o.method, enabled: o.enabled, appearance_id: o.appearance_id, appearance: o.appearance_id ? (appearanceById.get(o.appearance_id) ?? null) : null }));
+    if (!isMarketplaceEligible(product as Parameters<typeof isMarketplaceEligible>[0], business as Parameters<typeof isMarketplaceEligible>[1], productFulfillment)) {
       quoteLines.push({
         ...baseQuote,
         productName: product.name,

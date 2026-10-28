@@ -15,7 +15,7 @@ const TABS: { key: ShopFilter; label: string }[] = [
 /**
  * Business Profile V2 polish pass, item 6 — Shop [Business] now
  * distinguishes purchasable products from view-only catalog/menu items
- * (products.purchasable — no new schema) instead of showing everything as
+ * (now product.marketplace_eligible — the canonical Marketplace rule) instead of showing everything as
  * one undifferentiated grid. The filter tabs only render when a business
  * genuinely has BOTH kinds; a business with just one never sees a filter
  * with nothing to filter. Purely a client-side split of props already
@@ -40,14 +40,15 @@ export default function BusinessShopSection({
   products: Product[];
   business: { name: string; slug: string; logo_url: string | null; commerce_enabled: boolean };
 }) {
-  const showFilter = useMemo(
-    () => products.some((p) => p.purchasable) && products.some((p) => !p.purchasable),
-    [products]
-  );
+  // "For Sale" = genuinely buyable through Findmi (the one Marketplace
+  // rule, product.marketplace_eligible — set by getProductsForBusiness),
+  // never the raw purchasable flag.
+  const forSale = (p: Product) => p.marketplace_eligible === true;
+  const showFilter = useMemo(() => products.some(forSale) && products.some((p) => !forSale(p)), [products]);
   const [filter, setFilter] = useState<ShopFilter>("all");
   const filtered = useMemo(() => {
-    if (filter === "shop") return products.filter((p) => p.purchasable);
-    if (filter === "catalog") return products.filter((p) => !p.purchasable);
+    if (filter === "shop") return products.filter(forSale);
+    if (filter === "catalog") return products.filter((p) => !forSale(p));
     return products;
   }, [filter, products]);
 

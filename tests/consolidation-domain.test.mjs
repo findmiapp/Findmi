@@ -48,9 +48,14 @@ const product = (id, over) => ({
   external_purchase_url: null, is_featured: true, is_active: true, purchasable: true, inventory_status: null, home_sort_order: 1, profile_sort_order: 1,
   marketplace_status: "approved", moderation_status: "live", archived_at: null, trashed_at: null, ...over,
 });
+// Every fixture Product has a checkout-completable Pickup option, so the
+// cases below differ ONLY in the field each one names (the Product +
+// Marketplace + Want pass added commerce readiness to the rule).
+const PICKUP_FOR = (ids) => ids.map((id) => ({ id: `fo-${id}`, product_id: id, method: "pickup", price: 0, enabled: true, appearance_id: null }));
 function marketplaceDb() {
   return fakeDb({
     businesses: [BIZ_SHOP, BIZ_NOCOMMERCE],
+    product_fulfillment_options: PICKUP_FOR(["approved-purchasable", "catalog-only", "submitted", "approved-not-purchasable", "approved-commerce-off", "approved-inactive", "approved-pending-moderation"]),
     products: [
       product("approved-purchasable"),
       product("catalog-only", { marketplace_status: "catalog_only" }),
@@ -97,11 +102,14 @@ test("Q. a non-Marketplace Product is still shown contextually (its Business cat
 });
 
 test("Q. the pure rule names every reason; checkout and the product page use the same rule", () => {
-  assert.equal(M.isMarketplaceEligible(product("x"), BIZ_SHOP), true);
-  assert.deepEqual(M.marketplaceIneligibility(product("x", { marketplace_status: "catalog_only", purchasable: false }), BIZ_NOCOMMERCE), ["not_approved", "not_purchasable", "commerce_disabled"]);
-  assert.deepEqual(M.marketplaceIneligibility(product("x"), { ...BIZ_SHOP, publication_status: "pending_review" }), ["business_not_live"]);
+  const PICKUP = [{ method: "pickup", enabled: true }];
+  assert.equal(M.isMarketplaceEligible(product("x"), BIZ_SHOP, PICKUP), true);
+  assert.deepEqual(M.marketplaceIneligibility(product("x", { marketplace_status: "catalog_only", purchasable: false }), BIZ_NOCOMMERCE, PICKUP), ["not_approved", "not_purchasable", "commerce_disabled"]);
+  assert.deepEqual(M.marketplaceIneligibility(product("x"), { ...BIZ_SHOP, publication_status: "pending_review" }, PICKUP), ["business_not_live"]);
   assert.match(read("src/lib/commerce/quote.ts"), /if \(!isMarketplaceEligible\(product as/, "server-side checkout quote re-checks the rule");
-  assert.match(read("src/app/(public)/product/[slug]/page.tsx"), /const canAddToCart = isMarketplaceEligible\(/, "Add to Cart only for Marketplace-eligible Products");
+  // The product page reads the rule's answer computed in getProductBySlug.
+  assert.match(read("src/app/(public)/product/[slug]/page.tsx"), /const canAddToCart = product\.marketplace_eligible === true;/, "Add to Cart only for Marketplace-eligible Products");
+  assert.match(read("src/lib/data.ts"), /annotateMarketplaceEligibility\(supabase, \[match\]/);
 });
 
 // ── M: relationship scoping (Babylist Soho / Shopify) ───────────────────────

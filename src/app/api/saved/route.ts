@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS, normalizeCategoryEmbed, type LocationWithCategory } from "@/lib/data";
 import type { Business, FindmiEvent, Product } from "@/lib/types";
+import { annotateMarketplaceEligibility } from "@/lib/commerce/marketplace-readiness-server";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
     productSlugs.length
       ? supabase
           .from("products")
-          .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled)`)
+          .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
           .in("slug", productSlugs)
           .eq("is_active", true)
       : Promise.resolve({ data: [] as never[], error: null }),
@@ -98,11 +99,16 @@ export async function GET(request: NextRequest) {
 
   const businesses = ((businessResult.data ?? []) as Business[]).map((b) => ({ ...b, categories: [] }));
   const events = (eventResult.data ?? []) as FindmiEvent[];
-  const products = ((productResult.data ?? []) as never[]).map((row: unknown) => {
-    const r = row as Product & { business: SavedProductBusiness | SavedProductBusiness[] };
-    const business = Array.isArray(r.business) ? (r.business[0] ?? null) : r.business;
-    return { ...r, business };
-  });
+  // Commerce UI on these cards only when the one Marketplace rule says so.
+  const products = await annotateMarketplaceEligibility(
+    supabase,
+    ((productResult.data ?? []) as never[]).map((row: unknown) => {
+      const r = row as Product & { business: SavedProductBusiness | SavedProductBusiness[] };
+      const business = Array.isArray(r.business) ? (r.business[0] ?? null) : r.business;
+      return { ...r, business };
+    }),
+    (p) => p.business as { commerce_enabled?: boolean | null; is_demo?: boolean | null; publication_status?: string | null } | null
+  );
   const locations = ((locationResult.data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
     ...l,
     category: normalizeCategoryEmbed(l.category),
