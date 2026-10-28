@@ -47,7 +47,7 @@ test("Management cards never overflow the PAGE at phone width: the swipe row scr
   // -mx-4 matches the shell's px-4 exactly, so the row reaches the screen
   // edge and no further; overflow is contained in the row itself.
   assert.match(read(`${B}/v2/BusinessAppShell.tsx`), /max-w-6xl px-4 pb-28/);
-  assert.match(cards, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*sm:grid sm:snap-none sm:grid-cols-3/);
+  assert.match(cards, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-6/);
   assert.match(cards, /min-w-0 shrink-0 snap-start/);
 });
 

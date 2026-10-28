@@ -262,9 +262,9 @@ test("28. destinations are the existing / canonical flows (Event chooser, search
 
 test("29. cards: rounded, light-gray border, Aqua icon tile; one swipeable snap row on phones (founder direction), grid from sm up", () => {
   const CARDS = read(`${B}/v2/ManagementCards.tsx`);
-  assert.match(CARDS, /<nav aria-label="Manage Your Business">/);
-  assert.match(CARDS, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*sm:grid sm:snap-none sm:grid-cols-3/);
-  assert.match(CARDS, /h-12 w-12 items-center justify-center rounded-2xl bg-findmi-50 text-findmi-700/);
+  assert.match(CARDS, /<nav aria-label="Manage Your Business" className="mt-2">/);
+  assert.match(CARDS, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-6/);
+  assert.match(CARDS, /h-8 w-8 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700/);
 });
 
 test("30. the old Quick Create section and Quick Actions rail are gone; the cards sit directly under identity", () => {

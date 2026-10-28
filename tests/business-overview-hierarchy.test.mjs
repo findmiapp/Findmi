@@ -160,11 +160,11 @@ test("Management cards: Events · Locations · Products · QR Codes · Moments �
   assert.match(ITEMS, /MANAGEMENT_CARD_ORDER: ManagementCardKey\[\] = \["events", "locations", "products", "qr", "moments", "targets"\]/);
   assert.match(ITEMS, /businessCreateActions\(/, "built on the shared create definitions");
   assert.doesNotMatch(ITEMS, /choose.*business|which business/i);
-  assert.match(CARDS, /<nav aria-label="Manage Your Business">/);
-  assert.match(CARDS, /snap-x snap-mandatory[^"]*sm:grid sm:snap-none sm:grid-cols-3[^"]*xl:grid-cols-6/, "one swipeable row at phone width, grid from sm up");
+  assert.match(CARDS, /<nav aria-label="Manage Your Business" className="mt-2">/);
+  assert.match(CARDS, /snap-x snap-mandatory[^"]*md:grid md:snap-none md:grid-cols-6/, "one compact swipe row on phones, one row of six from md up");
   assert.match(CARDS, /rounded-2xl border border-black\/\[0\.08\] bg-white/, "rounded card, subtle light-gray border");
-  assert.match(CARDS, /bg-findmi-50 px-2 text-metadata font-bold text-findmi-700/, "+ Add: pale Aqua pill");
-  assert.match(CARDS, /bg-black\/\[0\.03\] px-2 text-metadata font-semibold text-secondary/, "View All: neutral pill");
+  assert.match(CARDS, /bg-findmi-50 px-1\.5 text-\[12px\] font-bold text-findmi-700/, "+ Add: pale Aqua pill");
+  assert.match(CARDS, /bg-black\/\[0\.03\] px-1\.5 text-\[12px\] font-semibold text-secondary/, "View All: neutral pill");
 });
 
 test("route integrity: every creation destination is an existing Business-scoped flow that reads its params", () => {
