@@ -99,11 +99,16 @@ test("Duffy Square end-to-end shape: no Logo + host-imaged happening → feature
   assert.deepEqual(F.selectFeaturedLocations([{ ...duffy, activities }], 8).map((l) => l.id), ["duffy"]);
 });
 
-test("262 Mott shape: its only Event hides its location → zero activity → correctly NOT featured", () => {
-  // excludeHiddenEventRows drops location_visibility='none' Events from a precise place.
+test("privacy: only location_visibility='hidden' Events are withheld from a place; 'none' (262 Mott's Salt & Stone Event) still counts", () => {
+  // excludeHiddenEventRows (lib/event-location-privacy.ts) drops only 'hidden' Events from a
+  // precise place. 262 Mott Street's only Event is location_visibility='none' with occurrences
+  // AT 262 Mott, so it counts and the Location is featured once the Logo rule is lifted.
   assert.match(fnBody("getLocations"), /excludeHiddenEventRows/);
-  const mott = { id: "mott", is_demo: false, logo_url: null, cover_image_url: COVER, activityCount: 0, activities: [] };
-  assert.deepEqual(F.selectFeaturedLocations([mott], 8), []);
+  assert.match(readFileSync("src/lib/event-location-privacy.ts", "utf8"), /\.eq\("location_visibility", "hidden"\)/);
+  const mott = { id: "mott", is_demo: false, logo_url: null, cover_image_url: COVER, activityCount: 4, activities: [{ id: "occ", imageUrl: COVER }] };
+  assert.deepEqual(F.selectFeaturedLocations([mott], 8).map((l) => l.id), ["mott"]);
+  // A Location whose only happenings ARE withheld has no activity and is not featured.
+  assert.deepEqual(F.selectFeaturedLocations([{ ...mott, activityCount: 0, activities: [] }], 8), []);
 });
 
 test("the occurrence preview embeds the host Business through the real FK", () => {
