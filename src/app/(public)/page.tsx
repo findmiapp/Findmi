@@ -10,6 +10,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
+import HomeMapButton from "@/components/HomeMapButton";
 import AreaPicker from "@/components/discover/AreaPicker";
 import FeaturedLocationCard from "@/components/discover/FeaturedLocationCard";
 import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
@@ -224,8 +225,13 @@ export default async function HomePage({
           Wrapper padding reuses the exact value the Bulletin block used
           in this same "right after Hero" slot below, rather than
           inventing a new one. */}
-      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
+      {/* Homepage Map entry: [ MAP ][ SEARCH… ] — the Map pill stretches to
+          Search's own height (items-stretch), so the two always match. */}
+      <div className="mx-auto flex max-w-6xl items-stretch gap-2 px-4 pt-4 sm:gap-2.5 sm:px-6">
+        <HomeMapButton />
+        <div className="min-w-0 flex-1">
+          <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
+        </div>
       </div>
 
       {/* Homepage Bulletin Carousel — one or more admin-managed editorial
