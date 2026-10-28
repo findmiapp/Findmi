@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature, Marker } from "maplibre-gl";
+import type { ExpressionSpecification, GeoJSONSource, Map as MLMap, MapGeoJSONFeature, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
@@ -23,6 +23,10 @@ const LIVE = "#DC2626";
 const SRC = "fm-results";
 const USER_SRC = "fm-user";
 const POINT_LAYERS = ["fm-point", "fm-logo", "fm-label", "fm-promo"];
+// fm-point styling inputs: does a logo sit on this marker, and its ring/fill
+// color (red when LIVE, Aqua otherwise).
+const HAS_LOGO: ExpressionSpecification = ["!=", ["get", "logo"], ""];
+const RING: ExpressionSpecification = ["case", ["==", ["get", "liveN"], 1], LIVE, AQUA];
 
 export interface CanvasProps {
   features: MapFeature[];
@@ -241,11 +245,16 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
           type: "circle",
           source: SRC,
           filter: ["!", ["has", "point_count"]],
+          // Two looks: once a logo is drawn on top (zoom ≥ 12.5, logo set)
+          // this is the white shell + Aqua/LIVE ring under it; otherwise
+          // it's a compact FILLED Aqua/LIVE dot with a white edge — never a
+          // big hollow white circle (expanded cluster children used to read
+          // as empty rings).
           paint: {
-            "circle-color": "#ffffff",
-            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 6, 13, 9, 16, 14],
-            "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 3],
-            "circle-stroke-color": ["case", ["==", ["get", "liveN"], 1], LIVE, AQUA],
+            "circle-color": ["step", ["zoom"], RING, 12.5, ["case", HAS_LOGO, "#ffffff", RING]],
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 5, 12.5, ["case", HAS_LOGO, 8.5, 7.5], 16, ["case", HAS_LOGO, 14, 10]],
+            "circle-stroke-width": ["step", ["zoom"], 2, 12.5, ["case", HAS_LOGO, 3, 2]],
+            "circle-stroke-color": ["step", ["zoom"], "#ffffff", 12.5, ["case", HAS_LOGO, RING, "#ffffff"]],
           },
         });
         map.addLayer({
@@ -254,8 +263,8 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
           source: SRC,
           minzoom: 12.5,
           filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "logo"], ""]],
-          layout: { "text-field": ["get", "initial"], "text-font": MAP_LABEL_FONT_BOLD, "text-size": 11, "text-allow-overlap": true },
-          paint: { "text-color": "#0C6F77" },
+          layout: { "text-field": ["get", "initial"], "text-font": MAP_LABEL_FONT_BOLD, "text-size": ["interpolate", ["linear"], ["zoom"], 12.5, 9, 16, 11], "text-allow-overlap": true },
+          paint: { "text-color": "#ffffff" },
         });
         map.addLayer({
           id: "fm-logo",
