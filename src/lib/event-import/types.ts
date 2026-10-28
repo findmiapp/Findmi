@@ -353,7 +353,7 @@ export interface EventImportReview {
 
 export type EventImportOutcome =
   /** Now on this Business's Findmi schedule. */
-  | { ok: true; kind: "scheduled"; title: string; viewHref: string; newEvent?: boolean; publicHref?: string; eventId?: string; hosted?: boolean }
+  | { ok: true; kind: "scheduled"; title: string; viewHref: string; newEvent?: boolean; publicHref?: string; eventId?: string; hosted?: boolean; /** A Business submission saved pending Admin review (not public yet). */ pendingReview?: boolean }
   /** Request sent to an existing Findmi Event's organizer (participation needs their confirmation). */
   | { ok: true; kind: "requested"; title: string; viewHref: string; publicHref?: string; eventId?: string }
   /** Already on this Business's schedule — nothing new created. */

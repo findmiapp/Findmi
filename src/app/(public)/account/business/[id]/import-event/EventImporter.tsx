@@ -286,7 +286,7 @@ export default function EventImporter({
         const hosted = outcome.kind !== "requested" && outcome.hosted === true;
         setStep({
           kind: "done",
-          message: successMessage(outcome.kind, outcome.title, businessName, intent!, outcome.kind === "scheduled" && outcome.newEvent === true),
+          message: successMessage(outcome.kind, outcome.title, businessName, intent!, outcome.kind === "scheduled" && outcome.newEvent === true, outcome.kind === "scheduled" && outcome.pendingReview === true),
           viewHref: outcome.viewHref,
           publicHref: outcome.publicHref ?? null,
           hosted,
@@ -344,7 +344,7 @@ export default function EventImporter({
             </Link>
           )}
           <Link href={step.viewHref} className={step.publicHref ? secondaryButtonClass : primaryButtonClass}>
-            {step.hosted ? "Manage Event" : step.publicHref ? "View Your Schedule" : "View"}
+            {step.hosted ? "Edit Event Further" : step.publicHref ? "View Your Schedule" : "View"}
           </Link>
           <button type="button" onClick={addAnother} className={secondaryButtonClass}>
             Add Another

@@ -43,7 +43,6 @@ import { MAX_BULK_GENERATED_DATES, resolveEndDateForTimes } from "@/lib/schedule
 import type { EventParticipationScope, EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { storePublicImage } from "@/lib/image-variants-server";
-import { publishCreatedEvent } from "@/lib/event-publication";
 import { fetchHiddenEventIds } from "@/lib/event-location-privacy";
 
 const UPLOAD_BUCKET = "findmi-media";
@@ -380,9 +379,11 @@ export async function createMemberEvent(formData: FormData) {
   }
 
   const eventId = (created as { id: string }).id;
-  // Live by default: create_owned_event() still writes the old review
-  // state; publish what it just created (lib/event-publication.ts).
-  const published = await publishCreatedEvent(admin, eventId);
+  // A Business/user submission stays pending Admin review
+  // (lib/event-publication.ts); only an Admin operating a Business
+  // (Manage-As) publishes at once — createHostedEvent's viaAdmin path
+  // inserts it live.
+  const published = (created as { viaAdmin: boolean }).viaAdmin;
   await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: hostViaAdmin ? "admin_managed_host" : "owner_created" });
 
   // create_owned_event() has no p_market_area_id parameter (Area wasn't
@@ -527,11 +528,10 @@ export async function createMemberEvent(formData: FormData) {
   }
 
   // Admin Action Email Notifications V1 — fires exactly once per
-  // creation. Oversight, not approval: the Event is already public (or,
-  // if publishing failed, still listed under Admin → Events → New Events).
+  // creation. A Business submission waits in Admin → Events → Needs Review.
   await notifyAdmin({
-    subject: `New Event on Findmi: ${name}`,
-    heading: published ? "New Event published" : "New Event created (not yet public)",
+    subject: published ? `New Event on Findmi: ${name}` : `Event submitted for review: ${name}`,
+    heading: published ? "New Event published" : "New Event submitted for review",
     body: [`Event: ${name}`, `Starts: ${new Date(startIso!).toLocaleString()}`, "Source: Host an Event"],
     actionLabel: "View in Admin",
     actionUrl: `/admin/events/${eventId}`,

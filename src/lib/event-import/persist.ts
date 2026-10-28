@@ -34,7 +34,7 @@ import { cleanEventDescription } from "./description";
 import { cleanOccurrenceDetails } from "./occurrence-details";
 import type { EventImportIntent, EventImportOutcome, EventImportReview, ReviewPlace } from "./types";
 import type { EventApplicationResult } from "../event-participation";
-import { NEW_EVENT_PUBLICATION, publishCreatedEvent } from "../event-publication";
+import { eventPublicationFor, publishCreatedEvent, type EventSubmitter } from "../event-publication";
 import { eventHref } from "../event-links";
 import { parseLocationVisibility, type LocationVisibility } from "../event-attendance";
 import { existingEventCategoryIds } from "../event-categories-server";
@@ -363,6 +363,10 @@ export interface PersistDeps {
   /** Rich Event Persistence: an Event already carrying this source link
    * (pending review included) — reused instead of creating a second one. */
   findEventBySourceUrl?: (url: string) => Promise<{ id: string } | null>;
+  /** Who is submitting (lib/event-publication.ts eventPublicationFor):
+   * "admin" saves new Events live; "business" (the default) saves them
+   * pending Admin review. */
+  submitter?: EventSubmitter;
 }
 
 const businessHome = (businessId: string) => `/account/business/${businessId}`;
@@ -530,11 +534,13 @@ async function persistParticipatingEvent(input: NormalizedImport, deps: PersistD
   await deps.propagateDates(created.eventId, created.occurrenceIds);
 
   await deps.notifyNewEvent(created.eventId, input.title, input.occurrences[0].start, input.occurrences[0].date);
+  // A Business submission is pending Admin review: no public link yet.
+  if (deps.submitter !== "admin") return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true, eventId: created.eventId, pendingReview: true };
   return { ok: true, kind: "scheduled", title: input.title, viewHref: scheduleHref, newEvent: true, publicHref: eventHref(created.slug), eventId: created.eventId };
 }
 
 /** What creating a source Event needs — no initiating Business, no user. */
-export type SourceEventDeps = Pick<PersistDeps, "admin" | "storeImage" | "geography" | "uniqueEventSlug" | "propagateDates" | "findEventBySourceUrl">;
+export type SourceEventDeps = Pick<PersistDeps, "admin" | "storeImage" | "geography" | "uniqueEventSlug" | "propagateDates" | "findEventBySourceUrl" | "submitter">;
 
 /** Steps 2–4a of persistParticipatingEvent, shared with Admin Event Import:
  * ONE new Event with no host and no owner (published like every new Event,
@@ -590,7 +596,7 @@ async function createSourceEvent(
       end_date: range.end_date,
       start_at: range.start_at,
       end_at: range.end_at,
-      ...NEW_EVENT_PUBLICATION,
+      ...eventPublicationFor(deps.submitter ?? "business"),
       host_business_id: null,
       organizer_name: input.organizer,
       description: input.description,
@@ -810,8 +816,9 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
     if (error || !created) return { ok: false, error: "Couldn't create your Event. Please try again." };
     eventId = (created as { id: string }).id;
   }
-  // Live by default (the RPC still writes the old review state).
-  await publishCreatedEvent(admin, eventId);
+  // The RPC writes the review state (a Business submission stays pending);
+  // only an Admin operating the Business publishes at once.
+  const live = viaAdmin || deps.submitter === "admin" ? await publishCreatedEvent(admin, eventId) : false;
   // Hosted by the importing Business itself: organization-provided.
   await recordProvenance(admin, { entityType: "event", entityId: eventId, sourceKind: "organization", sourceMethod: viaAdmin ? "admin_managed_hosted_import" : "business_hosted_import", sourceUrl: input.sourceUrl });
 
@@ -852,5 +859,7 @@ async function persistHosting(input: NormalizedImport, deps: PersistDeps): Promi
   }
 
   await deps.notifyNewEvent(eventId, input.title, first.start, first.date);
-  return { ok: true, kind: "scheduled", title: input.title, viewHref: `/account/event/${eventId}?business_id=${encodeURIComponent(businessId)}`, publicHref: eventHref(slug), eventId, hosted: true };
+  const viewHref = `/account/event/${eventId}?business_id=${encodeURIComponent(businessId)}`;
+  if (!live) return { ok: true, kind: "scheduled", title: input.title, viewHref, eventId, hosted: true, pendingReview: true };
+  return { ok: true, kind: "scheduled", title: input.title, viewHref, publicHref: eventHref(slug), eventId, hosted: true };
 }

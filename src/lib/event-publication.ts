@@ -1,25 +1,44 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Event publication — LIVE BY DEFAULT. A valid new Event (Host an Event,
-// Event Import — single, hosted or a calendar's Events — and the legacy
-// Appearance → Event conversion) is public as soon as it is saved. Findmi
-// Admin oversees instead of approving: every new Event is listed under
-// Admin → Events → New Events (and counted on Admin Home), and Admin can
-// Unpublish or Archive any Event at any time.
+// Event publication — WHO SUBMITTED decides the starting state (Findmi
+// Consolidation pass; supersedes the earlier "live by default" rule):
+//
+//   - Admin (founder Admin, Admin Event Import, Admin Manage-As hosting,
+//     legacy Appearance → Event conversion) is privileged: the Event is
+//     public as soon as it is saved (NEW_EVENT_PUBLICATION).
+//   - A Business / user submission (Host An Event, Business Event Import —
+//     hosting or participating) is saved PENDING REVIEW
+//     (SUBMITTED_EVENT_PUBLICATION): its submitting Business manages and
+//     edits it straight away, but it is not public until Admin approves it
+//     (Admin → Events → Needs Review; EVENT_PUBLISH_PATCH).
 //
 // The two existing columns keep their meanings — nothing is removed:
-//   - events.is_demo — THE public-visibility gate. Every public Event
-//     read (Event page, /events, Location activity, Business activity)
-//     requires is_demo = false. Hide sets it back to true.
-//   - events.publication_status — 'live' for every Event Findmi has
-//     published (the column default). 'pending_review' / 'rejected' are
-//     kept for Events created before this pass; no path creates them now.
-// Archive / Trash (archived_at / trashed_at) stay the full shut-down:
-// restrictive RLS hides the Event, its dates AND every schedule item
-// linked to it from all public reads, while the rows are preserved.
+//   - events.is_demo — the app-level public-visibility gate. Every public
+//     Event read requires is_demo = false.
+//   - events.publication_status — 'live' | 'pending_review' | 'rejected'.
+//     Enforced below the UI too: a restrictive RLS policy hides pending /
+//     rejected Events (and their dates) from everyone except their own
+//     managers (migration 20261121000000_consolidation_publication_rules).
+// Archive / Trash (archived_at / trashed_at) stay the full shut-down.
 
-/** What a newly created Event is saved with. */
+export type EventSubmitter = "admin" | "business";
+
+/** What a new ADMIN-created Event is saved with (public at once). */
 export const NEW_EVENT_PUBLICATION = { is_demo: false, publication_status: "live" } as const;
+
+/** What a new Business/user-submitted Event is saved with: pending Admin
+ * approval, fully manageable by its submitter. */
+export const SUBMITTED_EVENT_PUBLICATION = { is_demo: true, publication_status: "pending_review" } as const;
+
+/** The ONE rule for a new Event's starting publication state. */
+export function eventPublicationFor(submitter: EventSubmitter): { is_demo: boolean; publication_status: "live" | "pending_review" } {
+  return submitter === "admin" ? NEW_EVENT_PUBLICATION : SUBMITTED_EVENT_PUBLICATION;
+}
+
+/** Publicly discoverable: approved, not hidden, not retired. */
+export function isEventPublic(e: { is_demo?: boolean | null; publication_status?: string | null; archived_at?: string | null; trashed_at?: string | null }): boolean {
+  return e.is_demo === false && (e.publication_status ?? "live") === "live" && !e.archived_at && !e.trashed_at;
+}
 
 /** How recent an Event's creation is for Admin's "New Events" oversight. */
 export const NEW_EVENT_WINDOW_DAYS = 7;
@@ -28,8 +47,8 @@ export function newEventsSinceIso(now: number = Date.now()): string {
   return new Date(now - NEW_EVENT_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
-/** create_owned_event (the RPC Host an Event and hosted imports use)
- * still writes the old review state; this publishes what it just created.
+/** create_owned_event writes the review state; an ADMIN-privileged caller
+ * (e.g. Admin Manage-As) publishes what it just created with this.
  * Guarded to that exact state, so it never re-publishes an Event Admin
  * already hid. If it fails the Event simply stays non-public — never the
  * other way round — and it is still listed under New Events. */

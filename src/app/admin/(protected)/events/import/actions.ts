@@ -179,6 +179,8 @@ export async function adminCreateImportBusiness(formData: FormData): Promise<Inl
 function discoveryDeps(admin: SupabaseClient): SourceEventDeps {
   return {
     admin,
+    // Admin Event Import is the privileged path: new Events are live at once.
+    submitter: "admin",
     storeImage: async (url) => {
       // A cover uploaded in Review is already verified + in Findmi storage.
       if (isStoredEventImageUrl(admin, url)) return url;

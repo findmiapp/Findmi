@@ -89,6 +89,10 @@ function persistDepsFor(ctx: Ctx, businessId: string, storedFlyerUrl: string | n
     userId: user.id,
     businessId,
     businessName: business.name,
+    // A Business submission: new Events are saved pending Admin review
+    // (an Admin operating the Business publishes hosted Events through
+    // createHostedEvent's viaAdmin path).
+    submitter: "business",
     applyToEvent: (eventId) => applyBusinessToEvent(admin, { eventId, businessId, userId: user.id }),
     // Real Owner/Manager first; an Admin explicitly operating this Business
     // (Manage-As) as the audited fallback — never a fabricated membership
@@ -120,8 +124,8 @@ function persistDepsFor(ctx: Ctx, businessId: string, storedFlyerUrl: string | n
     },
     notifyNewEvent: async (eventId, title, startIso, date) => {
       await notifyAdmin({
-        subject: `New Event on Findmi: ${title}`,
-        heading: "New Event published",
+        subject: `Event submitted for review: ${title}`,
+        heading: "New Event submitted for review",
         body: [`Event: ${title}`, `Added by: ${business.name}`, startIso ? `Starts: ${new Date(startIso).toLocaleString()}` : `Date: ${date} (time not listed)`, "Source: Event Import"],
         actionLabel: "View in Admin",
         actionUrl: `/admin/events/${eventId}`,

@@ -196,9 +196,12 @@ export function occurrenceSummary(o: { date: string; startTime: string; endTime:
 }
 
 /** Business-facing success sentence — never "Appearance". */
-export function successMessage(kind: "scheduled" | "requested" | "already", title: string, businessName: string, intent: EventImportIntent, newEvent = false): string {
+export function successMessage(kind: "scheduled" | "requested" | "already", title: string, businessName: string, intent: EventImportIntent, newEvent = false, pendingReview = false): string {
   if (kind === "already") return `${title} is already on ${businessName}'s Findmi schedule.`;
   if (kind === "requested") return `Request sent to join ${title}. It shows on ${businessName}'s schedule once the organizer confirms.`;
+  // A new Business-submitted Event is pending Admin review: manageable now,
+  // public once Findmi approves it (lib/event-publication.ts).
+  if (pendingReview) return `${title} was submitted. You can keep editing it now — it goes live on Findmi once it's reviewed.`;
   return intent === "hosting" || newEvent
     ? `${title} is live on Findmi and on ${businessName}'s schedule.`
     : `${title} is now on ${businessName}'s Findmi schedule.`;
