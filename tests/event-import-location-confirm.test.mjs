@@ -100,7 +100,9 @@ test("A + B: a strong match starts visibly linked; a possible match waits for an
   assert.deepEqual(R.pendingPlaceMatches(qr, qsbs.matches), [qr.place.matchKey]);
   assert.equal(R.batchItemStatus(qr, qsbs.matches).kind, "possible_match", "shown as needing a look, not blocked");
   const ui = read("src/app/(public)/account/business/[id]/import-event/ReviewParts.tsx");
-  for (const s of ['"On Findmi"', '"Possible Findmi Location"', 'title="Use This Location"', 'title="Not the Same Place"']) assert.ok(ui.includes(s), s);
+  // Consolidation pass: an ambiguous match lists its other candidates, so the
+  // reject choice reads "None of These" there.
+  for (const s of ['"On Findmi"', '"Possible Findmi Location"', 'title="Use This Location"', '"Not the Same Place"', '"None of These"', "Other Possible Matches"]) assert.ok(ui.includes(s), s);
 });
 
 // ── batch confirmation + override ─────────────────────────────────────

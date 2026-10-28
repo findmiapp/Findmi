@@ -11,7 +11,7 @@ import { safeFetchEventPage, validateFetchUrl, type SafeFetchResult } from "../s
 import { findEventMatches, findDuplicateMatches, type EventMatchCandidate, type DuplicateCandidate } from "../admin/appearance-matching";
 import type { AppearanceDraft } from "../admin/appearance-import";
 import { findLikelyDuplicateLocations, findPossibleLocations } from "../locationCreation";
-import { findBusinessMatches } from "../business-matching";
+import { businessNamesAgree, findBusinessMatches } from "../business-matching";
 import { extractEventCandidate, needsAiAssist, isPastDate, platformForHost, siteIdentityImages, structuredPersonNames, type ExtractionResult } from "./extract";
 import { genericImageEvidence, GENERIC_IMAGE_WARNING } from "./image-guard";
 import { classifySource, pageEventRecord } from "./sources";
@@ -38,6 +38,7 @@ import {
   type EventImportImageMediaType,
 } from "./ai";
 import { extractStructuredEvent } from "./structured-paste";
+import { describeTemporal } from "./temporal";
 import { splitPastedEvents, type PastedEventSegment } from "./paste-segments";
 import { extractTextEventCandidate, mergeTextAi, needsTextAssist, PASTE_MAX_CHARS, PASTE_MIN_CHARS, type TextExtraction } from "./text-source";
 import { mergeSourceIntoStructured } from "./structured-merge";
@@ -88,6 +89,10 @@ export interface EventImportDeps {
    * field is touched. Candidates stay review-only (Match / Create / Ignore).
    * Admin Event Import opts in; absent → no extra AI call. */
   involvedBusinesses?: boolean;
+  /** The Business performing the import (Business Manager context) — its
+   * name lets a source's Brand / Host statement be recognized as THIS
+   * Business even before it is public. Absent → no context matching. */
+  getBusiness?: (id: string) => Promise<{ id: string; name: string } | null>;
 }
 
 // ── rate limit: 20 analyses per user per 10 minutes (in-memory, per instance) ──
@@ -125,6 +130,10 @@ export function defaultEventImportDeps(admin: SupabaseClient): EventImportDeps {
       return m ? { id: m.id, name: m.name } : null;
     },
     matchExistingAppearance: async (businessId, draft) => (await findDuplicateMatches(businessId, [draft]))[0] ?? null,
+    getBusiness: async (id) => {
+      const { data } = await admin.from("businesses").select("id, name").eq("id", id).maybeSingle();
+      return (data as { id: string; name: string } | null) ?? null;
+    },
     findScheduledBySourceUrl: async (businessId, url) => {
       const { data } = await admin
         .from("appearances")
@@ -333,7 +342,8 @@ export async function analyzeEventUrl(
     const upcoming = events.filter((e) => !e.past).length;
     const warnings: string[] = [];
     if (events.length > 0 && upcoming === 0) warnings.push("All the Events on that page have already happened.");
-    return { ok: true, kind: "multi", source: { url: page.url.toString(), name: source.sourceName, platform: list[0]?.candidate.platform ?? null }, events, warnings };
+    if (source.ambiguous) warnings.unshift("This article mentions several Events, so Findmi can't tell which one you mean. Choose the Event to import — nothing is selected until you do.");
+    return { ok: true, kind: "multi", source: { url: page.url.toString(), name: source.sourceName, platform: list[0]?.candidate.platform ?? null, ...(source.ambiguous ? { ambiguous: true } : {}) }, events, warnings };
   }
 
   const extracted = extractEventCandidate(page.html, page.url, now);
@@ -489,8 +499,9 @@ export async function analyzeEventText(
     text: string;
     businessId: string | null;
     rateKey: string;
-    /** Admin Event Import only: read blocks written in the structured field
-     * syntax ("Event Name: …") deterministically (./structured-paste.ts). */
+    /** Kept for callers that pass it; LABELED pastes are now detected and
+     * read by the one structured reader for EVERY caller (Admin and
+     * Business Manager alike — ./structured-paste.ts isStructuredEvent). */
     structured?: boolean;
   },
   deps: EventImportDeps
@@ -518,9 +529,12 @@ export async function analyzeEventText(
  * reading is incomplete (and `allowAi`), the multiple-Events refusal,
  * attendance/privacy evidence, matching. */
 async function analyzeOneTextEvent(text: string, businessId: string | null, now: number, deps: EventImportDeps, allowAi = true, structured = false): Promise<EventImportAnalysis> {
-  // Admin structured fields: explicit values, read deterministically — no
-  // AI rediscovery, no free-text guessing.
-  const fields = structured ? extractStructuredEvent(text, { now }) : null;
+  // Labeled fields ("Event name:", "Dates:", "Brand:" …): explicit values,
+  // read deterministically for every entry point — no AI rediscovery, no
+  // free-text guessing. Detection is automatic (one shared parser for Admin
+  // and Business Manager); `structured` is accepted but no longer needed.
+  void structured;
+  const fields = extractStructuredEvent(text, { now });
   if (fields) return finishEvidenceCandidate(fields, fields.candidate, "text_no_event", businessId, now, deps);
   const extraction = extractTextEventCandidate(text, { now, origin: "text" });
   if (extraction.multipleEvents) return { ok: false, code: "multiple_events" };
@@ -694,7 +708,7 @@ async function finishEvidenceCandidate(
 
   const venues = [...candidate.occurrences.map((o) => o.venue), ...(candidate.place ? [candidate.place] : [])];
   const hasPlace = venues.some((v) => venueKey(v) || v.city);
-  if (!candidate.title || (candidate.occurrences.length === 0 && !hasPlace)) return { ok: false, code: failure };
+  if (!candidate.title || (candidate.occurrences.length === 0 && !hasPlace && !candidate.temporal)) return { ok: false, code: failure };
 
   candidate = { ...candidate, occurrences: candidate.occurrences.map((o) => ({ ...o, past: isPastDate(o, now) })) };
   const total = candidate.occurrences.length;
@@ -703,7 +717,11 @@ async function finishEvidenceCandidate(
   const warnings: string[] = [];
   if (total > 0 && pastCount === total) warnings.push("That date has already passed.");
   else if (pastCount > 0) warnings.push("Some dates have already passed. Future dates are shown below.");
-  if (total === 0) warnings.push("We couldn't find a date. Add it below.");
+  // Partial dates are information, not "no date": say what was found and
+  // exactly which bound is still needed (./temporal.ts).
+  const temporalNote = candidate.temporal ? describeTemporal(candidate.temporal) : null;
+  if (temporalNote) warnings.push(temporalNote);
+  else if (total === 0) warnings.push("We couldn't find a date. Add it below.");
   if (extraction.unresolvedRanges > 0 && candidate.sources.dates !== "ai") warnings.push("Part of the schedule couldn't be turned into dates. Please add any missing dates.");
   if (candidate.occurrences.some((d) => !d.hasTime)) warnings.push("Some dates don't have a start time. Add it below.");
   if (candidate.occurrences.some((d) => d.hasTime)) warnings.push("Times are shown in Eastern Time. Please check them.");
@@ -777,9 +795,33 @@ async function matchCandidate(candidate: EventCandidate, businessId: string | nu
       // including every name-containment match — is shown as a possible
       // match for the person to confirm, never pre-selected.
       const strong = found.length === 1 && Boolean(v.address || v.city || v.postalCode);
-      matches.locations.push({ key, id: loc.id, name: loc.name, address: loc.address, city: loc.city, state: loc.state, postalCode: loc.postal_code ?? null, confidence: strong ? "strong" : "possible" });
+      // Ambiguous: every other plausible candidate travels too, so Review
+      // shows the choice instead of silently picking one (never linked
+      // without the person's answer).
+      const others = [...found, ...possible].filter((o, i, arr) => o.id !== loc.id && arr.findIndex((x) => x.id === o.id) === i).slice(0, 4);
+      matches.locations.push({
+        key,
+        id: loc.id,
+        name: loc.name,
+        address: loc.address,
+        city: loc.city,
+        state: loc.state,
+        postalCode: loc.postal_code ?? null,
+        confidence: strong ? "strong" : "possible",
+        ...(others.length > 0 ? { alternatives: others.map((o) => ({ id: o.id, name: o.name, address: o.address, city: o.city, state: o.state, postalCode: o.postal_code ?? null })) } : {}),
+      });
     }
     matches.organizerBusiness = organizer;
+    // Business Manager context: the source's Brand / Host / Organizer names
+    // the Business doing the import → suggest THIS Business (reviewable),
+    // never "Organizer: Not listed" while holding that evidence.
+    if (businessId && businessEvidence && deps.getBusiness) {
+      const self = await deps.getBusiness(businessId).catch(() => null);
+      if (self && businessNamesAgree(businessEvidence, self.name)) {
+        matches.contextBusiness = { id: self.id, name: self.name, evidence: businessEvidence };
+        matches.organizerBusiness = { id: self.id, name: self.name };
+      }
+    }
     if (existing && existing.confidence === "strong") matches.existingAppearance = { id: existing.id, title: existing.title, startAt: existing.start_at };
   } catch {
     // Matching is advisory: a failure means "no match found", never a blocked import.

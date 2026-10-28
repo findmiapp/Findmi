@@ -174,6 +174,21 @@ export function normalizeBusinessName(value: string | null | undefined): string 
   return (value ?? "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, " ").trim();
 }
 
+/** Does a source's Brand / Host / Organizer statement name THIS Business?
+ * Strict, never fuzzy: the normalized names are equal, or one name's whole
+ * token sequence appears contiguously at the START of the other ("DUA by
+ * AB" ⇄ Business "DUA by AB"; "DUA by AB NYC" ⇄ "DUA by AB"). The shorter
+ * side needs ≥ 3 letters/digits so a stray short word never matches. Used
+ * only to SUGGEST context during Event Import — always reviewable. */
+export function businessNamesAgree(evidence: string | null | undefined, businessName: string | null | undefined): boolean {
+  const a = nameTokens(evidence);
+  const b = nameTokens(businessName);
+  if (a.length === 0 || b.length === 0) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (short.join("").length < 3) return false;
+  return short.every((t, i) => long[i] === t);
+}
+
 /** The normalized name's tokens (Unicode letters/numbers/marks only). */
 function nameTokens(value: string | null | undefined): string[] {
   return normalizeBusinessName(value).split(" ").filter(Boolean);

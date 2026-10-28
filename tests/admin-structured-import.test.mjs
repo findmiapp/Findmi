@@ -369,18 +369,23 @@ test("Category / Subcategory / Formats resolve to the canonical vocabulary; unkn
 
 // ── 13–17. NOTHING ELSE CHANGES ───────────────────────────────────────────
 
-test("13. ordinary Paste Details behaves as before: no structured reading without the Admin flag, or without `Event Name:`", async () => {
+test("13. unlabeled prose keeps the free-text reading; LABELED input uses the ONE structured reader for every caller (Consolidation pass)", async () => {
   const plain = `Fall Book Swap Brunch\n\nOctober 18, 2026\n11 AM–2 PM\n\nPier 57\n25 11th Ave\nNew York, NY`;
   const off = await E.analyzeEventText({ text: plain, businessId: "biz", rateKey: "u" }, deps());
   const on = await E.analyzeEventText({ text: plain, businessId: "biz", rateKey: "u", structured: true }, deps());
   assert.deepEqual(on, off, "Admin flag + free text = the unchanged free-text reading");
   assert.equal(off.candidate.structured, undefined);
-  const labelled = await E.analyzeEventText({ text: GOOD_AMERICAN, businessId: "biz", rateKey: "u" }, deps());
-  assert.equal(labelled.ok && labelled.candidate.structured, undefined, "the Business importer never uses the structured reader");
+  // Business Manager and Admin now share the deterministic reader: the
+  // same labeled paste reads identically with or without the old flag.
+  const business = await E.analyzeEventText({ text: GOOD_AMERICAN, businessId: "biz", rateKey: "u" }, deps());
+  const admin = await E.analyzeEventText({ text: GOOD_AMERICAN, businessId: "biz", rateKey: "u", structured: true }, deps());
+  assert.equal(business.candidate.title, "Good American NYC Pop-Up");
+  assert.equal(business.candidate.structured.business, "Good American");
+  assert.deepEqual(business.candidate, admin.candidate);
 });
 
-test("14–16. Business importer, URL import and Upload never pass the structured flag", () => {
-  assert.doesNotMatch(BIZ_ACTIONS, /structured/);
+test("14–16. Business importer, URL import and Upload never need the structured flag (detection is automatic for pasted text)", () => {
+  assert.doesNotMatch(BIZ_ACTIONS, /structured: true/);
   assert.match(BIZ_ACTIONS, /analyzeEventText\(\{ text: typeof text === "string" \? text : "", businessId, rateKey: ctx\.user\.id \}, defaultEventImportDeps\(ctx\.admin\)\)/);
   const url = ENGINE.slice(ENGINE.indexOf("export async function analyzeEventUrl"), ENGINE.indexOf("// ── Paste Details / Upload"));
   assert.doesNotMatch(url, /extractStructuredEvent|structured: true/);

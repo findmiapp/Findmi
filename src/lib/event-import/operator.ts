@@ -54,7 +54,7 @@ const named = (row: TaxonomyRow, value: string) => norm(row.name) === norm(value
  * is created; a value that isn't a Findmi Category / Format stays
  * unresolved (listed) for the operator to choose in Review. */
 export function resolveStructuredTaxonomy(
-  hints: Pick<StructuredEventHints, "category" | "subcategory" | "formats">,
+  hints: Pick<StructuredEventHints, "category" | "subcategory" | "formats"> & Partial<Pick<StructuredEventHints, "eventType">>,
   categories: TaxonomyRow[],
   formats: TaxonomyRow[]
 ): { categoryId: string | null; formatIds: string[]; unresolved: string[] } {
@@ -74,7 +74,25 @@ export function resolveStructuredTaxonomy(
     if (!row) unresolved.push(`Format “${f}”`);
     else if (!formatIds.includes(row.id)) formatIds.push(row.id);
   }
-  return { categoryId: child?.id ?? categoryAsChild?.id ?? parent?.id ?? null, formatIds, unresolved };
+  // "Event type: Beauty and skincare pop-up / product discovery / …" — a
+  // canonical Format or Category whose WHOLE name appears in it is
+  // suggested (Review shows it, editable). Never adds unresolved noise.
+  const typeText = ` ${norm(hints.eventType)} `;
+  const appears = (row: TaxonomyRow) => {
+    const n = norm(row.name);
+    return n.length >= 3 && typeText.includes(` ${n} `);
+  };
+  if (hints.eventType) {
+    for (const row of formats) if (appears(row) && !formatIds.includes(row.id)) formatIds.push(row.id);
+  }
+  let categoryId = child?.id ?? categoryAsChild?.id ?? parent?.id ?? null;
+  if (!categoryId && !hints.category && hints.eventType) {
+    const hits = categories.filter(appears);
+    // Only an unambiguous single hit (a subcategory wins over its parent).
+    const leaf = hits.filter((h) => !hits.some((o) => o.parent_id === h.id));
+    if (leaf.length === 1) categoryId = leaf[0].id;
+  }
+  return { categoryId, formatIds, unresolved };
 }
 
 /** Same-Business identity inside one Review batch ("Good American" ≡

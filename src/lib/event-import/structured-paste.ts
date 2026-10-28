@@ -11,15 +11,21 @@
 //   RSVP URL: … / Ticket URL: …
 //   Occurrence 1:            (optional — its own Date / Start Time / End Time / Programming)
 //
-// Used only by Admin Event Import, and only when a block opens its fields
-// with "Event Name:". Explicit values are authoritative: labels are
+// The ONE structured reader for every Event Import entry point (Admin
+// single + bulk, Business Manager hosting + participating — Findmi
+// Consolidation pass): any paste whose fields are LABELED ("Event name:",
+// "Dates:", "Venue:", "Brand:" …, case-insensitive, many variants) is read
+// here deterministically. Explicit values are authoritative: labels are
 // stripped, each value goes to its own field, and nothing is rediscovered
 // by the AI step. A value that can't be read is left empty for Review with
-// a note — never guessed. Ordinary Paste Details never comes here.
+// a note — never guessed. Partial dates ("Open through Nov 29, 2026") and
+// weekly hours ("Monday–Saturday: 10–7") are kept as a TemporalReading
+// (./temporal.ts) rather than dropped. Unlabeled prose never comes here.
 import { cleanText, usStateCode } from "../brand-website-extract";
 import { cleanEventDescription } from "./description";
 import { cleanOccurrenceDetails } from "./occurrence-details";
 import { dedupeOccurrences, explicitDateList, occurrenceFor, parseTimes, placeFrom, yearHintFrom, SCHEDULE_MAX_OCCURRENCES } from "./schedule";
+import { expandWeeklySchedule, readPartialDates, readTimezone, readWeeklyHours, unresolvedBounds, type TemporalReading } from "./temporal";
 import { EMPTY_VENUE, venueKey, type EventCandidate, type ImportedOccurrence, type ImportedVenue, type StructuredEventHints } from "./types";
 import type { PageControl } from "./attendance";
 import type { TextExtraction } from "./text-source";
@@ -52,13 +58,71 @@ type Field =
   | "register"
   | "tickets"
   | "programming"
-  | "image";
+  | "image"
+  | "instagram"
+  | "eventType"
+  | "admission"
+  | "timezone"
+  | "street2";
 
 const FIELDS: Record<string, Field> = {
   "event name": "title",
   "event title": "title",
+  name: "title",
+  title: "title",
   "primary business": "business",
   business: "business",
+  "business name": "business",
+  brand: "business",
+  "brand name": "business",
+  brands: "business",
+  host: "business",
+  "hosted by": "business",
+  "host business": "business",
+  "presented by": "business",
+  website: "businessWebsite",
+  "brand site": "businessWebsite",
+  "business site": "businessWebsite",
+  "official website": "businessWebsite",
+  instagram: "instagram",
+  "instagram url": "instagram",
+  "instagram handle": "instagram",
+  ig: "instagram",
+  "event type": "eventType",
+  type: "eventType",
+  "type of event": "eventType",
+  "event category": "eventType",
+  admission: "admission",
+  "admission/rsvp": "admission",
+  "admission/tickets": "admission",
+  "admission/registration": "admission",
+  cost: "admission",
+  price: "admission",
+  pricing: "admission",
+  "time zone": "timezone",
+  timezone: "timezone",
+  tz: "timezone",
+  source: "sourceUrl",
+  "source article": "sourceUrl",
+  article: "sourceUrl",
+  "event details": "eventLink",
+  "event details link": "eventLink",
+  "more info": "eventLink",
+  "more information": "eventLink",
+  "info link": "eventLink",
+  when: "date",
+  "event date": "date",
+  "event dates": "date",
+  where: "location",
+  "venue address": "street",
+  "location address": "street",
+  "address line 1": "street",
+  "address 1": "street",
+  "address line 2": "street2",
+  "address 2": "street2",
+  suite: "street2",
+  "suite/unit": "street2",
+  unit: "street2",
   "business website": "businessWebsite",
   "brand website": "businessWebsite",
   "featured brand": "featured",
@@ -105,6 +169,8 @@ const FIELDS: Record<string, Field> = {
   time: "time",
   times: "time",
   hours: "time",
+  "event hours": "time",
+  "opening hours": "time",
   category: "category",
   subcategory: "subcategory",
   format: "formats",
@@ -144,16 +210,41 @@ const FIELDS: Record<string, Field> = {
   details: "programming",
 };
 /** Fields whose value may continue on the following unlabeled lines. */
-const MULTILINE = new Set<Field>(["description", "programming"]);
+const MULTILINE = new Set<Field>(["description", "programming", "time", "date"]);
 
-const LABEL_LINE = /^([A-Za-z][A-Za-z ]{0,24}?)\s*:\s*(.*)$/;
+// A label: words plus the separators people actually type ("Admission /
+// RSVP", "Suite/Unit", "Brand's Website").
+const LABEL_LINE = /^([A-Za-z][A-Za-z0-9 /&'’.-]{0,30}?)\s*:\s*(.*)$/;
 const OCCURRENCE_LINE = /^occurrence\s*#?\s*(\d{1,2})\s*:?\s*$/i;
 const STRUCTURED_START = /^\s*event\s+(?:name|title)\s*:/im;
 const STREET_LIKE = /\d/;
+const TITLE_FIELDS = new Set<Field>(["title"]);
 
-/** Does this pasted Event use the structured field syntax? */
+const labelKey = (raw: string) => raw.trim().toLowerCase().replace(/[’']/g, "'").replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ").replace(/\.$/, "");
+
+/** Does this pasted Event use LABELED fields? "Event Name:" anywhere, or a
+ * title label ("Name:", "Title:") plus at least two other recognized
+ * labels — so a plain sentence containing a colon never qualifies. */
 export function isStructuredEvent(text: string): boolean {
-  return STRUCTURED_START.test(text);
+  if (STRUCTURED_START.test(text)) return true;
+  let title = false;
+  let labeled = 0;
+  for (const line of text.split(/\r?\n/).slice(0, 200)) {
+    const m = LABEL_LINE.exec(line.trim());
+    const f = m ? FIELDS[labelKey(m[1])] : undefined;
+    if (!f) continue;
+    labeled++;
+    if (TITLE_FIELDS.has(f) && m![2].trim()) title = true;
+  }
+  return title && labeled >= 3;
+}
+
+/** "DUA by AB, Dua Lipa's skincare brand developed with …" → "DUA by AB":
+ * a Brand / Host field often carries a description after its name. */
+export function businessNameFromEvidence(value: string | null): string | null {
+  if (!value) return null;
+  const head = value.split(/\s*(?:,|\s[–—-]\s|\(|;|\|)\s*/)[0]?.trim() ?? "";
+  return cleanText(head.length >= 2 ? head : value, 160);
 }
 
 interface Block {
@@ -163,7 +254,7 @@ interface Block {
 function field(line: string): { field: Field; value: string } | null {
   const m = LABEL_LINE.exec(line);
   if (!m) return null;
-  const f = FIELDS[m[1].trim().toLowerCase().replace(/\s+/g, " ")];
+  const f = FIELDS[labelKey(m[1])];
   return f ? { field: f, value: m[2].trim() } : null;
 }
 
@@ -178,6 +269,25 @@ function httpsUrl(value: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** "410 West 13th Street, New York, NY 10014" → its parts, or null when it
+ * isn't written that way (left whole — never guessed). */
+export function splitUsAddress(value: string | null): { street: string; city: string; state: string; postalCode: string | null } | null {
+  if (!value) return null;
+  const m = /^(.+?\d.+?),\s*([A-Za-z .'-]{2,40}),\s*([A-Za-z .]{2,20}?)\s*(\d{5}(?:-\d{4})?)?\s*(?:,\s*(?:USA|US|United States))?$/i.exec(value.trim());
+  if (!m) return null;
+  const state = usStateCode(m[3].trim());
+  if (!state) return null;
+  return { street: cleanText(m[1], 200)!, city: cleanText(m[2], 80)!, state, postalCode: m[4] ?? null };
+}
+
+/** "@duabyab" / "instagram.com/duabyab" / a full link → the profile URL. */
+function instagramUrl(value: string | null): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  const handle = /^@?([A-Za-z0-9._]{1,30})$/.exec(v)?.[1] ?? /instagram\.com\/([A-Za-z0-9._]{1,30})/i.exec(v)?.[1];
+  return handle ? `https://www.instagram.com/${handle}/` : null;
 }
 
 /** "knix.com" → "https://knix.com/" (a Business website may be written bare). */
@@ -202,12 +312,18 @@ function venueFrom(b: Block): ImportedVenue {
     venue.address = parsed?.address ?? null;
   }
   venue.name = cleanText(first(b, "locationName"), 160) ?? venue.name;
-  venue.address = cleanText(first(b, "street"), 200) ?? venue.address;
-  venue.city = cleanText(first(b, "city"), 80);
+  // A one-line US address ("410 West 13th Street, New York, NY 10014") is
+  // split into its parts so Location matching sees street / city / state /
+  // ZIP — explicit City / State / ZIP fields still win.
+  const oneLine = splitUsAddress(first(b, "street"));
+  venue.address = oneLine?.street ?? cleanText(first(b, "street"), 200) ?? venue.address;
+  venue.city = cleanText(first(b, "city"), 80) ?? oneLine?.city ?? null;
   const state = first(b, "state");
-  venue.state = state ? (usStateCode(state) ?? cleanText(state, 40)) : null;
+  venue.state = state ? (usStateCode(state) ?? cleanText(state, 40)) : (oneLine?.state ?? null);
   const zip = first(b, "zip");
-  venue.postalCode = zip && /^[A-Za-z0-9 -]{3,12}$/.test(zip) ? zip : null;
+  venue.postalCode = zip && /^[A-Za-z0-9 -]{3,12}$/.test(zip) ? zip : (oneLine?.postalCode ?? null);
+  const line2 = cleanText(first(b, "street2"), 120);
+  if (line2) venue.addressLine2 = line2;
   const site = websiteOrNull(first(b, "locationWebsite"));
   if (site) venue.website = site;
   return venue;
@@ -215,9 +331,16 @@ function venueFrom(b: Block): ImportedVenue {
 
 type Times = NonNullable<ReturnType<typeof parseTimes>>;
 
-/** A block's explicit time: "Time: 11 AM – 6 PM", or Start Time (+ End Time). */
+/** The non-empty lines of a block's Time / Hours field (it may span lines). */
+const timeLines = (b: Block) => (b.values.time ?? []).map((l) => l.trim()).filter(Boolean);
+
+/** A block's explicit time: "Time: 11 AM – 6 PM", or Start Time (+ End
+ * Time). Weekly hours ("Monday–Saturday: 10–7") are read separately
+ * (readWeeklyHours) and never squeezed into one time. */
 function timesFrom(b: Block, notes: string[], label: string): Times | null | "unreadable" {
-  const combined = first(b, "time");
+  const lines = timeLines(b);
+  if (readWeeklyHours(lines).length > 0) return null;
+  const combined = lines[0] ?? null;
   if (combined) {
     const t = parseTimes(combined);
     if (!t) notes.push(`${label}time “${combined}” couldn't be read. Add it in Review.`);
@@ -319,18 +442,68 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
     add(dates, own ?? eventTimes, dateText!, place, cleanDetails(all(block, "programming")));
     dates.forEach((d) => covered.add(d));
   }
-  const eventDateText = first(event, "date");
+  // Weekly hours (each weekday its own hours) and the stated time zone.
+  const weekly = readWeeklyHours(timeLines(event));
+  const timezoneText = first(event, "timezone");
+  const timezone = readTimezone(timezoneText);
+  if (timezoneText && timezone !== "America/New_York") notes.push(`Time zone “${timezoneText}”: Findmi shows times in Eastern Time. Check the times in Review.`);
+  const weeklyTimes = (date: string): Times | null => {
+    const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const w = weekly.find((h) => h.days.includes(dow));
+    return w ? { startTime: w.startTime, endTime: w.endTime, overnight: w.overnight, span: [0, 0] } : null;
+  };
+  const addDated = (dates: string[], evidence: string) => {
+    for (const d of dates) {
+      if (covered.has(d)) continue;
+      if (weekly.length > 0) {
+        // A day with no hours line is closed — never given invented hours.
+        const t = weeklyTimes(d);
+        if (t) add([d], t, evidence);
+      } else add([d], eventTimes, evidence);
+    }
+  };
+
+  // Dates: an explicit list / range first; else PARTIAL dates (one known
+  // bound — "Open through Nov 29, 2026") kept as a TemporalReading, never
+  // reduced to "no date" and never completed with an invented bound.
+  const eventDateText = (event.values.date ?? []).map((l) => l.trim()).filter(Boolean).join(" ") || null;
+  let temporal: TemporalReading | null = null;
+  let truncatedSchedule = false;
   if (eventDateText) {
     const dates = explicitDateList(eventDateText, ctx);
-    if (!dates) notes.push(`The date “${eventDateText}” couldn't be read. Add the dates in Review.`);
-    else add(dates.filter((d) => !covered.has(d)), eventTimes, eventDateText);
+    if (dates) addDated(dates, eventDateText);
+    else {
+      const partial = readPartialDates(eventDateText, { ...ctx, upcomingYear: true });
+      if (!partial) notes.push(`The date “${eventDateText}” couldn't be read. Add the dates in Review.`);
+      else {
+        temporal = { ...partial, weekly, timezone, unresolved: [], evidence: eventDateText };
+        const expanded = expandWeeklySchedule(temporal, SCHEDULE_MAX_OCCURRENCES);
+        // Both bounds known → concrete dates now (each weekday with its own
+        // hours). One bound only → nothing is invented: the reading (and its
+        // weekly hours) waits in Review for the missing bound.
+        if (expanded) {
+          truncatedSchedule = expanded.truncated;
+          addDated(expanded.dates.map((d) => d.date), eventDateText);
+        }
+        temporal.unresolved = unresolvedBounds(temporal);
+      }
+    }
+  } else if (weekly.length > 0) {
+    temporal = { startDate: null, endDate: null, weekly, weekdays: null, timezone, unresolved: ["start", "end"], evidence: timeLines(event).join("; ") };
   }
+  if (truncatedSchedule) notes.push(`This schedule has more than ${SCHEDULE_MAX_OCCURRENCES} dates. The first ${SCHEDULE_MAX_OCCURRENCES} were added; add the rest in Event Manager.`);
   const finalOccurrences = dedupeOccurrences(occurrences).slice(0, SCHEDULE_MAX_OCCURRENCES);
 
   // Links: Event Link and Source URL are the same Event column
   // (events.external_url, Review's "Event Link"); RSVP / Ticket URLs are
   // attendance evidence for the existing reader.
-  const eventLink = httpsUrl(first(event, "eventLink"));
+  // "Event details: …" written as prose (not a link) is programming text.
+  const eventLinkText = first(event, "eventLink");
+  if (eventLinkText && !/^https?:\/\//i.test(eventLinkText) && !/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(eventLinkText)) {
+    (event.values.programming ??= []).push(eventLinkText);
+    event.values.eventLink = [];
+  }
+  const eventLink = httpsUrl(first(event, "eventLink") ?? null) ?? websiteOrNull(first(event, "eventLink"));
   const sourceLink = httpsUrl(first(event, "sourceUrl"));
   for (const [f, value] of [["eventLink", first(event, "eventLink")], ["sourceUrl", first(event, "sourceUrl")], ["rsvp", first(event, "rsvp")], ["register", first(event, "register")], ["tickets", first(event, "tickets")]] as const) {
     if (value && !httpsUrl(value)) notes.push(`${f === "rsvp" ? "RSVP URL" : f === "register" ? "Registration URL" : f === "tickets" ? "Ticket URL" : f === "eventLink" ? "Event Link" : "Source URL"} isn't a full https link, so it wasn't used.`);
@@ -370,7 +543,7 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
   const sources: EventCandidate["sources"] = {};
   if (title) sources.title = "page";
   if (description) sources.description = "page";
-  if (finalOccurrences.length > 0) sources.dates = "page";
+  if (finalOccurrences.length > 0 || temporal) sources.dates = "page";
   if (hasPlace) sources.venue = "page";
   if (organizer) sources.organizer = "page";
   const eventImageText = first(event, "image");
@@ -388,13 +561,23 @@ export function extractStructuredEvent(text: string, opts: { now: number }): (Te
       origin: "text",
       occurrences: finalOccurrences,
       place: finalOccurrences.length === 0 && hasPlace ? venue : undefined,
+      // Partial dates / weekly hours that couldn't (yet) become dates.
+      ...(temporal && temporal.unresolved.length > 0 ? { temporal } : {}),
       online: false,
       organizer,
       sources,
       structured: {
         ...(links.rsvp || links.tickets ? { links } : {}),
-        business: cleanText(first(event, "business"), 160),
+        // "Brand: DUA by AB, Dua Lipa's skincare brand …" → "DUA by AB"; the
+        // full statement stays as evidence.
+        business: businessNameFromEvidence(first(event, "business")),
+        ...(first(event, "business") && businessNameFromEvidence(first(event, "business")) !== cleanText(first(event, "business"), 160) ? { businessEvidence: cleanText(first(event, "business"), 300) } : {}),
         businessWebsite: httpsUrl(first(event, "businessWebsite")) ?? websiteOrNull(first(event, "businessWebsite")),
+        ...(instagramUrl(first(event, "instagram")) ? { instagram: instagramUrl(first(event, "instagram")) } : {}),
+        ...(first(event, "eventType") ? { eventType: cleanText(first(event, "eventType"), 200) } : {}),
+        // Admission / RSVP prose is evidence only — never read as "free".
+        ...(first(event, "admission") && !httpsUrl(first(event, "admission")) ? { admission: cleanText(all(event, "admission"), 300) } : {}),
+        ...(timezone ? { timezone } : {}),
         otherBusinesses: [...(event.values.featured ?? []), ...(event.values.participating ?? [])]
           .flatMap((v) => v.split(/[,;|]/))
           .map((v) => cleanText(v.trim(), 160))

@@ -12,11 +12,13 @@ import { createInlinePlace } from "@/app/(public)/account/location/actions";
 import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 import { OCCURRENCE_DETAILS_MAX } from "@/lib/event-import/occurrence-details";
+import { describeTemporal, describeWeekdays, clockLabel, type TemporalReading } from "@/lib/event-import/temporal";
 import {
   canOfferLocationCreate,
   canResearchLocation,
   decidePlaceFrom,
   emptyReviewOccurrence,
+  occurrencesFromTemporal,
   occurrenceSummary,
   REVIEW_TIME_NOT_LISTED,
   placeKeyFor,
@@ -42,6 +44,7 @@ export function WhenWhereEditor({
   initialPast,
   idPrefix = "",
   quickCreate,
+  temporal = null,
 }: {
   review: EventImportReview;
   set: (patch: Partial<EventImportReview>) => void;
@@ -52,6 +55,9 @@ export function WhenWhereEditor({
    * `onCreated` lets the parent show the new Location as a match and reuse
    * it for the same place elsewhere (other Events in a batch). */
   quickCreate?: { online: boolean; onCreated: (location: ReviewCreatedLocation) => void; createAction?: InlinePlaceAction; render?: LocationCreateRenderer };
+  /** Partial dates / weekly hours the source gave (./temporal.ts) — shown
+   * with what was found and the exact bound still needed. */
+  temporal?: TemporalReading | null;
 }) {
   const [open, setOpen] = useState<Set<string>>(() => initiallyOpen(review.occurrences));
   const [pastDates, setPastDates] = useState<ReviewOccurrence[]>(initialPast);
@@ -105,6 +111,7 @@ export function WhenWhereEditor({
 
   return (
     <>
+          {temporal && <PartialSchedulePanel temporal={temporal} review={review} set={set} idPrefix={idPrefix} />}
           {/* When (& Where) — each date is reviewed with its own place. */}
           <section aria-labelledby={`${idPrefix}when`} className={`${sectionClass} flex flex-col gap-2`}>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -363,6 +370,8 @@ export function PlaceFields({
           match={match}
           decision={place.useLocationId === match.id ? "use" : place.matchDecision === "reject" ? "reject" : null}
           onDecide={(decision) => (onDecide ? onDecide(decision, match.id) : onChange({ matchDecision: decision, useLocationId: decision === "use" ? match.id : null }))}
+          chosenId={place.useLocationId}
+          onPickAlternative={(id) => (onDecide ? onDecide("use", id) : onChange({ matchDecision: "use", useLocationId: id }))}
         />
       )}
       {!place.useLocationId && (
@@ -572,14 +581,22 @@ export function LocationMatchCard({
   decision,
   onDecide,
   pageText,
+  chosenId = null,
+  onPickAlternative,
 }: {
   match: LocationMatch;
   decision: "use" | "reject" | null;
   onDecide: (decision: "use" | "reject") => void;
   /** e.g. "The page says Corgi Cafe · 6 Events". */
   pageText?: string;
+  /** The Location currently linked for this place (may be an alternative). */
+  chosenId?: string | null;
+  /** Ambiguous match: choose one of the other plausible Locations. */
+  onPickAlternative?: (locationId: string) => void;
 }) {
   const locality = [[match.city, match.state].filter(Boolean).join(", "), match.postalCode].filter(Boolean).join(" ");
+  const alternatives = onPickAlternative ? (match.alternatives ?? []) : [];
+  const pickedAlternative = alternatives.find((a) => a.id === chosenId) ?? null;
   return (
     <fieldset className={`flex flex-col gap-2 rounded-xl border p-3 ${decision === null ? "border-amber-200 bg-amber-50/40" : "border-black/[0.08] bg-white"}`}>
       <legend className="sr-only">Is this {match.name}?</legend>
@@ -593,9 +610,24 @@ export function LocationMatchCard({
         {locality && <p className="text-metadata text-secondary">{locality}</p>}
       </div>
       <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
-        <Choice checked={decision === "use"} onChange={() => onDecide("use")} title="Use This Location" line="Show it on this Location’s page." />
-        <Choice checked={decision === "reject"} onChange={() => onDecide("reject")} title="Not the Same Place" line="Keep the place as written." />
+        <Choice checked={decision === "use" && !pickedAlternative} onChange={() => onDecide("use")} title="Use This Location" line="Show it on this Location’s page." />
+        <Choice checked={decision === "reject" && !pickedAlternative} onChange={() => onDecide("reject")} title={alternatives.length ? "None of These" : "Not the Same Place"} line="Keep the place as written." />
       </div>
+      {alternatives.length > 0 && (
+        // Ambiguous: several plausible Findmi Locations — the person picks.
+        <div className="flex flex-col gap-2 border-t border-black/[0.06] pt-2">
+          <p className="text-metadata font-semibold text-secondary">Other Possible Matches</p>
+          {alternatives.map((a) => (
+            <Choice
+              key={a.id}
+              checked={chosenId === a.id}
+              onChange={() => onPickAlternative!(a.id)}
+              title={`Use ${a.name}`}
+              line={[a.address, [a.city, a.state].filter(Boolean).join(", "), a.postalCode].filter(Boolean).join(" · ") || "No address on Findmi yet"}
+            />
+          ))}
+        </div>
+      )}
     </fieldset>
   );
 }
@@ -737,6 +769,106 @@ export function EventCategoryEditor({
         emptyText="No Event categories yet."
         onChange={(id) => set({ categoryId: id || null })}
       />
+    </section>
+  );
+}
+
+/** Partial schedule found in the source (Admin and Business Manager share
+ * it): what was found, what was kept (weekly hours), and an input for
+ * EXACTLY the missing bound. "Create Dates" turns the reading into Review
+ * dates through the one shared rule (occurrencesFromTemporal) — nothing is
+ * invented, and every created date stays editable below. */
+export function PartialSchedulePanel({ temporal, review, set, idPrefix = "" }: { temporal: TemporalReading; review: EventImportReview; set: (patch: Partial<EventImportReview>) => void; idPrefix?: string }) {
+  const [startDate, setStartDate] = useState(temporal.startDate ?? "");
+  const [endDate, setEndDate] = useState(temporal.endDate ?? "");
+  const [note, setNote] = useState<string | null>(null);
+  const message = describeTemporal(temporal);
+  const needsStart = temporal.unresolved.includes("start");
+  const needsEnd = temporal.unresolved.includes("end");
+  const create = () => {
+    const place = review.sharedPlace ? review.place : (review.occurrences[0]?.place ?? review.place);
+    const made = occurrencesFromTemporal(temporal, { startDate: startDate || null, endDate: endDate || null }, place);
+    if (!made) {
+      setNote(needsStart && !startDate ? "Add the opening date first." : needsEnd && !endDate ? "Add the last date first." : "Check the dates: the first date must be on or before the last date.");
+      return;
+    }
+    // Keep any date the person already filled in; replace the empty placeholder.
+    const kept = review.occurrences.filter((o) => o.date);
+    const known = new Set(kept.map((o) => o.date));
+    set({ occurrences: [...kept, ...made.occurrences.filter((o) => !known.has(o.date))].sort((a, b) => a.date.localeCompare(b.date)) });
+    setNote(made.truncated ? "Findmi added the first 60 dates. Add the rest in the Event Manager after saving." : `${made.occurrences.length} ${made.occurrences.length === 1 ? "date" : "dates"} added below — each stays editable.`);
+  };
+  return (
+    <section aria-labelledby={`${idPrefix}partial-schedule`} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4" data-partial-schedule>
+      <h2 id={`${idPrefix}partial-schedule`} className="text-label font-bold uppercase text-amber-800">
+        Schedule Found — Needs One More Detail
+      </h2>
+      {message && <p className="mt-1.5 text-body text-primary">{message.split(" Weekly hours were kept:")[0]}</p>}
+      {temporal.weekly.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-0.5 text-metadata text-secondary">
+          {temporal.weekly.map((w) => (
+            <li key={w.label}>
+              <span className="font-semibold text-primary">{describeWeekdays(w.days)}</span> · {clockLabel(w.startTime)}
+              {w.endTime ? `–${clockLabel(w.endTime)}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className={labelClass}>Opening Date{needsStart ? " (Needed)" : ""}</span>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={!needsStart} className={`${inputClass} disabled:bg-black/[0.03]`} />
+        </label>
+        <label className="block">
+          <span className={labelClass}>Last Date{needsEnd ? " (Needed)" : ""}</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={!needsEnd} className={`${inputClass} disabled:bg-black/[0.03]`} />
+        </label>
+      </div>
+      <button type="button" onClick={create} className="mt-3 flex h-10 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
+        Create Dates From This Schedule
+      </button>
+      {note && (
+        <p role="status" className="mt-2 text-metadata text-secondary">
+          {note}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Everything else the labeled paste stated that isn't an Event column —
+ * shown so nothing is silently dropped, and plainly marked as evidence
+ * (Admission is never read as "free"). Shared by both importers. */
+export function SourceEvidence({ structured }: { structured: EventCandidate["structured"] | undefined }) {
+  if (!structured) return null;
+  const rows: { label: string; value: string; href?: string; note?: string }[] = [];
+  if (structured.businessWebsite) rows.push({ label: "Brand Website", value: structured.businessWebsite.replace(/^https:\/\//, "").replace(/\/$/, ""), href: structured.businessWebsite });
+  if (structured.instagram) rows.push({ label: "Instagram", value: structured.instagram.replace(/^https:\/\/www\.instagram\.com\//, "@").replace(/\/$/, ""), href: structured.instagram });
+  if (structured.eventType) rows.push({ label: "Event Type", value: structured.eventType, note: "Used to suggest Category and Formats." });
+  if (structured.admission) rows.push({ label: "Admission", value: structured.admission, note: "From the source — not saved, and never assumed to be free." });
+  if (rows.length === 0) return null;
+  return (
+    <section aria-labelledby="source-evidence" className={sectionClass}>
+      <h2 id="source-evidence" className="text-label font-bold uppercase text-subtle">
+        Also In Your Source
+      </h2>
+      <dl className="mt-1.5 flex flex-col gap-1.5">
+        {rows.map((r) => (
+          <div key={r.label} className="min-w-0">
+            <dt className="text-metadata font-semibold text-secondary">{r.label}</dt>
+            <dd className="break-words text-body text-primary">
+              {r.href ? (
+                <a href={r.href} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                  {r.value}
+                </a>
+              ) : (
+                r.value
+              )}
+              {r.note && <span className="block text-microcopy text-subtle">{r.note}</span>}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }

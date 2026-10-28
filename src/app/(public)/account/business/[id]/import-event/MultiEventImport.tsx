@@ -6,7 +6,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { commitEventImportBatch } from "./actions";
 import type { EventImportIntent, EventImportReview, ImportSource, ReviewOccurrence, SourceEventAnalysis } from "@/lib/event-import/types";
 import { BATCH_STATUS_LABEL, END_WITHOUT_START, applyCreatedLocation, batchItemStatus, datesMissingTime, batchSummary, decidePlace, defaultSelection, involvedBusinessNames, occurrenceSummary, persistNote, pastReviewOccurrences, reviewDateFor, reviewDefaults, withCreatedLocations, type BatchStatusKind, type ReviewCreatedLocation } from "@/lib/event-import/review";
-import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction, type LocationCreateRenderer } from "./ReviewParts";
+import { EventCategoryEditor, EventFormatEditor, Choice, LocationMatchCard, SourceEvidence, WhenWhereEditor, inputClass, labelClass, sectionClass, type InlinePlaceAction, type LocationCreateRenderer } from "./ReviewParts";
 import { businessEvidenceKey, eventBusinessEvidence, operatorImportSummary, operatorReviewDefaults, resolveStructuredTaxonomy, suggestedEventBusiness, type OperatorSessionStats } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
 
@@ -126,7 +126,9 @@ export default function MultiEventImport({
   // Participating: upcoming Events not already on the schedule start chosen.
   // Hosting: nothing is pre-chosen — a calendar listing an Event doesn't
   // mean this Business organizes it.
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelection(events, intent)));
+  // An article mentioning several Events: which one is meant is uncertain —
+  // start with nothing selected (never import them all silently).
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(source.ambiguous ? [] : defaultSelection(events, intent)));
   const [showPast, setShowPast] = useState(false);
   const [reviews, setReviews] = useState<Record<string, EventImportReview>>({});
   // Operator only: each Event's own Business (never one for the batch).
@@ -183,7 +185,14 @@ export default function MultiEventImport({
     const nextBusiness = { ...businessFor };
     for (const e of chosen) {
       if (!nextReviews[e.key]) {
-        nextReviews[e.key] = operator ? operatorReviewDefaults(e.candidate, e.matches, { categories, formats }) : reviewDefaults(e.candidate, e.matches, intent, businessName);
+        // One taxonomy resolver for Admin and Business Manager.
+        nextReviews[e.key] = operator
+          ? operatorReviewDefaults(e.candidate, e.matches, { categories, formats })
+          : (() => {
+              const base = reviewDefaults(e.candidate, e.matches, intent, businessName);
+              const t = e.candidate.structured ? resolveStructuredTaxonomy(e.candidate.structured, categories, formats) : null;
+              return t ? { ...base, categoryId: t.categoryId, formatIds: t.formatIds } : base;
+            })();
         nextPast[e.key] = pastReviewOccurrences(e.candidate, e.matches);
         if (operator) nextBusiness[e.key] = suggestedEventBusiness(e.matches) ?? createdBusinesses[evidenceKeyOf(e)] ?? null;
       }
@@ -544,6 +553,7 @@ export default function MultiEventImport({
                       </div>
                       {!joining && (
                         <WhenWhereEditor
+                          temporal={e.candidate.temporal ?? null}
                           review={review}
                           set={set}
                           matches={matchesOf(e)}
@@ -554,6 +564,7 @@ export default function MultiEventImport({
                       )}
                       {(!joining || operator) && (review.intent === "hosting" || review.asEvent) && <EventCategoryEditor categories={categories} review={review} set={set} />}
                       {(!joining || operator) && (review.intent === "hosting" || review.asEvent) && <EventFormatEditor formats={formats} review={review} set={set} />}
+                      <SourceEvidence structured={e.candidate.structured} />
                       {operator?.renderEventDetails({
                         id: `batch-${e.key}`,
                         eventKey: e.key,

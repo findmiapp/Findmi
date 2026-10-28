@@ -6,6 +6,8 @@
 // Review keeps a single Where section (`sharedPlace`); when places differ,
 // each date is reviewed together with its place.
 import { reviewAttendanceDefaults } from "./attendance-links";
+import { SCHEDULE_MAX_OCCURRENCES } from "./schedule";
+import { expandWeeklySchedule, type TemporalReading } from "./temporal";
 import {
   EMPTY_VENUE,
   sharedVenue,
@@ -85,6 +87,28 @@ export function emptyReviewOccurrence(place: ReviewPlace | null = null): ReviewO
   return { id: `d${rowSeq}`, date: "", startTime: "", endTime: "", place: place ?? placeFromVenue(EMPTY_VENUE, { event: null, locations: [], organizerBusiness: null, existingAppearance: null }) };
 }
 
+/** Partial schedule → concrete Review dates once the person supplies the
+ * missing bound(s) (one shared rule for Admin and Business Manager —
+ * ./temporal.ts). Each date keeps its own weekday's hours; a weekday with
+ * no hours line is closed and gets no date. Null while a bound is still
+ * missing or the bounds are reversed — nothing is ever invented. */
+export function occurrencesFromTemporal(
+  temporal: Pick<TemporalReading, "startDate" | "endDate" | "weekly" | "weekdays">,
+  bounds: { startDate?: string | null; endDate?: string | null },
+  place: ReviewPlace
+): { occurrences: ReviewOccurrence[]; truncated: boolean } | null {
+  const filled = { ...temporal, startDate: temporal.startDate ?? bounds.startDate ?? null, endDate: temporal.endDate ?? bounds.endDate ?? null };
+  const expanded = expandWeeklySchedule(filled, SCHEDULE_MAX_OCCURRENCES);
+  if (!expanded || expanded.dates.length === 0) return null;
+  return {
+    truncated: expanded.truncated,
+    occurrences: expanded.dates.map((d) => {
+      rowSeq += 1;
+      return { id: `d${rowSeq}`, date: d.date, startTime: d.startTime ?? "", endTime: d.endTime ?? "", place: { ...place } };
+    }),
+  };
+}
+
 /** The occurrences Review starts with: upcoming ones — or, when every date
  * has passed, all of them (the Business decides). */
 function includedByDefault(candidate: EventCandidate): ImportedOccurrence[] {
@@ -123,10 +147,15 @@ export function reviewDefaults(
   // Pasted text / an image may state the place without a readable date.
   const shared = included.length === 0 && candidate.place ? candidate.place : sharedVenue(included);
   const occurrences = included.length > 0 ? included.map((o) => toReviewOccurrence(o, matches)) : [emptyReviewOccurrence(candidate.place ? placeFromVenue(candidate.place, matches) : null)];
+  // Business Manager context: when the source's Brand / Host names THIS
+  // Business, hosting shows it as the organizer (never "Not listed" while
+  // holding that evidence); participating keeps it as the participant.
+  const contextOrganizer = intent === "hosting" && matches.contextBusiness ? matches.contextBusiness.name : null;
   const organizer =
-    intent === "participating" && businessName && candidate.organizer && sameName(candidate.organizer, businessName) && candidate.sources.organizer !== "structured"
+    contextOrganizer ??
+    (intent === "participating" && businessName && candidate.organizer && sameName(candidate.organizer, businessName) && candidate.sources.organizer !== "structured"
       ? null
-      : candidate.organizer;
+      : candidate.organizer);
   return {
     intent,
     title: candidate.title ?? "",

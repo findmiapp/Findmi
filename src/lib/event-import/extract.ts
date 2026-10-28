@@ -80,7 +80,25 @@ interface Collected {
   controls: { text: string; href: string | null }[];
 }
 
-const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "svg", "head", "nav", "footer"]);
+const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "svg", "head", "nav", "footer", "aside"]);
+
+/** Page regions that are NEVER the Event the page is about: navigation,
+ * footers, sidebars, and "related / recommended / more stories" modules
+ * (an article's recommendations are not Events being imported). One rule,
+ * shared by the single-Event text reader and the several-Events card
+ * reader (./sources.ts) — Findmi Consolidation pass. */
+const BOILERPLATE_TAGS = new Set(["nav", "footer", "aside"]);
+const BOILERPLATE_ROLES = new Set(["navigation", "complementary", "contentinfo", "banner"]);
+const BOILERPLATE_HINT =
+  /(?:^|[\s_-])(related|recommend\w*|more[-_ ]?(?:stories|events|articles|posts|from|news|like)|sidebar|side-bar|widget|newsletter|trending|popular|most[-_ ]?read|you[-_ ]?may|also[-_ ]?like|read[-_ ]?(?:next|more)|up[-_ ]?next|promo\w*|advert\w*|sponsored|share|social|comments?|breadcrumbs?|site[-_ ]?(?:header|footer|nav))(?:$|[\s_-])/i;
+export function isBoilerplateRegion(node: { tagName?: string; attrs?: { name: string; value: string }[] }): boolean {
+  const tag = node.tagName;
+  if (!tag) return false;
+  if (BOILERPLATE_TAGS.has(tag)) return true;
+  const get = (n: string) => node.attrs?.find((a) => a.name === n)?.value ?? "";
+  if (BOILERPLATE_ROLES.has(get("role").toLowerCase())) return true;
+  return BOILERPLATE_HINT.test(`${get("class")} ${get("id")} ${get("data-component")}`);
+}
 const BLOCK = new Set([
   "p", "div", "li", "ul", "ol", "tr", "table", "tbody", "thead", "section", "article", "main", "header", "aside",
   "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "dd", "dt", "dl", "figure", "figcaption", "pre", "address",
@@ -141,7 +159,7 @@ function collect(html: string): Collected {
       flush();
       return;
     }
-    const childSkip = tag ? SKIP_TEXT.has(tag) : false;
+    const childSkip = tag ? SKIP_TEXT.has(tag) || isBoilerplateRegion(node) : false;
     const block = tag ? BLOCK.has(tag) : false;
     if (block) flush();
     if (tag === "td" || tag === "th") line += " | ";

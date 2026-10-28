@@ -477,6 +477,21 @@ export function explicitDateList(text: string, ctx: ScheduleContext, maxRangeDay
   return [...out].sort();
 }
 
+/** Every calendar date written in `text`, in order, with where it sits —
+ * the partial-date reader (./temporal.ts) decides what each one MEANS
+ * ("through …" = an end bound, "opening …" = a start bound). A day that
+ * doesn't exist is skipped, never guessed. */
+export function datesInText(text: string, ctx: ScheduleContext): { date: string; index: number; end: number; yearStated: boolean }[] {
+  const t = text.replace(/\u00A0/g, " ");
+  const stated = /\b(20\d{2})\b/.exec(t);
+  const out: { date: string; index: number; end: number; yearStated: boolean }[] = [];
+  for (const tk of dateTokens(t, ctx)) {
+    const year = tk.year ?? (stated ? Number(stated[1]) : resolveYear(tk.month, tk.day, ctx));
+    if (validDay(year, tk.month, tk.day)) out.push({ date: ymd(year, tk.month, tk.day), index: tk.index, end: tk.end, yearStated: tk.year !== null });
+  }
+  return out;
+}
+
 /** The one year a page's text mentions (2000–2099), if exactly one. */
 export function yearHintFrom(lines: string[]): number | null {
   const years = new Set<number>();

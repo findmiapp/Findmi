@@ -26,6 +26,7 @@ import {
   cleanEventTitle,
   collectEventNodes,
   imageOf,
+  isBoilerplateRegion,
   nameOf,
   normalizeDateValue,
   occurrencesFrom,
@@ -54,7 +55,16 @@ export interface SourceEvent {
 
 export type SourceClassification =
   | { kind: "single" }
-  | { kind: "multi"; via: "structured" | "page_data" | "cards"; sourceName: string | null; events: SourceEvent[] }
+  | {
+      kind: "multi";
+      via: "structured" | "page_data" | "cards";
+      sourceName: string | null;
+      events: SourceEvent[];
+      /** An editorial page (article / blog post) that mentions several
+       * Events: which one is meant is uncertain — Review starts with
+       * nothing selected and says so, never importing them all. */
+      ambiguous?: boolean;
+    }
   /** The page is clearly a calendar/organizer page but its Events can't be read. */
   | { kind: "multi_unreadable"; sourceName: string | null };
 
@@ -384,6 +394,9 @@ function fromCards(page: Page, pageUrl: URL, now: number, siteName: string | nul
   let budget = MAX_DOM_NODES;
   const walk = (n: HtmlNode, depth: number) => {
     if (budget-- <= 0) return;
+    // Navigation, footers, sidebars and related / recommended modules are
+    // never listings of the Events being imported.
+    if (isBoilerplateRegion(n)) return;
     const cls = (attr(n, "class") ?? "").toLowerCase();
     const isCard = n.tagName ? CARD_TAGS.has(n.tagName) || ((n.tagName === "div" || n.tagName === "section") && /\bevent/.test(cls)) : false;
     if (isCard) {
@@ -471,8 +484,15 @@ function sortAndCap(events: SourceEvent[]): SourceEvent[] {
     .slice(0, SOURCE_MAX_EVENTS);
 }
 
+/** An article / blog post / news page (og:type, or schema.org Article). */
+export function isEditorialPage(page: { meta: Map<string, string>; jsonLd: string[] }): boolean {
+  if (/^article$/i.test(page.meta.get("og:type") ?? "")) return true;
+  return page.jsonLd.some((b) => /"@type"\s*:\s*(?:\[[^\]]*)?"(?:Article|NewsArticle|BlogPosting|Report|ReportageNewsArticle)"/.test(b));
+}
+
 export function classifySource(html: string, pageUrl: URL, now: number = Date.now()): SourceClassification {
   const page = readPage(html);
+  const editorial = isEditorialPage(page);
   const siteName = cleanText(page.meta.get("og:site_name"), 80);
   const sourceName = cleanEventTitle(cleanText(page.meta.get("og:title") ?? page.title, 120), siteName) ?? siteName;
 
@@ -480,17 +500,20 @@ export function classifySource(html: string, pageUrl: URL, now: number = Date.no
   // This page IS one of its listed Events → a single Event page (other
   // Events it lists are "related", not what was pasted).
   if (hasPageEvent(ld, pageUrl)) return { kind: "single" };
-  if (isMulti(ld)) return { kind: "multi", via: "structured", sourceName, events: sortAndCap(ld) };
+  if (isMulti(ld)) return { kind: "multi", via: "structured", sourceName, events: sortAndCap(ld), ...(editorial ? { ambiguous: true } : {}) };
 
   const data = fromPageData(page, pageUrl, siteName);
   if (hasPageEvent(data, pageUrl)) return { kind: "single" };
-  if (isMulti(data)) return { kind: "multi", via: "page_data", sourceName, events: sortAndCap(data) };
+  if (isMulti(data)) return { kind: "multi", via: "page_data", sourceName, events: sortAndCap(data), ...(editorial ? { ambiguous: true } : {}) };
 
   // One structured Event that is NOT this page, on a calendar-shaped URL:
   // never pretend that one Event is the whole source.
   const singleElsewhere = ld.length === 1 && ld[0].candidate.sourceUrl && !sameEventUrl(ld[0].candidate.sourceUrl, pageUrl);
 
-  if (ld.length === 0 || singleElsewhere) {
+  // An ARTICLE's own Event is the page itself: repeated cards on an
+  // editorial page are recommendations / further reading, never Events
+  // being imported (the single-Event reader reads the article body).
+  if (!editorial && (ld.length === 0 || singleElsewhere)) {
     const cards = fromCards(page, pageUrl, now, siteName);
     if (isMulti(cards) && new Set(cards.map((c) => c.identity)).size >= 2) return { kind: "multi", via: "cards", sourceName, events: sortAndCap(cards) };
   }

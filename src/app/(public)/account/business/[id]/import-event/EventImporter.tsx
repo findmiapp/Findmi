@@ -9,7 +9,8 @@ import { imageVariantUrl } from "@/lib/image-variants";
 import { safePreviewSrc } from "@/lib/event-import/preview-src";
 import MultiEventImport from "./MultiEventImport";
 import { EVENT_DESCRIPTION_MAX } from "@/lib/event-import/description";
-import { AttendanceEditor, EventCategoryEditor, EventFormatEditor, Choice, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { AttendanceEditor, EventCategoryEditor, EventFormatEditor, Choice, SourceEvidence, WhenWhereEditor, inputClass, labelClass, sectionClass } from "./ReviewParts";
+import { resolveStructuredTaxonomy } from "@/lib/event-import/operator";
 import type { Category } from "@/lib/types";
 import {
   EVENT_IMPORT_FAILURE_COPY,
@@ -193,7 +194,11 @@ export default function EventImporter({
       setStep({ kind: "multi", source: result.source, events: result.events, warnings: result.warnings });
       return;
     }
-    const defaults = reviewDefaults(result.candidate, result.matches, intent!, businessName, { identityFromMatch: true });
+    const base = reviewDefaults(result.candidate, result.matches, intent!, businessName, { identityFromMatch: true });
+    // Labeled Category / Formats / Event type resolve against the canonical
+    // vocabulary through the SAME resolver Admin Event Import uses.
+    const taxonomy = result.candidate.structured ? resolveStructuredTaxonomy(result.candidate.structured, categories, formats) : null;
+    const defaults = taxonomy ? { ...base, categoryId: taxonomy.categoryId, formatIds: taxonomy.formatIds } : base;
     setReview(defaults);
     setInitialPast(pastReviewOccurrences(result.candidate, result.matches));
     setReviewVersion((v) => v + 1);
@@ -619,6 +624,7 @@ export default function EventImporter({
         set={set}
         matches={matches}
         initialPast={initialPast}
+        temporal={candidate.temporal ?? null}
         quickCreate={{
           online: Boolean(candidate.online),
           // A Location created/chosen in Review shows as this place's
@@ -639,8 +645,26 @@ export default function EventImporter({
         <h2 id="organizer" className="text-label font-bold uppercase text-subtle">
           Organizer
         </h2>
-        <p className="mt-1.5 text-body text-primary">{organizerShown ?? (candidate.origin === "text" || candidate.origin === "image" ? "Not listed" : "Not listed on the page")}</p>
+        {matches.contextBusiness ? (
+          // The source's Brand / Host names THIS Business: suggested from that
+          // evidence (reviewable — change the involvement below).
+          <>
+            <p className="mt-1.5 text-body text-primary">
+              {intent === "hosting" ? (
+                <>
+                  <span className="font-semibold">{matches.contextBusiness.name}</span> — your Business, hosting
+                </>
+              ) : (
+                <>Not listed — <span className="font-semibold">{matches.contextBusiness.name}</span> takes part as the featured brand</>
+              )}
+            </p>
+            <p className="mt-0.5 text-metadata text-muted">Matched from the source: “{candidate.structured?.businessEvidence ?? matches.contextBusiness.evidence}”</p>
+          </>
+        ) : (
+          <p className="mt-1.5 text-body text-primary">{organizerShown ?? (candidate.origin === "text" || candidate.origin === "image" ? "Not listed" : "Not listed on the page")}</p>
+        )}
       </section>
+      <SourceEvidence structured={candidate.structured} />
 
       {/* 2. Is It Already On Findmi? — Event identity, independent of the relationship. */}
       {matches.event && (

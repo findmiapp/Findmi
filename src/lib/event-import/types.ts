@@ -12,6 +12,7 @@
 import type { EventImportFetchDiagnostics } from "./diagnostics";
 import type { ImportedAttendance } from "./attendance";
 import type { LocationVisibility, RsvpCta } from "../event-attendance";
+import type { TemporalReading } from "./temporal";
 
 export type EventImportIntent = "participating" | "hosting";
 
@@ -44,6 +45,9 @@ export interface ImportedVenue {
   city: string | null;
   state: string | null;
   postalCode: string | null;
+  /** Suite / unit / floor (structured "Address Line 2:"), kept apart from
+   * the street address used for matching and geocoding. */
+  addressLine2?: string | null;
   /** "Location Website:" — the PLACE's own official website (never the
    * Business's). Location Import evidence only; not an Event field. */
   website?: string | null;
@@ -105,6 +109,11 @@ export interface EventCandidate {
   /** What the source made public about the place (exact / broad / hidden /
    * none). "hidden" occurrences carry no venue name or street address. */
   locationVisibility?: LocationVisibility;
+  /** Partial temporal information the source gives but that couldn't
+   * become dates yet ("Open through Nov 29, 2026" — end known, opening
+   * unresolved; weekly hours without both bounds). Review shows what was
+   * found and asks for exactly the missing bound (./temporal.ts). */
+  temporal?: TemporalReading;
   /** Admin structured paste only (./structured-paste.ts): explicit field
    * values that aren't Event columns — Business evidence, taxonomy names to
    * resolve against the canonical vocabulary, and notes for Review. */
@@ -123,6 +132,17 @@ export interface StructuredEventHints {
   formats: string[];
   /** Plain-language notes for Review (unreadable values, fields not saved). */
   notes: string[];
+  /** The full Brand / Host statement when a description followed the name
+   * ("DUA by AB, Dua Lipa's skincare brand …") — evidence for Review. */
+  businessEvidence?: string | null;
+  /** "Instagram:" — the Brand's Instagram profile (Business evidence). */
+  instagram?: string | null;
+  /** "Event Type:" as written — evidence for choosing Category / Formats. */
+  eventType?: string | null;
+  /** "Admission / RSVP:" prose — evidence only; never read as "free". */
+  admission?: string | null;
+  /** The stated time zone (IANA), when the source names one. */
+  timezone?: string | null;
   /** "Business Website:" — the Primary Business's site, for the inline
    * Brand Import (never the Event Link). */
   businessWebsite?: string | null;
@@ -179,8 +199,23 @@ export interface EventImportMatches {
   /** One entry per distinct place on the page (keyed by venueKey). "strong"
    * = a single clear match and is pre-selected; "possible" is shown but the
    * Business decides. */
-  locations: { key: string; id: string; name: string; address: string | null; city: string | null; state: string | null; postalCode?: string | null; confidence: "strong" | "possible" }[];
+  locations: {
+    key: string;
+    id: string;
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode?: string | null;
+    confidence: "strong" | "possible";
+    /** Other plausible Findmi Locations for the same place (ambiguous). */
+    alternatives?: { id: string; name: string; address: string | null; city: string | null; state: string | null; postalCode: string | null }[];
+  }[];
   organizerBusiness: { id: string; name: string } | null;
+  /** Business Manager context: the source's Brand / Host / Organizer
+   * statement names the Business doing the import. Hosting → suggested as
+   * host/organizer; Participating → as the participant. Reviewable. */
+  contextBusiness?: { id: string; name: string; evidence: string } | null;
   /** This Business's existing standalone schedule item for the same day/title, if any. */
   existingAppearance: { id: string; title: string; startAt: string } | null;
 }
@@ -228,6 +263,8 @@ export interface ImportSource {
   url: string;
   name: string | null;
   platform: string | null;
+  /** An editorial page mentioning several Events: none pre-selected. */
+  ambiguous?: boolean;
 }
 
 export type EventImportAnalysis =
