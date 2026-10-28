@@ -73,8 +73,10 @@ export interface ProductWantControl {
   signedIn: boolean | null;
   busy: boolean;
   error: string | null;
-  /** Signed in: toggles. Signed out: the caller opens the email sheet. */
-  toggle: () => void;
+  /** Signed in: toggles. Signed out: the caller opens the email sheet.
+   * `authed` lets a caller that awaited the session act on a tap made
+   * before this control's own session check resolved. */
+  toggle: (authed?: boolean) => void;
   /** Signed-out email interest. Resolves true on success. */
   submitEmail: (email: string, honeypot?: string) => Promise<boolean>;
 }
@@ -117,8 +119,8 @@ export function useProductWant(productId: string, source: WantSource, sourceChan
     return { ok: res.ok && Boolean(data), data };
   }
 
-  function toggle() {
-    if (!signedIn || busy) return;
+  function toggle(authed?: boolean) {
+    if (!(authed ?? signedIn) || busy) return;
     const next = !wanted;
     notify(productId, next); // optimistic, every control for this Product
     setBusy(true);

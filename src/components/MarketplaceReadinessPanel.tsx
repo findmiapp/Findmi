@@ -43,7 +43,7 @@ export default function MarketplaceReadinessPanel({
         {readiness.eligible
           ? "Customers can buy this through Findmi checkout."
           : readiness.catalogVisible
-            ? "Shown on your Findmi profile. It reaches the Marketplace once it's approved AND ready for checkout."
+            ? "Shown on your Findmi profile. It reaches the Marketplace once it's approved and ready for checkout."
             : "Not publicly visible yet."}
       </p>
 

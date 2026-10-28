@@ -4,6 +4,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useProductWant } from "@/lib/useProductWant";
+import { getAccountSession } from "@/lib/accountSession";
 import type { WantSource } from "@/lib/product-wants-domain";
 
 /** Product Want — "I want this Product" (product_wants), distinct from the
@@ -31,12 +32,13 @@ export default function ProductWantButton({
   const want = useProductWant(productId, source, sourceChannel);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  function onClick(e: MouseEvent) {
+  async function onClick(e: MouseEvent) {
     // Cards: never also follow the card's link.
     e.preventDefault();
     e.stopPropagation();
-    if (want.signedIn === null) return;
-    if (want.signedIn) want.toggle();
+    // A tap before the shared session check resolved still counts.
+    const authed = want.signedIn ?? (await getAccountSession());
+    if (authed) want.toggle(true);
     else if (!want.wanted) setSheetOpen(true);
   }
 
