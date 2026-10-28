@@ -389,7 +389,9 @@ test("HOSTING: one Event → one occurrence per date, each linked to ITS OWN pla
   assert.equal(rpc.args.p_end_at, at("2026-10-17", "18:00"), "spans to the latest end");
   const occ = ops.find((o) => o.op === "insert" && o.table === "event_occurrences").rows;
   assert.deepEqual(occ.map((r) => [r.venue_name, r.location_id]), [["Grand Central Terminal", LOC_GC], ["MSG", null], ["Astoria Park", null]]);
-  assert.deepEqual(ops.find((o) => o.op === "update" && o.table === "events").patch, { is_demo: false, publication_status: "live" }, "live by default");
+  // Consolidation pass: a hosted Business submission stays pending review —
+  // the import never publishes it.
+  assert.equal(ops.filter((o) => o.op === "update" && o.table === "events" && o.patch.publication_status === "live").length, 0, "pending review, never published by the import");
   const ev = ops.find((o) => o.op === "update" && o.table === "events" && !("is_demo" in o.patch)).patch;
   assert.equal(ev.venue_name, null, "a multi-place Event has no single Event-level venue");
   assert.equal(ev.city, "New York", "…but keeps the city every date shares");

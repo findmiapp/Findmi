@@ -22,6 +22,7 @@ import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@
 import { anonymousLocationClientIp, recordAnonymousLocationSubmission } from "@/lib/anonymous-location-rate-limit";
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { insertInlinePlace } from "@/lib/places/inline-place";
+import { newLocationModeration } from "@/lib/location-review";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { normalizeLocationHours } from "@/lib/locationHours";
 import type { LocationHours } from "@/lib/types";
@@ -158,6 +159,8 @@ export async function createMemberLocation(formData: FormData) {
   // own "ZIP Code" field already writes), added to the normal factual
   // user-facing form. No duplicate field, no migration.
   const postalCode = str(formData, "postal_code");
+  // Suite / unit / floor — kept apart from the geocoded street address.
+  const addressLine2 = str(formData, "address_line2");
   const marketId = str(formData, "market_id");
   // Location Market -> Area Parity pass — optional, explicit Area within
   // the chosen Market. Never inferred from address/city/state — only from
@@ -189,6 +192,7 @@ export async function createMemberLocation(formData: FormData) {
     intent: intent ?? "",
     name,
     address,
+    address_line2: addressLine2,
     city,
     state,
     postal_code: postalCode,
@@ -310,11 +314,14 @@ export async function createMemberLocation(formData: FormData) {
       name: name!.trim(),
       slug,
       address: clean(address),
+      address_line2: clean(addressLine2),
       city: clean(city),
       state: clean(state),
       postal_code: clean(postalCode),
       market_id: effectiveMarketId || null,
-      is_demo: true,
+      // A member / Business submission: unlisted and pending Admin review
+      // (lib/location-review.ts — review_status is the moderation state).
+      ...newLocationModeration("member"),
       ...(parentLocationId ? { parent_location_id: parentLocationId } : {}),
     })
     .select("id")

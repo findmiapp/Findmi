@@ -36,7 +36,8 @@ import { LocationsPresence, PastPresence, PlacesLens, PresenceHeader, parsePrese
 import AddEventChooser from "../v2/AddEventChooser";
 import GrowthFootprintBridge from "../v2/GrowthFootprintBridge";
 import { ADD_EVENT_PARAM, eventImportHref, hostEventHref, parseComposeIntent } from "../v2/eventIntent";
-import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
+import { getBusinessLocationEvidence, getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
+import { scopeLocationSuggestions } from "@/lib/location-matching";
 import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
 import { getBrandAudit, getIdeasForBusiness } from "@/lib/brand-audit";
@@ -643,9 +644,10 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // Read via the service-role client (already authorized above) so the
   // owner also sees their own pending/archived connected Locations.
   const loadBusinessLocationsView = async () => {
-    const [page, managed] = await Promise.all([
+    const [page, managed, evidence] = await Promise.all([
       getLocationsForBusiness(admin, id),
       user ? getManagedLocationsForUser(admin, user.id) : Promise.resolve([]),
+      getBusinessLocationEvidence(admin, id),
     ]);
     const managedIds = new Set(managed.map((m) => m.id));
     const linkedIds = new Set(page.items.map((l) => l.locationId));
@@ -657,7 +659,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     );
     return {
       ...page,
-      connectable: managed.filter((m) => !linkedIds.has(m.id) && !alsoLinked.has(m.id)),
+      // Scoped to THIS Business (lib/location-matching.ts): a Location the
+      // person manages for an unrelated Business is never suggested here.
+      connectable: scopeLocationSuggestions({
+        businessName: business.name,
+        managed,
+        evidenceLocationIds: evidence,
+        linkedIds: new Set([...linkedIds, ...alsoLinked]),
+      }),
       // Admin Manage-As can manage every Location (lib/permissions.ts).
       manageableIds: isAdminElevated ? page.items.map((l) => l.locationId) : page.items.map((l) => l.locationId).filter((lid) => managedIds.has(lid)),
     };

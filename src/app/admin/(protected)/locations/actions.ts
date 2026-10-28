@@ -116,6 +116,7 @@ export async function saveLocation(id: string | null, formData: FormData) {
     name,
     slug,
     address: str(formData, "address"),
+    address_line2: str(formData, "address_line2"),
     city,
     state,
     postal_code: str(formData, "postal_code"),
@@ -142,12 +143,15 @@ export async function saveLocation(id: string | null, formData: FormData) {
     // Read the prior is_demo BEFORE overwriting it, so a review-decision
     // email only fires on a genuine transition — never on an ordinary
     // content edit that leaves published/unpublished state unchanged.
-    const { data: before } = await supabase.from("locations").select("is_demo").eq("id", locationId).maybeSingle();
+    const { data: before } = await supabase.from("locations").select("is_demo, review_status").eq("id", locationId).maybeSingle();
     const wasPublished = before ? !before.is_demo : null;
+    // Publishing a pending submission IS Admin's approval of it
+    // (review_status is the canonical moderation state — lib/location-review.ts).
+    const reviewPatch = !payload.is_demo && before?.review_status === "pending_review" ? { review_status: "approved" as const } : {};
 
-    let { error } = await supabase.from("locations").update(payload).eq("id", locationId);
+    let { error } = await supabase.from("locations").update({ ...payload, ...reviewPatch }).eq("id", locationId);
     if (error && isMissingHierarchyColumns(error.message)) {
-      ({ error } = await supabase.from("locations").update(withoutHierarchy(payload)).eq("id", locationId));
+      ({ error } = await supabase.from("locations").update(withoutHierarchy({ ...payload, ...reviewPatch })).eq("id", locationId));
     }
     if (error) redirect(errorRedirectUrl(editPath, friendlyHierarchyError(error.message)));
 

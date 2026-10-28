@@ -128,9 +128,9 @@ export async function adminCreateImportLocation(formData: FormData): Promise<Cre
   const field = (k: string) => (typeof formData.get(k) === "string" ? (formData.get(k) as string) : "");
   return createImportedLocation(
     admin,
-    { name: field("name"), address: field("address"), city: field("city"), state: field("state"), postalCode: field("postal_code") || null },
+    { name: field("name"), address: field("address"), addressLine2: field("address_line2") || null, city: field("city"), state: field("state"), postalCode: field("postal_code") || null },
     defaultLocationImportDeps(admin),
-    { force: field("force") === "1" }
+    { force: field("force") === "1", submitter: "admin" }
   );
 }
 

@@ -1,6 +1,9 @@
-// Event Publication — LIVE BY DEFAULT + Admin oversight. Every legitimate
-// creation path publishes the new Event immediately; Findmi Admin sees it
-// under New Events and can Hide / Publish / Shut Down / Restore it.
+// Event Publication — WHO SUBMITS decides the starting state (Findmi
+// Consolidation pass; supersedes the earlier "live by default" rule):
+// Admin-created Events (Admin Event Import, Manage-As hosting, legacy
+// conversion) are live at once; Business / user submissions are saved
+// pending Admin review and stay manageable by their submitter. Findmi Admin
+// can Approve (Publish) / Hide / Shut Down / Restore any Event.
 // Fake clients and source guards only — no network, no database.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -116,20 +119,43 @@ test("the one publication definition: is_demo false + publication_status live", 
   assert.deepEqual({ ...PUB.NEW_EVENT_PUBLICATION }, LIVE);
 });
 
-test("1: Host an Event / hosted import — create_owned_event, then published at once (guarded to the RPC's state)", async () => {
+test("the one starting-state rule: Admin → live; Business / user submission → pending review", () => {
+  assert.deepEqual({ ...PUB.eventPublicationFor("admin") }, LIVE);
+  assert.deepEqual({ ...PUB.eventPublicationFor("business") }, { is_demo: true, publication_status: "pending_review" });
+  assert.equal(PUB.isEventPublic({ is_demo: false, publication_status: "live" }), true);
+  assert.equal(PUB.isEventPublic({ is_demo: true, publication_status: "pending_review" }), false);
+  assert.equal(PUB.isEventPublic({ is_demo: false, publication_status: "rejected" }), false);
+});
+
+test("1: Host an Event / hosted import by a real Owner — create_owned_event, stays PENDING review (never published by the import)", async () => {
   const { client, ops } = fakeAdmin();
   const { deps } = persistDeps(client);
-  const out = await P.persistEventImport(norm(review({ intent: "hosting", asEvent: false })), deps);
+  const out = await P.persistEventImport(norm(review({ intent: "hosting", asEvent: false })), { ...deps, submitter: "business" });
   assert.equal(out.ok, true);
-  const rpcAt = ops.findIndex((o) => o.op === "rpc" && o.name === "create_owned_event");
-  const publish = ops.findIndex((o) => o.op === "update" && o.table === "events" && o.patch.publication_status === "live");
-  assert.ok(rpcAt >= 0 && publish === rpcAt + 1, "published right after creation");
-  assert.deepEqual(ops[publish].patch, LIVE);
-  assert.deepEqual(ops[publish].where, [["eq", "id", "hosted-event"], ["eq", "publication_status", "pending_review"]], "never re-publishes an Event Admin hid");
+  assert.equal(out.pendingReview, true, "the outcome says it's pending");
+  assert.equal(out.publicHref, undefined, "no public link for a pending Event");
+  assert.ok(ops.some((o) => o.op === "rpc" && o.name === "create_owned_event"));
+  assert.equal(ops.filter((o) => o.op === "update" && o.table === "events" && o.patch.publication_status === "live").length, 0, "never published by the import");
   assert.equal(ops.find((o) => o.op === "rpc").args.p_host_business_id, "corgi", "a hosted Event keeps its host");
-  // Host an Event's own form action does the same right after the RPC.
+  // Host an Event's own form action publishes only for an Admin operating the Business.
   const member = read("src/app/(public)/account/event/actions.ts");
-  assert.match(member, /const eventId = \(created as \{ id: string \}\)\.id;\n[\s\S]{0,200}const published = await publishCreatedEvent\(admin, eventId\);/);
+  assert.match(member, /const published = \(created as \{ viaAdmin: boolean \}\)\.viaAdmin;/);
+  assert.doesNotMatch(member, /publishCreatedEvent/);
+});
+
+test("1b: an Admin operating the Business (Manage-As) publishes the hosted Event at once (guarded to the RPC's state)", async () => {
+  const { client, ops } = fakeAdmin();
+  const { deps } = persistDeps(client);
+  const out = await P.persistEventImport(norm(review({ intent: "hosting", asEvent: false })), {
+    ...deps,
+    submitter: "business",
+    createHostedEvent: async () => ({ ok: true, id: "hosted-event", viaAdmin: true }),
+  });
+  assert.equal(out.ok, true);
+  const publish = ops.find((o) => o.op === "update" && o.table === "events" && o.patch.publication_status === "live");
+  assert.deepEqual(publish.patch, LIVE);
+  assert.deepEqual(publish.where, [["eq", "id", "hosted-event"], ["eq", "publication_status", "pending_review"]], "never re-publishes an Event Admin hid");
+  assert.ok(out.publicHref, "a live Event links publicly");
 });
 
 test("1: publishCreatedEvent reports failure (the Event then simply stays non-public)", async () => {
@@ -139,27 +165,27 @@ test("1: publishCreatedEvent reports failure (the Event then simply stays non-pu
   assert.equal(await PUB.publishCreatedEvent(hit.client, "x"), true);
 });
 
-test("2 + 5: Where I'll Be rich import → a public Event; the Business participates, never hosts", async () => {
+test("2 + 5: Where I'll Be rich import by a Business → a PENDING Event; the Business participates, never hosts", async () => {
   const { client, ops } = fakeAdmin();
   const { deps, calls } = persistDeps(client);
-  const out = await P.persistEventImport(norm(review()), deps);
-  assert.deepEqual([out.ok, out.newEvent], [true, true]);
+  const out = await P.persistEventImport(norm(review()), { ...deps, submitter: "business" });
+  assert.deepEqual([out.ok, out.newEvent, out.pendingReview], [true, true, true]);
   const row = eventInsert(ops);
-  assert.deepEqual([row.is_demo, row.publication_status, row.host_business_id], [false, "live", null]);
+  assert.deepEqual([row.is_demo, row.publication_status, row.host_business_id], [true, "pending_review", null]);
   assert.equal(ops.filter((o) => o.op === "rpc").length, 0, "no owner membership for the importer");
   assert.equal(ops.find((o) => o.table === "event_businesses").row.status, "approved");
   assert.equal(calls.notify.length, 1, "Admin is told");
 });
 
-test("3: a calendar import's Events each go live through the same path", async () => {
+test("3: a Business calendar import's Events each start pending review through the same path", async () => {
   const { client, ops } = fakeAdmin();
   const { deps } = persistDeps(client);
   for (const [title, url] of [["Mixer A", "https://luma.com/a"], ["Mixer B", "https://luma.com/b"]]) {
-    assert.equal((await P.persistEventImport(norm(review({ title, sourceUrl: url })), deps)).ok, true);
+    assert.equal((await P.persistEventImport(norm(review({ title, sourceUrl: url })), { ...deps, submitter: "business" })).ok, true);
   }
   const rows = ops.filter((o) => o.op === "insert" && o.table === "events").map((o) => o.rows[0]);
   assert.equal(rows.length, 2);
-  assert.ok(rows.every((r) => r.is_demo === false && r.publication_status === "live" && r.host_business_id === null));
+  assert.ok(rows.every((r) => r.is_demo === true && r.publication_status === "pending_review" && r.host_business_id === null));
   // commitEventImportBatch saves each reviewed Event through commitOne → persistEventImport.
   const actions = read("src/app/(public)/account/business/[id]/import-event/actions.ts");
   assert.match(actions, /export async function commitEventImportBatch[\s\S]*?await commitOne\(ctx, businessId, review, emailVerified\)/);
@@ -178,19 +204,14 @@ test("4: legacy Appearance → Event conversion creates a public Event", async (
   assert.deepEqual([row.is_demo, row.publication_status, row.host_business_id], [false, "live", null]);
 });
 
-test("15: no creation path writes the review state any more; no approval step in Admin", () => {
-  for (const f of ["src/lib/event-import/persist.ts", "src/lib/appearance-conversion.ts"]) {
-    assert.doesNotMatch(read(f), /publication_status: "pending_review"|is_demo: true/, f);
-  }
-  const member = read("src/app/(public)/account/event/actions.ts");
-  const create = member.slice(member.indexOf("export async function createMemberEvent"), member.indexOf("// ── EVENT DETAILS"));
-  assert.doesNotMatch(create, /pending_review"\s*[,}]|is_demo: true/);
-  assert.doesNotMatch(create, /awaiting review/i);
-  const page = read("src/app/admin/(protected)/events/[id]/page.tsx");
-  assert.doesNotMatch(page, /PendingReviewPanel|approveEventListing|rejectEventListing/, "no Approve/Reject gate on the Event page");
-  assert.doesNotMatch(read("src/app/admin/(protected)/events/page.tsx"), /Needs review/, "no 'Needs review' filter implying permission");
-  assert.doesNotMatch(read("src/app/(public)/account/event/new/page.tsx"), /review it before it appears publicly|reviews it before it appears publicly/);
-  assert.doesNotMatch(read("src/lib/event-import/review.ts"), /reviews new Events before/);
+test("15: the starting state is written in ONE place (eventPublicationFor); Admin Event Import is the privileged live path", () => {
+  const persist = read("src/lib/event-import/persist.ts");
+  assert.match(persist, /\.\.\.eventPublicationFor\(deps\.submitter \?\? "business"\)/, "unknown callers default to the safe pending state");
+  assert.doesNotMatch(persist, /\.\.\.NEW_EVENT_PUBLICATION/);
+  assert.match(read("src/app/admin/(protected)/events/import/actions.ts"), /submitter: "admin",/);
+  assert.match(read("src/app/(public)/account/business/[id]/import-event/actions.ts"), /submitter: "business",/);
+  // Legacy Appearance → Event conversion is an Admin tool: still live.
+  assert.match(read("src/lib/appearance-conversion.ts"), /\.\.\.NEW_EVENT_PUBLICATION/);
 });
 
 // ── 6–8: public behavior of a live Event ─────────────────────────────────

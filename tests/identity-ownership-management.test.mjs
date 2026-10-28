@@ -154,7 +154,8 @@ const createLoc = LOC_ACTIONS.slice(LOC_START, LOC_ACTIONS.indexOf("\n}\n", LOC_
 test("submitting a Location never grants management (no create_owned_location, no location_members write)", () => {
   assert.doesNotMatch(createLoc, /rpc\("create_owned_location"/);
   assert.doesNotMatch(createLoc, /from\("location_members"\)/);
-  assert.match(createLoc, /\.from\("locations"\)\s*\.insert\(\{[\s\S]*?is_demo: true,/);
+  // Unlisted + pending review through the one moderation rule (lib/location-review.ts).
+  assert.match(createLoc, /\.from\("locations"\)\s*\.insert\(\{[\s\S]*?\.\.\.newLocationModeration\("member"\),/);
 });
 
 test("location_claim_requests/'manage' intent infrastructure stays intact even though this UI never sends it any more", () => {

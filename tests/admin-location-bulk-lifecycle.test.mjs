@@ -85,7 +85,9 @@ test("1 & 8. Draft → bulk Publish → Published (is_demo=false); it leaves Nee
   assert.equal(byId(db, 1).is_demo, false);
   assert.equal(LC.locationLifecycleState(byId(db, 1)), "published");
   assert.deepEqual(notified, [[id(1), "Place 1", "approved"], [id(2), "Place 2", "approved"]], "same manager notification as the single editor");
-  assert.deepEqual(db.writes.map((w) => w.patch), [{ is_demo: false }], "ONE canonical field, one update, nothing else");
+  // Consolidation pass: publishing IS Admin's approval — the listing flag
+  // and the canonical moderation state, in one update, nothing else.
+  assert.deepEqual(db.writes.map((w) => w.patch), [{ is_demo: false, review_status: "approved" }], "one update, nothing else");
   assert.equal(PUB.describeLocationPublication(r), "2 Locations Published");
 });
 
@@ -153,13 +155,15 @@ test("16 & 17. partial failure is reported, never claimed as success; failed ids
   assert.match(bar, /\/\/ No optimistic success/);
 });
 
-test("14 & 15. relationships survive Unpublish (and Publish): only locations.is_demo is written", async () => {
+test("14 & 15. relationships survive Unpublish (and Publish): only the Location row (is_demo / review_status) is written", async () => {
   const db = fakeDb([row(1, { is_demo: false }), row(2, { is_demo: false })]);
   const before = JSON.stringify({ o: db.tables.event_occurrences, b: db.tables.business_locations, a: db.tables.appearances, f: db.tables.business_location_availability });
   await PUB.setLocationPublication(db, [id(1), id(2)], false, noNotify);
   await PUB.setLocationPublication(db, [id(1)], true, noNotify);
   assert.equal(JSON.stringify({ o: db.tables.event_occurrences, b: db.tables.business_locations, a: db.tables.appearances, f: db.tables.business_location_availability }), before);
-  assert.ok(db.writes.every((w) => w.table === "locations" && Object.keys(w.patch).join() === "is_demo"));
+  // Unpublish writes only is_demo (the review state is kept); Publish also
+  // records approval. Nothing outside the Location row is written.
+  assert.ok(db.writes.every((w) => w.table === "locations" && ["is_demo", "is_demo,review_status"].includes(Object.keys(w.patch).join())));
   assert.doesNotMatch(read("src/lib/admin/location-publication.ts"), /\.delete\(|location_members"\)\.insert|business_locations"\)|event_occurrences"\)|appearances"\)/);
 });
 
@@ -183,7 +187,7 @@ test("single editor and bulk share ONE implementation of the Published change", 
   assert.doesNotMatch(editor, /async function notifyLocationManagers/, "moved, not duplicated");
   const pub = read("src/lib/admin/location-publication.ts");
   assert.match(pub, /^import "server-only";/);
-  assert.match(pub, /\.update\(\{ is_demo: !publish \}\)/);
+  assert.match(pub, /\.update\(publish \? locationReviewDecision\("approve"\) : \{ is_demo: true \}\)/);
 });
 
 test("18. Admin authorization is required; ids are validated server-side", async () => {

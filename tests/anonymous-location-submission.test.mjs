@@ -72,7 +72,10 @@ test("the anonymous path is rate-limited before any duplicate check or insert ru
 test("no anonymous database-write permission was introduced — the insert still goes through the SAME admin (service-role) client and is_demo=true pending-review path every submission already used, never a client-side/anonymous Supabase write", () => {
   assert.match(ACTIONS, /const admin = getAdminSupabase\(\);/);
   assert.match(ACTIONS, /await admin\s*\.from\("locations"\)\s*\.insert\(\{/);
-  assert.match(ACTIONS, /is_demo: true,/);
+  // Consolidation pass: the unlisted + pending-review columns come from the
+  // one moderation rule (lib/location-review.ts) — still is_demo=true.
+  assert.match(ACTIONS, /\.\.\.newLocationModeration\("member"\)/);
+  assert.match(readFileSync("src/lib/location-review.ts", "utf8"), /is_demo: true, review_status: submitter === "member" \? "pending_review" : null/);
   // No new table, no RLS policy reference, no raw SQL anywhere in this file.
   assert.doesNotMatch(ACTIONS, /create table|create policy|alter table/i);
 });
@@ -112,5 +115,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261120000000_pages_sections_v1b.sql");
+  assert.equal(files.at(-1), "20261121010000_hotfix_event_visibility_policy_grants.sql");
 });

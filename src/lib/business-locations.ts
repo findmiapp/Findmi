@@ -283,3 +283,19 @@ export async function getManagedLocationsForUser(
   }
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** Location ids where THIS Business has activity evidence — its own
+ * Appearances there, or dates of Events it hosts there. Bounded. Feeds
+ * scopeLocationSuggestions (lib/location-matching.ts) so suggestions are
+ * scoped to the current Business, never to everything the user manages. */
+export async function getBusinessLocationEvidence(client: SupabaseClient | null, businessId: string, limit = 200): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!client) return ids;
+  const [appearances, hosted] = await Promise.all([
+    client.from("appearances").select("location_id").eq("business_id", businessId).not("location_id", "is", null).limit(limit),
+    client.from("event_occurrences").select("location_id, events!inner(host_business_id)").eq("events.host_business_id", businessId).not("location_id", "is", null).limit(limit),
+  ]);
+  for (const r of (appearances.data ?? []) as { location_id: string | null }[]) if (r.location_id) ids.add(r.location_id);
+  for (const r of (hosted.data ?? []) as { location_id: string | null }[]) if (r.location_id) ids.add(r.location_id);
+  return ids;
+}

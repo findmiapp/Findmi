@@ -1,3 +1,4 @@
+import { isMarketplaceEligible } from "./marketplace-eligibility";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { formatAppearanceDateRange, isAppearanceStillAvailable } from "@/lib/format";
 import {
@@ -189,7 +190,10 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
       continue;
     }
 
-    if (!product.purchasable || !business.commerce_enabled || !product.is_active) {
+    // Findmi checkout sells only Marketplace-eligible Products (approved,
+    // active, purchasable, commerce enabled) — the one rule in
+    // ./marketplace-eligibility.ts, re-checked server-side on every quote.
+    if (!isMarketplaceEligible(product as Parameters<typeof isMarketplaceEligible>[0], business as Parameters<typeof isMarketplaceEligible>[1])) {
       quoteLines.push({
         ...baseQuote,
         productName: product.name,

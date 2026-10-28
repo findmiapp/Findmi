@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import { locationReviewDecision } from "@/lib/location-review";
 
 /** Admin Location publication — the ONE implementation of "Published on /
  * off" shared by the single-Location editor (saveLocation) and the Admin
@@ -116,7 +117,9 @@ export async function setLocationPublication(
   if (toChange.length === 0) return result;
   const { data: updated, error: updateError } = await supabase
     .from("locations")
-    .update({ is_demo: !publish })
+    // Publishing is Admin's approval (lib/location-review.ts); unpublishing
+    // only makes the Location a Draft — its review state is kept.
+    .update(publish ? locationReviewDecision("approve") : { is_demo: true })
     .in("id", toChange)
     // Same guard as the selection: never flips an archived / trashed row,
     // even if it changed state between the read and the write.

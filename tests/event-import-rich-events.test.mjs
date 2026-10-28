@@ -139,7 +139,7 @@ test("A/B/C/E: Where I'll Be + rich Event → ONE Event (participant, not host) 
   const ev = ops.filter((o) => o.table === "events" && o.op === "insert");
   assert.equal(ev.length, 1);
   const row = ev[0].rows[0];
-  assert.deepEqual([row.name, row.host_business_id, row.is_demo, row.publication_status], ["Founder GTM Mixer", null, false, "live"], "participant only; live by default like every new Event");
+  assert.deepEqual([row.name, row.host_business_id, row.is_demo, row.publication_status], ["Founder GTM Mixer", null, true, "pending_review"], "participant only; a Business submission starts pending Admin review");
   assert.equal(row.cover_image_url, "stored:https://images.lumacdn.com/event-covers/nyc-gtm-mixer.jpg", "C: the Event's own image");
   assert.deepEqual([row.external_url, row.description, row.organizer_name], ["https://luma.com/nyc-gtm-mixer", "Meet founders shipping GTM.", "Corgi NYC"]);
   assert.equal(ops.filter((o) => o.op === "rpc").length, 0, "no create_owned_event → no owner membership for the importer");

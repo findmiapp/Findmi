@@ -152,7 +152,8 @@ test("2. hosting import through the Admin path: same Event, admin provenance, pu
 
 test("1. View Event: importer success, multi-import summary, Hosting rows, Event Manager after Host An Event", () => {
   assert.match(BIZ_IMPORTER, /\{step\.publicHref && \(\s*<Link href=\{step\.publicHref\} className=\{primaryButtonClass\}>\s*View Event/);
-  assert.match(BIZ_IMPORTER, /step\.hosted \? "Manage Event"/);
+  // Consolidation pass: the post-create next step into the full Event Manager.
+  assert.match(BIZ_IMPORTER, /step\.hosted \? "Edit Event Further"/);
   assert.match(BIZ_IMPORT_ACTIONS, /if \(outcome\.ok && !outcome\.publicHref && normalized\.value\.useEventId\) return \{ \.\.\.outcome, \.\.\.\(await publicLink\(ctx\.admin, normalized\.value\.useEventId\)\) \};/, "joining an existing Event links to it too");
   assert.match(BIZ_IMPORT_ACTIONS, /ev && !ev\.is_demo && !ev\.trashed_at \? \{ publicHref: eventHref\(ev\.slug\)/, "only a live Event gets a public link");
   assert.match(MULTI, /r\.outcome\.ok && r\.outcome\.publicHref \?/);

@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase";
 import { isCheckoutSupportedMethod } from "./commerce/fulfillment-support";
+import { applyMarketplaceProductFilter, isMarketplaceBusinessEligible } from "./commerce/marketplace-eligibility";
 import { buildVisibleAreaTree } from "./area-visibility";
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
@@ -780,15 +781,12 @@ export async function getEventsByIds(ids: string[]): Promise<FindmiEvent[]> {
 export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]> {
   const supabase = getSupabase();
   if (!supabase || ids.length === 0) return [];
-  const { data, error } = await supabase
-    .from("products")
-    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
-    .in("id", ids)
-    .eq("is_active", true)
-    // Product Marketplace Distribution pass — a curated homepage row is a
-    // broader discovery surface, not a business's own catalog: a
-    // catalog_only Product must never enter it just by being curated.
-    .eq("marketplace_status", "approved");
+  const { data, error } = await applyMarketplaceProductFilter(
+    supabase
+      .from("products")
+      .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
+      .in("id", ids)
+  );
   logPublicQueryError("getProductsByIds", error);
 
   type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
@@ -801,7 +799,7 @@ export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live");
+    .filter((item) => isMarketplaceBusinessEligible(item.business));
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
   const productIds = rows.map((r) => r.id);
@@ -3368,14 +3366,11 @@ export interface FeaturedProduct extends Product {
 export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("products")
+  // Marketplace surface — only Marketplace-eligible Products (one rule:
+  // lib/commerce/marketplace-eligibility.ts). Not a Business catalog view.
+  const { data, error } = await applyMarketplaceProductFilter(supabase.from("products")
     .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
-    .eq("is_featured", true)
-    .eq("is_active", true)
-    // Product Marketplace Distribution pass — Featured Products is a
-    // homepage/marketplace discovery surface, not a business catalog view.
-    .eq("marketplace_status", "approved")
+    .eq("is_featured", true))
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
@@ -3391,7 +3386,7 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
+    .filter((item) => isMarketplaceBusinessEligible(item.business))
     .slice(0, limit);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
@@ -3446,7 +3441,7 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   const { data, error } = await supabase
     .from("products")
     .select(
-      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, accepts_inquiries, inquiry_topics, is_demo, publication_status)`
+      `${PUBLIC_PRODUCT_COLUMNS}, marketplace_status, moderation_status, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, accepts_inquiries, inquiry_topics, is_demo, publication_status)`
     )
     .eq("slug", slug)
     .eq("is_active", true);
@@ -4085,15 +4080,11 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
   }
 
   const limit = params.limit ?? 40;
-  let query = supabase
-    .from("products")
-    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
-    .eq("is_active", true)
-    // Product Marketplace Distribution pass — the Marketplace page itself
-    // is the canonical broader-discovery surface: a catalog_only Product
-    // (never submitted, or not yet approved) must never appear here even
-    // though it's fully live/active on its own business's profile.
-    .eq("marketplace_status", "approved");
+  let query = applyMarketplaceProductFilter(
+    supabase
+      .from("products")
+      .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
+  );
   if (params.q) {
     const term = `%${params.q.trim()}%`;
     query = query.or(`name.ilike.${term},description.ilike.${term}`);
@@ -4115,7 +4106,7 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
+    .filter((item) => isMarketplaceBusinessEligible(item.business))
     .slice(0, limit)
     .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
       ...rest,
@@ -4215,14 +4206,11 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
   }
 
   const limit = params.limit ?? 8;
-  let query = supabase
-    .from("products")
-    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
-    .eq("is_active", true)
-    // Product Marketplace Distribution pass — a founder-configured
-    // homepage row is a broader discovery surface, not a business's own
-    // catalog view.
-    .eq("marketplace_status", "approved");
+  let query = applyMarketplaceProductFilter(
+    supabase
+      .from("products")
+      .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
+  );
   if (params.q) {
     const term = `%${params.q.trim()}%`;
     query = query.or(`name.ilike.${term},description.ilike.${term}`);
@@ -4247,7 +4235,7 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
+    .filter((item) => isMarketplaceBusinessEligible(item.business))
     .slice(0, limit);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));

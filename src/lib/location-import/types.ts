@@ -107,6 +107,8 @@ export interface LocationProposal {
 export interface LocationCreateInput {
   name: string;
   address: string;
+  /** Suite / unit / floor (optional; never geocoded or matched on). */
+  addressLine2?: string | null;
   city: string;
   state: string;
   postalCode?: string | null;

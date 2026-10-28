@@ -419,7 +419,8 @@ test("HOSTING → create_owned_event with this Business as host, Dates for each 
   assert.equal(calls.propagate.length, 1);
   assert.deepEqual(calls.notify, ["new-event"], "Findmi Admin is told about every new Event");
   // Live by default: the RPC's review state is replaced right after creation.
-  assert.deepEqual(ops.find((o) => o.op === "update" && o.table === "events").patch, { is_demo: false, publication_status: "live" });
+  // Consolidation pass: a hosted Business submission stays pending review.
+  assert.equal(ops.filter((o) => o.op === "update" && o.table === "events" && o.patch.publication_status === "live").length, 0);
   const upd = ops.find((o) => o.op === "update" && o.table === "events" && !("is_demo" in o.patch));
   assert.equal(upd.patch.external_url, "https://www.eventbrite.com/e/nyc-coffee-festival-123");
 });

@@ -361,7 +361,7 @@ test("availability migration (audited): live-only public policies, integrity tri
   assert.doesNotMatch(sql, /grant (insert|update|delete|all)[^;]*\b(anon|authenticated)\b/i, "writes stay service-role only");
   assert.doesNotMatch(sql, /\bdrop\s+(table|column)\b|\bdelete\s+from\b|\btruncate\b/i);
   const ls = readdirSync("supabase/migrations").sort();
-  assert.equal(ls.at(-1), "20261120000000_pages_sections_v1b.sql", "ordered after every existing migration");
+  assert.equal(ls.at(-1), "20261121010000_hotfix_event_visibility_policy_grants.sql", "ordered after every existing migration");
 });
 
 test("QR occurrence authority: all-dates participation → every date; selected dates → only approved ones; Appearance-only → its date", () => {

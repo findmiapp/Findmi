@@ -163,7 +163,7 @@ export async function adminCreateImportedLocation(input: LocationCreateInput, fo
   const admin = await adminClient();
   if (!admin) return { status: "error", error: "Your Admin session has ended. Sign in again." };
   try {
-    const result = await createImportedLocation(admin, input, defaultLocationImportDeps(admin), { force: force === true });
+    const result = await createImportedLocation(admin, input, defaultLocationImportDeps(admin), { force: force === true, submitter: "admin" });
     if (result.status === "created") {
       revalidatePath("/admin/locations");
       revalidatePath("/admin");

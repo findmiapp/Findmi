@@ -6,6 +6,7 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
+import { newLocationModeration, type LocationSubmitter } from "@/lib/location-review";
 
 /** Inline place creation — the ONE set of rules behind Missing-Location
  * Quick Create: name + street address + city + state (ZIP optional), the
@@ -14,8 +15,10 @@ import { resolveEntityGeography } from "@/lib/geo/entity-geo";
  * authorization: each caller authorizes first with its own mechanism (the
  * member-facing createInlinePlace, or the Admin Event Import's admin
  * session) and passes the service-role client it holds. */
-export async function insertInlinePlace(admin: SupabaseClient, formData: FormData): Promise<CreateInlineLocationResult> {
+export async function insertInlinePlace(admin: SupabaseClient, formData: FormData, submitter: LocationSubmitter = "member"): Promise<CreateInlineLocationResult> {
   return insertUnlistedPlace(admin, {
+    submitter,
+    addressLine2: str(formData, "address_line2"),
     name: str(formData, "name"),
     address: str(formData, "address"),
     city: str(formData, "city"),
@@ -57,6 +60,11 @@ export async function insertUnlistedPlace(
      * rule). Never "selected" here — this function has no canonical
      * picker input of its own. */
     geoResolutionKind?: "derived" | "import";
+    /** Who is submitting (lib/location-review.ts): a member / Business
+     * submission enters the Admin review queue; Admin never does. */
+    submitter?: LocationSubmitter;
+    /** Suite / unit / floor — never geocoded or used for matching. */
+    addressLine2?: string | null;
   }
 ): Promise<CreateInlineLocationResult> {
   const { name, address, city, state, postalCode } = input;
@@ -92,7 +100,18 @@ export async function insertUnlistedPlace(
 
   const { data: created, error } = await admin
     .from("locations")
-    .insert({ ...profile, name, slug, address, city, state, postal_code: postalCode, is_demo: true, ...geoFields })
+    .insert({
+      ...profile,
+      name,
+      slug,
+      address,
+      ...(input.addressLine2?.trim() ? { address_line2: input.addressLine2.trim() } : {}),
+      city,
+      state,
+      postal_code: postalCode,
+      ...newLocationModeration(input.submitter ?? "member"),
+      ...geoFields,
+    })
     .select("id, slug, name, address, city, state, postal_code")
     .single();
   if (error || !created) {

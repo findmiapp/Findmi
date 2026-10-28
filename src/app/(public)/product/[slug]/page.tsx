@@ -6,6 +6,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AddToCartForm from "@/components/AddToCartForm";
+import { isMarketplaceEligible } from "@/lib/commerce/marketplace-eligibility";
 import { toJsonLdScript } from "@/lib/jsonLd";
 import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
@@ -82,7 +83,11 @@ export default async function ProductPage({
   // product never shows an active Add to Cart, regardless of purchasable/
   // commerce_enabled. "in_stock" and null (not tracked) both allow it.
   const soldOut = product.inventory_status === "out_of_stock";
-  const canAddToCart = product.purchasable && product.business.commerce_enabled && !soldOut;
+  // Findmi checkout is a Marketplace capability: only a Marketplace-
+  // eligible Product (approved + active + purchasable — the one rule in
+  // lib/commerce/marketplace-eligibility.ts) gets Add to Cart. Every other
+  // live Product stays visible here with Shop Now / Contact Seller.
+  const canAddToCart = isMarketplaceEligible(product, { ...product.business, is_demo: false, publication_status: "live" }) && !soldOut;
 
   // Product Inquiry Consolidation pass — plan_tier/plan_expires_at aren't
   // in the anon column grant (same reason BusinessPublicView's own

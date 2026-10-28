@@ -317,7 +317,7 @@ function persistDeps(admin) {
   };
 }
 
-test("rich Where I'll Be import: participation (never host), live, attendance on existing columns + extras best-effort", async () => {
+test("rich Where I'll Be import: participation (never host), pending review, attendance on existing columns + extras best-effort", async () => {
   const r = P.normalizeReview(reviewBase({ locationVisibility: "hidden", attendance: { cta: "register", url: "https://luma.com/eogbfesu" } }));
   for (const failExtras of [false, true]) {
     const { ops, client } = fakeAdmin({ failExtras });
@@ -325,8 +325,9 @@ test("rich Where I'll Be import: participation (never host), live, attendance on
     assert.equal(out.ok, true, "creation succeeds even before the migration is applied");
     const ev = ops.find((o) => o.op === "insert" && o.table === "events").rows[0];
     assert.equal(ev.host_business_id, null, "participant, not host");
-    assert.equal(ev.is_demo, false);
-    assert.equal(ev.publication_status, "live", "live by default");
+    // Consolidation pass: a Business submission starts pending Admin review.
+    assert.equal(ev.is_demo, true);
+    assert.equal(ev.publication_status, "pending_review", "pending review (Business submission)");
     assert.equal(ev.rsvp_enabled, true);
     assert.equal(ev.rsvp_url, "https://luma.com/eogbfesu");
     assert.equal(ev.venue_name, null);

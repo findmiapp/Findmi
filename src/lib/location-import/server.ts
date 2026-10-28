@@ -1,4 +1,5 @@
 import "server-only";
+import type { LocationSubmitter } from "@/lib/location-review";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { extractBrandProfile } from "@/lib/brand-website-extract";
 import { brandImagePreview, fetchVerifiedBrandImage, storeBrandImage, type BrandImageRole, type VerifiedBrandImage } from "@/lib/brand-images";
@@ -110,7 +111,7 @@ const text = (v: unknown, max = 300) => (typeof v === "string" ? v.replace(/\s+/
  * membership, no Business relationship, no publication. Verified media is
  * re-verified and re-hosted after the row exists; a media failure never
  * undoes the creation (the public page renders its fallback). */
-export async function createImportedLocation(admin: SupabaseClient, input: LocationCreateInput, deps: LocationImportDeps, opts: { force?: boolean } = {}): Promise<ImportedLocationResult> {
+export async function createImportedLocation(admin: SupabaseClient, input: LocationCreateInput, deps: LocationImportDeps, opts: { force?: boolean; submitter?: LocationSubmitter } = {}): Promise<ImportedLocationResult> {
   const name = text(input?.name, 160);
   const address = text(input?.address);
   const city = text(input?.city, 80);
@@ -119,7 +120,7 @@ export async function createImportedLocation(admin: SupabaseClient, input: Locat
   if (issue) return { status: "error", error: issue };
   const postalCode = cleanPostalCode(input.postalCode ?? null);
   const categoryIds = input.categoryId ? await deps.locationCategoryIds().catch(() => new Set<string>()) : new Set<string>();
-  const result = await insertUnlistedPlace(admin, { name, address, city, state, postalCode, force: opts.force === true, profile: profileOf(input, categoryIds), geoResolutionKind: "import" });
+  const result = await insertUnlistedPlace(admin, { name, address, city, state, postalCode, force: opts.force === true, submitter: opts.submitter ?? "member", addressLine2: text(input?.addressLine2, 120), profile: profileOf(input, categoryIds), geoResolutionKind: "import" });
   if (result.status !== "created") return result;
 
   const media = { logo: "none" as "stored" | "failed" | "none", cover: "none" as "stored" | "failed" | "none" };

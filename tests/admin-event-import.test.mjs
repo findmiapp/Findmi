@@ -310,8 +310,8 @@ test("I. Quick Create works through the Admin flow — same rules, Admin-session
   // Location Import V1: Admin creation goes through lib/location-import,
   // which inserts through the SAME unlisted core as member Quick Create.
   assert.match(ACTIONS, /return createImportedLocation\(/);
-  assert.match(read("src/lib/location-import/server.ts"), /await insertUnlistedPlace\(admin, \{ name, address, city, state, postalCode, force: opts\.force === true, profile: profileOf\(input, categoryIds\), geoResolutionKind: "import" \}\);/);
-  assert.match(LOC_ACTIONS, /return insertInlinePlace\(admin, formData\);/, "member path shares the same core");
+  assert.match(read("src/lib/location-import/server.ts"), /await insertUnlistedPlace\(admin, \{ name, address, city, state, postalCode, force: opts\.force === true, submitter: opts\.submitter \?\? "member", addressLine2: text\(input\?\.addressLine2, 120\), profile: profileOf\(input, categoryIds\), geoResolutionKind: "import" \}\);/);
+  assert.match(LOC_ACTIONS, /return insertInlinePlace\(admin, formData\);/, "member path shares the same core (submitter defaults to member → pending review)");
   // Same rules: address required; likely duplicate offered (nothing inserted); unlisted on create.
   globalThis.__ADMIN = fakeClient();
   const thin = new FormData();
@@ -323,6 +323,7 @@ test("I. Quick Create works through the Admin flow — same rules, Admin-session
   assert.equal(created.status, "created");
   const ins = globalThis.__ADMIN.ops.find((o) => o.table === "locations" && o.kind === "insert").rows[0];
   assert.equal(ins.is_demo, true, "unlisted, exactly like member Quick Create");
+  assert.equal(ins.review_status, null, "an Admin-created place never enters the member review queue");
   assert.ok(!globalThis.__ADMIN.ops.some((o) => /members$|business_locations/.test(o.table)), "no membership, no Business link");
   globalThis.__ADMIN = undefined;
   assert.equal(typeof IP.insertInlinePlace, "function");
@@ -362,8 +363,10 @@ test("Business importer persistence is unchanged by the shared createSourceEvent
   };
   const input = { intent: "participating", title: "Knix", description: null, imageUrl: null, sourceUrl: null, occurrences: [{ start: "2026-10-17T16:00:00.000Z", end: "2026-10-18T00:00:00.000Z", place: { name: "LAVAN", address: null, city: "New York", state: "NY", postalCode: null, locationId: null } }], useEventId: null, asEvent: true, organizer: null, attendance: null, locationVisibility: null, categoryId: null, formatIds: [] };
   const out = await P.persistEventImport(input, deps);
-  // Reliability pass: the new Event's public page travels with the outcome (View Event).
-  assert.deepEqual(out, { ok: true, kind: "scheduled", title: "Knix", viewHref: `/account/business/${BIZ.Knix}?tab=findmi-here`, newEvent: true, publicHref: "/event/knix", eventId: "events-1" });
+  // Consolidation pass: a Business submission is pending Admin review, so
+  // no public link travels with the outcome until Admin approves it.
+  assert.deepEqual(out, { ok: true, kind: "scheduled", title: "Knix", viewHref: `/account/business/${BIZ.Knix}?tab=findmi-here`, newEvent: true, eventId: "events-1", pendingReview: true });
+  assert.deepEqual([client.ops.find((o) => o.table === "events" && o.kind === "insert").rows[0].is_demo, client.ops.find((o) => o.table === "events" && o.kind === "insert").rows[0].publication_status], [true, "pending_review"]);
   assert.equal(client.ops.find((o) => o.table === "event_businesses").rows[0].business_id, BIZ.Knix);
   assert.deepEqual(calls.map((c) => c[0]), ["propagate", "notify"]);
 });
