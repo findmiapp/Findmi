@@ -101,13 +101,16 @@ export const GROWTH_SETUP_COPY = {
   improve: "Improve My Matches",
 } as const;
 
-/** The Growth destinations, in order. One definition: the hub navigation,
- * Home's mini-dashboard and the tests all read it. Targets are the SAME
- * Placement records as Findmi Here → Find Us Here → Targets — two doors, one
- * pipeline. */
-export const GROWTH_DESTINATIONS = ["goals", "targets", "opportunities", "ideas"] as const;
+/** The "Opportunities + Growth Manager" destinations, in order (Findmi
+ * Consolidation pass): Set Goals · Opportunities · Ideas · Set Targets. One
+ * definition: the hub navigation, Home's mini-dashboard and the tests all
+ * read it. Targets are the SAME Placement records as Findmi Here → Find Us
+ * Here → Targets — two doors, one pipeline. */
+export const GROWTH_DESTINATIONS = ["goals", "opportunities", "ideas", "targets"] as const;
 export type GrowthDestination = (typeof GROWTH_DESTINATIONS)[number];
-export const GROWTH_DESTINATION_LABELS: Record<GrowthDestination, string> = { goals: "Goals", targets: "Targets", opportunities: "Opportunities", ideas: "Ideas" };
+export const GROWTH_DESTINATION_LABELS: Record<GrowthDestination, string> = { goals: "Set Goals", opportunities: "Opportunities", ideas: "Ideas", targets: "Set Targets" };
+/** The Business Manager destination's name (replaces "Growth"). */
+export const OPPORTUNITIES_MANAGER_TITLE = "Opportunities + Growth Manager";
 
 export function growthHref(basePath: string, destination: GrowthDestination): string {
   if (destination === "opportunities") return `${basePath}?tab=opportunities`;

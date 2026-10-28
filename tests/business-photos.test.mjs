@@ -40,7 +40,7 @@ test("Photos is a real destination again: valid key, no redirect to Profile, lab
 test("the 5-slot mobile bar and the desktop rail are unchanged (no Photos slot)", () => {
   assert.deepEqual(
     NAV.BUSINESS_NAV.map((n) => [n.label, n.tab, Boolean(n.desktopOnly)]),
-    [["Home", "overview", false], ["Moments", "moments", false], ["Findmi Here", "findmi-here", false], ["Performance", "performance", false], ["Products", "products", true], ["Growth", "growth", true], ["More", "more", false]]
+    [["Home", "overview", false], ["Moments", "moments", false], ["Findmi Here", "findmi-here", false], ["Performance", "performance", false], ["Products", "products", true], ["Opportunities", "growth", true], ["More", "more", false]]
   );
 });
 

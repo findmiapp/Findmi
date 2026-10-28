@@ -1,9 +1,9 @@
 import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
-import { GROWTH_DESTINATIONS, GROWTH_DESTINATION_LABELS, GROWTH_SETUP_COPY, growthDestinationStatus, growthHref, type GrowthSummary } from "@/lib/growth";
+import { GROWTH_DESTINATIONS, GROWTH_DESTINATION_LABELS, GROWTH_SETUP_COPY, OPPORTUNITIES_MANAGER_TITLE, growthDestinationStatus, growthHref, type GrowthSummary } from "@/lib/growth";
 
-/** Home's Growth summary — four THIN navigation controls (Goals, Targets,
- * Opportunities, Ideas), each a one-tap deep link into that exact Growth
+/** Home's "Opportunities + Growth Manager" summary — four THIN navigation
+ * controls (Set Goals, Opportunities, Ideas, Set Targets), each a one-tap deep link into that exact Growth
  * state (growthHref) carrying its real count or status, so common Growth
  * work never needs More → Growth → tab. No destination is gated behind
  * another: Opportunities targeting this Business and Findmi-picked Ideas
@@ -15,18 +15,18 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
     <section id="home-growth" aria-labelledby="growth-title" className="scroll-mt-[104px]">
       <div className="flex items-center justify-between gap-3">
         <h2 id="growth-title" className="font-display text-section-title font-bold text-primary">
-          Growth
+          {OPPORTUNITIES_MANAGER_TITLE}
         </h2>
         <Link
           href={`${basePath}?tab=growth`}
           className="flex shrink-0 items-center gap-1 rounded-full border border-findmi-200 bg-white px-3 py-1 text-metadata font-bold text-findmi-700 transition hover:border-findmi-300 hover:bg-findmi-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
         >
-          Open Growth
+          Open Opportunities
           <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
       </div>
 
-      <nav aria-label="Growth">
+      <nav aria-label={OPPORTUNITIES_MANAGER_TITLE}>
         <ul className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           {GROWTH_DESTINATIONS.map((d) => {
             const status = growthDestinationStatus(summary, d);

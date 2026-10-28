@@ -4,7 +4,7 @@ import type { BusinessOpportunityItem } from "@/lib/opportunity-listings";
 import type { BusinessIdea } from "@/lib/brand-audit";
 import type { BusinessGoal } from "@/lib/opportunity-goals";
 import { auditActionLabel, type AuditSummary } from "@/lib/brand-audit-domain";
-import { summarizeGrowth, eligibleGrowthIdeas, unansweredIdeaCount, GROWTH_PROFILE_SECTIONS, GROWTH_SETUP_COPY, growthProfileSummary, type GrowthDestination, type GrowthProfileAnswers } from "@/lib/growth";
+import { OPPORTUNITIES_MANAGER_TITLE, summarizeGrowth, eligibleGrowthIdeas, unansweredIdeaCount, GROWTH_PROFILE_SECTIONS, GROWTH_SETUP_COPY, growthProfileSummary, type GrowthDestination, type GrowthProfileAnswers } from "@/lib/growth";
 import type { ActionResult } from "../brand-audit/actions";
 import GrowthNav from "./GrowthNav";
 import IdeasForYourBrand from "./IdeasForYourBrand";
@@ -50,7 +50,7 @@ function Header({ basePath, summary, active = "goals" }: { basePath: string; sum
   return (
     <>
       <header>
-        <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
+        <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">{OPPORTUNITIES_MANAGER_TITLE}</h1>
         {active === "goals" && <p className="mt-1 text-body text-muted">Tell Findmi what you&rsquo;re looking for so we can surface more relevant opportunities.</p>}
       </header>
       <GrowthNav basePath={basePath} active={active} badges={growthBadges(summary)} summary={summary} />
@@ -173,7 +173,7 @@ export function GrowthIdeasView({
   return (
     <div className="flex flex-col gap-6 lg:max-w-3xl">
       <header>
-        <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Growth</h1>
+        <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">{OPPORTUNITIES_MANAGER_TITLE}</h1>
       </header>
       <GrowthNav basePath={basePath} active="ideas" badges={growthBadges(summary)} summary={summary} />
       {shown.length > 0 ? (

@@ -321,7 +321,7 @@ test("Context is the Target's `context` field (migrated from Placement notes): r
 // ── Two doors, one pipeline ───────────────────────────────────────────────
 
 test("Targets resolve from Growth and from Find Us Here — the same view, records and actions", () => {
-  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "targets", "opportunities", "ideas"]);
+  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "opportunities", "ideas", "targets"]);
   assert.equal(G.growthHref("/b", "targets"), "/b?tab=growth&view=targets");
   assert.deepEqual(G.GROWTH_WORKFLOW_ROLES.map((r) => r.role), ["What You Want", "What You’re Pursuing", "What May Help", "What’s Available"]);
   const s = (o) => G.summarizeGrowth({ audit: null, activeGoalCount: 0, matchesAwaitingResponse: 0, matchesInProgress: 0, ...o });

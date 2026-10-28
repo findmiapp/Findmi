@@ -180,12 +180,12 @@ test("Needs Attention is unchanged: exceptions only, never Target follow-ups, hi
   assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /if \(items\.length === 0\) return null;/);
 });
 
-test("Growth Opportunity counts and Coming Up / Growth / Performance / Quick Actions are unchanged", () => {
+test("Growth Opportunity counts and Coming Up / Opportunities / Performance / management cards are unchanged", () => {
   const view = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx");
   assert.match(view, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length,/);
   assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
   assert.match(HOME, /g\.items\.map\(\(item\) => \(/);
   assert.match(HOME, /<GrowthPanel basePath=\{basePath\} summary=\{growth\} \/>/);
   assert.match(HOME, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
-  assert.match(HOME, /<QuickActionsRail businessId=\{businessId\} \/>/);
+  assert.match(HOME, /<ManagementCards businessId=\{businessId\} \/>/);
 });

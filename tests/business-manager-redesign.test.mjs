@@ -37,7 +37,8 @@ test("mobile bottom nav: Home · Moments · Findmi Here (center) · Performance 
   assert.deepEqual(mobile, ["Home", "Moments", "Findmi Here", "Performance", "More"]);
   assert.equal(mobile[2], "Findmi Here", "the center slot");
   const desktop = NAV.BUSINESS_NAV.map((n) => n.label);
-  assert.ok(desktop.includes("Products") && desktop.includes("Growth"), "the desktop rail keeps both");
+  // Consolidation pass: "Opportunities" replaces the Growth destination label.
+  assert.ok(desktop.includes("Products") && desktop.includes("Opportunities"), "the desktop rail keeps both");
   const more = read(`${B}/v2/MoreMenu.tsx`);
   assert.match(more, /to\("products"\)/);
   assert.match(more, /to\("growth"\)/);
@@ -104,7 +105,9 @@ test("Growth mini-dashboard: Goals · Opportunities · Ideas as direct links wit
   // Findmi-targeted Ideas show without goals
   const targeted = G.summarizeGrowth({ ...base, ideasForYou: 1, ideasNew: 1 });
   assert.equal(st(targeted, "ideas").value, "1 For You");
-  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "targets", "opportunities", "ideas"]); // Targets added in Pass 2 Block A closeout
+  // Consolidation pass: Opportunities + Growth Manager order — Set Goals · Opportunities · Ideas · Set Targets.
+  assert.deepEqual([...G.GROWTH_DESTINATIONS], ["goals", "opportunities", "ideas", "targets"]);
+  assert.deepEqual(G.GROWTH_DESTINATION_LABELS, { goals: "Set Goals", opportunities: "Opportunities", ideas: "Ideas", targets: "Set Targets" });
   assert.equal(G.growthHref("/b", "targets"), "/b?tab=growth&view=targets");
   assert.equal(G.growthHref("/b", "goals"), "/b?tab=growth");
   assert.equal(G.growthHref("/b", "opportunities"), "/b?tab=opportunities");
@@ -277,7 +280,7 @@ test("availability migration (first draft guards) — superseded by the audited 
 const QV2 = await import("../src/lib/qr-v2.ts");
 const CA = await import("../src/app/(public)/account/business/[id]/v2/createActions.ts");
 
-test("the full + Create sheet keeps every action incl. Add a Moment, plus Opportunities; Home's Quick Actions rail is separate", () => {
+test("the full + Create sheet keeps every action incl. Add a Moment, plus Opportunities; Home's management cards are separate", () => {
   const labels = CA.orderedCreateActions("/b", "x").map((a) => a.label);
   // UX consolidation: ONE Event entry (Hosting / Appearing At chosen next).
   assert.deepEqual(labels, ["Add An Event", "At a Location", "Add To Product Catalog", "Add a Moment", "Create A QR Code"]);
@@ -286,7 +289,7 @@ test("the full + Create sheet keeps every action incl. Add a Moment, plus Opport
   assert.match(sheet, /Find An Opportunity/);
   assert.match(sheet, /Tell Findmi Your Goals/);
   assert.doesNotMatch(sheet, /journal\/new/, "no second composer / no re-typed route in the sheet");
-  assert.match(read(`${B}/v2/BusinessHome.tsx`), /<QuickActionsRail businessId=\{businessId\} \/>/);
+  assert.match(read(`${B}/v2/BusinessHome.tsx`), /<ManagementCards businessId=\{businessId\} \/>/, "Home's management cards are separate from the + sheet");
 });
 
 test("no user-facing 'Brand Audit' wording remains (routes, tables and code names are unchanged)", () => {

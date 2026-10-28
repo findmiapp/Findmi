@@ -86,7 +86,7 @@ test("Manager: one shared tab definition — same valid keys as before, legacy r
   assert.deepEqual([...BIZ.VALID_BUSINESS_TAB_KEYS].sort(), [...expected].sort());
   assert.deepEqual(BIZ.LEGACY_TAB_REDIRECTS, { links: "profile", plan: "settings", market: "settings", followers: "performance" });
   assert.ok(BIZ.VALID_BUSINESS_TAB_KEYS.has("gallery"), "gallery stays a valid key: Photos is its own destination again");
-  assert.deepEqual(BIZ.BUSINESS_NAV.map((n) => [n.label, n.tab]), [["Home", "overview"], ["Moments", "moments"], ["Findmi Here", "findmi-here"], ["Performance", "performance"], ["Products", "products"], ["Growth", "growth"], ["More", "more"]]);
+  assert.deepEqual(BIZ.BUSINESS_NAV.map((n) => [n.label, n.tab]), [["Home", "overview"], ["Moments", "moments"], ["Findmi Here", "findmi-here"], ["Performance", "performance"], ["Products", "products"], ["Opportunities", "growth"], ["More", "more"]]);
   const page = read(`${B}/(manager)/page.tsx`);
   assert.doesNotMatch(page, /const PRIMARY_TABS|const LEGACY_TAB_REDIRECTS|const ORDERS_TAB/);
   assert.match(page, /from "\.\.\/v2\/business-nav"/);

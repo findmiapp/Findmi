@@ -526,7 +526,7 @@ test("surface: Growth → Targets → Discover; no new tab or bottom navigation"
   assert.match(page, /growthView === "discover" && discovery && \(\s*<div className="flex flex-col gap-4">\s*<div className="flex flex-col gap-4 lg:max-w-3xl">\s*<GrowthTargetsHeader/, "inside Growth, under the Targets destination");
   assert.match(read(`${V2}/TargetsView.tsx`), /\{available && !adding && discoverHref && \(/);
   assert.match(page, /canEdit=\{canEditTargets\(membershipRole, isAdminElevated\)\} targetsHref=/, "owners/managers Target; staff browse");
-  assert.match(read("src/lib/growth.ts"), /GROWTH_DESTINATION_LABELS: Record<GrowthDestination, string> = \{ goals: "Goals", targets: "Targets", opportunities: "Opportunities", ideas: "Ideas" \};/, "Growth keeps its four destinations");
+  assert.match(read("src/lib/growth.ts"), /GROWTH_DESTINATION_LABELS: Record<GrowthDestination, string> = \{ goals: "Set Goals", opportunities: "Opportunities", ideas: "Ideas", targets: "Set Targets" \};/, "Growth keeps its four destinations");
   assert.doesNotMatch(read(`${V2}/GrowthView.tsx`), /discover/i, "no new Growth tab");
 });
 

@@ -33,20 +33,20 @@ const PAGE = code(read(`${B}/(manager)/page.tsx`));
 
 // ── 1. Business Home ────────────────────────────────────────────────────────
 
-test("Quick Actions: ONE Event action (no separate Where I'll Be) that opens the Hosting / Appearing chooser", () => {
-  const qa = code(read(`${B}/v2/quickActions.ts`));
-  assert.doesNotMatch(qa, /key: "where"/);
-  assert.equal((qa.match(/key: "event"/g) ?? []).length, 1);
-  assert.match(qa, /href: managerHref\(businessId, "add-event"\)/);
+test("Management cards: ONE Event entry (no separate Where I'll Be) that opens the Hosting / Appearing chooser", () => {
+  const items = code(read(`${B}/v2/managementCardItems.ts`));
+  assert.doesNotMatch(items, /key: "where"/);
+  assert.equal((items.match(/key: "events"/g) ?? []).length, 1);
+  assert.match(items, /addHref: managerHref\(businessId, "add-event"\)/);
   assert.equal(L.managerHref("b1", "add-event"), "/account/business/b1?tab=findmi-here&add=event");
-  for (const k of ["product", "qr", "location", "target", "moment"]) assert.match(qa, new RegExp(`key: "${k}"`), `${k} stays`);
+  for (const k of ["locations", "products", "qr", "moments", "targets"]) assert.match(items, new RegExp(`key: "${k}"`), `${k} stays`);
 });
 
-test("Quick Actions rail keeps the Manager gutter: scroll-padding matches px-4, swipe stays, no page overflow", () => {
-  const rail = code(read(`${B}/v2/QuickActionsRail.tsx`));
-  assert.match(rail, /-mx-4 min-w-0 \[contain:inline-size\]/);
-  assert.match(rail, /snap-x scroll-px-4 [^"]*overflow-x-auto[^"]* px-4/);
-  assert.match(rail, /snap-start/);
+test("Management cards never overflow the page at phone width (a wrapping grid, not a scroll strip)", () => {
+  const cards = code(read(`${B}/v2/ManagementCards.tsx`));
+  assert.match(cards, /grid grid-cols-2/);
+  assert.doesNotMatch(cards, /overflow-x-auto|-mx-4/);
+  assert.match(cards, /min-w-0/);
 });
 
 test("Moment creation uses the canonical Moments photo icon — never the pencil", () => {
@@ -66,14 +66,14 @@ test("Moment creation uses the canonical Moments photo icon — never the pencil
   assert.match(read("src/app/(public)/journal/[id]/page.tsx"), /function EditPencilGlyph/);
 });
 
-test("Home Growth: summary kept as FOUR thin controls deep-linking to the exact Growth state", () => {
+test("Home Opportunities + Growth Manager: summary kept as FOUR thin controls deep-linking to the exact state", () => {
   const panel = code(read(`${B}/v2/GrowthPanel.tsx`));
-  assert.match(panel, /<nav aria-label="Growth">/);
+  assert.match(panel, /<nav aria-label=\{OPPORTUNITIES_MANAGER_TITLE\}>/);
   assert.match(panel, /GROWTH_DESTINATIONS\.map/);
   assert.match(panel, /href=\{growthHref\(basePath, d\)\}/);
   assert.match(panel, /growthDestinationStatus\(summary, d\)/);
   assert.match(panel, /className="flex h-11 /, "thin, not big cards");
-  assert.match(panel, /Open Growth/);
+  assert.match(panel, /Open Opportunities/);
 });
 
 // ── 2–3. Findmi Here: Events ────────────────────────────────────────────────

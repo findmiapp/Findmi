@@ -67,7 +67,7 @@ export default function DiscoverView({ businessId, data, canEdit, targetsHref }:
         <div className="flex min-w-0 flex-col">
           <nav aria-label="You are here" className="text-microcopy font-semibold text-subtle">
             <ol className="flex items-center gap-1">
-              <li>Growth</li>
+              <li>Opportunities</li>
               <li aria-hidden="true">/</li>
               <li>
                 <Link href={targetsHref} className="hover:underline">

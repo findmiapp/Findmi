@@ -88,13 +88,13 @@ test("Account Home terminology: From Pages You Follow, Your Recent Moments, Page
   assert.doesNotMatch(HOME, />\s*(Must Have|Must Do|Want|Have|Done)\s*</, "the old intent taxonomy is not surfaced");
 });
 
-test("the sheet renders every action from the shared definitions; Home's Quick Actions rail is a separate compact selection; the completion card opens that same sheet", () => {
+test("the sheet renders every action from the shared definitions; Home's management cards are a separate selection; the completion card opens that same sheet", () => {
   assert.match(ADD, /orderedCreateActions\(basePath, businessId\)\.map\(/);
-  // Business Manager Flow pass: Home's Quick Create became the Quick Actions
+  // Consolidation pass: Home's management cards replace the Quick Actions
   // rail — still the same shared definitions (businessCreateActions).
   const home = read("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx");
-  assert.match(home, /<QuickActionsRail businessId=\{businessId\} \/>/);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/quickActions.ts"), /businessCreateActions\(`\/account\/business\/\$\{businessId\}`, businessId\)/);
+  assert.match(home, /<ManagementCards businessId=\{businessId\} \/>/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/managementCardItems.ts"), /businessCreateActions\(`\/account\/business\/\$\{businessId\}`, businessId\)/);
   assert.match(CARD, /<AddToPresence[^>]*label="Create on Findmi"/);
   assert.equal(CA.BUSINESS_CREATE_ORDER.length, 5);
   assert.deepEqual(CA.BUSINESS_CREATE_ORDER, ["event", "location", "product", "moment", "qr"]);

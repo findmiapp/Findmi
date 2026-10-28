@@ -1,6 +1,7 @@
 // Business Command Center — /account/business/[id] Home (BusinessHome.tsx),
-// Business Manager redesign. The Home for ONE Business reads: Status → sticky
-// Quick Actions rail → section rail → Needs Attention (compact collapsed bar)
+// Business Manager redesign (Findmi Consolidation pass). The Home for ONE
+// Business reads: Status (+ Manage Profile / View Public Profile) →
+// Management cards → section rail → Needs Attention (compact collapsed bar)
 // → Requests → Follow-Ups → Happening Now → Coming Up → Growth → Performance
 // → Recent Moments → Public Profile Link.
 // No JSX rendering harness exists in this node:test suite, so render order
@@ -44,10 +45,10 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → Quick Actions → section rail → Needs Attention → Requests → Follow-Ups → Happening Now → Coming Up → Growth → Performance → Moments → Public Profile", () => {
+test("Home hierarchy: Status → Management cards → section rail → Needs Attention → Requests → Follow-Ups → Happening Now → Coming Up → Opportunities → Performance → Moments → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
-    "<QuickActionsRail businessId={businessId} />",
+    "<ManagementCards businessId={businessId} />",
     "<HomeSectionNav items={navItems} />",
     "<NeedsAttentionBar items={needsAttention} />",
     "<RequestsSection basePath={basePath} items={requests} expanded={requestsExpanded} />",
@@ -60,17 +61,18 @@ test("Home hierarchy: Status → Quick Actions → section rail → Needs Attent
     'aria-labelledby="findmi-link"',
   ].map(at);
   for (let i = 1; i < order.length; i++) assert.ok(order[i - 1] < order[i], `marker #${i} out of order (${order.join(", ")})`);
-  assert.doesNotMatch(HOME, /<Greeting \/>|aria-labelledby="quick-create"|const quick = /, "the Quick Create section is replaced by the Quick Actions rail");
+  assert.doesNotMatch(HOME, /<Greeting \/>|aria-labelledby="quick-create"|const quick = |QuickActionsRail/, "management cards replace the Quick Create section and the Quick Actions rail");
   // conditional sections disappear, never render empty
   // The old large Brand Audit card, Ideas rail and Opportunities section are gone from Home.
   assert.doesNotMatch(HOME, /BrandAuditEntry|Findmi Brand Audit|IdeasForYourBrand|HomeOpportunities|Create on Findmi/);
   assert.match(HOME, /\{liveNow\.length > 0 && \(\s*<section aria-labelledby="happening-now">/);
 });
 
-test("Status is compact: chip + View Public Profile; explanation only where the status needs it", () => {
-  const status = HOME.slice(at('aria-label="Business status"'), at("<QuickActionsRail"));
+test("Status is compact: chip + Manage Profile + View Public Profile (two different actions); explanation only where the status needs it", () => {
+  const status = HOME.slice(at('aria-label="Business status"'), at("<ManagementCards"));
   assert.doesNotMatch(status, /businessName|SupabaseImage|"Pro"|"Free"/);
   assert.match(status, /<Chip tone=\{status\.tone\}>\{status\.label\}<\/Chip>/);
+  assert.match(status, /href=\{managerHref\(businessId, "profile"\)\}[\s\S]*?>\s*Manage Profile\s*<\/Link>/, "prominent, never buried under More");
   assert.match(status, /\{publicationStatus === "live" \? "View Public Profile" : "Preview"\}/);
   assert.match(status, /\{status\.line && <p/);
   assert.match(HOME, /live: \{ label: "Live", tone: "aqua", line: null \}/);
@@ -84,11 +86,13 @@ test("sticky section rail: in-page anchors only, no Attention entry (it is a sta
   const items = HOME.slice(HOME.indexOf("const navItems"), HOME.indexOf("];", HOME.indexOf("const navItems")));
   assert.match(items, /\{ id: "overview", label: "Overview" \}/);
   assert.doesNotMatch(items, /Attention/, "the top-level Attention anchor is retired");
-  assert.match(items, /\{ id: "home-schedule", label: "Schedule" \}/);
-  assert.doesNotMatch(items, /home-create|"Create"/, "creation lives in the Quick Actions rail, not a Home section");
-  assert.match(items, /\{ id: "home-growth", label: "Growth" \}/);
+  // Consolidation pass: Overview · Our Schedule · Opportunities · Performance.
+  assert.match(items, /\{ id: "home-schedule", label: "Our Schedule" \}/);
+  assert.doesNotMatch(items, /label: "Schedule"/, "never plain 'Schedule'");
+  assert.doesNotMatch(items, /home-create|"Create"/, "creation lives on the management cards, not a Home section");
+  assert.match(items, /\{ id: "home-growth", label: "Opportunities" \}/);
   assert.match(items, /metrics \? \[\{ id: "home-performance", label: "Performance" \}\] : \[\]/);
-  assert.doesNotMatch(items, /Products|Opportunities|Findmi Here|More/, "never duplicates the bottom navigation");
+  assert.doesNotMatch(items, /Products|Findmi Here|More|Growth/, "never duplicates the bottom navigation");
   // every anchor target exists on Home, each with the sticky-chrome scroll margin
   for (const id of ["home-schedule", "home-performance"]) assert.match(HOME, new RegExp(`id="${id}"[^>]*\\{?SECTION_CLASS|id="${id}" className=\\{\`[^\`]*\\$\\{SECTION_CLASS\\}`), id);
   assert.match(HOME, /const SECTION_CLASS = "scroll-mt-\[104px\]";/);
@@ -150,14 +154,18 @@ test("participating vs organizing: ONE Event entry, then Hosting An Event (organ
   assert.match(chooser, /title: "Appearing At An Event", copy: "An Event or experience someone else is hosting that your Business will participate in\."/);
 });
 
-test("Quick Actions rail: thin swipeable aqua circles from the shared definitions, never asking which Business", () => {
-  const RAIL = read(`${B}/v2/QuickActionsRail.tsx`);
-  const QA = read(`${B}/v2/quickActions.ts`);
-  assert.match(RAIL, /<nav aria-label="Quick Actions"/);
-  assert.match(RAIL, /overflow-x-auto/);
-  assert.match(RAIL, /bg-findmi-50/);
-  assert.match(QA, /businessCreateActions\(/, "built on the shared create definitions");
-  assert.doesNotMatch(QA, /choose.*business|which business/i);
+test("Management cards: Events · Locations · Products · QR Codes · Moments · Targets — manage (View All) and create (+ Add) as distinct actions, never asking which Business", () => {
+  const CARDS = read(`${B}/v2/ManagementCards.tsx`);
+  const ITEMS = read(`${B}/v2/managementCardItems.ts`);
+  assert.match(ITEMS, /MANAGEMENT_CARD_ORDER: ManagementCardKey\[\] = \["events", "locations", "products", "qr", "moments", "targets"\]/);
+  assert.match(ITEMS, /businessCreateActions\(/, "built on the shared create definitions");
+  assert.doesNotMatch(ITEMS, /choose.*business|which business/i);
+  assert.match(CARDS, /<nav aria-label="Manage Your Business">/);
+  assert.match(CARDS, /grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6/, "two columns at phone width — no horizontal strip");
+  assert.doesNotMatch(CARDS, /overflow-x-auto/);
+  assert.match(CARDS, /rounded-2xl border border-black\/\[0\.08\] bg-white/, "rounded card, subtle light-gray border");
+  assert.match(CARDS, /bg-findmi-50 px-2 text-metadata font-bold text-findmi-700/, "+ Add: pale Aqua pill");
+  assert.match(CARDS, /bg-black\/\[0\.03\] px-2 text-metadata font-semibold text-secondary/, "View All: neutral pill");
 });
 
 test("route integrity: every creation destination is an existing Business-scoped flow that reads its params", () => {

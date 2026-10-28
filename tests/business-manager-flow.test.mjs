@@ -25,7 +25,7 @@ registerHooks({
 });
 
 const L = await import("../src/lib/manager-links.ts");
-const QA = await import("../src/app/(public)/account/business/[id]/v2/quickActions.ts");
+const MC = await import("../src/app/(public)/account/business/[id]/v2/managementCardItems.ts");
 const HS = await import("../src/lib/home-schedule.ts");
 const I = await import("../src/lib/inbox.ts");
 const IS = await import("../src/lib/inbox-server.ts");
@@ -226,49 +226,55 @@ test("24. context bar: compact Search + Inbox with accessible names", () => {
   assert.match(SHELL, /Inbox`\}/);
 });
 
-// ── 5. Quick Actions ───────────────────────────────────────────────────────
+// ── 5. Management cards (Findmi Consolidation pass — replace Quick Actions) ──
 
-const actions = QA.businessQuickActions(BIZ);
+const cards = MC.managementCards(BIZ);
 
-test("25. Quick Actions: 6–8 actions in order — ONE Event (Hosting / Appearing At chosen next) · Product · QR · Location · Target · Moment", () => {
-  assert.ok(actions.length >= 6 && actions.length <= 8);
-  assert.deepEqual(actions.slice(0, 6).map((a) => a.key), ["event", "product", "qr", "location", "target", "moment"]);
+test("25. Management cards in the locked order: Events · Locations · Products · QR Codes · Moments · Targets", () => {
+  assert.deepEqual(cards.map((c) => c.key), ["events", "locations", "products", "qr", "moments", "targets"]);
 });
 
-test("26. every Quick Action inherits the active Business (never asks which one)", () => {
-  for (const a of actions) assert.ok(a.href.includes(BIZ), `${a.key}: ${a.href}`);
-});
-
-test("27. every Quick Action has a short label and an accessible name containing it", () => {
-  for (const a of actions) {
-    assert.ok(a.label.length <= 14, a.label);
-    assert.ok(a.ariaLabel.toLowerCase().includes(a.label.toLowerCase().replace("’", "’")), `${a.ariaLabel} ⊇ ${a.label}`);
+test("26. every card's actions inherit the active Business (never ask which one)", () => {
+  for (const c of cards) {
+    assert.ok(c.addHref.includes(BIZ), `${c.key} add: ${c.addHref}`);
+    assert.ok(c.viewHref.includes(BIZ), `${c.key} view: ${c.viewHref}`);
   }
 });
 
-test("28. Target opens Add Target; QR opens New QR Code; destinations are existing flows", () => {
-  assert.equal(actions.find((a) => a.key === "target").href, L.managerHref(BIZ, "add-target"));
-  assert.match(actions.find((a) => a.key === "qr").href, /\/qr\/new/);
+test("27. each card has a distinct manage action (View All …) and create action (Add …)", () => {
+  for (const c of cards) {
+    assert.match(c.viewLabel, /^View All /, c.key);
+    assert.match(c.addLabel, /^Add /, c.key);
+    assert.notEqual(c.viewHref, c.addHref, `${c.key}: the two actions go to different places`);
+  }
 });
 
-test("29. rail: thin horizontal swipe list of aqua circles + bold labels, next item peeks", () => {
-  const RAIL = read(`${B}/v2/QuickActionsRail.tsx`);
-  assert.match(RAIL, /<nav aria-label="Quick Actions"/);
-  assert.match(RAIL, /flex snap-x scroll-px-4 gap-0.5 overflow-x-auto/);
-  assert.match(RAIL, /min-w-\[72px\]/, "≈4–5 per phone row: the next one peeks");
-  assert.match(RAIL, /h-11 w-11 items-center justify-center rounded-full bg-findmi-50/);
-  assert.match(RAIL, /text-\[12px\] font-bold/);
-  assert.match(RAIL, /aria-label=\{a\.ariaLabel\}/);
+test("28. destinations are the existing / canonical flows (Event chooser, search-first Location, Add Target, New QR)", () => {
+  const by = (k) => cards.find((c) => c.key === k);
+  assert.equal(by("events").addHref, L.managerHref(BIZ, "add-event"));
+  assert.equal(by("locations").addHref, `/account/location/new?business_id=${BIZ}`);
+  assert.equal(by("targets").addHref, L.managerHref(BIZ, "add-target"));
+  assert.match(by("qr").addHref, /\/qr\/new/);
+  assert.equal(by("events").viewHref, L.managerHref(BIZ, "findmi-here"));
+  assert.equal(by("locations").viewHref, L.managerHref(BIZ, "our-locations"));
 });
 
-test("30. the old Quick Create section is gone; the rail sits directly under identity", () => {
-  assert.doesNotMatch(HOME, /aria-labelledby="quick-create"|const quick = /);
-  assert.ok(HOME.indexOf('aria-label="Business status"') < HOME.indexOf("<QuickActionsRail"));
-  assert.ok(HOME.indexOf("<QuickActionsRail") < HOME.indexOf("<NeedsAttentionBar"));
+test("29. cards: rounded, light-gray border, Aqua icon tile; two columns on phones — no horizontal strip", () => {
+  const CARDS = read(`${B}/v2/ManagementCards.tsx`);
+  assert.match(CARDS, /<nav aria-label="Manage Your Business">/);
+  assert.match(CARDS, /grid grid-cols-2/);
+  assert.doesNotMatch(CARDS, /overflow-x-auto/);
+  assert.match(CARDS, /h-12 w-12 items-center justify-center rounded-2xl bg-findmi-50 text-findmi-700/);
 });
 
-test("31. Home order: identity → Quick Actions → Needs Attention → Requests → Follow-Ups → Coming Up → Growth → Performance → utility", () => {
-  const order = ['aria-label="Business status"', "<QuickActionsRail", "<NeedsAttentionBar", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
+test("30. the old Quick Create section and Quick Actions rail are gone; the cards sit directly under identity", () => {
+  assert.doesNotMatch(HOME, /aria-labelledby="quick-create"|const quick = |QuickActionsRail/);
+  assert.ok(HOME.indexOf('aria-label="Business status"') < HOME.indexOf("<ManagementCards"));
+  assert.ok(HOME.indexOf("<ManagementCards") < HOME.indexOf("<NeedsAttentionBar"));
+});
+
+test("31. Home order: identity → Management cards → Needs Attention → Requests → Follow-Ups → Coming Up → Opportunities → Performance → utility", () => {
+  const order = ['aria-label="Business status"', "<ManagementCards", "<NeedsAttentionBar", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -340,8 +346,8 @@ test("41. More descriptions are concise (fit two lines at 360px) and every row i
   assert.doesNotMatch(MORE, /href: "#"|coming soon/i);
 });
 
-test("42. no backend terms in More / Quick Actions / Search labels", () => {
-  const labels = [...MORE.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]).concat(actions.map((a) => a.label), Object.values(S.MANAGER_SEARCH_TYPE_LABELS), Object.values(I.INBOX_TYPE_LABELS));
+test("42. no backend terms in More / management card / Search labels", () => {
+  const labels = [...MORE.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]).concat(cards.flatMap((c) => [c.title, c.addLabel, c.viewLabel]), Object.values(S.MANAGER_SEARCH_TYPE_LABELS), Object.values(I.INBOX_TYPE_LABELS));
   for (const l of labels) assert.doesNotMatch(l, /appearance|entity|subject|recipient|_|tab=|commercial_/i, l);
 });
 
@@ -638,9 +644,9 @@ test("80. Search loads Conversations only for a signed-in member and only when s
 
 // ── 11. Growth / Discover ──────────────────────────────────────────────────
 
-test("81. Discover shows its place: Growth / Targets / Discover, with Back to Targets", () => {
+test("81. Discover shows its place: Opportunities / Targets / Discover, with Back to Targets", () => {
   assert.match(DISCOVER, /<nav aria-label="You are here"/);
-  assert.match(DISCOVER, /<li>Growth<\/li>/);
+  assert.match(DISCOVER, /<li>Opportunities<\/li>/, "Consolidation pass: Opportunities replaces the Growth destination");
   assert.match(DISCOVER, /aria-current="page"[^>]*>\s*Discover/);
   assert.match(DISCOVER, /← Back to Targets/);
 });
@@ -678,7 +684,7 @@ test("84. guard sits where data loss is realistic: Profile, Links, Public Action
 test("85. no schema change in this pass and Findmi casing in new copy", () => {
   const changed = execSync("git status --porcelain -- supabase/migrations", { encoding: "utf8" }).trim();
   assert.equal(changed, "", "no new or edited migration");
-  for (const f of [`${B}/v2/QuickActionsRail.tsx`, `${M}/search/page.tsx`, `${M}/inbox/page.tsx`, "src/components/inbox/InboxScopeMenu.tsx", "src/components/inbox/InboxThreadList.tsx", "src/lib/inbox.ts", "src/lib/manager-search.ts"]) {
+  for (const f of [`${B}/v2/ManagementCards.tsx`, `${B}/v2/managementCardItems.ts`, `${M}/search/page.tsx`, `${M}/inbox/page.tsx`, "src/components/inbox/InboxScopeMenu.tsx", "src/components/inbox/InboxThreadList.tsx", "src/lib/inbox.ts", "src/lib/manager-search.ts"]) {
     const code = read(f).split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
     assert.doesNotMatch(code, /FindMi|FINDMI/, f);
   }

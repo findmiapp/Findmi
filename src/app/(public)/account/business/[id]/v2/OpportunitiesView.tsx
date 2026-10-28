@@ -1,4 +1,5 @@
 import OptimisticTabs from "./OptimisticTabs";
+import { OPPORTUNITIES_MANAGER_TITLE } from "@/lib/growth";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { BusinessOpportunityItem, ExploreItem } from "@/lib/opportunity-listings";
@@ -76,7 +77,7 @@ export default function OpportunitiesView({
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="font-display text-page-title-lg font-bold text-primary">Growth</h1>
+        <h1 className="font-display text-page-title-lg font-bold text-primary">{OPPORTUNITIES_MANAGER_TITLE}</h1>
         <p className="mt-1 text-body text-muted">Browse commercial opportunities available to your Business.</p>
       </div>
       {nav}

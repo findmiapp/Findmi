@@ -12,7 +12,7 @@ import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { groupComingUp } from "@/lib/home-schedule";
 import { managerHref } from "@/lib/manager-links";
-import QuickActionsRail from "./QuickActionsRail";
+import ManagementCards from "./ManagementCards";
 import HomeSectionNav, { type HomeSectionNavItem } from "./HomeSectionNav";
 import NeedsAttentionBar from "./NeedsAttentionBar";
 import GrowthPanel from "./GrowthPanel";
@@ -126,8 +126,8 @@ export default function BusinessHome({
   // Needs Attention is a status bar, not a destination — it has no rail entry.
   const navItems: HomeSectionNavItem[] = [
     { id: "overview", label: "Overview" },
-    { id: "home-schedule", label: "Schedule" },
-    { id: "home-growth", label: "Growth" },
+    { id: "home-schedule", label: "Our Schedule" },
+    { id: "home-growth", label: "Opportunities" },
     ...(metrics ? [{ id: "home-performance", label: "Performance" }] : []),
   ];
   const comingUpGroups = groupComingUp(comingUp);
@@ -135,21 +135,33 @@ export default function BusinessHome({
   return (
     <div className="flex flex-col gap-7">
       {/* A. Status — identity + Free/Pro live in the context bar above. */}
-      <section aria-label="Business status" className="-mb-3">
-        <div className="flex items-center justify-between gap-3">
+      <section aria-label="Business status" className="-mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <Chip tone={status.tone}>{status.label}</Chip>
-          {publicHref && (
-            <Link href={publicHref} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
-              {publicationStatus === "live" ? "View Public Profile" : "Preview"}
-              <ChevronIcon direction="right" className="h-3 w-3" />
+          {/* Two different actions, never merged: Manage Profile edits what
+              customers see; View Public Profile shows it. */}
+          <div className="flex shrink-0 items-center gap-3">
+            <Link
+              href={managerHref(businessId, "profile")}
+              className="flex h-9 items-center rounded-full border border-findmi-200 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi-300 hover:bg-findmi-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+            >
+              Manage Profile
             </Link>
-          )}
+            {publicHref && (
+              <Link href={publicHref} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent hover:underline">
+                {publicationStatus === "live" ? "View Public Profile" : "Preview"}
+                <ChevronIcon direction="right" className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
         </div>
         {status.line && <p className="mt-1 text-metadata text-muted">{status.line}</p>}
       </section>
 
-      {/* A2. Quick Actions — everyday creation flows, one tap each. */}
-      <QuickActionsRail businessId={businessId} />
+      {/* A2. Management destinations — Events, Locations, Products, QR
+          Codes, Moments, Targets — each with View All (manage) and + Add
+          (the canonical creation flow). */}
+      <ManagementCards businessId={businessId} />
 
       {/* B. Sticky in-page section rail. */}
       <HomeSectionNav items={navItems} />

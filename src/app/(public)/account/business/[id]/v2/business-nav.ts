@@ -26,7 +26,9 @@ export const BUSINESS_NAV: BusinessNavEntry[] = [
   // Products and Growth keep full destinations but not a bottom-bar slot:
   // phones reach them from Home / More; the desktop rail lists them.
   { section: "products", label: "Products", tab: "products", desktopOnly: true },
-  { section: "growth", label: "Growth", tab: "growth", desktopOnly: true },
+  // Consolidation pass: "Opportunities" replaces the Growth destination
+  // (Opportunities + Growth Manager: Set Goals · Opportunities · Ideas · Set Targets).
+  { section: "growth", label: "Opportunities", tab: "growth", desktopOnly: true },
   { section: "more", label: "More", tab: "more" },
 ];
 
@@ -83,7 +85,7 @@ export const BUSINESS_MORE_TABS = {
   gallery: { label: "Photos", description: "Add, remove and arrange your photo gallery" },
   performance: { label: navLabel("performance"), description: "Views, actions and how people find you" },
   products: { label: "Products", description: "Your catalog, and where each product is available" },
-  growth: { label: "Growth", description: "Goals, Targets, Opportunities and Ideas" },
+  growth: { label: "Opportunities", description: "Set Goals, Opportunities, Ideas and Set Targets" },
   qr: { label: "QR Codes", description: "Create, manage and track QR codes" },
   inquiries: { label: "Inquiry Settings", description: "How customer inquiries work: on or off, and topics" },
   orders: { label: "Orders", description: "Marketplace orders to fulfill" },

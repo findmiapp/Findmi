@@ -21,7 +21,7 @@ export default function GrowthNav({
 }) {
   const nav = (
     <OptimisticTabs
-      ariaLabel="Growth"
+      ariaLabel="Opportunities + Growth Manager"
       navClass="flex gap-0.5 rounded-full bg-black/[0.04] p-0.5"
       linkClass="flex h-9 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-full px-2 text-button font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
       activeClass="bg-white text-primary shadow-sm"
