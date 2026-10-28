@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadMemberEventImage } from "../actions";
+import { uploadMemberEventImage, uploadNewEventImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Event-Manager counterpart to account/business/[id]/MemberImageField.tsx
@@ -14,7 +14,9 @@ export default function MemberEventImageField({
   name,
   defaultValue,
 }: {
-  eventId: string;
+  /** null = the Event doesn't exist yet (Quick Create): uploads go through
+   * uploadNewEventImage and are attached on creation. */
+  eventId: string | null;
   label: string;
   name: string;
   defaultValue: string | null;
@@ -31,7 +33,7 @@ export default function MemberEventImageField({
     const fd = new FormData();
     fd.set("file", file);
     startTransition(async () => {
-      const result = await uploadMemberEventImage(eventId, fd);
+      const result = await (eventId ? uploadMemberEventImage(eventId, fd) : uploadNewEventImage(fd));
       if (result.error) setError(result.error);
       else if (result.url) setUrl(result.url);
     });

@@ -355,8 +355,8 @@ test("/join/brand: Build My Brand Profile only for a website no-match; signed-in
   assert.match(page, /if \(inputKind === "website"\) \{/);
   assert.match(page, /<form action=\{buildBrandProfile\} className="mt-5">\s*<input type="hidden" name="website" value=\{value\} \/>\s*<SeedFields seed=\{seed\} \/>/);
   assert.match(page, /authenticated \? \(\s*<form action=\{buildBrandProfile\}/);
-  assert.match(page, /<PrimaryLink href=\{brandBuildSignInHref\(value, seed\)\} label="Build My Brand Profile" \/>/);
-  assert.match(page, /label="Add It Myself"/, "manual creation stays available");
+  assert.match(page, /<PrimaryLink href=\{brandBuildSignInHref\(value, seed\)\} label="Import From Website" \/>/);
+  assert.match(page, /label="Enter Details Manually"/, "manual creation stays available");
   assert.match(page, /<form method="get" action="\/join\/brand"/, "anonymous GET lookup unchanged");
   assert.match(page, /export const maxDuration = 30;/);
   assert.match(page, /notice === "already_listed" && authenticated/);

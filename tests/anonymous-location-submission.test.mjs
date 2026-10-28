@@ -82,7 +82,11 @@ test("no anonymous database-write permission was introduced — the insert still
 
 test("submission NEVER grants ownership/management/claim/Business relationship for the anonymous path — identical guarantee to the authenticated generic path, just reachable without a session", () => {
   const createFn = ACTIONS.slice(ACTIONS.indexOf("export async function createMemberLocation"), ACTIONS.indexOf("// ── INLINE EVENT LOCATION CREATION"));
-  assert.doesNotMatch(createFn, /location_members/, "createMemberLocation itself never touches location_members");
+  // Consolidation pass: management of the NEW Location is granted only to a
+  // signed-in submitter in a managed context (a Business they manage, or a
+  // parent Location they manage) — never on the anonymous / generic path.
+  assert.match(createFn, /if \(user && \(businessId \|\| parentLocationId\)\) \{\s*const \{ error: memberError \} = await admin\.from\("location_members"\)\.insert\(\{ user_id: user\.id, location_id: locationId, role: "owner" \}\);/);
+  assert.equal((createFn.match(/location_members/g) ?? []).length, 1, "the one, context-gated grant");
   // The claim-request insert (the only place user identity is written) is
   // reachable only behind intent === "manage", which is never anonymous-
   // eligible — see the test above.
@@ -101,7 +105,7 @@ test("the generic ('I'm Just Adding It To Findmi') submit button works for every
   const formBlock = PAGE.slice(PAGE.indexOf('<form id="create-location-form"'));
   assert.match(formBlock, /\{business \|\| parent \? \(/);
   assert.match(formBlock, /<GuestCreateSubmit/);
-  assert.match(formBlock, /<button type="submit" className=\{`mt-2 \$\{primaryButtonClass\}`\}>\s*Add Location\s*<\/button>/);
+  assert.match(formBlock, /<button type="submit" className=\{`mt-2 \$\{primaryButtonClass\}`\}>\s*Submit Location\s*<\/button>/);
 });
 
 test("anonymous success state: never implies ownership, never forces account creation, optional secondary CTA only", () => {

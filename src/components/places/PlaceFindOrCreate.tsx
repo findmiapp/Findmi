@@ -118,7 +118,7 @@ export function PlaceCreatePanel({
   onCancel: () => void;
   onSelected: (place: SelectedLocationDetail) => void;
 }) {
-  const [form, setForm] = useState({ name: initialName, address: "", city: "", state: "", postal_code: "" });
+  const [form, setForm] = useState({ name: initialName, address: "", address_line2: "", city: "", state: "", postal_code: "" });
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<SelectedLocationDetail[] | null>(null);
   const [pending, startTransition] = useTransition();
@@ -132,6 +132,7 @@ export function PlaceCreatePanel({
     const fd = new FormData();
     fd.set("name", form.name.trim());
     fd.set("address", form.address.trim());
+    if (form.address_line2.trim()) fd.set("address_line2", form.address_line2.trim());
     fd.set("city", form.city.trim());
     fd.set("state", form.state.trim());
     fd.set("postal_code", form.postal_code.trim());
@@ -205,7 +206,13 @@ export function PlaceCreatePanel({
           </label>
           <label className="block">
             <span className="mb-1 block text-metadata font-medium text-secondary">Street address</span>
-            <input autoCapitalize="words" type="text" value={form.address} onChange={set("address")} onKeyDown={onEnter} autoComplete="street-address" autoFocus className={fieldClass} />
+            <input autoCapitalize="words" type="text" value={form.address} onChange={set("address")} onKeyDown={onEnter} autoComplete="address-line1" autoFocus className={fieldClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-metadata font-medium text-secondary">
+              Address line 2 <span className="font-normal text-subtle">optional</span>
+            </span>
+            <input autoCapitalize="words" type="text" value={form.address_line2} onChange={set("address_line2")} onKeyDown={onEnter} autoComplete="address-line2" placeholder="Suite, unit, floor…" className={fieldClass} />
           </label>
           <div className="grid grid-cols-[minmax(0,1fr)_4.5rem] gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_6.5rem]">
             <label className="block">

@@ -1214,6 +1214,8 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
     // product may appear in broader FindMi Marketplace/discovery
     // surfaces, not whether its content is approved.
     marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
+    /** Purchasable through Findmi checkout (a Marketplace requirement). */
+    checkoutReady: boolean;
   };
   let products: OwnProduct[] = [];
   let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
@@ -1224,11 +1226,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // appear in their own management view even though creation itself
   // (createMemberProduct, ../actions.ts) already worked.
   const loadProducts = async () => {
-    const [{ data: productRows }, fetchedProductCategories] = await Promise.all([
+    const [{ data: productRows }, fetchedProductCategories, { data: commerceRow }] = await Promise.all([
       admin
         .from("products")
         .select(
-          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes, marketplace_status"
+          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes, marketplace_status, purchasable"
         )
         .eq("business_id", id)
         // Admin Content Lifecycle V1 — Archive/Trash are admin-only
@@ -1241,8 +1243,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         .order("is_active", { ascending: false })
         .order("name"),
       getProductCategories(),
+      // Marketplace needs real Findmi checkout (lib/commerce/marketplace-eligibility.ts).
+      admin.from("businesses").select("commerce_enabled").eq("id", id).maybeSingle(),
     ]);
     productCategories = fetchedProductCategories;
+    const commerceEnabled = Boolean((commerceRow as { commerce_enabled?: boolean } | null)?.commerce_enabled);
 
     const productIds = (productRows ?? []).map((p) => p.id);
     const { data: categoryLinks } =
@@ -1286,6 +1291,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
         hasPendingChanges,
         editDefaults,
         marketplaceStatus,
+        // Approved is not enough on its own: the Marketplace lists only
+        // Products people can actually buy through Findmi checkout.
+        checkoutReady: Boolean((p as { purchasable?: boolean }).purchasable) && commerceEnabled,
       };
     });
   };
@@ -2539,6 +2547,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                                 {p.marketplaceStatus === "paused" &&
                                   "Paused, temporarily out of Marketplace/discovery. Still shown on your business profile."}
                               </p>
+                              {!p.checkoutReady && (p.marketplaceStatus === "approved" || p.marketplaceStatus === "submitted") && (
+                                <p className="mt-1 text-metadata font-semibold text-amber-800">
+                                  Not in the Marketplace yet: it lists only products people can buy through Findmi checkout. Contact Findmi to turn on checkout for this product.
+                                </p>
+                              )}
                               {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
                                 <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
                                   <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
@@ -3726,12 +3739,14 @@ function productDisplayStatus(p: {
   moderationStatus: "pending_review" | "live" | "rejected";
   hasPendingChanges: boolean;
   marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
+  checkoutReady?: boolean;
 }): { label: string; tone: "quiet" | "positive" | "attention" | "negative" } {
   if (!p.is_active) return { label: "Inactive", tone: "quiet" };
   if (p.moderationStatus === "rejected") return { label: "Not approved", tone: "negative" };
   if (p.moderationStatus === "pending_review") return { label: "Pending review", tone: "attention" };
   if (p.hasPendingChanges) return { label: "Changes pending", tone: "attention" };
   if (p.marketplaceStatus === "submitted") return { label: "Marketplace pending", tone: "attention" };
+  if (p.marketplaceStatus === "approved" && p.checkoutReady === false) return { label: "Approved · Checkout off", tone: "attention" };
   if (p.marketplaceStatus === "approved") return { label: "Marketplace approved", tone: "positive" };
   if (p.marketplaceStatus === "paused") return { label: "Marketplace paused", tone: "attention" };
   if (p.marketplaceStatus === "rejected") return { label: "Marketplace not approved", tone: "negative" };

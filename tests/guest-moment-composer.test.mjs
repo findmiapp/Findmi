@@ -147,7 +147,10 @@ test("the cold Add Moment page passes authed/resume through to the composer", ()
 
 test("the Moment composer's own entity search (where/who) now reads for a signed-out visitor too — every other entity mode on this route is unchanged and still requires a session", () => {
   assert.match(SEARCH_ROUTE, /const isMomentSearch = entity === "where" \|\| entity === "who";/);
-  assert.match(SEARCH_ROUTE, /if \(!user && !isMomentSearch\) return NextResponse\.json\(\{ error: "Unauthorized" \}, \{ status: 401 \}\);/);
+  // Consolidation pass: PUBLIC Location search (search-before-create) is
+  // also guest-readable; the linkable "place" scope still needs a session.
+  assert.match(SEARCH_ROUTE, /const isPublicLocationSearch = entity === "locations" && searchParams\.get\("scope"\) !== "place";/);
+  assert.match(SEARCH_ROUTE, /if \(!user && !isMomentSearch && !isPublicLocationSearch\) return NextResponse\.json\(\{ error: "Unauthorized" \}, \{ status: 401 \}\);/);
 });
 
 test("the global Create menu no longer tells every signed-out visitor they'll sign in first — only Create Event still needs identity up front", () => {

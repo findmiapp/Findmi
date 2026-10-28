@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadMemberEventImage } from "../actions";
+import { uploadMemberEventImage, uploadNewEventImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
 import { galleryUploadErrorMessage, uploadGalleryFiles } from "@/lib/gallery-upload";
 
@@ -15,7 +15,9 @@ export default function MemberEventGalleryField({
   name,
   initialUrls,
 }: {
-  eventId: string;
+  /** null = the Event doesn't exist yet (Quick Create): uploads go through
+   * uploadNewEventImage and are attached on creation. */
+  eventId: string | null;
   name: string;
   initialUrls: string[];
 }) {
@@ -33,7 +35,7 @@ export default function MemberEventGalleryField({
       // a rejected upload caught, one failure never stopping or discarding
       // the others; successes are kept as soon as each one resolves.
       const failures = await uploadGalleryFiles(files, {
-        upload: (fd) => uploadMemberEventImage(eventId, fd),
+        upload: (fd) => (eventId ? uploadMemberEventImage(eventId, fd) : uploadNewEventImage(fd)),
         onUploaded: (url) => setUrls((prev) => [...prev, url]),
       });
       setError(galleryUploadErrorMessage(failures));

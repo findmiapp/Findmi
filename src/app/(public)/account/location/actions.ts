@@ -23,6 +23,7 @@ import { anonymousLocationClientIp, recordAnonymousLocationSubmission } from "@/
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { insertInlinePlace } from "@/lib/places/inline-place";
 import { newLocationModeration } from "@/lib/location-review";
+import { isRenderableImageUrl } from "@/lib/location-eligibility";
 import { storePublicImage } from "@/lib/image-variants-server";
 import { normalizeLocationHours } from "@/lib/locationHours";
 import type { LocationHours } from "@/lib/types";
@@ -107,6 +108,28 @@ export async function uploadMemberLocationImage(
   return { url: data.publicUrl };
 }
 
+/** Location Quick Create — a cover / gallery image chosen BEFORE the
+ * Location exists. Signed-in only (images are stored under a server-made
+ * path through the same validated pipeline as every Location image); the
+ * URL is attached when the Location is created. */
+export async function uploadNewLocationImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (!user) return { error: "Sign in to add photos." };
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No file selected." };
+  const validated = await validateImageFile(file);
+  if ("error" in validated) return validated;
+  const admin = getAdminSupabase();
+  if (!admin) return { error: "Storage isn't configured on the server." };
+  const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
+  if ("error" in stored) return { error: stored.error };
+  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
+  return { url: data.publicUrl };
+}
+
 // ── NATIVE LOCATION CREATION ─────────────────────────────────────────────
 const CREATE_LOCATION_PATH = "/account/location/new";
 
@@ -161,6 +184,15 @@ export async function createMemberLocation(formData: FormData) {
   const postalCode = str(formData, "postal_code");
   // Suite / unit / floor — kept apart from the geocoded street address.
   const addressLine2 = str(formData, "address_line2");
+  // Optional cover + gallery chosen in Quick Create (uploaded already through
+  // uploadNewLocationImage). Only Findmi-storage images that can render are
+  // kept — never an arbitrary URL.
+  const coverImageUrl = str(formData, "cover_image_url");
+  const galleryUrls = formData
+    .getAll("gallery_image_url")
+    .map(String)
+    .filter((u) => isRenderableImageUrl(u))
+    .slice(0, 20);
   const marketId = str(formData, "market_id");
   // Location Market -> Area Parity pass — optional, explicit Area within
   // the chosen Market. Never inferred from address/city/state — only from
@@ -319,6 +351,7 @@ export async function createMemberLocation(formData: FormData) {
       state: clean(state),
       postal_code: clean(postalCode),
       market_id: effectiveMarketId || null,
+      ...(user && coverImageUrl && isRenderableImageUrl(coverImageUrl) ? { cover_image_url: coverImageUrl } : {}),
       // A member / Business submission: unlisted and pending Admin review
       // (lib/location-review.ts — review_status is the moderation state).
       ...newLocationModeration("member"),
@@ -332,6 +365,21 @@ export async function createMemberLocation(formData: FormData) {
   const locationId = (created as { id: string }).id;
   // Automatic Map placement after the response (never blocks creation).
   queueLocationGeocode([locationId]);
+  if (user && galleryUrls.length > 0) {
+    await admin.from("location_images").insert(galleryUrls.map((url, i) => ({ location_id: locationId, url, display_order: i })));
+  }
+  // Findmi Consolidation pass — "pending does not mean unmanageable": a
+  // Location submitted IN A MANAGED CONTEXT (as a Business's own place, or
+  // inside a Location the submitter manages) is managed by its submitter
+  // from the start, so they can keep refining it (Edit Location Further)
+  // while it awaits review. A plain "just adding it to Findmi" submission
+  // still grants nothing, and an EXISTING Location is only ever reached
+  // through Connect (if already managed) or Request To Manage (claim).
+  let managesNewLocation = false;
+  if (user && (businessId || parentLocationId)) {
+    const { error: memberError } = await admin.from("location_members").insert({ user_id: user.id, location_id: locationId, role: "owner" });
+    managesNewLocation = !memberError;
+  }
   // Submitted by a member of the public (management is a separate request).
   await recordProvenance(admin, { entityType: "location", entityId: locationId, sourceKind: "community", sourceMethod: "member_submitted" });
   // "I Manage This Location" — a request for Admin review, never a grant.
@@ -402,19 +450,26 @@ export async function createMemberLocation(formData: FormData) {
     revalidatePath(`/account/business/${businessId}`);
     const linkError = !linked.ok ? `Your location was created, but couldn't be connected yet: ${linked.error}` : null;
     const combinedError = [linkError, claimRequestError].filter(Boolean).join(" ");
-    const query = combinedError ? `error=${encodeURIComponent(combinedError)}` : "location_updated=created";
-    redirect(`/account/business/${businessId}?tab=findmi-here&view=locations&${query}`);
+    // The next-step prompt ("Location submitted": Edit Location Further /
+    // Add Another Location) — never straight into a large edit form.
+    const next = new URLSearchParams({ submitted: locationId, business_id: businessId });
+    if (managesNewLocation) next.set("manage", "1");
+    if (combinedError) next.set("error", combinedError);
+    redirect(`${CREATE_LOCATION_PATH}?${next.toString()}`);
   }
   if (parentLocationId) {
-    const query = claimRequestError ? `error=${encodeURIComponent(claimRequestError)}` : `child_location=${intent}`;
-    redirect(`/account/location/${parentLocationId}?${query}`);
+    const next = new URLSearchParams({ submitted: locationId, parent_location_id: parentLocationId });
+    if (managesNewLocation) next.set("manage", "1");
+    if (claimRequestError) next.set("error", claimRequestError);
+    redirect(`${CREATE_LOCATION_PATH}?${next.toString()}`);
   }
   // Anonymous factual submission — success shown right here (the same
   // page the submission came from, already guest-accessible), never a
   // Login wall, never Account Home, never anything implying ownership or
   // management.
   if (!user) redirect(`${CREATE_LOCATION_PATH}?submitted=1`);
-  redirect(claimRequestError ? `/account?error=${encodeURIComponent(claimRequestError)}` : `/account?location_submitted=${intent}`);
+  if (claimRequestError) redirect(`/account?error=${encodeURIComponent(claimRequestError)}`);
+  redirect(`${CREATE_LOCATION_PATH}?${new URLSearchParams({ submitted: locationId, context: "generic" }).toString()}`);
 }
 
 // ── INLINE EVENT LOCATION CREATION ──────────────────────────────────────

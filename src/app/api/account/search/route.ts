@@ -28,12 +28,16 @@ export async function GET(request: NextRequest) {
   // signed-in one does. Every other entity mode here is unchanged and
   // still requires a session.
   const isMomentSearch = entity === "where" || entity === "who";
+  // Findmi Consolidation pass — search-before-create for Add Location: a
+  // signed-out visitor may search PUBLIC Locations (already public on
+  // /locations). Linkable scope (known, unlisted places) still needs a session.
+  const isPublicLocationSearch = entity === "locations" && searchParams.get("scope") !== "place";
 
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user && !isMomentSearch) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user && !isMomentSearch && !isPublicLocationSearch) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const admin = getAdminSupabase();
   if (!admin) return NextResponse.json({ results: [] });
@@ -110,6 +114,14 @@ export async function GET(request: NextRequest) {
     if (!linkableScope) query = query.eq("is_demo", false);
     if (q) query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
     const { data } = await query.order("name").limit(20);
+    // Which results this person already manages (one bounded read over ≤20
+    // ids) — decides Connect vs Request To Manage in search-before-create.
+    const ids = (data ?? []).map((l) => l.id);
+    const managed = new Set<string>();
+    if (user && ids.length > 0) {
+      const { data: rows } = await admin.from("location_members").select("location_id").eq("user_id", user.id).in("role", ["owner", "manager"]).in("location_id", ids);
+      for (const r of (rows ?? []) as { location_id: string }[]) managed.add(r.location_id);
+    }
     return NextResponse.json({
       results: (data ?? []).map((l) => {
         const category = Array.isArray(l.category) ? (l.category[0] ?? null) : l.category;
@@ -124,6 +136,7 @@ export async function GET(request: NextRequest) {
           postal_code: l.postal_code,
           category: category?.name ?? null,
           is_public: !l.is_demo,
+          managed: managed.has(l.id),
           image_url: l.logo_url ?? l.cover_image_url ?? null,
         };
       }),

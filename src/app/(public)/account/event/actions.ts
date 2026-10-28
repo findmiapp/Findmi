@@ -22,6 +22,9 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
+import { attendanceEventColumns, attendanceExtraColumns, normalizeReviewedAttendance, normalizeReviewedUrl } from "@/lib/event-import/attendance";
+import { isRenderableImageUrl } from "@/lib/location-eligibility";
+import { eventNameSearchTerm, rankEventCandidates } from "@/lib/event-matching";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { resolveEntityGeography } from "@/lib/geo/entity-geo";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
@@ -151,6 +154,28 @@ export async function uploadMemberEventImage(
   const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
   if ("error" in stored) return { error: stored.error };
 
+  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
+  return { url: data.publicUrl };
+}
+
+/** Host An Event Quick Create — a cover / flyer or gallery image chosen
+ * BEFORE the Event exists. Signed-in only; the same validated storage
+ * pipeline as uploadMemberEventImage (one Event media system for Quick
+ * Create and the Event Manager). The URL is attached on creation. */
+export async function uploadNewEventImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (!user) return { error: "Sign in to add images." };
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No file selected." };
+  const validated = await validateImageFile(file);
+  if ("error" in validated) return validated;
+  const admin = getAdminSupabase();
+  if (!admin) return { error: "Storage isn't configured on the server." };
+  const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
+  if ("error" in stored) return { error: stored.error };
   const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
   return { url: data.publicUrl };
 }
@@ -299,6 +324,12 @@ export async function createMemberEvent(formData: FormData) {
     );
   }
 
+  // Findmi Consolidation pass — Quick Create details (all optional),
+  // validated BEFORE anything is created so a bad link never leaves a
+  // half-made Event. Written with the existing Event columns / tables.
+  const quick = readQuickCreateDetails(formData);
+  if (quick.error) fail(quick.error);
+
   if (!name) fail("Event name is required.");
 
   let extraDates: BulkGenerateDateInput[] = [];
@@ -436,6 +467,13 @@ export async function createMemberEvent(formData: FormData) {
   // Event Formats V1 — the Formats picked at creation (best-effort too).
   const createFormats = decideEventFormatWrite(formData);
   if (createFormats.kind === "set" && createFormats.ids.length > 0) await syncEventFormats(admin, eventId, createFormats.ids);
+  // Quick Create details — description, links, cover + gallery (the same
+  // columns / event_images rows the Event Manager edits). Best-effort.
+  if (Object.keys(quick.columns).length > 0) await admin.from("events").update(quick.columns).eq("id", eventId);
+  if (Object.keys(quick.extraColumns).length > 0) await admin.from("events").update(quick.extraColumns).eq("id", eventId);
+  if (quick.galleryUrls.length > 0) {
+    await admin.from("event_images").insert(quick.galleryUrls.map((url, i) => ({ event_id: eventId, kind: "event" as const, url, display_order: i })));
+  }
 
   // Create Event From Venue — Stage 3, Step 9. Copies the chosen
   // Location's own venue fields onto the brand-new event, same copy
@@ -527,6 +565,18 @@ export async function createMemberEvent(formData: FormData) {
     await bulkGenerateEventDates(eventId, extraDates, locationHintId ?? null, manualVenue);
   }
 
+  // Participating Businesses chosen in Quick Create — existing Findmi
+  // Businesses only (searched, never created here), invited through the
+  // ONE participant write the Event Manager uses (event_businesses
+  // 'invited'). Invited AFTER the dates exist, so all-dates participation
+  // covers every date. Never the host itself.
+  if (quick.participantIds.length > 0) {
+    const { data: real } = await admin.from("businesses").select("id").in("id", quick.participantIds);
+    for (const b of ((real ?? []) as { id: string }[]).filter((b) => b.id !== hostBusinessId)) {
+      await inviteBusinessToEvent(admin, { eventId, businessId: b.id, userId: user.id });
+    }
+  }
+
   // Admin Action Email Notifications V1 — fires exactly once per
   // creation. A Business submission waits in Admin → Events → Needs Review.
   await notifyAdmin({
@@ -538,9 +588,51 @@ export async function createMemberEvent(formData: FormData) {
   });
 
   revalidatePath("/account");
-  // created=1 → the Event Manager's next steps (View Event, Participating
-  // Businesses) right after creation.
-  redirect(hostBusinessId ? `/account/event/${eventId}?business_id=${encodeURIComponent(hostBusinessId)}&created=1` : `/account/event/${eventId}?created=1`);
+  // The post-submit choice (Edit Event Further → the full Event Manager /
+  // Add Another Event), the same pattern as Location Quick Create — never
+  // a jump straight into the full editor.
+  const next = new URLSearchParams({ submitted: eventId });
+  if (hostBusinessId) next.set("business_id", hostBusinessId);
+  if (published) next.set("live", "1");
+  redirect(`${CREATE_EVENT_PATH}?${next.toString()}`);
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Host An Event Quick Create — the optional richer fields, read and
+ * validated in one place: description, Event / RSVP-Registration / Ticket
+ * links (https), cover / flyer and gallery (Findmi-stored images only,
+ * uploaded through the one Event image path), and participating Business
+ * ids (existing Businesses only, re-validated on write). */
+function readQuickCreateDetails(formData: FormData): {
+  error: string | null;
+  columns: Record<string, unknown>;
+  extraColumns: Record<string, unknown>;
+  galleryUrls: string[];
+  participantIds: string[];
+} {
+  const out = { error: null as string | null, columns: {} as Record<string, unknown>, extraColumns: {} as Record<string, unknown>, galleryUrls: [] as string[], participantIds: [] as string[] };
+  const description = str(formData, "description");
+  if (description) out.columns.description = description.slice(0, 5000);
+  const linkRaw = str(formData, "external_url");
+  if (linkRaw) {
+    const link = validateCustomDestination(linkRaw);
+    if (!link.ok) return { ...out, error: `Event link: ${link.error}` };
+    out.columns.external_url = link.value;
+  }
+  const rsvpRaw = str(formData, "rsvp_url");
+  const rsvp = rsvpRaw ? normalizeReviewedAttendance({ cta: str(formData, "rsvp_cta") === "register" ? "register" : "rsvp", url: rsvpRaw }) : null;
+  if (rsvpRaw && !rsvp) return { ...out, error: "RSVP / registration link: use a full https:// link." };
+  const ticketsRaw = str(formData, "tickets_url");
+  const tickets = ticketsRaw ? normalizeReviewedUrl(ticketsRaw) : null;
+  if (ticketsRaw && !tickets) return { ...out, error: "Ticket link: use a full https:// link." };
+  Object.assign(out.columns, attendanceEventColumns(rsvp, tickets));
+  Object.assign(out.extraColumns, attendanceExtraColumns(rsvp, null));
+  const cover = str(formData, "cover_image_url");
+  if (cover && isRenderableImageUrl(cover)) out.columns.cover_image_url = cover;
+  out.galleryUrls = formData.getAll("gallery_image_url").map(String).filter((u) => isRenderableImageUrl(u)).slice(0, 20);
+  out.participantIds = [...new Set(formData.getAll("participant_business_ids").map(String).filter((id) => UUID_RE.test(id)))].slice(0, 12);
+  return out;
 }
 
 // ── EVENT DETAILS ─────────────────────────────────────────────────────────
@@ -1514,6 +1606,24 @@ export async function inviteParticipatingBusiness(
     redirect(appendQuery(redirectPath, { error: "Verify your email before inviting a business." }));
   }
 
+  const error = await inviteBusinessToEvent(admin, { eventId, businessId, userId: user?.id ?? null, note, scope, selectedDateIds });
+  if (error) redirect(appendQuery(redirectPath, { error }));
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { participant_added: "1" }));
+}
+
+/** The ONE participant-invite write (Event Manager → Participants and Host
+ * An Event's quick create share it): event_businesses 'invited' (never
+ * 'approved' — an organizer inviting is not the Business confirming), the
+ * scoped per-date rows, and the invitation Opportunity. Returns an error
+ * message, or null. Callers authorize first. */
+async function inviteBusinessToEvent(
+  admin: SupabaseClient,
+  input: { eventId: string; businessId: string; userId: string | null; note?: string; scope?: EventParticipationScope; selectedDateIds?: string[] }
+): Promise<string | null> {
+  const { eventId, businessId } = input;
+  const scope = input.scope ?? "all_dates";
   const { count: occurrenceCount } = await admin.from("event_occurrences").select("id", { count: "exact", head: true }).eq("event_id", eventId);
   const effectiveScope: EventParticipationScope = (occurrenceCount ?? 0) > 0 ? scope : "all_dates";
 
@@ -1523,10 +1633,10 @@ export async function inviteParticipatingBusiness(
       { event_id: eventId, business_id: businessId, status: "invited", participation_scope: effectiveScope },
       { onConflict: "event_id,business_id", ignoreDuplicates: true }
     );
-  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+  if (error) return error.message;
 
   if (effectiveScope === "selected_dates") {
-    const realDateIds = selectedDateIds.filter((id) => !isPrimaryDateId(id));
+    const realDateIds = (input.selectedDateIds ?? []).filter((id) => !isPrimaryDateId(id));
     if (realDateIds.length > 0) {
       const { data: owned } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).in("id", realDateIds);
       const ownedIds = ((owned ?? []) as { id: string }[]).map((o) => o.id);
@@ -1541,17 +1651,17 @@ export async function inviteParticipatingBusiness(
     }
   }
 
-  if (user) {
+  if (input.userId) {
     try {
       const outcome = await createOpportunity(admin, {
         type: "event_invitation",
         eventId,
         eventOccurrenceId: null,
         businessId,
-        initiatorUserId: user.id,
+        initiatorUserId: input.userId,
         initiatorEntityType: "event",
         initiatorEntityId: eventId,
-        note: note?.trim() || null,
+        note: input.note?.trim() || null,
       });
       if (outcome.kind === "crossed") {
         await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
@@ -1561,9 +1671,7 @@ export async function inviteParticipatingBusiness(
       console.error("[opportunities] failed to record invitation Opportunity", err);
     }
   }
-
-  revalidatePath(redirectPath);
-  redirect(appendQuery(redirectPath, { participant_added: "1" }));
+  return null;
 }
 
 const VALID_PARTICIPATION_STATUSES: EventParticipationStatus[] = ["invited", "applied", "pending", "approved", "declined"];
@@ -1746,4 +1854,66 @@ export async function removeParticipatingBusiness(eventId: string, businessId: s
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { participant_removed: "1" }));
+}
+
+// ── EVENT NAME → LIKELY EXISTING EVENTS (search before create) ───────────
+export interface ExistingEventSuggestion {
+  id: string;
+  name: string;
+  slug: string;
+  date: string | null;
+  city: string | null;
+  reasons: string[];
+  /** Public page available. */
+  publicHref: string | null;
+  /** The person can manage it (this Business hosts it). */
+  manageHref: string | null;
+}
+
+/** Host An Event — as the Event name is typed (debounced on the client),
+ * likely existing Events so a duplicate isn't created by accident. Bounded:
+ * one trigram-indexed name query on the most distinctive word (≤ 20 rows,
+ * recent and upcoming only), one batched read of those Events' date
+ * Locations (never per row), ranked by lib/event-matching.ts with the
+ * Business / Location / date context. Never reveals someone else's
+ * unpublished Event. Signed-in only. */
+export async function suggestExistingEvents(input: { name: string; businessId?: string | null; locationId?: string | null; date?: string | null }): Promise<ExistingEventSuggestion[]> {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  const admin = getAdminSupabase();
+  if (!user || !admin) return [];
+  const term = eventNameSearchTerm(typeof input.name === "string" ? input.name.slice(0, 200) : "");
+  if (!term) return [];
+  const businessId = input.businessId && UUID_RE.test(input.businessId) ? input.businessId : null;
+  const since = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+  const { data } = await admin
+    .from("events")
+    .select("id, name, slug, start_date, start_at, city, host_business_id, is_demo, publication_status")
+    .ilike("name", term)
+    .is("trashed_at", null)
+    .is("archived_at", null)
+    .or(`start_date.gte.${since},start_date.is.null`)
+    .limit(20);
+  type Row = { id: string; name: string; slug: string; start_date: string | null; start_at: string | null; city: string | null; host_business_id: string | null; is_demo: boolean; publication_status: string };
+  const visible = ((data ?? []) as Row[]).filter((e) => (!e.is_demo && e.publication_status === "live") || (businessId && e.host_business_id === businessId));
+  if (visible.length === 0) return [];
+  const { data: occ } = await admin.from("event_occurrences").select("event_id, location_id").in("event_id", visible.map((e) => e.id)).not("location_id", "is", null).limit(200);
+  const locs = new Map<string, string[]>();
+  for (const o of (occ ?? []) as { event_id: string; location_id: string }[]) locs.set(o.event_id, [...(locs.get(o.event_id) ?? []), o.location_id]);
+  const ranked = rankEventCandidates(
+    { name: input.name, businessId, locationId: input.locationId ?? null, date: input.date ?? null },
+    visible.map((e) => ({ ...e, location_ids: locs.get(e.id) ?? [] }))
+  );
+  return ranked.map(({ row, reasons }) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug ?? "",
+    date: row.start_date ?? row.start_at?.slice(0, 10) ?? null,
+    city: row.city ?? null,
+    reasons,
+    publicHref: !row.is_demo && row.publication_status === "live" ? `/event/${row.slug}` : null,
+    manageHref: businessId && row.host_business_id === businessId ? `/account/event/${row.id}?business_id=${encodeURIComponent(businessId)}` : null,
+  }));
 }

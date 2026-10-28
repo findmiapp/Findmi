@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadMemberLocationImage } from "../actions";
+import { uploadMemberLocationImage, uploadNewLocationImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
 import { galleryUploadErrorMessage, uploadGalleryFiles } from "@/lib/gallery-upload";
 
@@ -14,7 +14,9 @@ export default function MemberLocationGalleryField({
   name,
   initialUrls,
 }: {
-  locationId: string;
+  /** null = the Location doesn't exist yet (Quick Create): uploads go
+   * through uploadNewLocationImage and are attached on creation. */
+  locationId: string | null;
   name: string;
   initialUrls: string[];
 }) {
@@ -32,7 +34,7 @@ export default function MemberLocationGalleryField({
       // a rejected upload caught, one failure never stopping or discarding
       // the others; successes are kept as soon as each one resolves.
       const failures = await uploadGalleryFiles(files, {
-        upload: (fd) => uploadMemberLocationImage(locationId, fd),
+        upload: (fd) => (locationId ? uploadMemberLocationImage(locationId, fd) : uploadNewLocationImage(fd)),
         onUploaded: (url) => setUrls((prev) => [...prev, url]),
       });
       setError(galleryUploadErrorMessage(failures));

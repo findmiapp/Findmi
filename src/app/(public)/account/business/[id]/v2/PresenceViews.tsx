@@ -213,12 +213,18 @@ export function LocationsPresence({
   // importer, targeted at Our Locations (business_locations).
   const actions = canEdit ? (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Add Locations">
-      <Link
-        href={connectable.length > 0 ? `${locationsPath}&add=1` : createHref}
-        className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600"
-      >
+      {/* The ONE Add Location flow: search Findmi first, then create. */}
+      <Link href={createHref} className="flex h-10 shrink-0 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
         + Add a Location
       </Link>
+      {connectable.length > 0 && (
+        <Link
+          href={`${locationsPath}&add=1`}
+          className="flex h-10 shrink-0 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40"
+        >
+          Suggested ({connectable.length})
+        </Link>
+      )}
       <Link
         href={`/account/business/${encodeURIComponent(businessId)}/import-locations?target=our-locations`}
         className="flex h-10 shrink-0 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-primary transition hover:border-findmi/40"
@@ -277,14 +283,16 @@ export function LocationsPresence({
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-lg font-bold text-findmi-700">+</span>
             <span className="min-w-0 flex-1">
-              <span className="block text-card-title font-semibold text-primary">Create a new location</span>
-              <span className="block text-metadata text-muted">Add a place that isn&rsquo;t on Findmi yet</span>
+              <span className="block text-card-title font-semibold text-primary">Search or add a location</span>
+              <span className="block text-metadata text-muted">Find it on Findmi first, or add a place that isn&rsquo;t here yet</span>
             </span>
             <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
           </Link>
           {connectable.length > 0 && (
             <>
-              <p className="mt-5 px-1 text-label font-bold uppercase text-subtle">Connect a location you manage</p>
+              {/* Scoped to THIS Business (lib/location-matching.ts) — never
+                  every Location the person manages for other Businesses. */}
+              <p className="mt-5 px-1 text-label font-bold uppercase text-subtle">Suggested for {businessName}</p>
               <ul className="mt-2 divide-y divide-black/[0.06] rounded-xl border border-black/[0.07]">
                 {connectable.map((c) => (
                   <li key={c.id} className="flex items-center gap-3 px-4 py-3">

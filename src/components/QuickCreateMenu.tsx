@@ -106,7 +106,7 @@ export default function QuickCreateMenu({
             onNavigate={handleNavigate}
           />
           <MenuLink
-            href="/account/business/new"
+            href="/join/brand"
             label="Add A Business"
             description="Bring a business onto Findmi."
             icon={<NavIcon name="storefront" className="h-4 w-4" />}

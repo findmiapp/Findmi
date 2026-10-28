@@ -165,7 +165,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // above — see resolveFeaturedLocationHappening's own note.
   const featuredHappening = resolveFeaturedLocationHappening(happenings, location.featured_event_id ?? null);
   const featuredLive = featuredHappening ? happeningTemporal(featuredHappening).live : false;
-  const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
+  const fullAddress = [location.address, location.address_line2, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
     .join(", ");
   const mapsQuery = encodeURIComponent([location.name, fullAddress].filter(Boolean).join(", "));
@@ -173,7 +173,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // (secondary but readable) — from the structured fields, never a split
   // of the joined string. Either line alone still renders on its own.
   const mapResult = placeResult(location);
-  const addressLine1 = location.address?.trim() || null;
+  const addressLine1 = [location.address?.trim(), location.address_line2?.trim()].filter(Boolean).join(", ") || null;
   const addressLine2 = cityStateZip(location.city, location.state, location.postal_code) || null;
   const addressBlock = (
     <span className="min-w-0 flex-1 leading-snug">

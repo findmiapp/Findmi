@@ -80,15 +80,15 @@ test("name first: 'Fenty Beauty' is a name; no match → the website prompt (not
   assert.deepEqual(result, { state: "none" });
   // The name/Instagram no-match renders WebsitePrompt, not the old
   // "Add Your Brand" primary link into the generic form.
-  assert.match(PAGE, /return \(\s*<WebsitePrompt\s+title=\{`We Couldn't Find \$\{instagramSeed \? `@\$\{instagramSeed\}` : value\}`\}\s+body="Add your website and Findmi will build the starting profile for you\."/);
+  assert.match(PAGE, /return \(\s*<WebsitePrompt\s+title=\{`We Couldn't Find \$\{instagramSeed \? `@\$\{instagramSeed\}` : value\}`\}\s+body=\{IMPORT_COPY\}/);
   assert.doesNotMatch(PAGE, /<PrimaryLink href=\{addHref\} label="Add Your Brand" \/>/, "the old primary jump is gone");
   // The prompt is a GET back into the ordinary website lookup, carrying the seed.
   const prompt = PAGE.slice(PAGE.indexOf("function WebsitePrompt"));
   assert.match(prompt, /<form method="get" action="\/join\/brand"[^>]*>\s*<input type="hidden" name="as" value="website" \/>\s*<SeedFields seed=\{seed\} \/>/);
   assert.match(prompt, /name="q"/);
-  assert.match(prompt, />\s*Continue\s*</, "establishing the website is not the Build");
-  assert.doesNotMatch(prompt, /Build My Brand Profile/);
-  assert.match(prompt, /label="Add It Myself"/);
+  assert.match(prompt, />\s*Import From Website\s*</, "Import From Website — lookup first, then the one build");
+  assert.match(prompt, /label="Enter Details Manually"/);
+  assert.match(prompt, /label="Enter Details Manually"/);
   assert.match(prompt, /autoCapitalize="none"\s+autoCorrect="off"\s+spellCheck=\{false\}/);
 });
 
@@ -193,7 +193,7 @@ test("seeds are bounded and can carry nothing else", () => {
 
 test("Review Your Brand presentation: same form, no Free/Pro picker, Add My Brand; authorization never prefilled", () => {
   assert.match(NEW_PAGE, /const brandOnboarding = parseBrandSource\(source\);/);
-  assert.match(NEW_PAGE, /\{brandOnboarding \? "Review Your Brand" : "Add a Business"\}/);
+  assert.match(NEW_PAGE, /\{brandOnboarding \? "Review Your Business" : "Add a Business"\}/);
   assert.match(NEW_PAGE, /\{brandOnboarding && <input type="hidden" name="source" value=\{BRAND_SOURCE\} \/>\}/);
   assert.match(NEW_PAGE, /\{hasInvite \? \([\s\S]*?\) : brandOnboarding \? null : \(\s*<div className="relative/, "invite block kept; Free value section skipped for brand");
   assert.match(NEW_PAGE, /\{brandOnboarding \? "Add My Brand" : "Create My Business"\}/);

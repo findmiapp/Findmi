@@ -217,7 +217,7 @@ function ActionSheet({
         ) : !ctx.businesses.length ? (
           <div className="mt-3 flex flex-col gap-3">
             <p className="text-sm text-ink/60">{commercial ? "Inquiries are sent from a Business on Findmi." : "Opportunities are for Businesses on Findmi."} Add yours to continue.</p>
-            <Link href="/account/business/new" className="flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold text-white hover:bg-findmi-600">
+            <Link href="/join/brand" className="flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold text-white hover:bg-findmi-600">
               Add Your Business
             </Link>
           </div>

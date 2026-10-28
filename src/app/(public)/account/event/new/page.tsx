@@ -13,6 +13,10 @@ import CategorySubcategoryField from "@/components/admin/CategorySubcategoryFiel
 import EventFormatField from "@/components/admin/EventFormatField";
 import { getAllCategories } from "@/lib/admin/queries";
 import { createMemberEvent } from "../actions";
+import EventNameWithSuggestions from "@/components/event/EventNameWithSuggestions";
+import ParticipatingBusinessesPicker from "@/components/event/ParticipatingBusinessesPicker";
+import MemberEventImageField from "../[id]/MemberEventImageField";
+import MemberEventGalleryField from "../[id]/MemberEventGalleryField";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
  * Location owner's "+ Add an Event Here" link (see the Location Manager's
@@ -68,6 +72,7 @@ export const dynamic = "force-dynamic";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none";
+const labelClass = "mb-1.5 block text-body font-medium text-primary";
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
@@ -97,6 +102,8 @@ export default async function AddEventPage({
     daily_start?: string;
     daily_end?: string;
     multi_dates?: string;
+    submitted?: string;
+    live?: string;
   }>;
 }) {
   const {
@@ -116,6 +123,8 @@ export default async function AddEventPage({
     daily_start: submittedDailyStart,
     daily_end: submittedDailyEnd,
     multi_dates: submittedMultiDates,
+    submitted,
+    live,
   } = await searchParams;
   const locationHint = await getLocationHint(locationIdHint);
 
@@ -153,6 +162,45 @@ export default async function AddEventPage({
   }
 
   const admin = getAdminSupabase();
+
+  // Findmi Consolidation pass — the post-submit choice (same pattern as
+  // Location Quick Create): Edit Event Further opens the full Event Manager
+  // for refinement; Add Another Event restarts Quick Create. A Business /
+  // user submission is pending review — manageable now, public once
+  // Findmi approves it.
+  if (submitted && /^[0-9a-f-]{36}$/i.test(submitted)) {
+    const businessQuery = businessIdParam ? `?business_id=${encodeURIComponent(businessIdParam)}` : "";
+    const managerHref = `/account/event/${submitted}${businessQuery}`;
+    return (
+      <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
+        <div className="rounded-3xl border border-black/[0.07] bg-white p-6">
+          <p className="flex items-center gap-1.5 text-label font-bold uppercase text-findmi-700">
+            <span className={`h-2 w-2 rounded-full ${live === "1" ? "bg-findmi" : "bg-amber-500"}`} aria-hidden="true" />
+            {live === "1" ? "Live" : "Pending Review"}
+          </p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">{live === "1" ? "Event Published" : "Event Submitted"}</h1>
+          <p className="mt-2 text-body text-muted">
+            {live === "1" ? "It's live on Findmi." : "You can keep editing it now — it appears publicly on Findmi once it's reviewed."}
+          </p>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <Link href={managerHref} className="flex flex-col rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3 transition hover:border-findmi/50">
+              <span className="text-card-title font-bold text-findmi-700">Edit Event Further</span>
+              <span className="text-metadata text-findmi-700/80">Dates, location, participants, images and more in the Event Manager.</span>
+            </Link>
+            <Link href={`/account/event/new${businessQuery}`} className="flex h-12 items-center justify-center rounded-2xl border border-black/10 bg-white text-button font-bold text-primary transition hover:border-black/20">
+              Add Another Event
+            </Link>
+            {businessIdParam && (
+              <Link href={`/account/business/${encodeURIComponent(businessIdParam)}`} className="flex h-10 items-center justify-center text-metadata font-semibold text-muted hover:text-primary">
+                Back To Business Manager
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Business-Hosted Events V1 — "+ Add → Host Something" opens this flow
   // with the originating Business as the Event's HOST. Hosting is scoped
   // to that Business alone — an owner/manager of it — and is not a Pro
@@ -219,8 +267,8 @@ export default async function AddEventPage({
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext
-          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing — with all its dates. It’s public on Findmi right away; fine-tune everything in Event Manager."
-          : "Create your event — it’s public on Findmi right away. Finish the details in Event Manager."}
+          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing — with all its dates. It goes live once Findmi reviews it; you can keep refining it in the Event Manager."
+          : "Create your event — it goes live once Findmi reviews it. Finish the details in the Event Manager."}
       </p>
 
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
@@ -254,17 +302,21 @@ export default async function AddEventPage({
             defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
           />
 
+          {/* Search before create: likely existing Events as the name is typed. */}
+          <EventNameWithSuggestions defaultValue={submittedName ?? ""} businessId={businessContext?.id ?? null} inputClass={inputClass} labelClass={labelClass} />
+
           <label className="block">
-            <span className="mb-1.5 block text-body font-medium text-primary">Event name</span>
-            <input autoCapitalize="words"
-              type="text"
-              name="name"
-              required
-              defaultValue={submittedName ?? ""}
-              placeholder="Your event name"
-              className={inputClass}
-            />
+            <span className={labelClass}>
+              What&rsquo;s Happening <span className="font-normal text-subtle">(description)</span>
+            </span>
+            <textarea name="description" rows={4} maxLength={5000} autoCapitalize="sentences" placeholder="What people will find, do or see" className={inputClass} />
           </label>
+
+          <div className="flex flex-col gap-4 rounded-2xl border border-black/[0.06] p-3.5">
+            <p className="text-label font-bold uppercase text-subtle">Images</p>
+            <MemberEventImageField eventId={null} label="Cover / Flyer" name="cover_image_url" defaultValue={null} />
+            <MemberEventGalleryField eventId={null} name="gallery_image_url" initialUrls={[]} />
+          </div>
 
           <CategorySubcategoryField variant="compact" categories={eventCategories} defaultCategoryId={submittedCategoryId ?? null} emptyText="No Event categories yet." />
           <EventFormatField variant="compact" formats={eventFormats} defaultSelectedIds={(submittedFormatIds ?? "").split(",")} />
@@ -290,8 +342,37 @@ export default async function AddEventPage({
             }
           />
 
+          <ParticipatingBusinessesPicker hostBusinessId={businessContext?.id ?? null} inputClass={inputClass} />
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.06] p-3.5">
+            <p className="text-label font-bold uppercase text-subtle">
+              Links <span className="font-normal normal-case text-subtle">(optional)</span>
+            </p>
+            <label className="block">
+              <span className={labelClass}>Event link</span>
+              <input type="url" name="external_url" inputMode="url" autoCapitalize="none" placeholder="https://" className={inputClass} />
+            </label>
+            <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[minmax(0,1fr)_8rem]">
+              <label className="block">
+                <span className={labelClass}>RSVP / registration link</span>
+                <input type="url" name="rsvp_url" inputMode="url" autoCapitalize="none" placeholder="https://" className={inputClass} />
+              </label>
+              <label className="block">
+                <span className={labelClass}>Button says</span>
+                <select name="rsvp_cta" defaultValue="rsvp" className={inputClass}>
+                  <option value="rsvp">RSVP</option>
+                  <option value="register">Register</option>
+                </select>
+              </label>
+            </div>
+            <label className="block">
+              <span className={labelClass}>Ticket link</span>
+              <input type="url" name="tickets_url" inputMode="url" autoCapitalize="none" placeholder="https://" className={inputClass} />
+            </label>
+          </div>
+
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            Create My Event
+            Submit Event
           </button>
           {!businessContext && <p className="text-center text-metadata text-subtle">Free for every Findmi member.</p>}
         </form>

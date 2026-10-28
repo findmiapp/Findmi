@@ -8,7 +8,8 @@ import { readFileSync } from "node:fs";
 const view = readFileSync("src/app/(public)/location/[slug]/LocationPublicView.tsx", "utf8");
 
 test("address card renders two deliberate lines from structured fields (no hardcoded address)", () => {
-  assert.match(view, /const addressLine1 = location\.address\?\.trim\(\) \|\| null;/);
+  // Consolidation pass: Address Line 2 (suite / unit) joins line 1.
+  assert.match(view, /const addressLine1 = \[location\.address\?\.trim\(\), location\.address_line2\?\.trim\(\)\]\.filter\(Boolean\)\.join\(", "\) \|\| null;/);
   assert.match(view, /const addressLine2 = cityStateZip\(location\.city, location\.state, location\.postal_code\) \|\| null;/);
   assert.match(view, /\{addressLine1 && <span className="block break-words text-sm font-semibold text-ink">\{addressLine1\}<\/span>\}/, "line 1: semibold, darker");
   assert.match(view, /\{addressLine2 && <span className="block break-words text-sm text-ink\/75">\{addressLine2\}<\/span>\}/, "line 2: regular, slightly lighter");

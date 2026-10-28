@@ -9,6 +9,10 @@ import { isManagingRole } from "@/lib/business-locations";
 import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import { createMemberLocation } from "../actions";
+import { connectBusinessLocation } from "../../business/location-actions";
+import LocationSearchFirst from "@/components/location/LocationSearchFirst";
+import MemberLocationImageField from "../[id]/MemberLocationImageField";
+import MemberLocationGalleryField from "../[id]/MemberLocationGalleryField";
 import GuestCreateSubmit from "@/components/account/GuestCreateSubmit";
 
 export const metadata: Metadata = {
@@ -62,6 +66,7 @@ export default async function AddLocationPage({
     duplicate_name?: string;
     name?: string;
     address?: string;
+    address_line2?: string;
     city?: string;
     state?: string;
     postal_code?: string;
@@ -70,6 +75,7 @@ export default async function AddLocationPage({
     context?: string;
     resume?: string;
     submitted?: string;
+    manage?: string;
   }>;
 }) {
   const {
@@ -78,6 +84,7 @@ export default async function AddLocationPage({
     duplicate_name: duplicateName,
     name: submittedName,
     address: submittedAddress,
+    address_line2: submittedAddressLine2,
     city: submittedCity,
     state: submittedState,
     postal_code: submittedPostalCode,
@@ -86,6 +93,7 @@ export default async function AddLocationPage({
     context: contextParam,
     resume,
     submitted,
+    manage,
   } = await searchParams;
 
   // Guest-First Experience Completion pass — the landing spot for a
@@ -128,6 +136,49 @@ export default async function AddLocationPage({
   // safe no-op (caught, returns null) without a signed-in session, so a
   // guest with ?business_id=/?parent_location_id= simply sees none below.
   const [business, parent] = await Promise.all([resolveBusinessContext(businessIdParam), resolveParentContext(parentIdParam)]);
+
+  // Findmi Consolidation pass — "Location submitted": a next step, never a
+  // jump into a large edit form. Edit Location Further opens the existing
+  // full Location Manager (hours, contact, amenities…) when this person
+  // manages the new Location; Add Another Location restarts search-first.
+  if (submitted && UUID_RE.test(submitted) && user) {
+    const againParams = new URLSearchParams();
+    if (business) againParams.set("business_id", business.id);
+    else if (parent) againParams.set("parent_location_id", parent.id);
+    else againParams.set("context", "generic");
+    const backHref = business ? `/account/business/${business.id}?tab=findmi-here&view=locations` : parent ? `/account/location/${parent.id}` : "/account";
+    const backLabel = business ? `Back To ${business.name}` : parent ? `Back To ${parent.name}` : "Back To Your Account";
+    return (
+      <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
+        <div className="rounded-3xl border border-black/[0.07] bg-white p-6">
+          <p className="flex items-center gap-1.5 text-label font-bold uppercase text-findmi-700">
+            <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+            Pending Review
+          </p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Location Submitted</h1>
+          <p className="mt-2 text-body text-muted">
+            {business ? `It's connected to ${business.name}. ` : ""}It appears publicly on Findmi once it&rsquo;s reviewed.
+          </p>
+          {error && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-metadata text-amber-900">{error}</p>}
+          <div className="mt-6 flex flex-col gap-2.5">
+            {manage === "1" && (
+              <Link href={`/account/location/${submitted}`} className="flex flex-col rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3 transition hover:border-findmi/50">
+                <span className="text-card-title font-bold text-findmi-700">Edit Location Further</span>
+                <span className="text-metadata text-findmi-700/80">Add hours, contact information, amenities and more.</span>
+              </Link>
+            )}
+            <Link href={`/account/location/new?${againParams.toString()}`} className="flex h-12 items-center justify-center rounded-2xl border border-black/10 bg-white text-button font-bold text-primary transition hover:border-black/20">
+              Add Another Location
+            </Link>
+            <Link href={backHref} className="flex h-10 items-center justify-center text-metadata font-semibold text-muted hover:text-primary">
+              {backLabel}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Guest-First Creation pass — a signed-out visitor can't be shown
   // ChooseLocationContext (it lists the Businesses THEY manage, which
   // requires a user id), so one always skips straight to the plain
@@ -136,6 +187,10 @@ export default async function AddLocationPage({
   // field through the login round-trip, same as Business creation).
   const hasKnownContext = Boolean(business) || Boolean(parent) || contextParam === "generic" || !user;
   if (!hasKnownContext) return <ChooseLocationContext userId={user!.id} />;
+
+  // A round-trip (validation error / resumed draft) goes straight back to
+  // the form with what was typed; otherwise search Findmi first.
+  const startCreating = Boolean(error || resume === "1" || submittedName || submittedAddress);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -155,10 +210,7 @@ export default async function AddLocationPage({
             {business.name}
           </p>
           <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
-          <p className="mt-2 text-body text-muted">
-            Add a place connected to {business.name} — your storefront, a retailer, a venue or somewhere you&rsquo;ll appear. It appears
-            publicly once Findmi reviews it.
-          </p>
+          <p className="mt-2 text-body text-muted">Search Findmi first. If it&rsquo;s not here, add it — it appears publicly once Findmi reviews it.</p>
         </>
       ) : parent ? (
         <>
@@ -172,7 +224,7 @@ export default async function AddLocationPage({
         <>
           <p className="text-label font-bold uppercase text-accent">Adding To Findmi</p>
           <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add A Location</h1>
-          <p className="mt-2 text-body text-muted">Add a place people can find on Findmi. It appears publicly once Findmi reviews it. Free.</p>
+          <p className="mt-2 text-body text-muted">Search Findmi first. If it&rsquo;s not here, add it — it appears publicly once Findmi reviews it. Free.</p>
         </>
       )}
 
@@ -187,64 +239,86 @@ export default async function AddLocationPage({
         </div>
       )}
 
-      <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-        <form id="create-location-form" action={createMemberLocation} className="flex flex-col gap-4">
-          {business && <input type="hidden" name="business_id" value={business.id} />}
-          {parent && <input type="hidden" name="parent_location_id" value={parent.id} />}
-          {/* Context was already resolved in Step 1 (or arrived already
-              known) — this form never asks it again. Selecting a
-              Business/adding generically never requests management;
-              intent is always "adding" from here (createMemberLocation's
-              own server-side validation of this field is unchanged). */}
-          <input type="hidden" name="intent" value="adding" />
-          <label className="block">
-            <span className="mb-1.5 block text-body font-medium text-primary">Location name</span>
-            <input autoCapitalize="words"
-              type="text"
-              name="name"
-              required
-              defaultValue={submittedName ?? ""}
-              placeholder="Location name"
-              className={inputClass}
-            />
-          </label>
+      <div className="mt-6 rounded-3xl border border-black/[0.07] bg-white p-4 sm:p-6">
+        <LocationSearchFirst
+          initialQuery={submittedName ?? ""}
+          startCreating={startCreating}
+          businessName={business?.name ?? null}
+          connectAction={business ? connectBusinessLocation.bind(null, business.id) : null}
+          signedIn={Boolean(user)}
+        >
+          <form id="create-location-form" action={createMemberLocation} className="flex flex-col gap-4">
+            {business && <input type="hidden" name="business_id" value={business.id} />}
+            {parent && <input type="hidden" name="parent_location_id" value={parent.id} />}
+            {/* Context was already resolved in Step 1 (or arrived already
+                known) — this form never asks it again. Selecting a
+                Business/adding generically never requests management;
+                intent is always "adding" from here (createMemberLocation's
+                own server-side validation of this field is unchanged). */}
+            <input type="hidden" name="intent" value="adding" />
+            <p className="text-label font-bold uppercase text-subtle">New Location</p>
+            <label className="block">
+              <span className="mb-1.5 block text-body font-medium text-primary">Location name</span>
+              <input autoCapitalize="words" type="text" name="name" required defaultValue={submittedName ?? ""} placeholder="Location name" className={inputClass} />
+            </label>
 
-          <label className="block">
-            <span className="mb-1.5 block text-body font-medium text-primary">Address</span>
-            <input autoCapitalize="words" type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
-          </label>
+            <label className="block">
+              <span className="mb-1.5 block text-body font-medium text-primary">Address line 1</span>
+              <input autoCapitalize="words" type="text" name="address" autoComplete="address-line1" defaultValue={submittedAddress ?? ""} placeholder="Street address" className={inputClass} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-body font-medium text-primary">
+                Address line 2 <span className="font-normal text-subtle">(optional)</span>
+              </span>
+              <input autoCapitalize="words" type="text" name="address_line2" autoComplete="address-line2" defaultValue={submittedAddressLine2 ?? ""} placeholder="Suite, unit, floor…" className={inputClass} />
+            </label>
 
-          <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} defaultPostalCode={submittedPostalCode ?? ""} />
+            <LocationGeographyFields defaultCity={submittedCity ?? ""} defaultState={submittedState ?? ""} defaultPostalCode={submittedPostalCode ?? ""} />
 
-          {business || parent ? (
-            // Adding as a Business, or inside a managed Location, asserts
-            // a real relationship the submitter must actually hold —
-            // identity is still required at submit here.
-            <GuestCreateSubmit
-              formId="create-location-form"
-              label="Add Location"
-              title="Your Location Is Ready"
-              body="Create your free Findmi account to publish it, manage it and keep everything you've created."
-              authed={Boolean(user)}
-              resume={resume === "1"}
-              className={`mt-2 ${primaryButtonClass}`}
-            />
-          ) : (
-            // Guest-First Experience Completion pass — "I'm Just Adding
-            // It To Findmi" is factual directory data only (no ownership,
-            // no management, no claim): submits for anyone, signed in or
-            // not. createMemberLocation's own anonymous branch is what
-            // actually makes this safe, not this button.
-            <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-              Add Location
-            </button>
-          )}
-          <p className="text-center text-metadata text-subtle">Free — always.</p>
-        </form>
+            {user ? (
+              <div className="flex flex-col gap-4 border-t border-black/[0.06] pt-4">
+                <p className="text-label font-bold uppercase text-subtle">
+                  Photos <span className="font-normal normal-case text-subtle">(optional)</span>
+                </p>
+                <MemberLocationImageField locationId={null} label="Cover image" name="cover_image_url" defaultValue={null} />
+                <MemberLocationGalleryField locationId={null} name="gallery_image_url" initialUrls={[]} />
+              </div>
+            ) : (
+              <p className="text-metadata text-subtle">You can add photos after you sign in.</p>
+            )}
+
+            {business || parent ? (
+              // Adding as a Business, or inside a managed Location, asserts
+              // a real relationship the submitter must actually hold —
+              // identity is still required at submit here.
+              <GuestCreateSubmit
+                formId="create-location-form"
+                label="Submit Location"
+                title="Your Location Is Ready"
+                body="Create your free Findmi account to publish it, manage it and keep everything you've created."
+                authed={Boolean(user)}
+                resume={resume === "1"}
+                className={`mt-2 ${primaryButtonClass}`}
+              />
+            ) : (
+              // Guest-First Experience Completion pass — "I'm Just Adding
+              // It To Findmi" is factual directory data only (no ownership,
+              // no management, no claim): submits for anyone, signed in or
+              // not. createMemberLocation's own anonymous branch is what
+              // actually makes this safe, not this button.
+              <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
+                Submit Location
+              </button>
+            )}
+            <p className="text-center text-metadata text-subtle">Free — always.</p>
+          </form>
+        </LocationSearchFirst>
       </div>
     </div>
   );
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Unknown context — "How are you adding this Location?" The default,
  * always-available choice is generic (no Business relationship asserted

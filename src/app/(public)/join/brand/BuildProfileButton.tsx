@@ -13,7 +13,7 @@ export default function BuildProfileButton() {
       aria-busy={pending}
       className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-70"
     >
-      {pending ? "Reading Your Website…" : "Build My Brand Profile"}
+      {pending ? "Reading Your Website…" : "Import From Website"}
     </button>
   );
 }

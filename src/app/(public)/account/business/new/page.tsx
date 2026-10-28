@@ -111,6 +111,16 @@ export default async function AddBusinessPage({
   // elsewhere on this page.
   const hasInvite = Boolean(invite);
 
+  // Findmi Consolidation pass — ONE canonical Business onboarding: search
+  // Findmi first (claim / request management when it exists), then
+  // website-assisted import or manual entry (/join/brand). A bare visit
+  // here (no carried name / website / draft / invite / error) is sent to
+  // that front door instead of skipping the search; every link INTO this
+  // form from the canonical flow carries its values and lands here as
+  // before.
+  const carried = [error, invite, ref, submittedName, submittedWebsiteUrl, submittedInstagramUrl, source, draftParam, prefill, resume, submittedCategoryId, submittedCity, submittedState];
+  if (carried.every((v) => !v)) redirect("/join/brand");
+
   // Brand Onboarding presentation (source=brand from /join/brand): "Review
   // Your Brand" and Business Profile landing after creation, instead of
   // the ordinary form's copy/redirect — the business is still created
@@ -235,7 +245,7 @@ export default async function AddBusinessPage({
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-label font-bold uppercase text-accent">My Findmi</p>
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-        {brandOnboarding ? "Review Your Brand" : "Add a Business"}
+        {brandOnboarding ? "Review Your Business" : "Add a Business"}
       </h1>
       {draft ? (
         <p className="mt-2 text-body text-muted">

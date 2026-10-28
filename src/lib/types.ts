@@ -858,6 +858,9 @@ export interface FindmiLocation {
   name: string;
   slug: string;
   address: string | null;
+  /** Suite / unit / floor — kept apart from the geocoded street address
+   * (Consolidation pass). Optional: absent on reads that don't select it. */
+  address_line2?: string | null;
   city: string | null;
   state: string | null;
   latitude: number | null;

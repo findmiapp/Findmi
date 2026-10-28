@@ -93,7 +93,10 @@ test("1/7/8. Business + Brand onboarding: name words; descriptions/About sentenc
 });
 
 test("2/6. Event title words; Event description sentences; Event URLs none", () => {
-  assert.equal(byName("src/app/(public)/account/event/new/page.tsx", "name").cap, "words");
+  // Consolidation pass: the Event name field (with existing-Event suggestions) is its own component.
+  assert.equal(byName("src/components/event/EventNameWithSuggestions.tsx", "name").cap, "words");
+  assert.equal(fields("src/app/(public)/account/event/new/page.tsx").find((f) => f.name === "description")?.cap, "sentences");
+  for (const f of fields("src/app/(public)/account/event/new/page.tsx").filter((x) => /_url$/.test(x.name ?? ""))) assert.equal(f.cap, "none", f.name);
   const ev = fields("src/app/(public)/account/event/[id]/page.tsx");
   assert.equal(ev.find((f) => f.name === "name")?.cap, "words");
   assert.equal(ev.find((f) => f.name === "description")?.cap, "sentences");
@@ -116,6 +119,7 @@ test("3. Product name words; description sentences; purchase URL none", () => {
 test("4/16. Location + address: name/street/city/state words; ZIP none", () => {
   assert.equal(byName("src/app/(public)/account/location/new/page.tsx", "name").cap, "words");
   assert.equal(byName("src/app/(public)/account/location/new/page.tsx", "address").cap, "words");
+  assert.equal(byName("src/app/(public)/account/location/new/page.tsx", "address_line2").cap, "words");
   for (const p of ["src/components/BusinessGeographyFields.tsx", "src/components/LocationGeographyFields.tsx"]) {
     assert.equal(byName(p, "city").cap, "words");
     assert.equal(byName(p, "state").cap, "words");
@@ -123,7 +127,7 @@ test("4/16. Location + address: name/street/city/state words; ZIP none", () => {
   const manual = fields("src/components/account/EventLocationField.tsx").filter((f) => f.type === "text");
   assert.deepEqual(manual.map((f) => f.cap), ["words", "words", "words", "words", "none"], "venue, address, city, state, ZIP");
   const place = fields("src/components/places/PlaceFindOrCreate.tsx").filter((f) => f.type === "text");
-  assert.deepEqual(place.map((f) => f.cap), ["words", "words", "words", "words", "none"]);
+  assert.deepEqual(place.map((f) => f.cap), ["words", "words", "words", "words", "words", "none"], "name, street, line 2, city, state, ZIP");
   assert.match(read("src/components/journal/MomentContextStage.tsx"), /autoCapitalize=\{key === "zip" \? "none" : "words"\}/);
 });
 

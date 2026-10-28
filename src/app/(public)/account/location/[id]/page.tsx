@@ -792,7 +792,7 @@ export default async function ManageLocationPage({
             <div className="border-t border-black/5 pt-6">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
               <p className="mt-2 text-sm text-ink">
-                {[location.address, cityStateZip(location.city, location.state, location.postal_code)].filter(Boolean).join(", ") || "Not set"}
+                {[location.address, (location as { address_line2?: string | null }).address_line2, cityStateZip(location.city, location.state, location.postal_code)].filter(Boolean).join(", ") || "Not set"}
               </p>
               <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi. Contact support for a correction.</p>
             </div>

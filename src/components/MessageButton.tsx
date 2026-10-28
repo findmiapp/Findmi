@@ -376,7 +376,7 @@ export default function MessageButton({
                         : "You need an Event on Findmi to invite businesses."}
                   </p>
                   <Link
-                    href="/account/business/new"
+                    href="/join/brand"
                     className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
                     Create a Business

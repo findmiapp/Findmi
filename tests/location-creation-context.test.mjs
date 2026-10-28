@@ -114,9 +114,11 @@ test("generic 'Just Adding' submission creates the Location only — no claim re
 
 // ── Factual form fields ──────────────────────────────────────────────────
 
-test("the factual form contains exactly Location Name, Address, City, State, ZIP Code", () => {
+test("the factual form contains Location Name, Address line 1 / line 2, City, State, ZIP Code (+ optional photos)", () => {
   assert.match(LOC_NEW, /Location name/);
-  assert.match(LOC_NEW, /<span className="mb-1\.5 block text-body font-medium text-primary">Address<\/span>/);
+  assert.match(LOC_NEW, /<span className="mb-1\.5 block text-body font-medium text-primary">Address line 1<\/span>/);
+  assert.match(LOC_NEW, /Address line 2 <span className="font-normal text-subtle">\(optional\)<\/span>/);
+  assert.match(LOC_NEW, /name="address_line2"/);
   assert.match(LOC_GEO, /<span className="mb-1\.5 block text-sm font-medium text-ink">City<\/span>/);
   assert.match(LOC_GEO, /<span className="mb-1\.5 block text-sm font-medium text-ink">State<\/span>/);
   assert.match(LOC_GEO, /<span className="mb-1\.5 block text-sm font-medium text-ink">ZIP Code<\/span>/);

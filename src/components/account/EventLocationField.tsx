@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createInlinePlace } from "@/app/(public)/account/location/actions";
 import type { CreateInlineLocationResult } from "@/lib/locationCreation";
-import PlaceFindOrCreate, { NotPublicBadge } from "@/components/places/PlaceFindOrCreate";
+import PlaceFindOrCreate, { NotPublicBadge, placeResultToDetail } from "@/components/places/PlaceFindOrCreate";
+import { useAccountSearch } from "@/components/account/useAccountSearch";
 import {
   cancelManualVenue,
   clearPlace,
@@ -219,6 +220,14 @@ export default function EventLocationField({
 
           {manualOpen && (
             <div className="flex flex-col gap-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
+              {/* Consolidation pass — never silently disconnected: say what
+                  these details become, and keep matching them against
+                  Findmi Locations while they're typed. */}
+              <p className="text-xs text-ink/60">
+                These venue details stay on this Event only — they don&rsquo;t create a Findmi Location. To add the place to Findmi (pending review), use{" "}
+                <span className="font-semibold">Add New Location</span> above.
+              </p>
+              <ManualVenueMatches query={manual.address.trim().length >= 4 ? manual.address : manual.venue_name} onUse={(place) => setWhere((w) => selectPlace(w, place))} />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-ink/70">Venue Details</span>
                 <button
@@ -280,6 +289,31 @@ export default function EventLocationField({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** Manual venue entry still searches Findmi (debounced, bounded) so an
+ * existing Location is offered instead of a disconnected duplicate. */
+function ManualVenueMatches({ query, onUse }: { query: string; onUse: (place: SelectedLocationDetail) => void }) {
+  const q = query.trim();
+  const { results } = useAccountSearch("locations", q.length >= 3 ? q : "", { scope: "place" });
+  const matches = q.length >= 3 ? results.slice(0, 3).map(placeResultToDetail) : [];
+  if (matches.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5" aria-live="polite">
+      <p className="text-xs font-semibold text-amber-900">Is it one of these Findmi Locations?</p>
+      {matches.map((m) => (
+        <div key={m.id} className="flex items-center gap-2">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-ink">{m.name}</span>
+            <span className="block truncate text-xs text-ink/55">{[m.address, [m.city, m.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}</span>
+          </span>
+          <button type="button" onClick={() => onUse(m)} className="shrink-0 rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:border-black/20">
+            Use This Location
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

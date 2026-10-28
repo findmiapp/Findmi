@@ -159,7 +159,10 @@ test("1. View Event: importer success, multi-import summary, Hosting rows, Event
   assert.match(MULTI, /r\.outcome\.ok && r\.outcome\.publicHref \?/);
   assert.match(MULTI, /View Event\s*<\/Link>/);
   assert.match(BIZ_MANAGER, /\{!h\.statusLabel && \(\s*<Link href=\{eventHref\(h\.slug\)\}[^>]*>\s*View Event/, "published hosted Events link to their public page");
-  assert.match(EVENT_ACTIONS, /&created=1` : `\/account\/event\/\$\{eventId\}\?created=1`/);
+  // Consolidation pass: Host An Event lands on the post-submit choice
+  // (Edit Event Further → the Event Manager / Add Another Event).
+  assert.match(EVENT_ACTIONS, /const next = new URLSearchParams\(\{ submitted: eventId \}\);[\s\S]{0,200}redirect\(`\$\{CREATE_EVENT_PATH\}\?\$\{next\.toString\(\)\}`\);/);
+  assert.match(read("src/app/(public)/account/event/new/page.tsx"), /Edit Event Further/);
   assert.match(EVENT_MANAGER, /\{justCreated && !error && \(/);
   assert.match(EVENT_MANAGER, /\{publicHref && \(\s*<Link href=\{publicHref\}[^>]*>\s*View Event/);
 });

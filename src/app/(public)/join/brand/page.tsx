@@ -45,6 +45,9 @@ export const maxDuration = 30;
  * the loading behavior — the browser's own navigation progress — so no
  * client component is needed. */
 
+/** The one website-assisted onboarding prompt (Findmi Consolidation pass). */
+const IMPORT_COPY = "Want Findmi to build a starting profile for you? Enter your website and we'll try to import your business details.";
+
 type PageState =
   | { kind: "initial" }
   | { kind: "invalid"; message: string; value: string; nameFallback: boolean }
@@ -240,7 +243,7 @@ function ResultView({
   // available.
   if (inputKind === "website") {
     return (
-      <StateBlock title="Add Your Brand" body="We didn't find this brand on Findmi. Findmi will build a starting profile from your website, and you'll review everything before it's added.">
+      <StateBlock title="Add Your Business" body={IMPORT_COPY}>
         {searched}
         {!authenticated && <p className="mt-4 text-sm text-ink/60">You&rsquo;ll sign in or create an account to review and add your brand.</p>}
         {authenticated ? (
@@ -251,9 +254,9 @@ function ResultView({
             {resumeBuild && <AutoBuild guardKey={[value, seed.name ?? "", seed.instagram ?? ""].join("|")} param={BRAND_BUILD_RESUME_PARAM} />}
           </form>
         ) : (
-          <PrimaryLink href={brandBuildSignInHref(value, seed)} label="Build My Brand Profile" />
+          <PrimaryLink href={brandBuildSignInHref(value, seed)} label="Import From Website" />
         )}
-        <SecondaryLink href={addHref} label="Add It Myself" />
+        <SecondaryLink href={addHref} label="Enter Details Manually" />
         <SecondaryLink href="/join/brand" label="Search Again" subtle />
         <AutomatedToolsNotice className="mt-4" />
       </StateBlock>
@@ -269,7 +272,7 @@ function ResultView({
   return (
     <WebsitePrompt
       title={`We Couldn't Find ${instagramSeed ? `@${instagramSeed}` : value}`}
-      body="Add your website and Findmi will build the starting profile for you."
+      body={IMPORT_COPY}
       seed={inputKind === "name" ? { name: value } : { instagram: instagramSeed }}
       addHref={addHref}
     >
@@ -311,6 +314,12 @@ function WebsitePrompt({
       <form method="get" action="/join/brand" className="mt-5 flex flex-col gap-3">
         <input type="hidden" name="as" value="website" />
         <SeedFields seed={seed} />
+        {/* Consolidation pass — "Import From Website" means it: the website
+            is looked up first (an existing Business → Claim), and when
+            nothing matches, the same one-shot build marker the sign-in
+            resume uses runs the import straight into Review Your Business
+            (no second press, no intermediary screen). */}
+        <input type="hidden" name={BRAND_BUILD_RESUME_PARAM} value="1" />
         <label htmlFor="brand-website" className="text-sm font-semibold text-ink">
           Website
         </label>
@@ -334,10 +343,10 @@ function WebsitePrompt({
           type="submit"
           className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          Continue
+          Import From Website
         </button>
       </form>
-      <SecondaryLink href={addHref} label="Add It Myself" />
+      <SecondaryLink href={addHref} label="Enter Details Manually" />
       <SecondaryLink href="/join/brand" label="Search Again" subtle />
     </StateBlock>
   );

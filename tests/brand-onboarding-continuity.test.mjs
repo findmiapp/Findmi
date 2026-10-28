@@ -96,22 +96,29 @@ test("the server's own auth_required path uses the same resume target", () => {
 });
 
 // ── One Build action ─────────────────────────────────────────────────────
-test("exactly one semantic Build action; the website step is Continue; no Search-as-Instagram switch", () => {
+test("exactly one semantic Import (build) action; the website step carries the one-shot marker into it; no Search-as-Instagram switch", () => {
   const prompt = PAGE.slice(PAGE.indexOf("function WebsitePrompt"), PAGE.indexOf("function AssistanceBlock"));
-  assert.match(prompt, />\s*Continue\s*<\/button>/);
-  assert.doesNotMatch(prompt, /Build/, "establishing the website never claims to build");
+  // Consolidation pass: the website step is labeled Import From Website and
+  // carries the existing one-shot build marker, so a website with no match
+  // goes straight into the ONE build action (an existing match still shows
+  // its Claim card first — the lookup always runs).
+  assert.match(prompt, />\s*Import From Website\s*<\/button>/);
+  assert.match(prompt, /<input type="hidden" name=\{BRAND_BUILD_RESUME_PARAM\} value="1" \/>/);
+  assert.doesNotMatch(prompt, /buildBrandProfile|<BuildProfileButton/, "the website step itself never posts the build");
   // Build appears only in the website no-match state: one control per auth state.
   const website = PAGE.slice(PAGE.indexOf('if (inputKind === "website") {'), PAGE.indexOf("const instagramSeed"));
-  assert.match(website, /authenticated \? \(\s*<form action=\{buildBrandProfile\}[\s\S]*?<BuildProfileButton \/>[\s\S]*?<\/form>\s*\) : \(\s*<PrimaryLink href=\{brandBuildSignInHref\(value, seed\)\} label="Build My Brand Profile" \/>\s*\)/);
+  assert.match(website, /authenticated \? \(\s*<form action=\{buildBrandProfile\}[\s\S]*?<BuildProfileButton \/>[\s\S]*?<\/form>\s*\) : \(\s*<PrimaryLink href=\{brandBuildSignInHref\(value, seed\)\} label="Import From Website" \/>\s*\)/);
   const outside = PAGE.replace(website, "");
-  assert.doesNotMatch(outside, /Build My Brand Profile|buildBrandProfile\}|<BuildProfileButton/, "no other control claims to build");
+  assert.doesNotMatch(outside, /buildBrandProfile\}|<BuildProfileButton/, "no other control posts the build");
   assert.doesNotMatch(PAGE, /Instagram Instead/);
   assert.match(PAGE, /\{alternative === "name" && \(/, "only the Search-as-a-Name alternative remains");
 });
 
 test("expectation is set before Build: Findmi builds from the website; guests learn they'll sign in first", () => {
   const website = PAGE.slice(PAGE.indexOf('if (inputKind === "website") {'), PAGE.indexOf("const instagramSeed"));
-  assert.match(website, /body="We didn't find this brand on Findmi\. Findmi will build a starting profile from your website, and you'll review everything before it's added\."/);
+  // Consolidation pass: the one website-assisted onboarding prompt.
+  assert.match(website, /<StateBlock title="Add Your Business" body=\{IMPORT_COPY\}>/);
+  assert.match(PAGE, /const IMPORT_COPY = "Want Findmi to build a starting profile for you\? Enter your website and we'll try to import your business details\.";/);
   const guestNote = website.indexOf("You&rsquo;ll sign in or create an account to review and add your brand.");
   assert.ok(guestNote > 0 && guestNote < website.indexOf("<PrimaryLink href={brandBuildSignInHref"), "shown before the guest presses Build");
   assert.match(website, /\{!authenticated && <p/);

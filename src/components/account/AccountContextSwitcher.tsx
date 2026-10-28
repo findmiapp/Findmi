@@ -239,7 +239,7 @@ function SwitcherMenu({
         );
       })}
 
-      <Link href="/account/business/new" onClick={onNavigate} className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-body font-semibold text-muted transition hover:bg-black/[0.03] hover:text-primary">
+      <Link href="/join/brand" onClick={onNavigate} className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-body font-semibold text-muted transition hover:bg-black/[0.03] hover:text-primary">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center text-metadata font-bold text-muted">+</span>
         Add Business
       </Link>

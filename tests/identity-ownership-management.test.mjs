@@ -142,7 +142,8 @@ test("Products and Where I'll Be still require a Business; Personal can create M
   assert.match(biz, /export async function createMemberProduct[\s\S]{0,200}requireBusinessMemberWithDetails\(/);
   assert.match(biz, /export async function addManualAppearance[\s\S]{0,300}requireAuthorizedBusinessMember\(/);
   const menu = read("src/components/QuickCreateMenu.tsx");
-  for (const href of ["/my-world/journal/new", "/account/business/new", "/account/location/new"]) assert.ok(menu.includes(`href="${href}"`), href);
+  // Consolidation pass: Add Business opens the ONE canonical onboarding (search first).
+  for (const href of ["/my-world/journal/new", "/join/brand", "/account/location/new"]) assert.ok(menu.includes(`href="${href}"`), href);
 });
 
 // ── LOCATION SUBMISSION ────────────────────────────────────────────────
@@ -151,9 +152,13 @@ const LOC_ACTIONS = read("src/app/(public)/account/location/actions.ts");
 const LOC_START = LOC_ACTIONS.indexOf("export async function createMemberLocation");
 const createLoc = LOC_ACTIONS.slice(LOC_START, LOC_ACTIONS.indexOf("\n}\n", LOC_START));
 
-test("submitting a Location never grants management (no create_owned_location, no location_members write)", () => {
+test("submitting a Location grants management ONLY of that new Location, ONLY in a managed context (no create_owned_location)", () => {
   assert.doesNotMatch(createLoc, /rpc\("create_owned_location"/);
-  assert.doesNotMatch(createLoc, /from\("location_members"\)/);
+  // "Pending does not mean unmanageable": a Business owner/manager adding
+  // its own place (or a parent-Location manager) keeps managing it while
+  // it awaits review. A generic "just adding it" submission grants nothing.
+  assert.equal((createLoc.match(/from\("location_members"\)/g) ?? []).length, 1);
+  assert.match(createLoc, /if \(user && \(businessId \|\| parentLocationId\)\) \{/);
   // Unlisted + pending review through the one moderation rule (lib/location-review.ts).
   assert.match(createLoc, /\.from\("locations"\)\s*\.insert\(\{[\s\S]*?\.\.\.newLocationModeration\("member"\),/);
 });
@@ -204,9 +209,11 @@ test("a failed management-claim insert is never silently dropped, never retried 
   const afterCreate = createLoc.slice(createLoc.indexOf("revalidatePath(\"/account\");"));
   const businessBranch = afterCreate.slice(afterCreate.indexOf("if (businessId) {"), afterCreate.indexOf("if (parentLocationId) {"));
   assert.match(businessBranch, /claimRequestError/);
-  const parentBranch = afterCreate.slice(afterCreate.indexOf("if (parentLocationId) {"), afterCreate.indexOf("redirect(claimRequestError"));
+  const parentBranch = afterCreate.slice(afterCreate.indexOf("if (parentLocationId) {"), afterCreate.indexOf("if (!user) redirect"));
   assert.match(parentBranch, /claimRequestError/);
-  assert.match(afterCreate.slice(afterCreate.indexOf("redirect(claimRequestError")), /location_submitted: intent|location_submitted=\$\{intent\}/);
+  // Consolidation pass: success lands on the "Location submitted" next step.
+  assert.match(afterCreate, /if \(claimRequestError\) redirect\(`\/account\?error=\$\{encodeURIComponent\(claimRequestError\)\}`\);/);
+  assert.match(afterCreate, /new URLSearchParams\(\{ submitted: locationId, context: "generic" \}\)/);
   // The truthful message says what actually happened: the Location is in,
   // the request for management specifically is what failed.
   assert.match(createLoc, /Location was submitted, but your management request could not be recorded/);

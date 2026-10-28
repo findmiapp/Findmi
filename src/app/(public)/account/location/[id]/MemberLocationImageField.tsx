@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadMemberLocationImage } from "../actions";
+import { uploadMemberLocationImage, uploadNewLocationImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Member-facing image field for the Location Manager — same shape as
@@ -13,7 +13,9 @@ export default function MemberLocationImageField({
   name,
   defaultValue,
 }: {
-  locationId: string;
+  /** null = the Location doesn't exist yet (Quick Create): uploads go
+   * through uploadNewLocationImage and are attached on creation. */
+  locationId: string | null;
   label: string;
   name: string;
   defaultValue: string | null;
@@ -30,7 +32,7 @@ export default function MemberLocationImageField({
     const fd = new FormData();
     fd.set("file", file);
     startTransition(async () => {
-      const result = await uploadMemberLocationImage(locationId, fd);
+      const result = await (locationId ? uploadMemberLocationImage(locationId, fd) : uploadNewLocationImage(fd));
       if (result.error) setError(result.error);
       else if (result.url) setUrl(result.url);
     });

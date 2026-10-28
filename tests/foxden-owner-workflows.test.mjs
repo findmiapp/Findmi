@@ -293,7 +293,9 @@ test("gallery fields: Business / Event / Location all use the crash-safe loop; s
   ]) {
     const src = read(f);
     assert.match(src, /uploadGalleryFiles\(files, \{/, f);
-    assert.match(src, new RegExp(`upload: \\(fd\\) => ${action}\\(`), f);
+    // Consolidation pass: Event / Location fields also upload BEFORE the
+    // entity exists (Quick Create) through their new-entity action.
+    assert.match(src, new RegExp(`upload: \\(fd\\) => \\(?(?:\\w+ \\? )?${action}\\(`), f);
     assert.ok(!/for \(const file of files\)/.test(src), `${f}: no unguarded per-file loop left`);
     assert.match(src, /setError\(galleryUploadErrorMessage\(failures\)\)/);
     assert.match(src, /<input type="hidden" name=\{name\} value=\{url\} \/>/, "DOM order is still the saved order");

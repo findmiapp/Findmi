@@ -71,6 +71,7 @@ export default function LocationForm({
 
           <FormSection title="Where">
             <TextField label="Address" name="address" defaultValue={location?.address} />
+            <TextField label="Address Line 2 (Suite, Unit, Floor)" name="address_line2" defaultValue={location?.address_line2 ?? null} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               <div className="col-span-2 sm:col-span-1">
                 <TextField label="City" name="city" defaultValue={location?.city} />
