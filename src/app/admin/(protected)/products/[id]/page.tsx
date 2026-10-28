@@ -12,6 +12,7 @@ import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import ProductForm from "../ProductForm";
 import ProductModerationPanel from "./ProductModerationPanel";
 import MarketplaceReviewPanel from "./MarketplaceReviewPanel";
+import { MARKETPLACE_INELIGIBILITY_COPY, marketplaceIneligibility } from "@/lib/commerce/marketplace-eligibility";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export default async function EditProductPage({
   const { data: businessFeeRow } = adminSupabase
     ? await adminSupabase
         .from("businesses")
-        .select("marketplace_fee_percent, commerce_enabled, native_inquiries_enabled")
+        .select("marketplace_fee_percent, commerce_enabled, native_inquiries_enabled, is_demo, publication_status")
         .eq("id", product.business_id)
         .maybeSingle()
     : { data: null };
@@ -139,6 +140,26 @@ export default async function EditProductPage({
           entirely separate from content moderation above: this decides
           broader Marketplace/discovery placement, never content
           approval. */}
+      {/* Consolidation pass — Marketplace readiness: the exact rule the
+          storefront and checkout enforce (lib/commerce/marketplace-
+          eligibility.ts), so an Approved product that still can't be bought
+          says why. */}
+      {(() => {
+        const reasons = marketplaceIneligibility(product, businessFeeRow ?? null);
+        return (
+          <section aria-label="Marketplace readiness" className={`mt-5 rounded-xl border px-4 py-3 text-sm ${reasons.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-findmi-200 bg-findmi-50 text-findmi-700"}`}>
+            <p className="text-xs font-bold uppercase tracking-wide">{reasons.length ? "Not On The Marketplace" : "Live On The Marketplace"}</p>
+            {reasons.length > 0 && (
+              <ul className="mt-1 list-disc pl-5">
+                {reasons.map((r) => (
+                  <li key={r}>{MARKETPLACE_INELIGIBILITY_COPY[r]}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })()}
+
       <div className="mt-5">
         <MarketplaceReviewPanel
           product={product}
