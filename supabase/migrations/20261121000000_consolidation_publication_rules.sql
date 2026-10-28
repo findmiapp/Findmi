@@ -4,12 +4,15 @@
 --
 --   * No row's public visibility changes. Every Event the public can see
 --     today is publication_status='live' (verified before this migration:
---     the only pending_review / rejected Events are already is_demo=true).
---   * locations.review_status is NEW and nullable; NULL = never went
---     through review (every Admin-created / already-listed Location).
---     Only currently-unlisted, active Locations are marked pending_review
---     so Admin sees them in the new Pending Locations queue — they were
---     already hidden from discovery, nothing becomes hidden.
+--     the only pending_review / rejected Events are already is_demo=true;
+--     every event_occurrences row has an existing parent Event).
+--   * locations.review_status is NEW, nullable, and the CANONICAL Location
+--     moderation state ('pending_review' | 'approved' | 'rejected').
+--     NULL = never entered review. It is deliberately NOT derived from
+--     is_demo: is_demo stays the separate "publicly listed" flag, and the
+--     existing unlisted Locations have no provenance proving they are
+--     review submissions, so NO existing row is backfilled. Only new
+--     user/Business submissions are written as 'pending_review' (app code).
 --   * locations.address_line2 — suite / unit / floor, kept separate from
 --     the geocoded street address.
 
@@ -40,10 +43,13 @@ create policy "Hide unpublished events"
     )
   );
 
--- Child rows (dates) follow their Event — SECURITY DEFINER for the same
--- reason as is_event_retired (the parent's own RLS must not hide the row
--- the check needs to read).
-create or replace function public.is_event_unpublished_for_viewer(p_event_id uuid)
+-- Child rows (dates) follow their Event, with ALLOW semantics: a date is
+-- visible only when its parent Event exists AND the viewer may see that
+-- Event (live, or the viewer manages it). An Event that can't be resolved
+-- fails closed. SECURITY DEFINER for the same reason as is_event_retired
+-- (the parent's own RLS must not hide the row this check reads).
+-- service_role bypasses RLS, so Admin / server-side reads are unchanged.
+create or replace function public.can_view_event(p_event_id uuid)
 returns boolean
 language sql
 stable
@@ -53,30 +59,32 @@ as $$
   select exists (
     select 1 from public.events e
     where e.id = p_event_id
-      and e.publication_status <> 'live'
-      and not exists (
-        select 1 from public.event_members m
-        where m.event_id = e.id and m.user_id = auth.uid()
-      )
-      and not (
-        e.host_business_id is not null
-        and exists (
-          select 1 from public.business_members bm
-          where bm.business_id = e.host_business_id and bm.user_id = auth.uid()
+      and (
+        e.publication_status = 'live'
+        or exists (
+          select 1 from public.event_members m
+          where m.event_id = e.id and m.user_id = auth.uid()
+        )
+        or (
+          e.host_business_id is not null
+          and exists (
+            select 1 from public.business_members bm
+            where bm.business_id = e.host_business_id and bm.user_id = auth.uid()
+          )
         )
       )
   );
 $$;
-revoke all on function public.is_event_unpublished_for_viewer(uuid) from public;
-grant execute on function public.is_event_unpublished_for_viewer(uuid) to anon, authenticated, service_role;
+revoke all on function public.can_view_event(uuid) from public;
+grant execute on function public.can_view_event(uuid) to anon, authenticated, service_role;
 
-drop policy if exists "Hide occurrences of unpublished events" on public.event_occurrences;
-create policy "Hide occurrences of unpublished events"
+drop policy if exists "Occurrences follow their Event's visibility" on public.event_occurrences;
+create policy "Occurrences follow their Event's visibility"
   on public.event_occurrences
   as restrictive
   for select
   to public
-  using (not public.is_event_unpublished_for_viewer(event_id));
+  using (public.can_view_event(event_id));
 
 -- 2. Locations: explicit review state + Address Line 2.
 alter table public.locations
@@ -87,13 +95,6 @@ alter table public.locations drop constraint if exists locations_review_status_c
 alter table public.locations
   add constraint locations_review_status_check
   check (review_status is null or review_status in ('pending_review', 'approved', 'rejected'));
-
-update public.locations
-set review_status = 'pending_review'
-where is_demo = true
-  and archived_at is null
-  and trashed_at is null
-  and review_status is null;
 
 create index if not exists locations_review_status_pending_idx
   on public.locations (review_status)
