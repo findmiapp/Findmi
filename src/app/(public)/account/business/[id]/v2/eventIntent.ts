@@ -3,7 +3,9 @@
 // Where I'll Be records). Pure data: safe for server and client.
 //
 //   hosting   — an Event this Business organizes (events.host_business_id):
-//               Event Import with intent=hosting, or the Event Manager.
+//               straight to the ONE Host an Event page (/account/event/new
+//               with the Business), which itself offers Import Event or
+//               Create Manually — never a second chooser in between.
 //   appearing — something someone else hosts that this Business takes part
 //               in (an Appearance / event participation): the existing
 //               request-to-join composer (compose=1) — Search Findmi,
@@ -19,9 +21,10 @@ export function addEventHref(basePath: string): string {
   return `${basePath}?tab=findmi-here&add=${ADD_EVENT_PARAM}`;
 }
 
-/** The Events view with the chosen intent's panel open. */
-export function addEventIntentHref(basePath: string, intent: AddEventIntent): string {
-  return intent === "hosting" ? `${basePath}?tab=findmi-here&compose=hosting#add-hosting` : `${basePath}?tab=findmi-here&compose=1#going-somewhere`;
+/** Where the chosen intent goes: Hosting → the canonical Host an Event
+ * page; Appearing → the Events view with the request-to-join composer. */
+export function addEventIntentHref(basePath: string, intent: AddEventIntent, businessId: string): string {
+  return intent === "hosting" ? hostEventHref(businessId) : `${basePath}?tab=findmi-here&compose=1#going-somewhere`;
 }
 
 /** Event Import, carrying the intent it was started from. */
@@ -29,7 +32,8 @@ export function eventImportHref(businessId: string, intent: AddEventIntent): str
   return `/account/business/${encodeURIComponent(businessId)}/import-event?intent=${intent === "hosting" ? "hosting" : "participating"}`;
 }
 
-/** Create a hosted Event by hand in the one Event Manager. */
+/** The canonical Host an Event page for this Business (Import Event, or
+ * Create Manually with the form). */
 export function hostEventHref(businessId: string): string {
   return `/account/event/new?business_id=${encodeURIComponent(businessId)}`;
 }

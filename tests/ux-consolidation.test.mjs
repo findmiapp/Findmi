@@ -97,8 +97,8 @@ test("Compact Add Event pill at the header, intent asked first, then the existin
   assert.match(chooser, /Appearing At An Event/);
   assert.match(PAGE, /action=\{presenceView === "upcoming" \|\| presenceView === "past" \? <AddEventChooser/);
   assert.doesNotMatch(PAGE, /<AddToPresence /, "the giant + Add sheet is gone from Events");
-  assert.equal(EI.addEventIntentHref("/b", "hosting"), "/b?tab=findmi-here&compose=hosting#add-hosting");
-  assert.equal(EI.addEventIntentHref("/b", "appearing"), "/b?tab=findmi-here&compose=1#going-somewhere");
+  assert.equal(EI.addEventIntentHref("/b", "hosting", "b1"), "/account/event/new?business_id=b1", "Hosting → the canonical Host an Event page");
+  assert.equal(EI.addEventIntentHref("/b", "appearing", "b1"), "/b?tab=findmi-here&compose=1#going-somewhere");
   assert.equal(EI.parseComposeIntent("1"), "appearing", "existing Where I'll Be links still land");
   assert.equal(EI.parseComposeIntent("hosting"), "hosting");
   assert.equal(EI.parseComposeIntent(undefined), null);
@@ -107,9 +107,9 @@ test("Compact Add Event pill at the header, intent asked first, then the existin
 test("Import comes AFTER intent and carries it", () => {
   assert.equal(EI.eventImportHref("b1", "hosting"), "/account/business/b1/import-event?intent=hosting");
   assert.equal(EI.eventImportHref("b1", "appearing"), "/account/business/b1/import-event?intent=participating");
-  assert.match(PAGE, /href=\{eventImportHref\(id, "hosting"\)\}/);
+  // Hosting's Import lives on the canonical Host an Event page; Appearing's here.
+  assert.match(read("src/app/(public)/account/event/new/page.tsx"), /import-event\?intent=hosting/);
   assert.match(PAGE, /href=\{eventImportHref\(id, "appearing"\)\}/);
-  assert.match(PAGE, /href=\{hostEventHref\(id\)\}/);
   assert.doesNotMatch(PAGE, /bg-findmi text-button font-bold text-white[^"]*"\s*>\s*Import Event/, "no giant generic Import Event button");
 });
 

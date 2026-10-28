@@ -173,7 +173,7 @@ test("route integrity: every creation destination is an existing Business-scoped
   assert.match(PAGE, /const composeOpen = composeIntent === "appearing";/);
   assert.match(PAGE, /\{\(addHasDraft \|\| composeOpen\) && \(\s*<div id="going-somewhere"/);
   assert.equal(a.event.href, "/account/business/biz?tab=findmi-here&add=event");
-  assert.match(PAGE, /href=\{hostEventHref\(id\)\}/, "Hosting An Event → Create Manually → the Event Manager");
+  assert.match(PAGE, /if \(composeIntent === "hosting"\) redirect\(hostEventHref\(id\)\);/, "Hosting An Event → the canonical Host an Event page");
   assert.match(EVENT_NEW, /business_id: businessIdParam,/);
   assert.match(EVENT_NEW, /<input type="hidden" name="business_id" value=\{businessContext\.id\} \/>/);
   assert.equal(a.location.href, "/account/business/biz?tab=findmi-here&view=locations&add=1");

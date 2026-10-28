@@ -11,14 +11,15 @@ import { addEventIntentHref, type AddEventIntent } from "./eventIntent";
  * model, then routes into the existing canonical workflow for that intent
  * (./eventIntent addEventIntentHref):
  *
- *   Hosting An Event      → Hosting panel: Import (intent=hosting) or create
- *                           in the Event Manager (/account/event/new).
+ *   Hosting An Event      → the canonical Host an Event page
+ *                           (/account/event/new?business_id=…), which offers
+ *                           Import Event or Create Manually itself.
  *   Appearing At An Event → the existing request-to-join composer: Search
  *                           Findmi, Import (intent=participating) or add
  *                           manually.
  *
  * Mobile: bottom sheet. sm+: centered dialog. Esc / backdrop closes. */
-export default function AddEventChooser({ basePath, initialOpen = false }: { basePath: string; initialOpen?: boolean }) {
+export default function AddEventChooser({ basePath, businessId, initialOpen = false }: { basePath: string; businessId: string; initialOpen?: boolean }) {
   const [open, setOpen] = useState(initialOpen);
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export default function AddEventChooser({ basePath, initialOpen = false }: { bas
               {options.map((o) => (
                 <li key={o.intent}>
                   <Link
-                    href={addEventIntentHref(basePath, o.intent)}
+                    href={addEventIntentHref(basePath, o.intent, businessId)}
                     onClick={() => setOpen(false)}
                     className="flex min-h-[64px] items-start gap-3 rounded-2xl border border-black/[0.07] px-4 py-3 transition hover:border-findmi/40 hover:bg-findmi-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
                   >

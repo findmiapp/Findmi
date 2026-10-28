@@ -451,7 +451,8 @@ test("Where I'll Be launches the participating context; Host an Event launches h
   // UX consolidation: intent is chosen first (Appearing At / Hosting), then
   // Import carries it (v2/eventIntent eventImportHref).
   assert.match(manage, /href=\{eventImportHref\(id, "appearing"\)\}[\s\S]{0,400}>Import</);
-  assert.match(manage, /href=\{eventImportHref\(id, "hosting"\)\}/);
+  // Hosting goes straight to the canonical Host an Event page, which owns Import Event.
+  assert.match(manage, /if \(composeIntent === "hosting"\) redirect\(hostEventHref\(id\)\);/);
   const host = read("src/app/(public)/account/event/new/page.tsx");
   assert.match(host, /href=\{`\/account\/business\/\$\{businessContext\.id\}\/import-event\?intent=hosting`\}/);
   assert.match(host, /Or Create Manually/, "manual creation preserved");

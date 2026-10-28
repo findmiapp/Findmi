@@ -505,6 +505,10 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   // existing "Where I'll Be" link still lands on it.
   const composeIntent = parseComposeIntent(composeParam);
   const composeOpen = composeIntent === "appearing";
+  // Hosting has ONE place: the canonical Host an Event page (it offers
+  // Import Event or Create Manually). An older ?compose=hosting link lands
+  // there directly — no second Import / Create Manually chooser here.
+  if (composeIntent === "hosting") redirect(hostEventHref(id));
 
   // ?tab=referral only ever existed for a referral partner: a partner lands
   // in Settings, anyone else falls back to Overview (see below).
@@ -2672,7 +2676,7 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
             <PresenceHeader
               basePath={basePath}
               view={presenceView}
-              action={presenceView === "upcoming" || presenceView === "past" ? <AddEventChooser basePath={basePath} initialOpen={addParam === ADD_EVENT_PARAM || addParam === "presence"} /> : undefined}
+              action={presenceView === "upcoming" || presenceView === "past" ? <AddEventChooser basePath={basePath} businessId={id} initialOpen={addParam === ADD_EVENT_PARAM || addParam === "presence"} /> : undefined}
             />
           </div>
         )}
@@ -2780,29 +2784,6 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                 (manual fallback underneath). */}
             <p className="text-body text-muted">Events you&rsquo;re hosting and Events you&rsquo;re appearing at. This is what customers see on your public Findmi profile.</p>
 
-            {composeIntent === "hosting" && (
-              <div id="add-hosting" className={cardClass}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-card-title font-bold text-primary">Hosting An Event</p>
-                    <p className="mt-0.5 text-metadata text-muted">An Event your Business is organizing.</p>
-                  </div>
-                  <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
-                    Close
-                  </Link>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <Link href={eventImportHref(id, "hosting")} className="flex min-h-[56px] flex-col justify-center rounded-xl border border-black/[0.08] px-3.5 py-2.5 transition hover:border-findmi/40 hover:bg-findmi-50/40">
-                    <span className="text-body font-bold text-primary">Import</span>
-                    <span className="text-metadata text-muted">From a link, pasted details or a flyer.</span>
-                  </Link>
-                  <Link href={hostEventHref(id)} className="flex min-h-[56px] flex-col justify-center rounded-xl border border-black/[0.08] px-3.5 py-2.5 transition hover:border-findmi/40 hover:bg-findmi-50/40">
-                    <span className="text-body font-bold text-primary">Create Manually</span>
-                    <span className="text-metadata text-muted">Fill in the details yourself.</span>
-                  </Link>
-                </div>
-              </div>
-            )}
 
             {requestSent && !error && (
               <p role="status" className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
