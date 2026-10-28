@@ -33,6 +33,8 @@ export default function MarketplaceReviewPanel({
   businessFeePercent,
   businessCommerceEnabled,
   businessNativeInquiriesEnabled,
+  listingLive,
+  listingSummary,
 }: {
   product: AdminProduct;
   businessName: string;
@@ -45,6 +47,11 @@ export default function MarketplaceReviewPanel({
    * product later. */
   businessCommerceEnabled: boolean;
   businessNativeInquiriesEnabled: boolean;
+  /** Marketplace Listing — the canonical engine's eligibility
+   * (readiness.eligible). Approval alone never means "live". */
+  listingLive: boolean;
+  /** adminMarketplaceSummary(readiness).summary — the one honest sentence. */
+  listingSummary: string;
 }) {
   const marketplaceStatus = product.marketplace_status ?? "catalog_only";
 
@@ -79,7 +86,9 @@ export default function MarketplaceReviewPanel({
           : marketplaceStatus === "submitted"
             ? "Marketplace Submission — Awaiting Review"
             : marketplaceStatus === "approved"
-              ? "Marketplace: Approved"
+              ? listingLive
+                ? "Marketplace Review: Approved · Listing Live"
+                : "Marketplace Review: Approved · Not Listed"
               : marketplaceStatus === "rejected"
                 ? "Marketplace: Declined"
                 : "Marketplace: Paused"}
@@ -90,10 +99,10 @@ export default function MarketplaceReviewPanel({
           : marketplaceStatus === "submitted"
             ? "The owner requested broader Findmi Marketplace/discovery placement for this product."
             : marketplaceStatus === "approved"
-              ? "This product may appear in broader Findmi Marketplace/discovery surfaces, in addition to its own business profile."
+              ? listingSummary
               : marketplaceStatus === "rejected"
                 ? "Findmi declined broader Marketplace/discovery placement for this product. It remains visible on its own business profile."
-                : "Marketplace/discovery visibility is temporarily paused. The product remains visible on its own business profile."}
+                : "Marketplace approval is paused — the product isn't listed in Marketplace, even if checkout becomes ready. It remains on its own business profile."}
       </p>
 
       {product.image_url && (
@@ -211,7 +220,11 @@ export default function MarketplaceReviewPanel({
                 type="submit"
                 className="rounded-full border border-sky-300 px-4 py-2 text-xs font-bold uppercase tracking-wide text-sky-700 hover:bg-sky-100"
               >
-                Pause Marketplace Visibility
+                {/* Same stored action either way (marketplace_status →
+                    "paused"); the label says what it does to THIS product:
+                    pulls a live listing, or holds an approval that isn't
+                    listed yet. */}
+                {listingLive ? "Pause Marketplace Listing" : "Pause Marketplace Approval"}
               </button>
             </form>
             <form action={returnProductToCatalog.bind(null, product.id)}>
@@ -219,7 +232,7 @@ export default function MarketplaceReviewPanel({
                 type="submit"
                 className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:bg-black/[0.03]"
               >
-                Return to Catalog
+                Revoke Approval (Catalog Only)
               </button>
             </form>
           </>
@@ -232,7 +245,7 @@ export default function MarketplaceReviewPanel({
                 disabled={!contentLive}
                 className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Resume Marketplace Visibility
+                Resume Marketplace Approval
               </button>
             </form>
             <form action={rejectMarketplaceSubmission.bind(null, product.id)}>
@@ -240,7 +253,7 @@ export default function MarketplaceReviewPanel({
                 type="submit"
                 className="rounded-full border border-red-300 px-4 py-2 text-xs font-bold uppercase tracking-wide text-red-700 hover:bg-red-50"
               >
-                Reject Marketplace Submission
+                Decline Marketplace Approval
               </button>
             </form>
             <form action={returnProductToCatalog.bind(null, product.id)}>
@@ -248,7 +261,7 @@ export default function MarketplaceReviewPanel({
                 type="submit"
                 className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:bg-black/[0.03]"
               >
-                Return to Catalog
+                Revoke Approval (Catalog Only)
               </button>
             </form>
           </>

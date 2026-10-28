@@ -15,6 +15,7 @@ import MarketplaceReviewPanel from "./MarketplaceReviewPanel";
 import MarketplaceReadinessPanel from "@/components/MarketplaceReadinessPanel";
 import { loadMarketplaceReadiness } from "@/lib/commerce/marketplace-readiness-server";
 import { getProductWantCounts } from "@/lib/product-wants";
+import { adminMarketplaceSummary } from "@/lib/commerce/marketplace-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +159,7 @@ export default async function EditProductPage({
           says why. */}
       {readiness && (
         <div className="mt-5">
-          <MarketplaceReadinessPanel readiness={readiness} demand={demand} audience="admin" />
+          <MarketplaceReadinessPanel readiness={readiness} demand={demand} />
         </div>
       )}
 
@@ -170,6 +171,8 @@ export default async function EditProductPage({
           businessFeePercent={businessFeeRow?.marketplace_fee_percent ?? null}
           businessCommerceEnabled={businessFeeRow?.commerce_enabled ?? false}
           businessNativeInquiriesEnabled={businessFeeRow?.native_inquiries_enabled ?? false}
+          listingLive={readiness?.eligible ?? false}
+          listingSummary={readiness ? adminMarketplaceSummary(readiness).summary : ""}
         />
       </div>
 

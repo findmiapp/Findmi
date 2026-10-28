@@ -8,7 +8,7 @@ import { groupByBusinessCategory } from "@/lib/curation";
 
 export const metadata: Metadata = {
   title: "Marketplace",
-  description: "Shop real products from Findmi businesses: coffee, flowers, goods, and more.",
+  description: "Shop products from businesses you discover on Findmi.",
 };
 export const revalidate = 60;
 
@@ -36,6 +36,13 @@ export default async function MarketplacePage({
     filtering ? Promise.resolve([]) : searchBusinesses({}),
   ]);
 
+  // Global inventory, from the same strict Marketplace rule (never
+  // loosened to fill the page). Zero Marketplace-eligible Products anywhere
+  // is a launch state, not "no results": it gets its own screen without
+  // useless search/category controls. A search/filter with no matches while
+  // inventory exists is a different, recoverable state.
+  const hasInventory = filtering ? (await getMarketplaceProducts({ limit: 1 })).length > 0 : results.length > 0 || featured.length > 0;
+
   const businessCategoryIds = new Map<string, Set<string>>();
   for (const b of businesses) businessCategoryIds.set(b.id, new Set(b.categories.map((c) => c.id)));
   const categoryRows = filtering
@@ -62,8 +69,26 @@ export default async function MarketplacePage({
       <SearchFilterAnalytics pageType="marketplace" filterParams={["category"]} />
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Shop Findmi</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Marketplace</h1>
-      <p className="mt-2 text-ink/60">Real products from real Findmi businesses.</p>
+      <p className="mt-2 text-ink/60">Shop products from businesses you discover on Findmi.</p>
 
+      {!hasInventory ? (
+        <section aria-label="Marketplace is getting ready" className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm sm:p-10">
+          <p className="font-display text-xl font-bold tracking-tight text-ink">Marketplace is getting ready.</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-ink/60">
+            Findmi is connecting products for direct checkout. Until then, you can find products — and want the ones you love — on the
+            businesses you discover.
+          </p>
+          <div className="mx-auto mt-6 flex max-w-xs flex-col gap-2">
+            <Link href="/businesses" className="flex h-12 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+              Explore Brands
+            </Link>
+            <Link href="/discover" className="flex h-11 items-center justify-center rounded-2xl border border-black/10 text-sm font-semibold text-ink transition hover:border-black/20">
+              Discover Findmi
+            </Link>
+          </div>
+        </section>
+      ) : (
+        <>
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
         {category && <input type="hidden" name="category" value={category} />}
         <input autoCapitalize="none"
@@ -126,12 +151,13 @@ export default async function MarketplacePage({
             {results.length} result{results.length === 1 ? "" : "s"}
           </p>
           {results.length === 0 ? (
-            <p className="mt-10 text-sm text-ink/50">
-              Nothing matched.{" "}
-              <Link href="/marketplace" className="font-medium text-ink underline underline-offset-2">
-                Clear filters
+            <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
+              <p className="font-display text-lg font-bold tracking-tight text-ink">No matches found</p>
+              <p className="mt-1 text-sm text-ink/60">Try a different search or category.</p>
+              <Link href="/marketplace" className="mt-4 inline-flex h-10 items-center justify-center rounded-full border border-black/10 px-5 text-sm font-semibold text-ink transition hover:border-black/20">
+                Clear Filters
               </Link>
-            </p>
+            </div>
           ) : (
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
               {results.map((p, i) => (
@@ -189,7 +215,7 @@ export default async function MarketplacePage({
           <div className="mt-8">
             <h2 className="font-display text-xl font-bold tracking-tight text-ink">All Products</h2>
             {results.length === 0 ? (
-              <p className="mt-6 text-sm text-ink/50">No products yet. Check back soon.</p>
+              <p className="mt-6 text-sm text-ink/50">Featured products are above.</p>
             ) : (
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                 {results.map((p, i) => (
@@ -202,6 +228,8 @@ export default async function MarketplacePage({
               </div>
             )}
           </div>
+        </>
+      )}
         </>
       )}
     </div>

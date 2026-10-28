@@ -153,7 +153,8 @@ test("Product Marketplace submission states checkout readiness instead of silent
   // answer (both gates + exact blockers), never a page-local formula.
   const page = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
   assert.match(page, /loadMarketplaceReadiness\(admin, productRows \?\? \[\], \(\) => businessCommerce\)/);
-  assert.match(page, /<MarketplaceReadinessPanel readiness=\{p\.readiness\} demand=\{p\.demand\} audience="owner" \/>/);
+  // Personal Library + Marketplace UX pass: owner-language state machine.
+  assert.match(page, /<OwnerMarketplacePanel readiness=\{p\.readiness\} demand=\{p\.demand\} actions=\{actions\} \/>/);
   assert.match(page, /if \(p\.marketplaceStatus === "approved"\) return \{ label: "Approved · Checkout not ready", tone: "attention" \};/);
   assert.doesNotMatch(page, /checkoutReady/);
 });

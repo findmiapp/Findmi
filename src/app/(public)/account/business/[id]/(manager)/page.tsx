@@ -99,7 +99,8 @@ import {
   updateOwnerAppearance,
 } from "../../actions";
 import { getEntityHandle } from "@/lib/handles";
-import MarketplaceReadinessPanel from "@/components/MarketplaceReadinessPanel";
+import OwnerMarketplacePanel from "@/components/OwnerMarketplacePanel";
+import { ownerMarketplaceState } from "@/lib/commerce/marketplace-presentation";
 import { loadMarketplaceReadiness } from "@/lib/commerce/marketplace-readiness-server";
 import type { MarketplaceReadiness } from "@/lib/commerce/marketplace-eligibility";
 import { getProductWantCounts, type ProductDemand } from "@/lib/product-wants";
@@ -2613,34 +2614,38 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                             <div className="border-t border-black/10 pt-3">
                               <p className="text-label font-semibold uppercase text-subtle">Marketplace</p>
                               <div className="mt-2">
-                                <MarketplaceReadinessPanel readiness={p.readiness} demand={p.demand} audience="owner" />
+                                {/* Owner state machine (ownerMarketplaceState):
+                                    only the action that can succeed is
+                                    offered — never a request that's known
+                                    to fail. */}
+                                {(() => {
+                                  const step = ownerMarketplaceState(p.readiness).step;
+                                  const actions =
+                                    step === "request" || step === "rerequest" ? (
+                                      <div className="flex flex-wrap items-center gap-3">
+                                        <form action={submitProductToMarketplace.bind(null, id, p.id)}>
+                                          <button type="submit" className="h-9 rounded-lg bg-findmi px-3 text-button font-bold text-white transition hover:bg-findmi-600">
+                                            {step === "rerequest" ? "Request Review Again" : "Request Marketplace Review"}
+                                          </button>
+                                        </form>
+                                        {step === "rerequest" && (
+                                          <form action={returnProductToCatalog.bind(null, id, p.id)}>
+                                            <button type="submit" className="text-metadata font-semibold text-subtle hover:underline">
+                                              Keep as catalog only
+                                            </button>
+                                          </form>
+                                        )}
+                                      </div>
+                                    ) : step === "pending" ? (
+                                      <form action={returnProductToCatalog.bind(null, id, p.id)}>
+                                        <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
+                                          Cancel Review Request
+                                        </button>
+                                      </form>
+                                    ) : null;
+                                  return <OwnerMarketplacePanel readiness={p.readiness} demand={p.demand} actions={actions} />;
+                                })()}
                               </div>
-                              {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
-                                <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
-                                  <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
-                                    {p.marketplaceStatus === "rejected" ? "Request Marketplace Review Again" : "Request Marketplace Review"}
-                                  </button>
-                                </form>
-                              )}
-                              {p.marketplaceStatus === "submitted" && (
-                                <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
-                                  <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
-                                    Cancel Request
-                                  </button>
-                                </form>
-                              )}
-                              {p.marketplaceStatus === "rejected" && (
-                                <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
-                                  <button type="submit" className="text-metadata font-semibold text-subtle hover:underline">
-                                    Keep as catalog only
-                                  </button>
-                                </form>
-                              )}
-                              {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
-                                <p className="mt-1 text-metadata text-subtle">
-                                  Marketplace approval is managed by Findmi.
-                                </p>
-                              )}
 
                               {/* Checkout setup — the commerce-readiness
                                   fields the owner controls. */}
@@ -2686,7 +2691,11 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
                                       ))}
                                     </fieldset>
                                   )}
-                                  <p className="text-subtle">Shipping and delivery aren&rsquo;t available at Findmi checkout yet. Findmi turns on checkout for your Business.</p>
+                                  <p className="text-subtle">
+                                    Configure how this product can be purchased. Findmi checkout must also be enabled for your Business
+                                    {p.readiness.commerceBlockers.includes("commerce_disabled") ? " (Findmi turns this on — it isn't yet)" : ""} before it
+                                    can go live in Marketplace. Shipping and delivery aren&rsquo;t available at checkout yet.
+                                  </p>
                                   <button type="submit" className="h-9 w-fit rounded-lg bg-findmi px-3 text-button font-bold text-white transition hover:bg-findmi-600">
                                     Save Checkout Setup
                                   </button>
