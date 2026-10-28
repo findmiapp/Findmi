@@ -53,6 +53,10 @@ export const ANALYTICS_EVENT_NAMES = [
   // the canonical type and metadata.slot its position; never the custom
   // label (presentation only).
   "click_public_action",
+  // Product Want / Demand — a person expressing (or withdrawing) interest
+  // in a Product (product_wants). Never carries an email or identity.
+  "want",
+  "unwant",
 ] as const;
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
 

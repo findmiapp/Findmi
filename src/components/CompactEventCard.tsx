@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { EventWithCategories } from "@/lib/types";
 import { cityState, formatCardDateRange } from "@/lib/format";
 import LiveDot from "./LiveDot";
-import WantHeartButton from "./WantHeartButton";
+import SaveIconButton from "./SaveIconButton";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
@@ -20,7 +20,7 @@ import { formatCardWhen, temporalLabelFor } from "@/lib/event-time";
  *
  * Same shared plumbing every other card here already uses — nothing new
  * invented:
- *  - Save: WantHeartButton, the exact same guest-localStorage/account
+ *  - Save: SaveIconButton, the exact same guest-localStorage/account
  *    hook (useAccountSaved) EventSaveButton/ProductSaveButton already use.
  *  - Analytics: buildEntityEventFields + useViewportImpression + trackEvent,
  *    the same shared attribution plumbing HomeEventCard/BusinessCard/
@@ -101,7 +101,7 @@ export default function CompactEventCard({
         </div>
       )}
 
-      <WantHeartButton type="event" slug={event.slug} id={event.id} className="absolute right-3 top-3 h-8 w-8" />
+      <SaveIconButton type="event" slug={event.slug} id={event.id} className="absolute right-3 top-3 h-8 w-8" />
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-3">
         {/* Title — strongest typography on the card, controlled 2-line

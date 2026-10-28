@@ -3,7 +3,7 @@
 import NavIcon from "@/components/NavIcon";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
-import WantHeartButton from "@/components/WantHeartButton";
+import SaveIconButton from "@/components/SaveIconButton";
 import type { BusinessWithCategories } from "@/lib/types";
 import type { NextAppearanceHint } from "@/lib/data";
 import { cityState, formatDateShort } from "@/lib/format";
@@ -46,7 +46,7 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
  * Consumer-Facing Plan Status pass — see this file's `badge` below).
  * Reuses this file's existing badge logic and the same
  * NextAppearanceHint bulk data /businesses already fetches — no new
- * query. Save uses the same generic WantHeartButton overlay
+ * query. Save uses the same generic SaveIconButton overlay
  * LocationDiscoveryCard/ProductCard already use, with `type="business"`
  * (an existing SavedEntityType) — not new save/follow architecture. */
 export default function BusinessDiscoveryCard({
@@ -105,7 +105,7 @@ export default function BusinessDiscoveryCard({
             </div>
           )}
           <div className="absolute right-1.5 top-1.5">
-            <WantHeartButton type="business" slug={business.slug} id={business.id} className="h-7 w-7" />
+            <SaveIconButton type="business" slug={business.slug} id={business.id} className="h-7 w-7" />
           </div>
         </div>
 

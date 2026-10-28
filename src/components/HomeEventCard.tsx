@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { EventWithCategories, FindmiEvent } from "@/lib/types";
 import { cityState, formatTime } from "@/lib/format";
 import LiveDot from "./LiveDot";
-import WantHeartButton from "./WantHeartButton";
+import SaveIconButton from "./SaveIconButton";
 import AddToCalendarButton from "./AddToCalendarButton";
 import EventShareButton from "./EventShareButton";
 import { trackEvent } from "@/lib/analytics/track";
@@ -64,7 +64,7 @@ function resolveDirectionsHref(event: FindmiEvent): string | null {
  * backdrop blur, a faint white border. Never a solid teal fill — that
  * treatment was specifically rejected for covering photography/poster
  * artwork. Teal is reserved for the tiny active-state glow a filled
- * icon/heart already uses elsewhere (WantHeartButton), not for these. */
+ * icon/heart already uses elsewhere (SaveIconButton), not for these. */
 const GLASS_BUTTON = "border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95";
 
 export default function HomeEventCard({
@@ -181,11 +181,11 @@ export default function HomeEventCard({
 
       {/* Home Event Card Reconstruction pass — Save, top-right, reusing
           the SAME shared glass/circular affordance ProductCard's own
-          photo tiles already use (WantHeartButton — real useAccountSaved
+          photo tiles already use (SaveIconButton — real useAccountSaved
           toggle, already stops its own propagation). No new save
           mechanism invented. */}
       <div className="absolute right-3 top-3 z-10">
-        <WantHeartButton type="event" slug={event.slug} id={event.id} className="h-9 w-9" />
+        <SaveIconButton type="event" slug={event.slug} id={event.id} className="h-9 w-9" />
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-4">

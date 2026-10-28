@@ -12,7 +12,9 @@ import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS, type LocationWithCateg
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../PersonalAppShell";
-import { COLLECTION_ENTITY_TYPES, SAVED_COLLECTIONS, collectionCounts, collectionMembers, parseCollection, type RelationRow } from "@/lib/save-organization";
+import { COLLECTION_ENTITY_TYPES, SAVED_COLLECTIONS, collectionCounts, collectionMembers, parseCollection, withCanonicalProductWants, type RelationRow } from "@/lib/save-organization";
+import { getAccountWantedProductIds } from "@/lib/product-wants";
+import { annotateMarketplaceEligibility } from "@/lib/commerce/marketplace-readiness-server";
 
 export const metadata: Metadata = {
   title: "Saved",
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 type SavedProduct = Product & {
-  business: { name: string; slug: string; logo_url: string | null; commerce_enabled: boolean } | null;
+  business: { name: string; slug: string; logo_url: string | null; commerce_enabled: boolean; is_demo?: boolean; publication_status?: string } | null;
 };
 
 /** Account-backed Saved — every visitor here is already authenticated
@@ -44,7 +46,7 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
 
   // Save rows + the viewer's own classifications (Save organization), all
   // RLS-scoped to this user, in one parallel batch.
-  const [{ data: savedBizRows }, { data: savedEventRows }, { data: savedProductRows }, { data: savedLocationRows }, { data: relationRows }, displayName] =
+  const [{ data: savedBizRows }, { data: savedEventRows }, { data: savedProductRows }, { data: savedLocationRows }, { data: relationRows }, wantedProductIds, displayName] =
     await Promise.all([
       supabase.from("account_saved_businesses").select("business_id").eq("user_id", user.id),
       supabase.from("account_saved_events").select("event_id").eq("user_id", user.id),
@@ -52,6 +54,8 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
       // account_saved_locations: the public LocationSaveButton writes here.
       supabase.from("account_saved_locations").select("location_id").eq("user_id", user.id),
       supabase.from("user_entity_relationships").select("entity_type, entity_id, relation").eq("user_id", user.id).in("entity_type", [...COLLECTION_ENTITY_TYPES]),
+      // Things I Want's Products: the canonical Product Want relationship.
+      getAccountWantedProductIds(supabase, user.id),
       getPersonalDisplayName(supabase, user.id),
     ]);
   const saved = {
@@ -60,7 +64,7 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
     product: ((savedProductRows ?? []) as { product_id: string }[]).map((r) => r.product_id),
     location: ((savedLocationRows ?? []) as { location_id: string }[]).map((r) => r.location_id),
   };
-  const relations = (relationRows ?? []) as RelationRow[];
+  const relations = withCanonicalProductWants((relationRows ?? []) as RelationRow[], wantedProductIds);
   // A collection is its classification rows — never dependent on a Save
   // row still existing (Have / Been are history). "All" adds every Save.
   const members = collectionMembers(collection, relations, saved);
@@ -72,7 +76,7 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
     businessIds.length ? supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).in("id", businessIds) : none,
     members.event.length ? supabase.from("events").select("*").in("id", members.event) : none,
     members.product.length
-      ? supabase.from("products").select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled)`).in("id", members.product)
+      ? supabase.from("products").select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled, is_demo, publication_status)`).in("id", members.product)
       : none,
     members.location.length ? supabase.from("locations").select("*, category:categories(id, name, slug)").in("id", members.location) : none,
   ]);
@@ -81,10 +85,16 @@ export default async function AccountSavedPage({ searchParams }: { searchParams:
     .filter((b): b is BusinessWithCategories => Boolean(b))
     .map((b) => ({ ...b, categories: [] }));
   const events = (eventRows ?? []) as unknown as FindmiEvent[];
-  const products = ((productRows ?? []) as unknown as (SavedProduct & { business: SavedProduct["business"] | SavedProduct["business"][] })[]).map((p) => ({
-    ...p,
-    business: Array.isArray(p.business) ? (p.business[0] ?? null) : p.business,
-  }));
+  // Each card shows commerce UI only when the canonical Marketplace rule
+  // says the Product is genuinely buyable.
+  const products = await annotateMarketplaceEligibility(
+    supabase,
+    ((productRows ?? []) as unknown as (SavedProduct & { business: SavedProduct["business"] | SavedProduct["business"][] })[]).map((p) => ({
+      ...p,
+      business: Array.isArray(p.business) ? (p.business[0] ?? null) : p.business,
+    })),
+    (p) => p.business
+  );
   const locations = (locationRows ?? []) as unknown as LocationWithCategory[];
   const current = SAVED_COLLECTIONS.find((c) => c.key === collection)!;
 

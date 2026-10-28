@@ -48,7 +48,7 @@ export type SavedCollectionKey = "all" | "must-do" | "want" | "have-been";
  * Want To Go (all the existing `want` relation) without exposing that. */
 export const SAVED_COLLECTIONS: readonly { key: SavedCollectionKey; label: string; relations: readonly Relationship[] }[] = [
   { key: "all", label: "All Saved", relations: [] },
-  { key: "want", label: "Want", relations: ["want"] },
+  { key: "want", label: "Things I Want", relations: ["want"] },
   { key: "must-do", label: "Must Do", relations: ["must_do"] },
   { key: "have-been", label: "Have & Been", relations: ["have", "been"] },
 ];
@@ -63,6 +63,18 @@ export interface RelationRow {
   entity_type: string;
   entity_id: string;
   relation: string;
+}
+
+/** Product "want" comes from the canonical Product Want (product_wants),
+ * never from user_entity_relationships (whose legacy Product "want" rows
+ * were copied there). Replaces any Product/want relation rows with the
+ * viewer's actual Wanted Product ids, so Things I Want and the Product
+ * page's Want button always agree. */
+export function withCanonicalProductWants(relations: readonly RelationRow[], wantedProductIds: readonly string[]): RelationRow[] {
+  return [
+    ...relations.filter((r) => !(r.entity_type === "product" && r.relation === "want")),
+    ...[...new Set(wantedProductIds)].map((id) => ({ entity_type: "product", entity_id: id, relation: "want" })),
+  ];
 }
 
 /** Entity ids per type in one collection, from the viewer's relation rows

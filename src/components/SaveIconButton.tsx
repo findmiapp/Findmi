@@ -12,9 +12,9 @@ import { useAccountSaved, type SavedEntityType } from "@/lib/useAccountSaved";
  * appears), same guest-localStorage-then-account-once-signed-in behavior.
  * Always renders inside a parent `<Link>` on these tiles, so its click
  * stops propagation/prevents the parent navigation from also firing.
- * (Named "Want" historically; it is Save — labelled Save, and a signed-in
- * Save opens the same organize sheet as every other Save control.) */
-export default function WantHeartButton({
+ * (Formerly WantHeartButton — renamed: it is Save, never Want. Product
+ * Want is ProductWantButton / product_wants, a separate relationship.) */
+export default function SaveIconButton({
   type,
   slug,
   id,

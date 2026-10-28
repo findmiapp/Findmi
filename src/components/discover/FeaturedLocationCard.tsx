@@ -19,8 +19,8 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
  * activityCount, already batched by getFeaturedLocations/getLocations —
  * no new query), same Follow (LocationFollowButton, reused verbatim at
  * its own `compact` size), Save (the exact useAccountSaved hook
- * WantHeartButton itself calls — reused directly here rather than
- * through that component, since WantHeartButton has no label slot and
+ * SaveIconButton itself calls — reused directly here rather than
+ * through that component, since SaveIconButton has no label slot and
  * this strip needs an icon+text "Save" pill, not an icon-only circle)
  * and Directions (the exact mapsQuery/directionsHref pattern
  * LocationPublicView.tsx already uses) behavior.
@@ -270,7 +270,7 @@ function NavigationGlyph({ className }: { className?: string }) {
   );
 }
 
-/** Same bookmark glyph WantHeartButton itself uses, for one consistent
+/** Same bookmark glyph SaveIconButton itself uses, for one consistent
  * save/bookmark visual language across the app. */
 function HeartGlyph({ className, filled }: { className?: string; filled: boolean }) {
   return (

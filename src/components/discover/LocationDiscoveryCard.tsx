@@ -4,7 +4,7 @@ import Link from "next/link";
 import { formatCalendarDate } from "@/lib/event-time";
 import { useRouter } from "next/navigation";
 import SupabaseImage from "@/components/SupabaseImage";
-import WantHeartButton from "@/components/WantHeartButton";
+import SaveIconButton from "@/components/SaveIconButton";
 import type { LocationActivityPreviewItem, LocationWithCategory } from "@/lib/data";
 import { cityState, formatDateShort } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
@@ -24,7 +24,7 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
  * happening HERE," not one time-boxed moment. Deliberately NOT built on
  * HomeEventCard/EventCard (both locked, untouched) even though it reuses
  * the same established primitives everywhere they already exist:
- * WantHeartButton for Save (identical glass affordance ProductCard/
+ * SaveIconButton for Save (identical glass affordance ProductCard/
  * HomeEventCard already use), the same findmi-teal "intelligence layer"
  * treatment Business Overview's own activity strips use for the
  * upcoming-activity summary, SupabaseImage for photography.
@@ -123,7 +123,7 @@ export default function LocationDiscoveryCard({
           <span className={`absolute left-3 top-3 ${TYPE_PILL_CLASS}`}>{typeLabel}</span>
         )}
         <div className="absolute right-3 top-3">
-          <WantHeartButton type="location" slug={location.slug} id={location.id} className="h-9 w-9" />
+          <SaveIconButton type="location" slug={location.slug} id={location.id} className="h-9 w-9" />
         </div>
 
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-3.5">
@@ -231,7 +231,7 @@ export default function LocationDiscoveryCard({
  * non-interactive on purpose (a plain <div>, since the whole
  * LocationDiscoveryCard is already one outer <Link>, and nesting an <a>
  * inside an <a> is invalid HTML/breaks the parser). Live QA flagged that
- * as a dead tap target. Fixed the same way WantHeartButton already
+ * as a dead tap target. Fixed the same way SaveIconButton already
  * coexists inside this same outer <Link> — a real <button> (not a second
  * anchor), stopping propagation so it never also triggers the card's own
  * navigation. Every preview already carries a real destination (`href`,

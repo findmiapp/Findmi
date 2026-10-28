@@ -12,7 +12,9 @@ import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import ProductForm from "../ProductForm";
 import ProductModerationPanel from "./ProductModerationPanel";
 import MarketplaceReviewPanel from "./MarketplaceReviewPanel";
-import { MARKETPLACE_INELIGIBILITY_COPY, marketplaceIneligibility } from "@/lib/commerce/marketplace-eligibility";
+import MarketplaceReadinessPanel from "@/components/MarketplaceReadinessPanel";
+import { loadMarketplaceReadiness } from "@/lib/commerce/marketplace-readiness-server";
+import { getProductWantCounts } from "@/lib/product-wants";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +77,16 @@ export default async function EditProductPage({
         .maybeSingle()
     : { data: null };
   const categoryName = categories.find((c) => c.id === selectedCategoryIds[0])?.name ?? null;
+  // The ONE Marketplace rule (both gates + exact blockers) and aggregate
+  // demand — the same numbers the Business sees.
+  const [readinessById, demandById] = adminSupabase
+    ? await Promise.all([
+        loadMarketplaceReadiness(adminSupabase, [product], () => businessFeeRow ?? null),
+        getProductWantCounts(adminSupabase, [product.id]),
+      ])
+    : [new Map(), new Map()];
+  const readiness = readinessById.get(product.id) ?? null;
+  const demand = demandById.get(product.id) ?? { wantCount: 0, recentCount: 0 };
   // Business demo/publication status isn't loaded here (see
   // getBusinessOptionById) — is_active is the product's own, directly
   // controllable gate and the common case; a business that's separately
@@ -144,21 +156,11 @@ export default async function EditProductPage({
           storefront and checkout enforce (lib/commerce/marketplace-
           eligibility.ts), so an Approved product that still can't be bought
           says why. */}
-      {(() => {
-        const reasons = marketplaceIneligibility(product, businessFeeRow ?? null);
-        return (
-          <section aria-label="Marketplace readiness" className={`mt-5 rounded-xl border px-4 py-3 text-sm ${reasons.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-findmi-200 bg-findmi-50 text-findmi-700"}`}>
-            <p className="text-xs font-bold uppercase tracking-wide">{reasons.length ? "Not On The Marketplace" : "Live On The Marketplace"}</p>
-            {reasons.length > 0 && (
-              <ul className="mt-1 list-disc pl-5">
-                {reasons.map((r) => (
-                  <li key={r}>{MARKETPLACE_INELIGIBILITY_COPY[r]}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-        );
-      })()}
+      {readiness && (
+        <div className="mt-5">
+          <MarketplaceReadinessPanel readiness={readiness} demand={demand} audience="admin" />
+        </div>
+      )}
 
       <div className="mt-5">
         <MarketplaceReviewPanel

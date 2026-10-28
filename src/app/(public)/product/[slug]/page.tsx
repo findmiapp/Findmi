@@ -6,7 +6,6 @@ import ChevronIcon from "@/components/ChevronIcon";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AddToCartForm from "@/components/AddToCartForm";
-import { isMarketplaceEligible } from "@/lib/commerce/marketplace-eligibility";
 import { toJsonLdScript } from "@/lib/jsonLd";
 import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
@@ -17,6 +16,7 @@ import { productPlaces } from "@/lib/geo-results-server";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
 import ProductSaveButton from "@/components/ProductSaveButton";
+import ProductWantButton from "@/components/ProductWantButton";
 import ShareButton from "@/components/ShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
@@ -83,11 +83,15 @@ export default async function ProductPage({
   // product never shows an active Add to Cart, regardless of purchasable/
   // commerce_enabled. "in_stock" and null (not tracked) both allow it.
   const soldOut = product.inventory_status === "out_of_stock";
-  // Findmi checkout is a Marketplace capability: only a Marketplace-
-  // eligible Product (approved + active + purchasable — the one rule in
-  // lib/commerce/marketplace-eligibility.ts) gets Add to Cart. Every other
-  // live Product stays visible here with Shop Now / Contact Seller.
-  const canAddToCart = isMarketplaceEligible(product, { ...product.business, is_demo: false, publication_status: "live" }) && !soldOut;
+  // Two public states, from the ONE Marketplace rule (lib/commerce/
+  // marketplace-eligibility.ts, computed in getProductBySlug: catalog +
+  // approval + commerce readiness incl. stock and a checkout-completable
+  // fulfillment option):
+  //   Marketplace Product → price + Add to Cart; Want is secondary.
+  //   Catalog Product     → Want is the primary action; Shop Now / Contact
+  //                         Seller stay as secondary paths. Never a fake
+  //                         Add to Cart, never internal moderation wording.
+  const canAddToCart = product.marketplace_eligible === true;
 
   // Product Inquiry Consolidation pass — plan_tier/plan_expires_at aren't
   // in the anon column grant (same reason BusinessPublicView's own
@@ -241,46 +245,57 @@ export default async function ProductPage({
             </span>
           </Link>
 
-          {/* Primary CTA — exactly one, based on real data: Add to Cart
-              wins when actually purchasable; otherwise a valid external
-              link; otherwise inquiry; otherwise nothing is fabricated. */}
+          {/* Primary CTA — exactly one. Marketplace: Add to Cart (Want
+              secondary). Catalog: Want, with the Business's own Shop Now /
+              Contact Seller as secondary paths. */}
           <div className="mt-5">
             {canAddToCart && fulfillmentOptions.length > 0 ? (
-              <AddToCartForm
-                productId={product.id}
-                options={fulfillmentOptions}
-                sourceChannel={`business:${product.business.slug}`}
-              />
-            ) : purchaseUrl ? (
-              <AnalyticsLink
-                href={purchaseUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                trackPayload={{
-                  event_name: "product_external_click",
-                  subject_type: "product",
-                  subject_id: product.id,
-                  product_id: product.id,
-                  business_id: product.business_id,
-                }}
-              >
-                Shop Now
-              </AnalyticsLink>
-            ) : inquiryAction ? (
-              <FormAction
-                href={inquiryAction.url}
-                displayMode={inquiryAction.displayMode}
-                label="Contact Seller"
-                className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              />
-            ) : null}
-
-            {soldOut && <p className="mt-2 text-center text-sm font-semibold text-ink/50">Currently sold out</p>}
-            {!(canAddToCart && fulfillmentOptions.length > 0) && !purchaseUrl && !inquiryAction && !soldOut && (
-              <p className="text-center text-sm text-ink/45">
-                Not available for purchase right now. Check back soon.
-              </p>
+              <>
+                <AddToCartForm
+                  productId={product.id}
+                  options={fulfillmentOptions}
+                  sourceChannel={`business:${product.business.slug}`}
+                />
+                <div className="mt-2">
+                  <ProductWantButton productId={product.id} productName={product.name} variant="secondary" source="product_page" sourceChannel={`business:${product.business.slug}`} />
+                </div>
+              </>
+            ) : (
+              <>
+                <ProductWantButton productId={product.id} productName={product.name} variant="primary" source="product_page" sourceChannel={`business:${product.business.slug}`} />
+                <p className="mt-2 text-center text-metadata text-subtle">
+                  {soldOut ? "Currently sold out." : "Not available to buy on Findmi yet."}
+                </p>
+                {(purchaseUrl || inquiryAction) && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {purchaseUrl && (
+                      <AnalyticsLink
+                        href={purchaseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex h-11 w-full items-center justify-center rounded-2xl border border-black/10 bg-white text-sm font-semibold text-ink transition hover:border-findmi"
+                        trackPayload={{
+                          event_name: "product_external_click",
+                          subject_type: "product",
+                          subject_id: product.id,
+                          product_id: product.id,
+                          business_id: product.business_id,
+                        }}
+                      >
+                        Shop Now
+                      </AnalyticsLink>
+                    )}
+                    {inquiryAction && (
+                      <FormAction
+                        href={inquiryAction.url}
+                        displayMode={inquiryAction.displayMode}
+                        label="Contact Seller"
+                        className="flex h-11 w-full items-center justify-center rounded-2xl border border-black/10 bg-white text-sm font-semibold text-ink transition hover:border-findmi"
+                      />
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 

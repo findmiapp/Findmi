@@ -4,7 +4,7 @@ import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import FollowButton from "./FollowButton";
-import WantHeartButton from "./WantHeartButton";
+import SaveIconButton from "./SaveIconButton";
 import type { BusinessWithCategories } from "@/lib/types";
 import type { NextAppearanceHint } from "@/lib/data";
 import { cityState, formatDateShort, formatTime, isTimeUnknown } from "@/lib/format";
@@ -247,7 +247,7 @@ export default function BusinessLogoCard({
             is retired in favor of this real content doing the same job. */}
         <div className="relative z-20 flex h-9 items-center justify-end gap-1.5">
           <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
-          <WantHeartButton
+          <SaveIconButton
             type="business"
             slug={business.slug}
             id={business.id}

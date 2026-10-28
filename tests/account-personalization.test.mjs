@@ -156,7 +156,7 @@ test("reopening a saved item opens the sheet (prefilled) instead of a one-tap un
   assert.match(sheet, /fetch\(`\/api\/relationships\?type=\$\{type\}&id=\$\{id\}`/, "existing classifications prefill");
   assert.match(sheet, /aria-pressed=\{active\}/, "multi-select toggles");
   assert.match(sheet, /Remove From Saved/);
-  for (const f of ["EventSaveButton", "ProductSaveButton", "LocationSaveButton", "WantHeartButton"]) {
+  for (const f of ["EventSaveButton", "ProductSaveButton", "LocationSaveButton", "SaveIconButton"]) {
     assert.match(read(`src/components/${f}.tsx`), /<SaveOrganizeSheet organize=\{organize\} \/>/, f);
   }
 });
@@ -188,7 +188,7 @@ test("standalone intent buttons are gone from entity pages; the card heart is la
   for (const f of ["src/app/(public)/event/[slug]/EventPublicView.tsx", "src/app/(public)/location/[slug]/LocationPublicView.tsx", "src/app/(public)/product/[slug]/page.tsx"]) {
     assert.doesNotMatch(read(f), /<RelationshipButton/, f);
   }
-  const heart = read("src/components/WantHeartButton.tsx");
+  const heart = read("src/components/SaveIconButton.tsx");
   assert.match(heart, /aria-label=\{saved \? "Saved" : "Save"\}/);
   assert.doesNotMatch(heart, /"Remove from Want"/);
 });
@@ -219,7 +219,7 @@ test("counts match the collection contents; no fake Must Haves collection", () =
     const m = S.collectionMembers(key, RELS, { event: ["e-saved"] });
     assert.equal(counts[key], m.product.length + m.event.length + m.location.length, key);
   }
-  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All Saved", "Want", "Must Do", "Have & Been"]);
+  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All Saved", "Things I Want", "Must Do", "Have & Been"]);
   assert.equal(S.parseCollection("must-have"), "all");
   const page = read("src/app/(public)/account/saved/page.tsx");
   assert.match(page, /collectionMembers\(collection, relations, saved\)/);

@@ -7,7 +7,8 @@ import { formatCurrency, formatPrice } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
-import WantHeartButton from "./WantHeartButton";
+import SaveIconButton from "./SaveIconButton";
+import ProductWantButton from "./ProductWantButton";
 
 export default function ProductCard({
   product,
@@ -24,14 +25,9 @@ export default function ProductCard({
       slug: string;
       logo_url?: string | null;
       categoryName?: string | null;
-      /** Master commerce switch (businesses.commerce_enabled) — optional
-       * because a caller that doesn't pass `business` at all (e.g. a
-       * business's own product list) has nothing to gate on either.
-       * Required here, though, whenever `business` IS passed, so this
-       * label can't claim "Add to Cart" for a business that hasn't
-       * enabled commerce (commerce-audit fix — this used to check
-       * `purchasable` alone, disagreeing with the product detail page's
-       * real CTA gate: purchasable && commerce_enabled). */
+      /** No longer read by the card — the Add to Cart preview comes from
+       * product.marketplace_eligible (the one Marketplace rule). Kept
+       * optional so existing callers that pass it still type-check. */
       commerce_enabled?: boolean | null;
     } | null;
   };
@@ -43,21 +39,14 @@ export default function ProductCard({
 }) {
   const href = `/product/${product.slug}`;
   const business = product.business;
-  // Purchasable wins over an external link — it's the more complete,
-  // FindMi-native path (real cart/fulfillment, not a redirect off-site).
-  // The card always links to the product's own page either way, where the
-  // matching action (Add to Cart form, Shop Now link, or inquiry) lives —
-  // this label is just an honest preview of which one it'll be. Inquiry-
-  // only products say "View Details" (this is a discovery card, not the
-  // inquiry flow itself) rather than "Ask About This."
-  //
-  // canAddToCart mirrors the product detail page's real gate exactly
-  // (purchasable && business.commerce_enabled) — a card that doesn't carry
-  // a `business` (e.g. a business's own product list, where commerce_enabled
-  // isn't fetched) falls back to `purchasable` alone rather than assuming
-  // false, since that context has no commerce_enabled to check.
-  const canAddToCart = product.purchasable && (business ? business.commerce_enabled === true : true);
-  const cta = canAddToCart ? "Add to Cart" : product.external_purchase_url ? "Shop Now" : "View Details";
+  // Two card states, from the ONE Marketplace rule (lib/commerce/
+  // marketplace-eligibility.ts — `marketplace_eligible` is computed
+  // server-side by the data layer): a genuinely buyable Marketplace Product
+  // shows the Add to Cart preview; every other (catalog) Product shows the
+  // Want action instead — a card never implies a Product can be bought
+  // when Findmi checkout can't actually complete. A caller that didn't run
+  // the rule gets the safe catalog state.
+  const marketplace = product.marketplace_eligible === true;
   // Products have no category/taxonomy field of their own — the generic
   // "PRODUCT"/"Service" label is replaced by the selling business's real
   // primary category where available (see FeaturedProduct.business.
@@ -108,7 +97,7 @@ export default function ProductCard({
             signal, never a cart/checkout shortcut. Same shared save
             infrastructure (guest localStorage, or the account once signed
             in) every other Save control on the site already uses. */}
-        <WantHeartButton type="product" slug={product.slug} id={product.id} className="absolute right-2 top-2 h-7 w-7" />
+        <SaveIconButton type="product" slug={product.slug} id={product.id} className="absolute right-2 top-2 h-7 w-7" />
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
         {badgeLabel && <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">{badgeLabel}</p>}
@@ -126,7 +115,7 @@ export default function ProductCard({
           </p>
         )}
         {price && <p className="text-sm font-semibold text-ink/70">{price}</p>}
-        {cta && (
+        {marketplace ? (
           // Launch-polish pass item 5: a hairline divider separates the
           // product info above from the action row, and the CTA itself is
           // now a compact pill (not loose text) so it reads as a distinct
@@ -136,9 +125,13 @@ export default function ProductCard({
           // stem-less style standardized this pass (item 4).
           <div className="mt-auto flex items-center border-t border-black/5 pt-2">
             <span className="inline-flex items-center gap-1 rounded-full bg-findmi-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
-              {cta}
+              Add to Cart
               <ChevronGlyph className="h-2.5 w-2.5" />
             </span>
+          </div>
+        ) : (
+          <div className="mt-auto flex items-center border-t border-black/5 pt-2">
+            <ProductWantButton productId={product.id} productName={product.name} variant="pill" source="product_card" />
           </div>
         )}
       </div>

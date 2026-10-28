@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
-import WantHeartButton from "./WantHeartButton";
+import SaveIconButton from "./SaveIconButton";
 import type { EventWithCategories } from "@/lib/types";
 import { cityState } from "@/lib/format";
 import LiveDot from "./LiveDot";
@@ -157,7 +157,7 @@ export default function ConnectionCard({
             </>
           )}
         </div>
-        <WantHeartButton type="event" slug={event.slug} id={event.id} className="h-9 w-9 shrink-0 !bg-findmi-50 !text-findmi-700" />
+        <SaveIconButton type="event" slug={event.slug} id={event.id} className="h-9 w-9 shrink-0 !bg-findmi-50 !text-findmi-700" />
       </div>
     </div>
   );
