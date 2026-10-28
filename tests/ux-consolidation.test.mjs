@@ -258,7 +258,7 @@ test("composer: You Have A Moment In Progress — Continue restores its own cont
 test("Journal alignment: My Moments ↔ /moments ↔ Saved & Following, same records", () => {
   const mine = read("src/app/(public)/my-world/journal/page.tsx");
   assert.match(mine, /href="\/moments"/);
-  assert.match(mine, /href="\/my-world"/);
+  assert.match(mine, /href="\/account\/saved"/); // the one Saved library (Personal Library pass)
   assert.match(read("src/components/moments/MomentsDiscovery.tsx"), /href=\{momentsModeHref\("my-moments"\)\}/);
   assert.doesNotMatch(read("src/components/moments/MomentsDiscovery.tsx"), /World Journal|My World/);
 });

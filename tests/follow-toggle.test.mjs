@@ -475,7 +475,13 @@ test("legacy guest infrastructure stays dormant, not deleted", () => {
 });
 
 test("Saved behavior untouched — Saved code never uses the Follow modules", () => {
-  for (const f of ["src/lib/saved.ts", "src/app/api/account/save/route.ts", "src/app/api/saved/route.ts", "src/components/SaveButton.tsx", "src/components/EventSaveButton.tsx", "src/components/LocationSaveButton.tsx", "src/app/(public)/account/saved/page.tsx"]) {
+  for (const f of ["src/lib/saved.ts", "src/app/api/account/save/route.ts", "src/app/api/saved/route.ts", "src/components/SaveButton.tsx", "src/components/EventSaveButton.tsx", "src/components/LocationSaveButton.tsx"]) {
     assert.doesNotMatch(read(f), /useAccountFollow|useFollowControl|account-follow-(client|server)|account_followed_|FollowSignInPrompt/, f);
   }
+  // Personal Library pass: the ONE library page shows a Following filter —
+  // it only READS the follow tables, never writes them or uses Follow UI.
+  const library = read("src/app/(public)/account/saved/page.tsx");
+  assert.doesNotMatch(library, /useAccountFollow|useFollowControl|account-follow-(client|server)|FollowSignInPrompt/);
+  assert.doesNotMatch(library, /account_followed_\w+"\)\.(insert|update|delete|upsert)/);
+  assert.match(library, /from\("account_followed_businesses"\)\.select\("business_id"\)/);
 });

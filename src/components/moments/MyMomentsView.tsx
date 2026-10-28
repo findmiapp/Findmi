@@ -51,8 +51,8 @@ export default function MyMomentsView({ entries, filter }: { entries: JournalInd
               My Moments
             </Link>
             , and the places and brands you&rsquo;re keeping track of in{" "}
-            <Link href="/my-world" className="font-semibold text-findmi-700 hover:underline">
-              Saved &amp; Following
+            <Link href="/account/saved" className="font-semibold text-findmi-700 hover:underline">
+              Saved
             </Link>
             .
           </p>

@@ -22,9 +22,20 @@ const SYNCED_KEY = "findmi_account_synced_v1";
  * businesses). Adds saved locations plus followed events/locations, so a
  * device's full existing local history carries over on sign-in, not just
  * the original three entity types. */
+/** Fingerprint of the device's local lists. The flag now stores this
+ * (instead of a bare "1"), so Saves made on this device AFTER a first
+ * import — e.g. while signed out again — are carried over on the next
+ * signed-in visit too. The import itself is idempotent server-side, so a
+ * re-run can never duplicate anything; nothing local is ever cleared. */
+export function localListsFingerprint(lists: Record<string, readonly string[]>): string {
+  return Object.keys(lists)
+    .sort()
+    .map((k) => `${k}:${[...lists[k]].sort().join(",")}`)
+    .join("|");
+}
+
 export function syncLocalToAccountOnce(): void {
   if (typeof window === "undefined") return;
-  if (window.localStorage.getItem(SYNCED_KEY)) return;
 
   const businessSlugs = getSavedSlugs();
   const eventSlugs = getSavedEventSlugs();
@@ -33,6 +44,12 @@ export function syncLocalToAccountOnce(): void {
   const followedBusinessSlugs = getFollowedSlugs();
   const followedEventIds = getFollowedEventIds();
   const followedLocationIds = getFollowedLocationIds();
+
+  const fingerprint = localListsFingerprint({ businessSlugs, eventSlugs, productSlugs, locationSlugs, followedBusinessSlugs, followedEventIds, followedLocationIds });
+  const previous = window.localStorage.getItem(SYNCED_KEY);
+  // A device flagged by the earlier once-only version ("1") re-imports
+  // once — safe, the import is idempotent — then tracks the fingerprint.
+  if (previous === fingerprint) return;
 
   if (
     businessSlugs.length === 0 &&
@@ -43,7 +60,7 @@ export function syncLocalToAccountOnce(): void {
     followedEventIds.length === 0 &&
     followedLocationIds.length === 0
   ) {
-    window.localStorage.setItem(SYNCED_KEY, "1");
+    window.localStorage.setItem(SYNCED_KEY, fingerprint);
     return;
   }
 
@@ -61,7 +78,7 @@ export function syncLocalToAccountOnce(): void {
     }),
   })
     .then((res) => {
-      if (res.ok) window.localStorage.setItem(SYNCED_KEY, "1");
+      if (res.ok) window.localStorage.setItem(SYNCED_KEY, fingerprint);
     })
     .catch(() => {
       // Network hiccup — leave the flag unset so this retries on the next

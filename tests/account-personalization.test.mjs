@@ -120,7 +120,9 @@ test("/api/account/follow-keys returns ONLY this user's DB follows; 401 when sig
 test("classifications shipped are exactly the truthful ones (no Going, no Must Have, no Appearance)", () => {
   const labels = Object.fromEntries(Object.entries(S.SAVE_CLASSIFICATIONS).map(([t, list]) => [t, list.map((c) => `${c.label}=${c.relation}`)]));
   assert.deepEqual(labels, {
-    product: ["Want=want", "Have=have"],
+    // Personal Library pass: Product Want is the canonical product_wants
+    // relationship (the Want button), never a Save classification.
+    product: ["Have=have"],
     event: ["Interested=want", "Must Do=must_do"],
     location: ["Want To Go=want", "Must Do=must_do", "Been Here=been"],
   });
@@ -204,25 +206,25 @@ const RELS = [
 ];
 
 test("real intent rows land in the right collections — even with NO Save row", () => {
-  assert.deepEqual(S.collectionMembers("want", RELS), { product: [PROD], event: [], location: [] });
-  assert.deepEqual(S.collectionMembers("must-do", RELS), { product: [], event: [EVT], location: [LOC] });
-  assert.deepEqual(S.collectionMembers("have-been", RELS), { product: [], event: [], location: [LOC] });
-  // All Saved: every Save plus every classified item, deduped; like/dislike never count.
+  assert.deepEqual(S.collectionMembers("want", RELS), { product: [PROD], event: [], location: [], business: [] });
+  assert.deepEqual(S.collectionMembers("must-do", RELS), { product: [], event: [EVT], location: [LOC], business: [] });
+  assert.deepEqual(S.collectionMembers("have-been", RELS), { product: [], event: [], location: [LOC], business: [] });
+  // All: every Save plus every relationship, deduped; like/dislike never count.
   const all = S.collectionMembers("all", RELS, { event: [EVT, "e-saved"], product: [] });
-  assert.deepEqual(all, { product: [PROD], event: [EVT, "e-saved"], location: [LOC] });
+  assert.deepEqual(all, { product: [PROD], event: [EVT, "e-saved"], location: [LOC], business: [] });
 });
 
 test("counts match the collection contents; no fake Must Haves collection", () => {
   const counts = S.collectionCounts(RELS, { event: ["e-saved"], business: [BIZ, BIZ] });
-  assert.deepEqual(counts, { all: 5, "must-do": 2, want: 1, "have-been": 1 });
+  assert.deepEqual(counts, { all: 5, want: 1, "want-to-do": 0, "want-to-go": 0, "must-do": 2, "have-been": 1, following: 0, saved: 2 });
   for (const key of ["must-do", "want", "have-been"]) {
     const m = S.collectionMembers(key, RELS, { event: ["e-saved"] });
     assert.equal(counts[key], m.product.length + m.event.length + m.location.length, key);
   }
-  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All Saved", "Things I Want", "Must Do", "Have & Been"]);
+  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All", "Things I Want", "Want To Do", "Want To Go", "Must Do", "Have & Been", "Following", "Saved"]);
   assert.equal(S.parseCollection("must-have"), "all");
   const page = read("src/app/(public)/account/saved/page.tsx");
-  assert.match(page, /collectionMembers\(collection, relations, saved\)/);
+  assert.match(page, /collectionMembers\(collection, relations, saved, followed\)/);
   assert.match(page, /from\("user_entity_relationships"\)\.select\("entity_type, entity_id, relation"\)\.eq\("user_id", user\.id\)/);
 });
 

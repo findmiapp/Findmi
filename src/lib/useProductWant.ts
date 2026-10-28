@@ -76,7 +76,7 @@ export interface ProductWantControl {
   /** Signed in: toggles. Signed out: the caller opens the email sheet.
    * `authed` lets a caller that awaited the session act on a tap made
    * before this control's own session check resolved. */
-  toggle: (authed?: boolean) => void;
+  toggle: (authed?: boolean) => Promise<boolean | null>;
   /** Signed-out email interest. Resolves true on success. */
   submitEmail: (email: string, honeypot?: string) => Promise<boolean>;
 }
@@ -119,21 +119,25 @@ export function useProductWant(productId: string, source: WantSource, sourceChan
     return { ok: res.ok && Boolean(data), data };
   }
 
-  function toggle(authed?: boolean) {
-    if (!(authed ?? signedIn) || busy) return;
+  /** Resolves the server-confirmed Want state (null when nothing was
+   * sent or the request failed). */
+  function toggle(authed?: boolean): Promise<boolean | null> {
+    if (!(authed ?? signedIn) || busy) return Promise.resolve(null);
     const next = !wanted;
     notify(productId, next); // optimistic, every control for this Product
     setBusy(true);
     setError(null);
-    post({ on: next })
+    return post({ on: next })
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data?.error ?? "");
         notify(productId, Boolean(data!.wanted));
         trackEvent({ event_name: data!.wanted ? "want" : "unwant", subject_type: "product", subject_id: productId, product_id: productId, metadata: { source } });
+        return Boolean(data!.wanted);
       })
       .catch(() => {
         notify(productId, !next);
         setError("Couldn't update that. Please try again.");
+        return null;
       })
       .finally(() => setBusy(false));
   }

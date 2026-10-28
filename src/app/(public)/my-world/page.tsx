@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatEventRange } from "@/lib/event-time";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import ProductCard from "@/components/ProductCard";
 import BusinessCard from "@/components/BusinessCard";
 import LocationCard from "@/components/LocationCard";
@@ -64,6 +65,7 @@ const EMPTY: MyWorldData = {
  * A signed-OUT visitor's behavior is completely unchanged: same
  * localStorage reads, same /api/saved call, same response shape. */
 export default function MyWorldPage() {
+  const router = useRouter();
   const [data, setData] = useState<MyWorldData | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
 
@@ -74,40 +76,12 @@ export default function MyWorldPage() {
       setAuthed(isAuthed);
 
       if (isAuthed) {
+        // Personal Library consolidation: signed in, the ONE library is
+        // /account/saved (Things I Want, Want To Do, Following, Saved,
+        // Collections…). Import this device's local lists first
+        // (non-destructive), then go there.
         syncLocalToAccountOnce();
-        fetch("/api/account/world")
-          .then((res) => (res.ok ? res.json() : null))
-          .then(
-            (
-              result: {
-                businesses: BusinessWithCategories[];
-                events: FindmiEvent[];
-                products: SavedProduct[];
-                locations: LocationWithCategory[];
-                followedBusinesses: BusinessWithCategories[];
-                followedEvents: FindmiEvent[];
-                followedLocations: LocationWithCategory[];
-              } | null
-            ) => {
-              if (cancelled) return;
-              setData(
-                result
-                  ? {
-                      wantProducts: result.products ?? [],
-                      wantToDoEvents: result.events ?? [],
-                      followingBusinesses: result.followedBusinesses ?? [],
-                      followingEvents: result.followedEvents ?? [],
-                      followingLocations: result.followedLocations ?? [],
-                      savedBusinesses: result.businesses ?? [],
-                      savedLocations: result.locations ?? [],
-                    }
-                  : EMPTY
-              );
-            }
-          )
-          .catch(() => {
-            if (!cancelled) setData(EMPTY);
-          });
+        router.replace("/account/saved");
         return;
       }
 
@@ -164,7 +138,7 @@ export default function MyWorldPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   const loading = data === null;
   const empty =

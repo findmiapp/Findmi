@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { SaveOrganizeState } from "@/lib/useAccountSaved";
 import { SAVE_CLASSIFICATIONS } from "@/lib/save-organization";
 import type { Relationship } from "@/lib/discovery/relationships";
+import CollectionPicker from "./CollectionPicker";
 
 /** Save organization sheet — opens after a signed-in Save of a Product,
  * Event or Location (the Save already happened; closing keeps it). Each
@@ -86,26 +87,36 @@ export default function SaveOrganizeSheet({ organize }: { organize: SaveOrganize
         className="relative w-full max-w-md rounded-t-3xl bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-xl sm:rounded-3xl sm:pb-4"
       >
         <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-full bg-black/10 sm:hidden" />
-        <p className="font-display text-section-title font-semibold text-primary">Saved</p>
-        <p className="mt-0.5 text-metadata text-muted">Add it to a list if you like — optional.</p>
-        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Lists">
-          {options.map((o) => {
-            const active = on.has(o.relation);
-            return (
-              <button
-                key={o.relation}
-                type="button"
-                aria-pressed={active}
-                disabled={!loaded}
-                onClick={() => toggle(o.relation)}
-                className={`h-10 rounded-full px-4 text-sm font-semibold transition active:scale-[0.97] disabled:opacity-50 ${
-                  active ? "bg-findmi text-white" : "border border-black/10 bg-white text-ink hover:border-findmi"
-                }`}
-              >
-                {o.label}
-              </button>
-            );
-          })}
+        <p className="font-display text-section-title font-semibold text-primary">Saved ✓</p>
+        <p className="mt-0.5 text-metadata text-muted">Organize it if you like — optional.</p>
+        {options.length > 0 && (
+          <div className="mt-4">
+            {/* Relationships — what it means to you. Independent of the Save
+                (removing the Save keeps them; Have / Been are history). */}
+            <p className="text-label font-semibold uppercase text-subtle">Mark As</p>
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Mark as">
+              {options.map((o) => {
+                const active = on.has(o.relation);
+                return (
+                  <button
+                    key={o.relation}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={!loaded}
+                    onClick={() => toggle(o.relation)}
+                    className={`h-10 rounded-full px-4 text-sm font-semibold transition active:scale-[0.97] disabled:opacity-50 ${
+                      active ? "bg-findmi text-white" : "border border-black/10 bg-white text-ink hover:border-findmi"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div className="mt-4">
+          <CollectionPicker entityType={organize.type} entityId={organize.id} />
         </div>
         {error && (
           <p role="alert" className="mt-2 text-metadata text-red-700">

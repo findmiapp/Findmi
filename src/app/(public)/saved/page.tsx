@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { formatEventRange } from "@/lib/event-time";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getAccountSession } from "@/lib/accountSession";
 import BusinessCard from "@/components/BusinessCard";
 import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
@@ -14,12 +16,32 @@ type SavedProduct = Product & {
   business: { name: string; slug: string; logo_url: string | null; commerce_enabled: boolean } | null;
 };
 
+/** Device-local Saved — for signed-OUT visitors only. A signed-in person
+ * never lands in this separate device universe: they go to the ONE
+ * account-backed library (/account/saved), where AccountSync imports this
+ * device's local Saves into the account (non-destructively; local data is
+ * kept). */
 export default function SavedPage() {
+  const router = useRouter();
+  const [signedOut, setSignedOut] = useState(false);
   const [businesses, setBusinesses] = useState<BusinessWithCategories[] | null>(null);
   const [events, setEvents] = useState<FindmiEvent[] | null>(null);
   const [products, setProducts] = useState<SavedProduct[] | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    getAccountSession().then((authed) => {
+      if (cancelled) return;
+      if (authed) router.replace("/account/saved");
+      else setSignedOut(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!signedOut) return;
     const businessSlugs = getSavedSlugs();
     const eventSlugs = getSavedEventSlugs();
     const productSlugs = getSavedProductSlugs();
@@ -52,16 +74,20 @@ export default function SavedPage() {
         setEvents([]);
         setProducts([]);
       });
-  }, []);
+  }, [signedOut]);
 
-  const loading = businesses === null || events === null || products === null;
+  const loading = !signedOut || businesses === null || events === null || products === null;
   const empty = !loading && businesses.length === 0 && events.length === 0 && products.length === 0;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Saved</h1>
       <p className="mt-2 text-ink/60">
-        Kept on this device. Tap the bookmark on a business, event, or product to save it here.
+        Kept on this device. Tap the bookmark on a business, event, or product to save it here.{" "}
+        <Link href="/login?next=/account/saved" className="font-medium text-ink underline underline-offset-2">
+          Sign in
+        </Link>{" "}
+        to keep it with your account.
       </p>
 
       {loading ? null : empty ? (

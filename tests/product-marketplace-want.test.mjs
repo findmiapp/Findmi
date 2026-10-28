@@ -277,7 +277,9 @@ test("Things I Want reads the canonical Product Want relationship", () => {
     { entity_type: "event", entity_id: "e1", relation: "want" },
   ];
   const rels = S.withCanonicalProductWants(legacy, ["p-new", "p-new"]);
-  assert.deepEqual(S.collectionMembers("want", rels), { product: ["p-new"], event: ["e1"], location: [] });
+  // Things I Want = Products only (Personal Library pass); Event Want is "Want To Do".
+  assert.deepEqual(S.collectionMembers("want", rels), { product: ["p-new"], event: [], location: [], business: [] });
+  assert.deepEqual(S.collectionMembers("want-to-do", rels).event, ["e1"]);
   assert.deepEqual(S.collectionMembers("have-been", rels).product, ["p-have"], "Have untouched");
   assert.equal(S.SAVED_COLLECTIONS.find((c) => c.key === "want").label, "Things I Want");
   const saved = read("src/app/(public)/account/saved/page.tsx");

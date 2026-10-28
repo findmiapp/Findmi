@@ -1,6 +1,10 @@
-// Save organization — Save is the consumer's one organization entry point;
-// these are the optional classifications offered in the sheet that opens
-// after a Save. Each is an EXISTING user_entity_relationships relation
+// Personal Library — three independent concepts:
+//   Relationship  what it means to me (Product Want = product_wants; Have /
+//                 Been / Must Do / Event & Place Want = user_entity_relationships)
+//   Save          a plain bookmark (account_saved_*)
+//   Collection    how I organize it (user_collections, lib/collections.ts)
+// The sheet that opens after a Save offers the relationship statements below
+// under "Mark As" (never as Save sub-types) plus Collections. Each is an EXISTING user_entity_relationships relation
 // (lib/discovery/relationships.ts), shown with a label that fits the
 // entity — never a value the schema can't truthfully hold (no "Going", no
 // "Must Have", no Appearance saves). Classifications are independent rows:
@@ -20,10 +24,10 @@ export interface SaveClassification {
 /** The sheet's options per saved entity type (multi-select). Businesses
  * have none: Save, with Follow as its own separate relationship. */
 export const SAVE_CLASSIFICATIONS: Record<OrganizableType, readonly SaveClassification[]> = {
-  product: [
-    { relation: "want", label: "Want" },
-    { relation: "have", label: "Have" },
-  ],
+  // Product Want is NOT a Save classification: it is the canonical
+  // product_wants relationship, owned by the Product's own Want button
+  // (ProductWantButton). The Save sheet only offers Have for Products.
+  product: [{ relation: "have", label: "Have" }],
   event: [
     { relation: "want", label: "Interested" },
     { relation: "must_do", label: "Must Do" },
@@ -39,18 +43,42 @@ export function isOrganizable(type: string): type is OrganizableType {
   return type === "product" || type === "event" || type === "location";
 }
 
-/** Personal collections on /account/saved. "all" is every Saved item plus
- * every classified one; the others are defined only by real relation
- * rows. Only truthful collections exist (no "Must Haves"). */
-export type SavedCollectionKey = "all" | "must-do" | "want" | "have-been";
+/** Personal Library filters on /account/saved (the ONE signed-in library).
+ * Each filter is defined only by real rows — a relationship, a Save or a
+ * Follow — so no taxonomy is manufactured: a filter with nothing in it is
+ * hidden by the page. User-created Collections are a separate area
+ * (lib/collections.ts), never a filter here.
+ *   all         every Save + every relationship (not Like/Dislike, which
+ *               are taste signals, not things you keep) — Following has
+ *               its own filter so subscriptions don't flood "All"
+ *   want        Things I Want — Product Want (product_wants)
+ *   want-to-do  Event Want ("Interested")
+ *   want-to-go  Place Want
+ *   must-do     Must Do (Events, Places)
+ *   have-been   Have (Products) & Been (Places, Events)
+ *   following   Followed Businesses, Events, Places
+ *   saved       plain Save bookmarks only */
+export type SavedCollectionKey = "all" | "want" | "want-to-do" | "want-to-go" | "must-do" | "have-been" | "following" | "saved";
 
-/** Consumer labels: "Want" covers Product Want, Event Interested and Place
- * Want To Go (all the existing `want` relation) without exposing that. */
-export const SAVED_COLLECTIONS: readonly { key: SavedCollectionKey; label: string; relations: readonly Relationship[] }[] = [
-  { key: "all", label: "All Saved", relations: [] },
-  { key: "want", label: "Things I Want", relations: ["want"] },
+export type LibraryEntityType = "product" | "event" | "location" | "business";
+
+interface LibraryFilter {
+  key: SavedCollectionKey;
+  label: string;
+  relations: readonly Relationship[];
+  /** Restricts relation rows to these entity types (all when omitted). */
+  entityTypes?: readonly LibraryEntityType[];
+}
+
+export const SAVED_COLLECTIONS: readonly LibraryFilter[] = [
+  { key: "all", label: "All", relations: [] },
+  { key: "want", label: "Things I Want", relations: ["want"], entityTypes: ["product"] },
+  { key: "want-to-do", label: "Want To Do", relations: ["want"], entityTypes: ["event"] },
+  { key: "want-to-go", label: "Want To Go", relations: ["want"], entityTypes: ["location"] },
   { key: "must-do", label: "Must Do", relations: ["must_do"] },
   { key: "have-been", label: "Have & Been", relations: ["have", "been"] },
+  { key: "following", label: "Following", relations: [] },
+  { key: "saved", label: "Saved", relations: [] },
 ];
 
 export const COLLECTION_ENTITY_TYPES: readonly RelationshipEntityType[] = ["product", "event", "location"];
@@ -77,34 +105,38 @@ export function withCanonicalProductWants(relations: readonly RelationRow[], wan
   ];
 }
 
-/** Entity ids per type in one collection, from the viewer's relation rows
- * (and, for "all", their Save rows too). */
-export function collectionMembers(
-  key: SavedCollectionKey,
-  relations: readonly RelationRow[],
-  saved: Partial<Record<OrganizableType, readonly string[]>> = {}
-): Record<OrganizableType, string[]> {
-  const out: Record<OrganizableType, string[]> = { product: [], event: [], location: [] };
+export type LibraryIds = Partial<Record<LibraryEntityType, readonly string[]>>;
+
+const LIBRARY_TYPES = ["product", "event", "location", "business"] as const;
+
+/** Entity ids per type in one library filter, from the viewer's
+ * relationship rows, Save rows and Follow rows. */
+export function collectionMembers(key: SavedCollectionKey, relations: readonly RelationRow[], saved: LibraryIds = {}, followed: LibraryIds = {}): Record<LibraryEntityType, string[]> {
+  const out: Record<LibraryEntityType, string[]> = { product: [], event: [], location: [], business: [] };
   const def = SAVED_COLLECTIONS.find((c) => c.key === key)!;
-  for (const r of relations) {
-    if (!isOrganizable(r.entity_type)) continue;
-    if (key === "all" ? r.relation === "like" || r.relation === "dislike" : !def.relations.includes(r.relation as Relationship)) continue;
-    out[r.entity_type].push(r.entity_id);
+  if (key === "following") {
+    for (const t of LIBRARY_TYPES) out[t].push(...(followed[t] ?? []));
+  } else if (key === "saved") {
+    for (const t of LIBRARY_TYPES) out[t].push(...(saved[t] ?? []));
+  } else {
+    for (const r of relations) {
+      if (!isOrganizable(r.entity_type)) continue;
+      if (key === "all" ? r.relation === "like" || r.relation === "dislike" : !def.relations.includes(r.relation as Relationship)) continue;
+      if (def.entityTypes && !def.entityTypes.includes(r.entity_type)) continue;
+      out[r.entity_type].push(r.entity_id);
+    }
+    if (key === "all") for (const t of LIBRARY_TYPES) out[t].push(...(saved[t] ?? []));
   }
-  if (key === "all") for (const t of ["product", "event", "location"] as const) out[t].push(...(saved[t] ?? []));
-  for (const t of ["product", "event", "location"] as const) out[t] = [...new Set(out[t])];
+  for (const t of LIBRARY_TYPES) out[t] = [...new Set(out[t])];
   return out;
 }
 
-/** Item counts per collection (Account Home's Saved module, the
- * collection chips). Businesses count toward "all" only. */
-export function collectionCounts(
-  relations: readonly RelationRow[],
-  saved: Partial<Record<OrganizableType, readonly string[]>> & { business?: readonly string[] } = {}
-): Record<SavedCollectionKey, number> {
-  const count = (key: SavedCollectionKey) => {
-    const m = collectionMembers(key, relations, saved);
-    return m.product.length + m.event.length + m.location.length + (key === "all" ? new Set(saved.business ?? []).size : 0);
-  };
-  return { all: count("all"), "must-do": count("must-do"), want: count("want"), "have-been": count("have-been") };
+/** Item counts per filter (the filter chips). */
+export function collectionCounts(relations: readonly RelationRow[], saved: LibraryIds = {}, followed: LibraryIds = {}): Record<SavedCollectionKey, number> {
+  const counts = {} as Record<SavedCollectionKey, number>;
+  for (const { key } of SAVED_COLLECTIONS) {
+    const m = collectionMembers(key, relations, saved, followed);
+    counts[key] = LIBRARY_TYPES.reduce((n, t) => n + m[t].length, 0);
+  }
+  return counts;
 }

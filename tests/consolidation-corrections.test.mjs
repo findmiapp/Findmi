@@ -76,7 +76,7 @@ test("/moments: My Moments is an owner-scoped, bounded read of the canonical jou
   assert.match(view, />\s*Create Account\s*</);
   assert.match(view, /filterByObjectType\(entries, filter\)/, "existing archive filters");
   assert.match(view, /href="\/my-world\/journal"/, "full history one tap away");
-  assert.match(view, /href="\/my-world"/, "Saved & Following linked");
+  assert.match(view, /href="\/account\/saved"/, "the one Saved library linked (Personal Library pass)");
   assert.doesNotMatch(view, /My World|World Journal/);
 });
 

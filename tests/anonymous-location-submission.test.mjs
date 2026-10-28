@@ -119,5 +119,5 @@ test("no migration was added for this pass — the latest migration is unchanged
   const files = readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  assert.equal(files.at(-1), "20261124000000_product_wants.sql" /* Product + Marketplace + Want pass */);
+  assert.equal(files.at(-1), "20261125000000_user_collections.sql" /* Personal Library + Marketplace UX pass */);
 });

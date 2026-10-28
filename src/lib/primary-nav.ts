@@ -16,8 +16,10 @@ export interface PrimaryNavItem {
 
 /** YOUR FINDMI — personal destinations (signed in only). */
 export const YOUR_FINDMI_NAV: PrimaryNavItem[] = [
-  { href: "/my-world", label: "Saved & Following", icon: "home", match: ["=/my-world"] },
-  { href: "/saved", label: "Saved", icon: "bookmark", match: ["/saved"] },
+  // ONE personal library: Things I Want, Want To Do / Go, Following,
+  // Saved and Collections all live at /account/saved (signed-in /saved and
+  // /my-world redirect there).
+  { href: "/account/saved", label: "Saved", icon: "bookmark", match: ["/account/saved", "/saved", "=/my-world"] },
   { href: "/my-world/journal", label: "My Moments", icon: "moments", match: ["/my-world/journal"] },
   { href: "/my-world/journal/new", label: "Add Moment", match: [] },
   { href: "/account/messages", label: "Messages", match: ["/account/messages"] },

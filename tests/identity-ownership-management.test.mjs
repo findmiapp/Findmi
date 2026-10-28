@@ -391,8 +391,8 @@ test("Pages I Manage = real Pages (Businesses, Locations); directly-managed Even
   assert.match(HOME, /const MANAGING_PREVIEW = 3;/);
 });
 
-test("Saved labels: All Saved · Things I Want · Must Do · Have & Been (no implementation-level wording)", () => {
-  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All Saved", "Things I Want", "Must Do", "Have & Been"]);
+test("Saved labels: All · Things I Want · Want To Do · Want To Go · Must Do · Have & Been · Following · Saved (no implementation-level wording)", () => {
+  assert.deepEqual(S.SAVED_COLLECTIONS.map((c) => c.label), ["All", "Things I Want", "Want To Do", "Want To Go", "Must Do", "Have & Been", "Following", "Saved"]);
   assert.doesNotMatch(JSON.stringify(S.SAVED_COLLECTIONS), /Interested|Must Dos/);
 });
 

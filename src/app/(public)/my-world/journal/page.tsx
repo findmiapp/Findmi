@@ -257,8 +257,8 @@ export default async function JournalIndexPage({
             <Link href="/moments" className="text-findmi-700 hover:underline">
               Explore Moments
             </Link>
-            <Link href="/my-world" className="text-findmi-700 hover:underline">
-              Saved &amp; Following
+            <Link href="/account/saved" className="text-findmi-700 hover:underline">
+              Saved
             </Link>
           </p>
         </div>
