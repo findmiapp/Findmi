@@ -161,8 +161,7 @@ test("Management cards: Events · Locations · Products · QR Codes · Moments �
   assert.match(ITEMS, /businessCreateActions\(/, "built on the shared create definitions");
   assert.doesNotMatch(ITEMS, /choose.*business|which business/i);
   assert.match(CARDS, /<nav aria-label="Manage Your Business">/);
-  assert.match(CARDS, /grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6/, "two columns at phone width — no horizontal strip");
-  assert.doesNotMatch(CARDS, /overflow-x-auto/);
+  assert.match(CARDS, /snap-x snap-mandatory[^"]*sm:grid sm:snap-none sm:grid-cols-3[^"]*xl:grid-cols-6/, "one swipeable row at phone width, grid from sm up");
   assert.match(CARDS, /rounded-2xl border border-black\/\[0\.08\] bg-white/, "rounded card, subtle light-gray border");
   assert.match(CARDS, /bg-findmi-50 px-2 text-metadata font-bold text-findmi-700/, "+ Add: pale Aqua pill");
   assert.match(CARDS, /bg-black\/\[0\.03\] px-2 text-metadata font-semibold text-secondary/, "View All: neutral pill");

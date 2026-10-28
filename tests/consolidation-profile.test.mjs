@@ -100,3 +100,15 @@ test("Event page: the Location name links to the Location (listed only), View Lo
   assert.match(f, /publicLocationHref\(location\) \? \(\n\s+<Link href=\{publicLocationHref\(location\)!\} className="hover:text-findmi-700 hover:underline">\n\s+\{location\.name\}/);
   assert.match(f, /View Location/);
 });
+
+test("Business Home management cards: one swipeable snap row on phones (~1.35 cards), grid from sm up; order and both actions kept", async () => {
+  const cards = read(`${B}/[id]/v2/ManagementCards.tsx`);
+  assert.match(cards, /<ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*sm:grid sm:snap-none sm:grid-cols-3 [^"]*xl:grid-cols-6/);
+  assert.match(cards, /<li key=\{c\.key\} className="w-\[72%\] min-w-0 shrink-0 snap-start sm:w-auto">/);
+  assert.match(cards, /href=\{c\.addHref\}/);
+  assert.match(cards, /href=\{c\.viewHref\}/);
+  assert.doesNotMatch(cards, /setInterval|autoplay|aria-label="Go to slide/i, "no auto-rotate, no dots");
+  const items = read(`${B}/[id]/v2/managementCardItems.ts`);
+  const order = ["events", "locations", "products", "qr", "moments", "targets"].map((k) => items.indexOf(`key: "${k}"`));
+  assert.ok(order.every((i, n) => i > 0 && (n === 0 || i > order[n - 1])), "Events → Locations → Products → QR Codes → Moments → Targets");
+});

@@ -42,11 +42,13 @@ test("Management cards: ONE Event entry (no separate Where I'll Be) that opens t
   for (const k of ["locations", "products", "qr", "moments", "targets"]) assert.match(items, new RegExp(`key: "${k}"`), `${k} stays`);
 });
 
-test("Management cards never overflow the page at phone width (a wrapping grid, not a scroll strip)", () => {
+test("Management cards never overflow the PAGE at phone width: the swipe row scrolls inside itself, bleeding only into the shell gutter", () => {
   const cards = code(read(`${B}/v2/ManagementCards.tsx`));
-  assert.match(cards, /grid grid-cols-2/);
-  assert.doesNotMatch(cards, /overflow-x-auto|-mx-4/);
-  assert.match(cards, /min-w-0/);
+  // -mx-4 matches the shell's px-4 exactly, so the row reaches the screen
+  // edge and no further; overflow is contained in the row itself.
+  assert.match(read(`${B}/v2/BusinessAppShell.tsx`), /max-w-6xl px-4 pb-28/);
+  assert.match(cards, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*sm:grid sm:snap-none sm:grid-cols-3/);
+  assert.match(cards, /min-w-0 shrink-0 snap-start/);
 });
 
 test("Moment creation uses the canonical Moments photo icon — never the pencil", () => {

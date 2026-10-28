@@ -7,15 +7,21 @@ import { managementCards } from "./managementCardItems";
  * Aqua icon tile, title + one short line, then two visually distinct
  * actions — "+ Add …" (pale Aqua pill: create) and "View All …" (neutral
  * pill: manage existing). The whole card body is NOT a link, so the two
- * actions never blur together. Mobile-first: two columns at phone widths
- * (no horizontal scrolling card strip), three on tablets, six on desktop. */
+ * actions never blur together.
+ *
+ * Phone: ONE horizontal, swipeable row (native touch scroll + snap, no
+ * dots, no auto-rotate) so the cards don't push the dashboard below the
+ * fold. Each card is 72% of the row — ~1.35 cards show, the next card's
+ * edge signals there's more. The row bleeds to the screen edges with the
+ * shell's own 16px gutter (-mx-4 px-4 scroll-px-4), the same pattern as
+ * Discovery tiles. Tablet: a 3-column grid; desktop: one row of six. */
 export default function ManagementCards({ businessId }: { businessId: string }) {
   const cards = managementCards(businessId);
   return (
     <nav aria-label="Manage Your Business">
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6">
+      <ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 xl:grid-cols-6 [&::-webkit-scrollbar]:hidden">
         {cards.map((c) => (
-          <li key={c.key} className="min-w-0">
+          <li key={c.key} className="w-[72%] min-w-0 shrink-0 snap-start sm:w-auto">
             <section aria-labelledby={`mc-${c.key}`} className="flex h-full flex-col items-center rounded-2xl border border-black/[0.08] bg-white px-2.5 pb-2.5 pt-3.5 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-findmi-50 text-findmi-700">
                 {c.icon === "target" ? <TargetGlyph className="h-6 w-6" /> : <CreateActionIcon icon={c.icon} className="h-6 w-6" />}
