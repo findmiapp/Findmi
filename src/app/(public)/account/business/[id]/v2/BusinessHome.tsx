@@ -115,7 +115,7 @@ export default function BusinessHome({
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {/* A. Status — identity + Free/Pro live in the context bar above. */}
       <section aria-label="Business status" className="-mb-2">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -140,15 +140,17 @@ export default function BusinessHome({
         {status.line && <p className="mt-1 text-metadata text-muted">{status.line}</p>}
       </section>
 
-      {/* B. Sticky in-page section rail (the existing manager section nav). */}
-      <HomeSectionNav items={navItems} />
-
-      {/* C. Create & Manage — Events, Locations, Products, QR Codes, Moments,
-          Targets — each with + Add (canonical creation flow) and View All. */}
+      {/* B. Create & Manage — the persistent management launcher (Events,
+          Locations, Products, QR Codes, Moments, Targets), each with + Add
+          (canonical creation flow) and View All. It sits ABOVE the section
+          rail: the rail chooses the view, the launcher is always there. */}
       <ManagementCards businessId={businessId} />
 
+      {/* C. Sticky in-page section rail (the existing manager section nav). */}
+      <HomeSectionNav items={navItems} />
+
       {/* D. Schedule — Happening Now (only when live), then Coming Up. */}
-      <div id="home-schedule" className={`flex flex-col gap-4 ${SECTION_CLASS}`}>
+      <div id="home-schedule" className={`-mt-1 flex flex-col gap-4 ${SECTION_CLASS}`}>
         {liveNow.length > 0 && (
           <section aria-labelledby="happening-now">
             <h2 id="happening-now" className="flex items-center gap-2 font-display text-section-title font-bold text-primary">
@@ -158,7 +160,7 @@ export default function BusinessHome({
               </span>
               Happening Now
             </h2>
-            <div className="mt-2.5 flex flex-col gap-2.5">
+            <div className="mt-2 flex flex-col gap-2">
               {liveNow.map((a) => (
                 <LiveCard key={a.key} activity={a} />
               ))}
@@ -169,21 +171,21 @@ export default function BusinessHome({
         <section aria-labelledby="coming-up">
           <SectionTitle id="coming-up" title="Coming Up" href={`${basePath}?tab=findmi-here`} linkLabel="See All" />
           {comingUp.length > 0 ? (
-            <ul className="-mx-4 mt-2.5 flex snap-x snap-mandatory scroll-px-4 gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:mx-0 lg:scroll-px-0 lg:px-0 [&::-webkit-scrollbar]:hidden">
+            <ul className="-mx-4 mt-2 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:mx-0 lg:scroll-px-0 lg:px-0 [&::-webkit-scrollbar]:hidden">
               {comingUp.map((item) => (
-                <li key={item.key} data-coming-up-card className="w-[80%] min-w-0 shrink-0 snap-start sm:w-[46%] lg:w-[calc((100%-1.25rem)/3)]">
+                <li key={item.key} data-coming-up-card className="w-[64%] min-w-0 shrink-0 snap-start sm:w-[40%] lg:w-[calc((100%-1rem)/3)]">
                   <UpcomingCard activity={item} />
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="mt-2.5 flex items-center gap-3 rounded-2xl border border-dashed border-black/15 px-3.5 py-3">
-              <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
-                <NavIcon name="calendar" className="h-[18px] w-[18px]" />
+            <div className="mt-2 flex items-center gap-2.5 rounded-2xl border border-dashed border-black/15 px-3 py-2.5">
+              <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700">
+                <NavIcon name="calendar" className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-card-title font-semibold text-primary">{liveNow.length > 0 ? "Nothing else scheduled yet" : "Nothing scheduled yet"}</span>
-                <span className="block text-metadata text-muted">Add an Event you&rsquo;re hosting or appearing at.</span>
+                <span className="block text-[14px] font-semibold leading-snug text-primary">{liveNow.length > 0 ? "Nothing else scheduled yet" : "Nothing scheduled yet"}</span>
+                <span className="block text-metadata leading-snug text-muted">Add an Event you&rsquo;re hosting or appearing at.</span>
               </span>
               <Link
                 href={managerHref(businessId, "add-event")}
@@ -196,18 +198,18 @@ export default function BusinessHome({
         </section>
       </div>
 
-      {/* E. Inbox / Follow-Ups — what needs attention. The Needs Attention bar
-          (renders nothing at zero) is synchronous; the ranked rows stream. */}
+      {/* E. Inbox / Follow-Ups — what needs attention, as ONE operational
+          panel: the compact Needs Attention row (renders nothing at zero) is
+          synchronous; the ranked rows stream in below it, inside the same
+          container. */}
       <section id="home-inbox" aria-labelledby="home-inbox-title" className={SECTION_CLASS}>
         <SectionTitle id="home-inbox-title" title="Inbox / Follow-Ups" href={managerHref(businessId, "inbox")} linkLabel="View All" />
-        {needsAttention.length > 0 && (
-          <div className="mt-2.5">
-            <NeedsAttentionBar items={needsAttention} />
-          </div>
-        )}
-        <Suspense fallback={<HomeInboxSkeleton />}>
-          <HomeInboxRows businessId={businessId} basePath={basePath} followUps={followUps} requests={requests} expanded={inboxExpanded} />
-        </Suspense>
+        <div data-inbox-panel className="mt-2 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
+          <NeedsAttentionBar items={needsAttention} />
+          <Suspense fallback={<HomeInboxSkeleton />}>
+            <HomeInboxRows businessId={businessId} basePath={basePath} followUps={followUps} requests={requests} expanded={inboxExpanded} />
+          </Suspense>
+        </div>
       </section>
 
       {/* F. Growth Manager — Goals · Opportunities · Ideas. */}
@@ -226,22 +228,24 @@ export default function BusinessHome({
         </Suspense>
       </section>
 
-      {/* H. Public Profile — a utility row, not an operational section. */}
-      <section aria-labelledby="findmi-link" className="border-t border-black/[0.06] pt-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <h2 id="findmi-link" className="text-label font-bold uppercase text-subtle">
-            Public Profile Link
+      {/* H. Public Profile — ONE compact utility panel: the Findmi link with
+          its Copy Link / Change, plus Manage Profile and Photos. */}
+      <section aria-labelledby="findmi-link" className="rounded-2xl border border-black/[0.07] bg-white px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="findmi-link" className="flex items-center gap-1.5 text-[14px] font-semibold leading-snug text-primary">
+            <NavIcon name="storefront" className="h-4 w-4 text-findmi-700" />
+            Public Profile
           </h2>
-          <div className="flex shrink-0 items-baseline gap-4">
+          <div className="flex shrink-0 items-center gap-3">
+            <Link href={managerHref(businessId, "profile")} className="text-metadata font-semibold text-accent hover:underline">
+              Manage Profile
+            </Link>
             <Link href={managerHref(businessId, "gallery")} className="text-metadata font-semibold text-accent hover:underline">
               Photos
             </Link>
-            <Link href={managerHref(businessId, "profile")} className="text-metadata font-semibold text-accent hover:underline">
-              Manage Public Profile
-            </Link>
           </div>
         </div>
-        <div className="mt-1.5">
+        <div className="mt-1">
           <FindmiUrlCard entityType="business" entityId={businessId} entityLabel={businessName} currentHandle={businessHandle} action={updateHandleAction} compact />
         </div>
       </section>
@@ -252,7 +256,7 @@ export default function BusinessHome({
 function SectionTitle({ id, title, href, linkLabel }: { id: string; title: string; href: string; linkLabel: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <h2 id={id} className="font-display text-section-title font-bold text-primary">
+      <h2 id={id} className="font-display text-section-title font-bold leading-tight text-primary">
         {title}
       </h2>
       <Link href={href} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
@@ -301,30 +305,33 @@ function UpcomingCard({ activity: a }: { activity: HomeActivity }) {
   return (
     <Link
       href={a.href}
-      className="flex h-full items-center gap-3 rounded-2xl border border-black/[0.07] bg-white p-2.5 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+      className="flex h-full items-center gap-2.5 rounded-2xl border border-black/[0.07] bg-white p-2 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
     >
-      <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/[0.04] text-ink/25">
-        {a.imageUrl ? <SupabaseImage src={a.imageUrl} alt="" fill sizes="64px" className="object-cover" /> : <NavIcon name="calendar" className="h-6 w-6" />}
+      <span className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black/[0.04] text-ink/25">
+        {a.imageUrl ? <SupabaseImage src={a.imageUrl} alt="" fill sizes="48px" className="object-cover" /> : <NavIcon name="calendar" className="h-5 w-5" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-metadata font-semibold text-findmi-700">
+        <span className="block truncate text-[11px] font-semibold leading-tight text-findmi-700">
           {formatDateShort(a.startAt)} · {formatTime(a.startAt)}
         </span>
-        <span className="mt-0.5 block truncate text-card-title font-semibold text-primary">{a.title}</span>
+        <span className="mt-0.5 block truncate text-[14px] font-semibold leading-snug text-primary">{a.title}</span>
         {a.place && (
-          <span className="mt-0.5 flex min-w-0 items-center gap-1 text-metadata text-muted">
+          <span className="flex min-w-0 items-center gap-1 text-[12px] leading-snug text-muted">
             <NavIcon name="pin" className="h-3 w-3 shrink-0" />
             <span className="truncate">{a.place}</span>
           </span>
         )}
-        <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0 text-microcopy font-bold uppercase text-subtle">{a.kind === "hosted_event" ? "Hosting" : "Appearing"}</span>
-          {a.moreDates > 0 && (
-            <span className="truncate text-microcopy font-semibold text-findmi-700">{a.moreDates === 1 ? "+ 1 More Date" : `+ ${a.moreDates} More Dates`}</span>
-          )}
-          {a.pendingLabel && <Chip tone="amber">{a.pendingLabel}</Chip>}
+        <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase leading-tight tracking-wide">
+          <span className="shrink-0 text-subtle">{a.kind === "hosted_event" ? "Hosting" : "Appearing"}</span>
+          {a.moreDates > 0 && <span className="truncate normal-case tracking-normal text-findmi-700">{a.moreDates === 1 ? "+ 1 More Date" : `+ ${a.moreDates} More Dates`}</span>}
         </span>
+        {a.pendingLabel && (
+          <span className="mt-0.5 block">
+            <Chip tone="amber">{a.pendingLabel}</Chip>
+          </span>
+        )}
       </span>
+      <ChevronIcon direction="right" className="hidden h-3 w-3 shrink-0 text-ink/25 min-[380px]:block" />
     </Link>
   );
 }

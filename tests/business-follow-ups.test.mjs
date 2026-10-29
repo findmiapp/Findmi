@@ -121,7 +121,9 @@ test("commercial Opportunities never enter Follow-Ups (nor Appearances, Find Us 
 test("follow-ups render as rows of Home's one ranked Inbox / Follow-Ups list; the first few, then Show More (URL state, no new destination)", () => {
   assert.equal(F.FOLLOW_UPS_INITIAL_LIMIT, 3);
   assert.match(INBOX_VIEW, /const shown = expanded \? items : items\.slice\(0, HOME_INBOX_LIMIT\);/);
-  assert.match(INBOX_VIEW, /<ul className="divide-y[^"]*">/, "stacked rows, never a carousel");
+  // Stacked rows inside ONE Inbox / Follow-Ups panel (BusinessHome owns the container).
+  assert.match(HOME, /data-inbox-panel className="mt-2 divide-y [^"]*"/, "stacked rows, never a carousel");
+  assert.match(INBOX_VIEW, /shown\.map\(\(item\) => <InboxRow key=\{item\.key\} item=\{item\} \/>\)/);
   assert.doesNotMatch(INBOX_VIEW, /overflow-x|snap-|carousel/);
   assert.match(INBOX_VIEW, /href=\{expanded \? `\$\{basePath\}#home-inbox` : `\$\{basePath\}\?inbox=all#home-inbox`\}/);
   // The older ?followups=all link still expands the same list.

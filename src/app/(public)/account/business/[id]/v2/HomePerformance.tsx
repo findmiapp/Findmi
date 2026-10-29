@@ -41,16 +41,18 @@ export async function HomePerformanceTiles({ businessId, range, followers }: { b
   const metrics = homePerformanceMetrics(data.headline, followers);
   return (
     <>
-      <p className="mt-0.5 text-metadata text-subtle">{data.rangeLabel}</p>
+      <p className="text-metadata text-subtle">{data.rangeLabel}</p>
       {metrics.every((m) => m.metric.value === 0) ? (
-        <p className="mt-2 text-body text-muted">
+        <p className="mt-1.5 text-body text-muted">
           No activity yet. Impressions, profile views, actions and followers will appear here as people find your Business on Findmi.
         </p>
       ) : (
-        <ul className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        // ONE compact strip: four metrics across at every phone width, the
+        // number the strongest element.
+        <ul className="mt-2 grid grid-cols-4 divide-x divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
           {metrics.map((m) => (
-            <li key={m.key}>
-              <MetricTile label={m.label} metric={m.metric} pro={pro} />
+            <li key={m.key} className="min-w-0">
+              <MetricCell label={m.label} metric={m.metric} pro={pro} />
             </li>
           ))}
         </ul>
@@ -59,30 +61,37 @@ export async function HomePerformanceTiles({ businessId, range, followers }: { b
   );
 }
 
-function MetricTile({ label, metric, pro }: { label: string; metric: HomeMetric; pro: boolean }) {
+/** "12,431" stays exact up to 9,999; larger values read "12.4K" (the exact
+ * number is the cell's accessible name and tooltip). */
+export function formatMetricValue(value: number): string {
+  return value >= 10000 ? new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value) : value.toLocaleString("en-US");
+}
+
+function MetricCell({ label, metric, pro }: { label: string; metric: HomeMetric; pro: boolean }) {
   const change = pro ? metric.changeLabel : null;
   const up = change?.startsWith("+");
+  const exact = metric.value.toLocaleString("en-US");
   return (
-    <div className="min-w-0 rounded-xl border border-black/[0.07] bg-white px-3 py-2.5">
-      <p className="truncate text-metadata font-medium text-muted">{label}</p>
-      <p className="mt-0.5 flex items-baseline gap-1.5">
-        <span className="font-display text-xl font-bold leading-tight text-primary tabular-nums">{metric.value.toLocaleString()}</span>
-        {change && <span className={`truncate text-microcopy font-bold ${up ? "text-accent" : "text-subtle"}`}>{change}</span>}
+    <div className="flex h-full min-w-0 flex-col px-2 py-2 min-[380px]:px-2.5" title={`${label}: ${exact}`}>
+      {/* A fixed two-line label row, bottom-aligned, so every number in the
+          strip sits on the same line whether its label wraps or not. */}
+      <p className="flex h-[28px] items-end text-[11px] font-medium leading-tight text-muted">
+        <span className="line-clamp-2">{label}</span>
       </p>
+      <p className="pt-1 font-display text-lg font-bold leading-none text-primary tabular-nums min-[380px]:text-xl" aria-label={`${exact} ${label}`}>
+        {formatMetricValue(metric.value)}
+      </p>
+      {change && <p className={`mt-0.5 truncate text-[11px] font-bold leading-tight ${up ? "text-accent" : "text-subtle"}`}>{change}</p>}
     </div>
   );
 }
 
-/** Same geometry as the tile grid. */
+/** Same geometry as the metric strip. */
 export function HomePerformanceSkeleton() {
   return (
     <div aria-hidden="true">
-      <span className="mt-1.5 block h-3 w-24 animate-pulse rounded bg-black/[0.05] motion-reduce:animate-none" />
-      <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-[62px] animate-pulse rounded-xl border border-black/[0.05] bg-black/[0.03] motion-reduce:animate-none" />
-        ))}
-      </div>
+      <span className="mt-1 block h-3 w-24 animate-pulse rounded bg-black/[0.05] motion-reduce:animate-none" />
+      <div className="mt-2 h-[68px] animate-pulse rounded-2xl border border-black/[0.05] bg-black/[0.03] motion-reduce:animate-none" />
     </div>
   );
 }

@@ -74,7 +74,7 @@ test("Home Growth Manager: THREE compact tools (Goals · Opportunities · Ideas)
   assert.match(panel, /HOME_GROWTH_TILES\.map/);
   assert.match(panel, /href=\{growthHref\(basePath, key\)\}/);
   assert.match(panel, /growthDestinationStatus\(summary, key\)/);
-  assert.match(panel, /grid grid-cols-3 gap-2/, "one compact row of three");
+  assert.match(panel, /grid grid-cols-3 divide-x [^"]*rounded-2xl border/, "ONE shared panel split into three compact cells");
   assert.match(panel, /href=\{`\$\{basePath\}\?tab=growth`\}/, "View All opens the full Growth workspace");
 });
 

@@ -45,11 +45,11 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → section rail → Create & Manage → Happening Now → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance → Public Profile", () => {
+test("Home hierarchy: Status → Create & Manage → section rail → Happening Now → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
-    "<HomeSectionNav items={navItems} />",
     "<ManagementCards businessId={businessId} />",
+    "<HomeSectionNav items={navItems} />",
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
     'aria-labelledby="home-inbox-title"',
@@ -294,9 +294,12 @@ test("Performance: existing metrics + Free/Pro gating; all-zero explains itself 
   assert.match(TILES, /const change = pro \? metric\.changeLabel : null;/, "period change stays Pro");
 });
 
-test("Public Profile link is a compact utility row, not a major section; claim/copy/change preserved", () => {
+test("Public Profile is ONE compact utility panel (link + Copy Link / Change, Manage Profile, Photos); claim/copy/change preserved", () => {
   const util = HOME.slice(at('aria-labelledby="findmi-link"'));
-  assert.match(util, /text-label font-bold uppercase text-subtle">\s*Public Profile Link/);
+  assert.match(util, /^aria-labelledby="findmi-link" className="rounded-2xl border border-black\/\[0\.07\] bg-white px-3 py-2\.5">/);
+  assert.match(util, />\s*Public Profile\s*<\/h2>/);
+  assert.match(util, /href=\{managerHref\(businessId, "profile"\)\}[^>]*>\s*Manage Profile\s*</);
+  assert.match(util, /href=\{managerHref\(businessId, "gallery"\)\}[^>]*>\s*Photos\s*</);
   assert.match(util, /currentHandle=\{businessHandle\} action=\{updateHandleAction\} compact \/>/);
   const CARD = read("src/components/FindmiUrlCard.tsx");
   assert.match(CARD, /const \[editing, setEditing\] = useState\(!currentHandle && !compact\);/);

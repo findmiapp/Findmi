@@ -11,8 +11,9 @@ import type { FollowUp } from "./business-follow-ups";
 import type { BusinessRequest } from "./business-requests";
 import { filterInbox, inboxTypeLabel } from "./inbox";
 
-/** Home shows this many rows; `?inbox=all` shows every ranked row. */
-export const HOME_INBOX_LIMIT = 4;
+/** Home shows this many rows (a compact console: ~3 visible at phone width);
+ * `?inbox=all` shows every ranked row. */
+export const HOME_INBOX_LIMIT = 3;
 /** A read conversation counts as "recent activity" for this many days. */
 export const HOME_INBOX_RECENT_DAYS = 14;
 /** At most this many recent (already read) conversations are ever listed. */

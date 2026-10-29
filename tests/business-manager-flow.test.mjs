@@ -275,15 +275,16 @@ test("30. the old Quick Create section and Quick Actions rail are gone; the card
   assert.ok(HOME.indexOf("<ManagementCards") < HOME.indexOf("<NeedsAttentionBar"));
 });
 
-test("31. Home order: identity → section nav → Create & Manage → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance → utility", () => {
-  const order = ['aria-label="Business status"', "<HomeSectionNav", "<ManagementCards", 'aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
+test("31. Home order: identity → Create & Manage → section nav → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance → utility", () => {
+  const order = ['aria-label="Business status"', "<ManagementCards", "<HomeSectionNav", 'aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
 
 test("32. Needs Attention renders nothing at zero; with no Requests, Follow-Ups or threads the Inbox module shows one clean empty state", () => {
   assert.match(read(`${B}/v2/NeedsAttentionBar.tsx`), /if \(items\.length === 0\) return null;/);
-  assert.match(HOME, /\{needsAttention\.length > 0 && \(/);
+  // The compact Needs Attention row is the first row of the Inbox panel (and returns null at zero).
+  assert.match(HOME, /<div data-inbox-panel [^>]*>\s*<NeedsAttentionBar items=\{needsAttention\} \/>/);
   assert.match(read(`${B}/v2/HomeInbox.tsx`), /items\.length === 0 \?[\s\S]*Nothing needs your attention/);
 });
 

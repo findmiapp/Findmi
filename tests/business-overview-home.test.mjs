@@ -43,11 +43,11 @@ const OTHER = "22222222-2222-4222-8222-222222222222";
 
 // ── Hierarchy ──────────────────────────────────────────────────────────────
 
-test("section order: Status → section nav → Create & Manage → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance", () => {
+test("section order: Status → Create & Manage → section nav → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance", () => {
   const order = [
     'aria-label="Business status"',
-    "<HomeSectionNav items={navItems} />",
     "<ManagementCards businessId={businessId} />",
+    "<HomeSectionNav items={navItems} />",
     'aria-labelledby="coming-up"',
     'aria-labelledby="home-inbox-title"',
     "<GrowthPanel basePath={basePath} summary={growth} />",
@@ -131,7 +131,9 @@ test("Coming Up is chronological, excludes past dates, and keeps a multi-date Ev
 
 test("Coming Up renders as a horizontal rail of up to six, with a useful empty state", () => {
   assert.match(PAGE, /countUpcomingDatesPerPreviewGroup\(allScheduleRows, eventIdsWithOccurrenceProjections\),\s*\/\/[^\n]*\n\s*6\s*\)/);
-  assert.match(HOME, /data-coming-up-card className="w-\[80%\] min-w-0 shrink-0 snap-start/);
+  // Compact landscape schedule cards: ~1.6 visible at 390px, three across on desktop.
+  assert.match(HOME, /data-coming-up-card className="w-\[64%\] min-w-0 shrink-0 snap-start sm:w-\[40%\] lg:w-\[calc\(\(100%-1rem\)\/3\)\]"/);
+  assert.match(HOME, /relative flex h-12 w-12 shrink-0/, "compact thumbnail");
   assert.match(HOME, /\{a\.moreDates === 1 \? "\+ 1 More Date" : `\+ \$\{a\.moreDates\} More Dates`\}/);
   assert.match(HOME, /href=\{managerHref\(businessId, "add-event"\)\}/);
   // ended Appearances never reach Home: the schedule read is upcoming-only

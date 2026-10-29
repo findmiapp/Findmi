@@ -30,8 +30,10 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
         </Link>
       </div>
 
+      {/* ONE shared panel split into three short cells — compact management
+          shortcuts, not three standalone cards. */}
       <nav aria-label="Growth Manager">
-        <ul className="mt-2.5 grid grid-cols-3 gap-2">
+        <ul className="mt-2 grid grid-cols-3 divide-x divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
           {HOME_GROWTH_TILES.map(({ key, label }) => {
             const status = growthDestinationStatus(summary, key);
             return (
@@ -39,14 +41,14 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
                 <Link
                   href={growthHref(basePath, key)}
                   aria-label={`${label}: ${status.value}`}
-                  className="flex h-full min-w-0 flex-col rounded-2xl border border-black/[0.08] bg-white p-2 transition min-[380px]:p-2.5 hover:border-findmi-200 hover:bg-findmi-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 sm:flex-row sm:items-center sm:gap-2.5"
+                  className="flex h-full min-w-0 flex-col px-2 py-2 transition hover:bg-findmi-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 min-[380px]:px-2.5 sm:flex-row sm:items-center sm:gap-2.5 sm:px-3 sm:py-2.5"
                 >
-                  <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700 sm:h-9 sm:w-9 sm:rounded-xl">
-                    {key === "goals" ? <NavIcon name="target" className="h-4 w-4 sm:h-[18px] sm:w-[18px]" /> : key === "opportunities" ? <NavIcon name="compass" className="h-4 w-4 sm:h-[18px] sm:w-[18px]" /> : <BulbGlyph className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />}
+                  <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-findmi-50 text-findmi-700 sm:h-8 sm:w-8 sm:rounded-lg">
+                    {key === "goals" ? <NavIcon name="target" className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : key === "opportunities" ? <NavIcon name="compass" className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <BulbGlyph className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
                   </span>
-                  <span className="mt-1.5 min-w-0 flex-1 sm:mt-0">
+                  <span className="mt-1 min-w-0 flex-1 sm:mt-0">
                     <span className="block truncate text-[12px] font-bold leading-tight text-primary min-[380px]:text-[13px]">{label}</span>
-                    <span className={`mt-0.5 line-clamp-2 block text-[11px] leading-tight ${status.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{status.value}</span>
+                    <span className={`mt-px line-clamp-2 block text-[11px] leading-tight ${status.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{status.value}</span>
                   </span>
                   <ChevronIcon direction="right" className="hidden h-3 w-3 shrink-0 text-subtle sm:block" />
                 </Link>

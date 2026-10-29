@@ -51,39 +51,36 @@ export async function HomeInboxRows({
   const shown = expanded ? items : items.slice(0, HOME_INBOX_LIMIT);
   const hidden = items.length - shown.length;
 
+  // Rendered as rows of the ONE Inbox / Follow-Ups panel (BusinessHome owns the
+  // container, with the Needs Attention row above these): a fragment, so the
+  // panel's dividers run through every row.
   return (
-    <div className="mt-2.5">
+    <>
       {items.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3">
-          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
-            <CheckGlyph className="h-[18px] w-[18px]" />
+        <div className="flex items-center gap-2.5 px-3 py-2.5">
+          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700">
+            <CheckGlyph className="h-4 w-4" />
           </span>
           <span className="min-w-0">
-            <span className="block text-card-title font-semibold text-primary">Nothing needs your attention</span>
-            <span className="block text-metadata text-muted">New messages, requests and follow-ups will show up here.</span>
+            <span className="block text-[14px] font-semibold leading-snug text-primary">Nothing needs your attention</span>
+            <span className="block text-metadata leading-snug text-muted">New messages, requests and follow-ups will show up here.</span>
           </span>
         </div>
       ) : (
-        <ul className="divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
-          {shown.map((item) => (
-            <li key={item.key}>
-              <InboxRow item={item} />
-            </li>
-          ))}
-        </ul>
+        shown.map((item) => <InboxRow key={item.key} item={item} />)
       )}
       {(hidden > 0 || (expanded && items.length > HOME_INBOX_LIMIT)) && (
         <Link
           href={expanded ? `${basePath}#home-inbox` : `${basePath}?inbox=all#home-inbox`}
-          className="mt-2 inline-flex min-h-9 items-center gap-1 text-metadata font-semibold text-accent hover:underline"
+          className="flex min-h-10 items-center justify-center gap-1 px-3 text-metadata font-semibold text-accent transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
         >
           {expanded ? "Show Less" : `Show ${hidden} More`}
           <ChevronIcon direction={expanded ? "up" : "down"} className="h-3 w-3" />
         </Link>
       )}
-      {inboxFailed && <p className="mt-2 text-metadata text-muted">Messages couldn&rsquo;t load right now. Open the Inbox to see them.</p>}
+      {inboxFailed && <p className="px-3 py-2 text-metadata text-muted">Messages couldn&rsquo;t load right now. Open the Inbox to see them.</p>}
       <span className="sr-only">{actionableCount === 1 ? "1 item needs attention" : `${actionableCount} items need attention`}</span>
-    </div>
+    </>
   );
 }
 
@@ -105,26 +102,26 @@ function InboxRow({ item }: { item: HomeInboxItem }) {
   return (
     <Link
       href={item.href}
-      className="flex items-center gap-3 px-3.5 py-3 transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
+      className="flex items-center gap-2.5 px-3 py-2 transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
     >
-      <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${ICON_TILE[item.kind]}`}>
+      <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${ICON_TILE[item.kind]}`}>
         {item.kind === "follow_up" ? (
-          <NavIcon name="target" className="h-[18px] w-[18px]" />
+          <NavIcon name="target" className="h-4 w-4" />
         ) : item.kind === "request" ? (
-          <NavIcon name="storefront" className="h-[18px] w-[18px]" />
+          <NavIcon name="storefront" className="h-4 w-4" />
         ) : (
-          <MailGlyph className="h-[18px] w-[18px]" />
+          <MailGlyph className="h-4 w-4" />
         )}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-card-title font-semibold text-primary">{item.title}</span>
+          <span className="truncate text-[14px] font-semibold leading-snug text-primary">{item.title}</span>
           {item.at && <span className="shrink-0 text-microcopy text-subtle">{shortWhen(item.at)}</span>}
         </span>
-        <span className={`block truncate text-metadata ${TONE_CLASS[item.tone]}`}>{item.state}</span>
-        {item.detail && <span className="block truncate text-metadata text-secondary">{item.detail}</span>}
+        <span className={`block truncate text-[12px] leading-snug ${TONE_CLASS[item.tone]}`}>{item.state}</span>
+        {item.detail && <span className="block truncate text-[12px] leading-snug text-secondary">{item.detail}</span>}
       </span>
-      <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
+      <ChevronIcon direction="right" className="h-3 w-3 shrink-0 text-ink/25" />
     </Link>
   );
 }
@@ -138,20 +135,21 @@ function shortWhen(iso: string): string {
     : d.toLocaleDateString("en-US", { timeZone: APP_TIMEZONE, month: "short", day: "numeric" });
 }
 
-/** Same geometry as three rows, so the section doesn't jump when it streams in. */
+/** Same geometry as three rows, so the panel doesn't jump when they stream in. */
 export function HomeInboxSkeleton() {
   return (
-    <div aria-hidden="true" className="mt-2.5 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
+    <>
       {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-center gap-3 px-3.5 py-3">
-          <span className="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-black/[0.05] motion-reduce:animate-none" />
-          <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div key={i} aria-hidden="true" className="flex items-center gap-2.5 px-3 py-2">
+          <span className="h-8 w-8 shrink-0 animate-pulse rounded-lg bg-black/[0.05] motion-reduce:animate-none" />
+          <span className="flex min-w-0 flex-1 flex-col gap-1.5 py-1">
             <span className="h-3.5 w-2/5 animate-pulse rounded bg-black/[0.06] motion-reduce:animate-none" />
             <span className="h-3 w-3/5 animate-pulse rounded bg-black/[0.04] motion-reduce:animate-none" />
+            <span className="h-3 w-1/2 animate-pulse rounded bg-black/[0.03] motion-reduce:animate-none" />
           </span>
         </div>
       ))}
-    </div>
+    </>
   );
 }
 
