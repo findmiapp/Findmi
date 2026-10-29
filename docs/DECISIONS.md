@@ -108,6 +108,18 @@ Direct org-to-org messaging is off by default
 Findmi (commercial inquiries). · Findmi brokers commercial relationships.
 · **Implemented**.
 
+### Map lenses and contextual filters (Oct 2026)
+The Map is a multi-entity surface. Its primary control is a lens (All ·
+Happening · Places, with Brands intended next). Refinements belong to a
+lens, and options are offered only when the current candidates can
+satisfy them. Happening is the consumer word for time-based discovery and
+hides the Event vs Pop-Up data distinction. · One flat sheet of every
+vocabulary value dead-ended on missing data, and Event-only refinements
+silently narrowed All or did nothing under Places. · The Everything /
+Events / Pop-Ups / Places sheet with always-visible options; "What =
+Event categories" as the Map model. · **Implemented** for All /
+Happening / Places (`lib/discovery/map-filters.ts`).
+
 ### Commerce and settlement (Sept 2026, locked)
 5% default fee with snapshots, vendor-paid processing by default, held
 allocations, manual payouts, no Connect. See `/CLAUDE.md` §8.

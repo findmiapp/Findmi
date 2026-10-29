@@ -33,6 +33,7 @@ import {
   type PersonalSignals,
   type RankedMapItem,
 } from "./map-core";
+import { mapFacets, type MapFacets } from "./map-filters";
 import { mapHref, type DiscoveryQuery } from "./query";
 import { getPersonalContext, getVocabulary, taxonomyFor, type Vocabulary } from "./server";
 import { prefilterBounds } from "./time";
@@ -494,6 +495,9 @@ export interface MapResponse {
   /** False until at least one Location has a canonical coordinate (the
    * geocoding backfill hasn't run yet) — the UI says so honestly. */
   mapReady: boolean;
+  /** Which refinement values the current candidate set can satisfy (see
+   * ./map-filters mapFacets) — the filter UI offers only these. */
+  facets?: MapFacets;
   generatedAt: string;
 }
 
@@ -508,6 +512,9 @@ export interface RunMapOptions {
   /** Lazy hydration for a selected marker: return every qualifying result
    * at this Location (bounded) instead of the paged list. */
   focusLocation?: string | null;
+  /** Compute filter availability (default true; internal relaxation counts
+   * skip it). */
+  facets?: boolean;
 }
 
 export function namesFor(vocab: Vocabulary, brandNames: Record<string, string> = {}, extra: Partial<ChipNames> = {}): ChipNames {
@@ -579,6 +586,7 @@ export async function runMapDiscovery(q: DiscoveryQuery, opts: RunMapOptions = {
   // the database; every candidate's Location is in scope.
   const placeIds = executed.place ? new Set(candidates.map((i) => i.location.id)) : undefined;
   const matched = candidates.filter((i) => matchesMapItem(i, executed, { now, placeIds }));
+  const facets = opts.facets === false ? undefined : mapFacets(candidates, executed, { now, placeIds });
 
   const brandNames: Record<string, string> = {};
   for (const i of candidates) for (const b of i.brands) brandNames[b.slug] = b.name;
@@ -597,7 +605,7 @@ export async function runMapDiscovery(q: DiscoveryQuery, opts: RunMapOptions = {
   const total = items.length;
   const href = opts.href ?? ((next: DiscoveryQuery) => mapHref(next, opts.view));
   if (opts.countOnly) {
-    return { query: q, total, features: [], results: [], nextOffset: null, overflow: [], chips: [], relaxations: [], truncated, mapReady, generatedAt: now.toISOString() };
+    return { query: q, total, features: [], results: [], nextOffset: null, overflow: [], chips: [], relaxations: [], truncated, mapReady, facets, generatedAt: now.toISOString() };
   }
 
   const features = mapFeatures(items, executed, now);
@@ -612,7 +620,7 @@ export async function runMapDiscovery(q: DiscoveryQuery, opts: RunMapOptions = {
   let relaxations: MapResponse["relaxations"] = [];
   if (total === 0 && mapReady) {
     const candidatesQ = relaxationCandidates(q, names).slice(0, 6);
-    const counts = await Promise.all(candidatesQ.map((c) => runMapDiscovery(c.query, { now, countOnly: true }).then((r) => r.total)));
+    const counts = await Promise.all(candidatesQ.map((c) => runMapDiscovery(c.query, { now, countOnly: true, facets: false }).then((r) => r.total)));
     relaxations = candidatesQ.map((c, i) => ({ label: c.label, count: counts[i], href: href(c.query) })).filter((r) => r.count > 0);
   }
   return {
@@ -626,6 +634,7 @@ export async function runMapDiscovery(q: DiscoveryQuery, opts: RunMapOptions = {
     relaxations,
     truncated,
     mapReady,
+    facets,
     generatedAt: now.toISOString(),
   };
 }

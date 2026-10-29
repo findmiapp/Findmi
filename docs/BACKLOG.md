@@ -51,10 +51,25 @@ active work. Reconciled against code on 2026-10-29.
 
 ## Map / discovery
 
-- **Map filter audit** (active QA, Oct 28–29). Filters must be
-  understandable, correctly scoped, and reflect the selected discovery
-  state. Audit `components/map/MapExplorer.tsx` and `lib/discovery/map-*`
-  before redesigning.
+- **Map interaction: identical-coordinate markers** (next Map pass).
+  Separate map points at the exact same coordinates (Events-only lens
+  markers at one Location, or two Locations sharing coordinates) stack
+  at every zoom, and a tap selects only the top one
+  (`DiscoveryMapCanvas` uses `e.features[0]`). The rest are reachable
+  only from the list. Verified in headless MapLibre 5.24: the expansion
+  zoom is 17, still stacked at 22. Fix: the canvas reports every hit
+  point and the page opens one "N Here" tray. Not live in production as
+  of Oct 29.
+- **Brands lens** on the Map (All · Happening · Places · Brands). Needs
+  a Brand result kind in `map-core` / `map-server` (start from
+  `geo-results-server` `brandPresence` / `brandResults`), a decision on
+  the result unit (Brand vs Brand × Location), and a Business-category
+  refinement. No Business → Event category mapping.
+- **Place categories** as the Places refinement (new query dimension
+  over Location categories).
+- **Event discovery attributes have no data**: 0 upcoming Events have
+  `is_free`, perks, audience or entry set (founder Admin only). The Map
+  hides these until data exists. Decide whether owners should set them.
 
 ## Moments
 

@@ -5,10 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { bboxAround, type Bbox, type MapFeature } from "@/lib/discovery/map-core";
 import type { MapResponse, MapResultCard as Card } from "@/lib/discovery/map-server";
 import { mapHref, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, type DiscoveryWhen } from "@/lib/discovery/query";
+import { lensNoun, MAP_LENSES, mapLens, mapRefinements, normalizeMapLens, withLens, type MapLens } from "@/lib/discovery/map-filters";
 import { clearedQuery, derivedFrom, hasGeo } from "@/lib/discovery/search-state";
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
-import MapFilterSheet, { type FilterOptions } from "./MapFilterSheet";
+import MapFilterSheet, { type DraftCount, type FilterOptions } from "./MapFilterSheet";
 import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetState } from "./sheet";
 
 // Discovery Map + Feed — ONE Discovery Query, one result set, two
@@ -47,15 +48,18 @@ const bboxOf = (features: MapFeature[]): Bbox | null => {
   return [w - pad, s - pad, e + pad, n + pad];
 };
 
-const QUICK: { label: string; when?: DiscoveryWhen; flag?: "free" | "near" }[] = [
+type Quick = { label: string; when?: DiscoveryWhen; flag?: "free" | "near" | "open" };
+// Quick filters follow the lens. Under All the time / Free shortcuts are
+// Happening refinements: tapping one moves the VISIBLE lens to Happening.
+const QUICK_TIME: Quick[] = [
   { label: "Happening Now", when: "now" },
   { label: "Up Next", when: "upnext" },
   { label: "Today", when: "today" },
   { label: "This Weekend", when: "weekend" },
-  { label: "Free", flag: "free" },
-  { label: "Near Me", flag: "near" },
 ];
-const QUICK_CHIP_KEYS = new Set(["when", "free", "near"]);
+const FREE: Quick = { label: "Free", flag: "free" };
+const OPEN: Quick = { label: "Open Now", flag: "open" };
+const NEAR: Quick = { label: "Near Me", flag: "near" };
 
 function Icon({ d, className = "h-5 w-5" }: { d: string; className?: string }) {
   return (
@@ -82,12 +86,20 @@ export interface MapExplorerProps {
 }
 
 export default function MapExplorer({ initialQuery, initialView, initialData, defaultBbox, options, nearRequested = false }: MapExplorerProps) {
-  const [query, setQuery] = useState<DiscoveryQuery>(initialQuery);
+  // The visible lens is always the one that runs.
+  const [start] = useState(() => normalizeMapLens(initialQuery));
+  const [query, setQuery] = useState<DiscoveryQuery>(start.query);
   const [view, setView] = useState<View>(initialView);
   const [data, setData] = useState<MapResponse | null>(initialData);
   const [results, setResults] = useState<Card[]>(initialData?.results ?? []);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  // The result the viewer picked from the list leads its marker's preview.
+  const [leadKey, setLeadKey] = useState<string | null>(null);
+  const [showAllHere, setShowAllHere] = useState(false);
+  // The quick shortcut that moved All → Happening (so turning it off can
+  // return to All).
+  const shortcutFromAll = useRef<string | null>(null);
   const [focusCards, setFocusCards] = useState<Card[] | null>(null);
   const [extras, setExtras] = useState<{ brands: { name: string; slug: string }[]; moments: { id: string; title: string; href: string }[]; open: boolean | null } | null>(null);
   const [viewport, setViewport] = useState<Bbox>(initialQuery.bbox ?? defaultBbox);
@@ -103,14 +115,14 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // Which query the rendered results belong to. The fetch effect compares
   // against it (not a one-shot "skip" flag), so returning to a query whose
   // results aren't on screen always re-fetches.
-  const dataKey = useRef<string | null>(initialData ? queryKey({ ...initialQuery, offset: undefined }) : null);
+  const dataKey = useRef<string | null>(initialData ? queryKey({ ...(start.sameResults ? start.query : initialQuery), offset: undefined }) : null);
   // Filters the last typed search contributed (cleared with the search).
   const derived = useRef<Partial<DiscoveryQuery>>({});
   const mounted = useRef(false);
   // Bumped by every search and every Clear: only the latest one may land.
   const searchSeq = useRef(0);
   const ctl = useRef<AbortController | null>(null);
-  const counts = useRef(new Map<string, number>());
+  const counts = useRef(new Map<string, DraftCount>());
   const listRef = useRef<HTMLDivElement>(null);
   const sheetDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
   const [dragH, setDragH] = useState<number | null>(null);
@@ -192,7 +204,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           dataKey.current = key;
           setData(d);
           setResults(d.results);
-          counts.current.set(key, d.total);
+          counts.current.set(key, { total: d.total, facets: d.facets });
           if (!query.bbox) {
             const b = bboxOf(d.features);
             if (b) {
@@ -215,8 +227,10 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     window.history.replaceState(window.history.state, "", mapHref({ ...shareable, offset: undefined }, view));
   }, [query, view]);
 
-  const apply = useCallback((next: DiscoveryQuery) => {
+  const apply = useCallback((raw: DiscoveryQuery) => {
+    const next = normalizeMapLens(raw).query;
     setSelected(null);
+    setLeadKey(null);
     setFocusCards(null);
     setExtras(null);
     setShowSearchArea(false);
@@ -233,8 +247,10 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // ---- selection (marker ↔ result, one state)
   const featureById = useMemo(() => new Map((data?.features ?? []).map((f) => [f.id, f])), [data]);
   const selectFeature = useCallback(
-    (id: string | null) => {
+    (id: string | null, lead: string | null = null) => {
       setSelected(id);
+      setLeadKey(lead);
+      setShowAllHere(false);
       setFocusCards(null);
       setExtras(null);
       setPreviewLoading(false);
@@ -267,11 +283,18 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     [featureById, results, query, key]
   );
   const selectCard = (card: Card) => {
-    selectFeature(card.featureId);
+    selectFeature(card.featureId, card.key);
     setFocus({ lng: card.lng, lat: card.lat, key: Date.now() });
   };
   const selectedFeature = selected ? (featureById.get(selected) ?? null) : null;
-  const selectedCards = selectedFeature ? (focusCards ?? results.filter((c) => selectedFeature.keys.includes(c.key))) : [];
+  const selectedCards = useMemo(() => {
+    if (!selectedFeature) return [];
+    const here = focusCards ?? results.filter((c) => selectedFeature.keys.includes(c.key));
+    const lead = leadKey ? (here.find((c) => c.key === leadKey) ?? results.find((c) => c.key === leadKey)) : null;
+    return lead ? [lead, ...here.filter((c) => c.key !== lead.key)] : here;
+  }, [selectedFeature, focusCards, results, leadKey]);
+  // Results shown in the preview leave the list (never both, never neither).
+  const inPreview = (key: string) => view === "map" && Boolean(selectedFeature) && (selectedFeature!.keys.includes(key) || key === leadKey);
 
   // ---- viewport
   const onViewportChange = useCallback(
@@ -324,10 +347,15 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       if (!r.ok) throw new Error(String(r.status));
       const d = (await r.json()) as MapResponse & { interpretation?: { params: string } };
       if (c.signal.aborted || seq !== searchSeq.current) return;
-      const next: DiscoveryQuery = d.interpretation ? paramsToQuery(new URLSearchParams(d.interpretation.params)) : base;
+      const interpreted: DiscoveryQuery = d.interpretation ? paramsToQuery(new URLSearchParams(d.interpretation.params)) : base;
+      // A search that resolved a Happening refinement ("today") shows the
+      // Happening lens; the lens it set belongs to the search (Clear drops it).
+      const lensed = normalizeMapLens(interpreted);
+      const next = lensed.query;
       derived.current = derivedFrom(next, base);
-      dataKey.current = queryKey({ ...next, offset: undefined });
+      dataKey.current = queryKey({ ...(lensed.sameResults ? next : interpreted), offset: undefined });
       setSelected(null);
+      setLeadKey(null);
       setData(d);
       setResults(d.results);
       setQuery(next);
@@ -372,15 +400,49 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     );
   };
 
-  const toggleQuick = (q: (typeof QUICK)[number]) => {
-    if (q.when) apply({ ...query, when: query.when === q.when ? undefined : q.when, date: undefined, from: undefined, to: undefined, month: undefined, year: undefined });
-    else if (q.flag === "free") apply({ ...query, free: query.free ? undefined : true });
+  const lens = mapLens(query);
+  const facets = data?.facets;
+  // An option is offered when the candidates can satisfy it — or when it's
+  // already on (always removable). No availability yet → offered.
+  const quick: Quick[] =
+    lens === "place"
+      ? [...(!facets || facets.open || query.open ? [OPEN] : []), NEAR]
+      : [...QUICK_TIME, ...(!facets || facets.free || query.free ? [FREE] : []), NEAR];
+  // A lens change is always visible: bring the rail (scrolled sideways to
+  // reach a quick filter on a phone) back to its start, where the lens is.
+  useEffect(() => {
+    for (const el of document.querySelectorAll<HTMLElement>("[data-map-rail]")) el.scrollTo?.({ left: 0, behavior: "smooth" });
+  }, [lens]);
+  const chooseLens = (next: MapLens) => {
+    shortcutFromAll.current = null;
+    if (next !== lens) apply(withLens(query, next));
+  };
+  const toggleQuick = (q: Quick) => {
+    const happeningOnly = Boolean(q.when || q.flag === "free");
+    // Under All a Happening refinement moves the visible lens to Happening;
+    // turning that same shortcut off again (nothing else refined since)
+    // returns to All — an undo, never a silent narrowing.
+    const fromAll = lens === "all" && happeningOnly;
+    const scoped = fromAll ? withLens(query, "happening") : query;
+    const commit = (computed: DiscoveryQuery) => {
+      let next = computed;
+      if (fromAll) shortcutFromAll.current = q.label;
+      else if (happeningOnly) {
+        const undo = quickOn(q) && shortcutFromAll.current === q.label;
+        shortcutFromAll.current = null;
+        if (undo && mapRefinements(next).length === 0) next = withLens(next, "all");
+      }
+      apply(next);
+    };
+    if (q.when) commit({ ...scoped, when: query.when === q.when ? undefined : q.when, date: undefined, from: undefined, to: undefined, month: undefined, year: undefined });
+    else if (q.flag === "free") commit({ ...scoped, free: query.free ? undefined : true });
+    else if (q.flag === "open") apply({ ...query, open: query.open ? undefined : "now" });
     else if (query.near) {
       setUserPos(null);
       apply({ ...withoutGeo(query), bbox: viewport });
     } else nearMe();
   };
-  const quickOn = (q: (typeof QUICK)[number]) => (q.when ? query.when === q.when && !query.date && !query.month : q.flag === "free" ? Boolean(query.free) : Boolean(query.near));
+  const quickOn = (q: Quick) => (q.when ? query.when === q.when && !query.date && !query.month : q.flag === "free" ? Boolean(query.free) : q.flag === "open" ? Boolean(query.open) : Boolean(query.near));
 
   const loadMore = () => {
     if (data?.nextOffset == null) return;
@@ -396,14 +458,16 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       .catch(() => undefined);
   };
 
-  const count = useCallback(async (q: DiscoveryQuery, signal: AbortSignal) => {
+  const count = useCallback(async (raw: DiscoveryQuery, signal: AbortSignal): Promise<DraftCount | null> => {
+    const q = normalizeMapLens(raw).query;
     const k = queryKey({ ...q, offset: undefined });
     if (counts.current.has(k)) return counts.current.get(k)!;
     const r = await fetch(`/api/discovery/map?${queryToParams({ ...q, offset: undefined }).toString()}&count=1`, { signal }).catch(() => null);
     if (!r?.ok) return null;
     const d = (await r.json()) as MapResponse;
-    counts.current.set(k, d.total);
-    return d.total;
+    const out = { total: d.total, facets: d.facets };
+    counts.current.set(k, out);
+    return out;
   }, []);
 
   const searchThisArea = () => {
@@ -411,19 +475,22 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     apply({ ...withoutGeo(query), bbox: viewport });
   };
 
-  const filterCount = useMemo(() => {
-    const keys = ["categories", "formats", "benefits", "audience", "entry", "tod", "tfrom", "date", "from", "month", "year", "paid", "entities", "open", "family"] as const;
-    return keys.filter((k) => {
-      const v = query[k];
-      return Array.isArray(v) ? v.length > 0 : Boolean(v);
-    }).length;
-  }, [query]);
+  // ONE definition of "applied refinements" (badge, chip rail, Clear).
+  const refinements = useMemo(() => mapRefinements(query), [query]);
+  const filterCount = refinements.length;
 
   const total = data?.total ?? 0;
-  const lens = query.entities?.length === 1 ? query.entities[0] : null;
-  const noun = lens === "event" ? "Event" : lens === "place" ? "Place" : lens === "appearance" ? "Pop-Up" : "Result";
+  const noun = lensNoun(query);
   const countLine = `${total.toLocaleString()} ${noun}${total === 1 ? "" : "s"}`;
-  const serverChips = (data?.chips ?? []).filter((c) => !QUICK_CHIP_KEYS.has(c.key) || (c.key === "when" && !QUICK.some((q) => q.when === query.when)));
+  // Applied refinements a quick filter doesn't already show (the typed
+  // search is already in the field; Near Me is always a quick filter).
+  const shownByQuick = (key: string) =>
+    key === "text" || key === "near" || (key === "when" && QUICK_TIME.some((q) => q.when === query.when)) || (key === "free" && lens !== "place") || (key === "open" && lens === "place");
+  const serverChips = [
+    ...refinements.filter((c) => c.key === "lens").map((c) => ({ key: c.key, label: c.label, href: "", without: c.without })),
+    ...(data?.chips ?? []).filter((c) => !shownByQuick(c.key)).map((c) => ({ ...c, without: null as DiscoveryQuery | null })),
+  ];
+  const chipLabels = useMemo(() => Object.fromEntries((data?.chips ?? []).map((c) => [c.key, c.label])), [data]);
 
   // ---- pieces
   const searchBar = (
@@ -464,8 +531,22 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   );
 
   const chipRow = (
-    <div className="pointer-events-auto -mx-3 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
-      {QUICK.map((q) => {
+    <div data-map-rail className="pointer-events-auto -mx-3 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
+      <div role="radiogroup" aria-label="Explore" className="flex shrink-0 items-center rounded-full border border-black/[0.08] bg-white p-0.5 shadow-sm">
+        {MAP_LENSES.map((l) => (
+          <button
+            key={l.lens}
+            type="button"
+            role="radio"
+            aria-checked={lens === l.lens}
+            onClick={() => chooseLens(l.lens)}
+            className={`min-h-8 rounded-full px-3 text-[13px] font-semibold transition ${lens === l.lens ? "bg-ink text-white" : "text-ink/70 hover:text-ink"}`}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+      {quick.map((q) => {
         const on = quickOn(q);
         return (
           <button
@@ -483,7 +564,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         );
       })}
       {serverChips.map((c) => (
-        <button key={c.key} type="button" onClick={() => (c.key === "text" ? clearSearch() : applyHref(c.href))} aria-label={`Remove ${c.label}`} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-findmi/40 bg-findmi-50 px-3.5 text-[13px] font-semibold text-findmi-700 shadow-sm hover:border-findmi">
+        <button key={c.key} type="button" onClick={() => (c.without ? apply(c.without) : applyHref(c.href))} aria-label={`Remove ${c.label}`} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-findmi/40 bg-findmi-50 px-3.5 text-[13px] font-semibold text-findmi-700 shadow-sm hover:border-findmi">
           {c.label}
           <Icon d={CLOSE} className="h-3 w-3" />
         </button>
@@ -531,7 +612,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       {emptyState}
       {selectedFeature && view === "map" && results.length > selectedCards.length && <p className="text-xs font-bold uppercase tracking-wide text-ink/45">More Results</p>}
       <ul role="list" className={view === "feed" ? "grid gap-2.5 lg:grid-cols-2" : "flex flex-col gap-2.5"}>
-        {results.filter((card) => !(view === "map" && selectedFeature?.keys.includes(card.key))).map((card, i) => (
+        {results.filter((card) => !inPreview(card.key)).map((card, i) => (
           <li key={card.key} ref={mobile && i === 0 ? firstRef : undefined}>
             <MapResultCard card={card} selected={selectedFeature?.keys.includes(card.key) ?? false} onSelect={view === "map" ? selectCard : undefined} showDistance={Boolean(query.near)} />
           </li>
@@ -571,9 +652,14 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       {others.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/45">{othersLive ? "Happening Here" : "Coming Up Here"}</p>
-          {others.slice(0, 3).map((c) => (
+          {(showAllHere ? others : others.slice(0, 3)).map((c) => (
             <MapResultCard key={c.key} card={c} showDistance={Boolean(query.near)} />
           ))}
+          {!showAllHere && others.length > 3 && (
+            <button type="button" onClick={() => setShowAllHere(true)} className="min-h-10 rounded-full bg-black/[0.05] text-sm font-semibold text-ink/75 hover:bg-black/[0.08]">
+              Show All {selectedCards.length} Here
+            </button>
+          )}
         </div>
       )}
       {extras && extras.brands.length > 0 && (
@@ -768,7 +854,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         </div>
       </aside>
 
-      {filtersOpen && <MapFilterSheet initial={query} options={options} count={count} onClose={() => setFiltersOpen(false)} onApply={(q) => { setFiltersOpen(false); apply(q); }} />}
+      {filtersOpen && <MapFilterSheet initial={query} options={options} count={count} facets={facets} labels={chipLabels} onClose={() => setFiltersOpen(false)} onApply={(q) => { setFiltersOpen(false); apply(q); }} />}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import MapExplorer from "@/components/map/MapExplorer";
 import type { FilterOptions } from "@/components/map/MapFilterSheet";
 import { getMapPersonalSignals, runMapDiscovery } from "@/lib/discovery/map-server";
+import { normalizeMapLens } from "@/lib/discovery/map-filters";
 import { paramsToQuery, type DiscoveryQuery } from "@/lib/discovery/query";
 import { getVocabulary } from "@/lib/discovery/server";
 import { DEFAULT_MAP_BBOX } from "@/lib/map-config";
@@ -34,7 +35,9 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
   // Near Me is never resolved without the viewer's explicit tap on THIS
   // device: a shared "near me" link opens on a default area and asks.
   const nearRequested = Boolean(parsed.near && !parsed.bbox);
-  const query: DiscoveryQuery = { ...parsed };
+  // The visible lens is always what runs (an implicit Happening scope
+  // becomes explicit; Places never carries time).
+  const query: DiscoveryQuery = { ...normalizeMapLens(parsed).query };
   if (nearRequested) delete query.near;
   if (query.near && query.bbox) delete query.near;
   const hasGeo = Boolean(query.bbox || query.area || query.market || query.census || query.place);

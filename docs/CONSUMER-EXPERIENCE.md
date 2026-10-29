@@ -24,8 +24,51 @@ Curation is deterministic (`tests/homepage-curation-contract.test.mjs`):
 - `/explore/[market]/[area]`: geographic discovery.
 - `/find`: **Findmi Here** feed (appearances by now / today / weekend /
   anytime). **Here Now** only when actually live.
-- `/map`: Discovery Map (MapLibre, clusters). **Active QA**. Don't redesign
-  it before auditing `components/map/MapExplorer.tsx`.
+- `/map`: Discovery Map (MapLibre, clusters; `components/map/MapExplorer.tsx`,
+  `lib/discovery/map-*`). Visual polish is still in QA; the filter model
+  below is canonical.
+
+### Map lenses and filters [CODE][TEST]
+
+`lib/discovery/map-filters.ts`, `tests/map-filters-p0.test.mjs`.
+
+- **Lens** is the primary control and leads the chip rail: **All ·
+  Happening · Places**. The intended hierarchy adds **Brands** (its own
+  Map pass, starting from `lib/geo-results-server` `brandPresence` /
+  `brandResults`). No placeholder until it exists.
+  - **All**: every type, with broad search, geography and Near Me.
+    Under All the filter sheet shows only the lens and "Choose what you
+    want to explore to see more filters."
+  - **Happening**: time-based discovery. Internally Events + Pop-Ups
+    (`type=event&type=appearance`). Refinements: time, Event category /
+    format, cost, perks, audience, entry.
+  - **Places**: discoverable Locations. Refinement: Open Now. Never
+    carries time.
+- The lens never changes silently. A time or Free shortcut tapped under
+  All visibly switches the lens to Happening (turning that same shortcut
+  off again returns to All). Places hides time filters instead of
+  switching the lens. The URL is normalized so the visible lens is what
+  runs.
+- Event categories are the Happening refinement, **not** the Map's final
+  "What" model. Place categories and Business categories are planned;
+  no cross-entity taxonomy mapping exists or is invented.
+- **Availability**: options appear only when the current candidates can
+  satisfy them (`mapFacets`, one dimension at a time with every other
+  constraint applied). An applied option always stays visible and
+  removable, even at zero results. Free, perks, audience and entry stay
+  in the engine and surface on their own when data supports them.
+- **One definition of applied refinements** (`mapRefinements`) drives
+  the Filters badge, the chip rail and the sheet's Clear. Geography and
+  the typed search aren't refinements. Refinements the sheet has no
+  control for (Topics, Family, access, a legacy single-kind lens) show
+  as removable **Also Applied** chips.
+- **Clear** removes refinements and keeps the lens, geography, the
+  typed search and the Brands that search resolved to.
+- Old `type=event` / `type=appearance` links still work: they show as
+  Happening plus a removable "Events Only" / "Pop-Ups Only" chip.
+- Selecting a marker shows its first results with **Show All N Here**
+  for the rest. A result picked from the list leads its marker's
+  preview.
 - `/search`: search across entities.
 - `/guides/[slug]`: curated Discovery Pages.
 

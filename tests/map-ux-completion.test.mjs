@@ -264,7 +264,8 @@ test("filter CTA: shows the count; zero is a disabled, explained state — not a
   const root = createRoot(host);
   let n = 12;
   const applied = [];
-  await act(async () => root.render(React.createElement(MapFilterSheet, { initial: {}, options: { categories: [], formats: [] }, onApply: (q) => applied.push(q), onClose: () => {}, count: async () => n })));
+  // Free is a Happening refinement (under All the sheet shows only the lens).
+  await act(async () => root.render(React.createElement(MapFilterSheet, { initial: { entities: ["event", "appearance"] }, options: { categories: [], formats: [] }, onApply: (q) => applied.push(q), onClose: () => {}, count: async () => ({ total: n }) })));
   await act(async () => new Promise((r) => setTimeout(r, 450)));
   const cta = () => [...host.querySelectorAll("button")].at(-1);
   assert.equal(cta().textContent.trim(), "Show 12 Results");

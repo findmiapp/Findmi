@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AUDIENCE_LABELS, BENEFIT_LABELS, ENTRY_LABELS, EVENT_AUDIENCES, EVENT_BENEFITS, ENTRY_MODES, type EventBenefit } from "@/lib/discovery/attributes";
+import { clearedRefinements, isUneditableRefinement, lensNoun, MAP_LENSES, mapLens, mapRefinements, withLens, type MapFacets } from "@/lib/discovery/map-filters";
 import { TIME_OF_DAY_LABELS, TIMES_OF_DAY, WHEN_LABELS, type DiscoveryQuery, type DiscoveryWhen, type MatchMode } from "@/lib/discovery/query";
 
 export interface TaxonomyOption {
@@ -67,25 +68,44 @@ const clearTime = (q: DiscoveryQuery): DiscoveryQuery => {
   return rest;
 };
 
+/** A draft count: the total, plus what the draft's candidates can satisfy. */
+export interface DraftCount {
+  total: number;
+  facets?: MapFacets;
+}
+
+/** Offered = available in the candidate set OR already chosen (a chosen
+ * value always stays visible and removable). No facets → everything. */
+const offer = <T extends string>(all: readonly T[], available: readonly string[] | undefined, chosen: readonly string[] | undefined): T[] =>
+  available ? all.filter((v) => available.includes(v) || chosen?.includes(v)) : [...all];
+
 export default function MapFilterSheet({
   initial,
   options,
   onApply,
   onClose,
   count,
+  facets: initialFacets,
+  labels = {},
 }: {
   initial: DiscoveryQuery;
   options: FilterOptions;
   onApply: (q: DiscoveryQuery) => void;
   onClose: () => void;
-  /** Result count for a draft (debounced + cached by the caller). */
-  count: (q: DiscoveryQuery, signal: AbortSignal) => Promise<number | null>;
+  /** Result count (+ availability) for a draft (debounced + cached by the
+   * caller). */
+  count: (q: DiscoveryQuery, signal: AbortSignal) => Promise<DraftCount | null>;
+  /** Availability for the applied query, until the draft's own arrives. */
+  facets?: MapFacets;
+  /** Display names for applied chips (Topics, Brands…) by chip key. */
+  labels?: Record<string, string>;
 }) {
   const [draft, setDraft] = useState<DiscoveryQuery>(() => ({ ...initial, offset: undefined }));
   const [dateMode, setDateMode] = useState<DateMode>(initial.date ? "date" : initial.from || initial.to ? "range" : initial.month ? "month" : initial.year ? "year" : "quick");
   const [customTime, setCustomTime] = useState(Boolean(initial.tfrom || initial.tto));
   const [showFormats, setShowFormats] = useState(Boolean(initial.formats?.length));
   const [n, setN] = useState<number | null>(null);
+  const [facets, setFacets] = useState<MapFacets | undefined>(initialFacets);
   const [counting, setCounting] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
   const set = (patch: Partial<DiscoveryQuery>) => setDraft((d) => {
@@ -100,7 +120,11 @@ export default function MapFilterSheet({
     const t = setTimeout(() => {
       count(draft, ctl.signal)
         // Keep the last known count on screen until the new one arrives.
-        .then((v) => !ctl.signal.aborted && v !== null && setN(v))
+        .then((v) => {
+          if (ctl.signal.aborted || v === null) return;
+          setN(v.total);
+          if (v.facets) setFacets(v.facets);
+        })
         .finally(() => !ctl.signal.aborted && setCounting(false));
     }, 350);
     return () => {
@@ -120,11 +144,35 @@ export default function MapFilterSheet({
     };
   }, [onClose]);
 
-  const lens = draft.entities?.length === 1 ? draft.entities[0] : null;
-  const noun = lens === "event" ? "Events" : lens === "place" ? "Places" : "Results";
-  const selectedTop = options.categories.filter((c) => draft.categories?.includes(c.slug) || c.children.some((k) => draft.categories?.includes(k.slug)));
-  const taxCount = (draft.categories?.length ?? 0) + (draft.formats?.length ?? 0);
-  const placesOnly = lens === "place";
+  const lens = mapLens(draft);
+  const noun = `${lensNoun(draft)}s`;
+  const happening = lens === "happening";
+  const chooseLens = (next: typeof lens) => {
+    if (next === lens) return;
+    setDateMode("quick");
+    setCustomTime(false);
+    setDraft((d) => withLens(d, next));
+  };
+
+  // Offered options: what the candidates can satisfy, plus what's chosen.
+  const chosenCats = draft.categories ?? [];
+  const catOffered = (slug: string) => !facets || facets.categories.includes(slug) || chosenCats.includes(slug);
+  const categories = options.categories
+    .map((c) => ({ ...c, children: c.children.filter((k) => catOffered(k.slug)) }))
+    .filter((c) => catOffered(c.slug) || c.children.length > 0);
+  const formats = options.formats.filter((f) => !facets || facets.formats.includes(f.slug) || draft.formats?.includes(f.slug));
+  const selectedTop = categories.filter((c) => chosenCats.includes(c.slug) || c.children.some((k) => chosenCats.includes(k.slug)));
+  // A child chosen with its own parent narrows nothing extra — it isn't a
+  // second value to combine Any / All.
+  const parentOf = new Map(options.categories.flatMap((c) => c.children.map((k) => [k.slug, c.slug] as const)));
+  const taxCount = chosenCats.filter((s) => !chosenCats.includes(parentOf.get(s) ?? "")).length + (draft.formats?.length ?? 0);
+  const showFree = !facets || facets.free || Boolean(draft.free);
+  const showPaid = !facets || facets.paid || Boolean(draft.paid);
+  const benefits = offer(EVENT_BENEFITS.filter((b) => b !== "free_admission"), facets?.benefits, draft.benefits);
+  const audiences = offer(EVENT_AUDIENCES, facets?.audience, draft.audience);
+  const entries = offer(ENTRY_MODES, facets?.entry, draft.entry);
+  const showOpen = !facets || facets.open || Boolean(draft.open);
+  const alsoApplied = mapRefinements(draft).filter((c) => isUneditableRefinement(c.key));
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 lg:items-stretch lg:justify-end" onClick={onClose}>
@@ -146,9 +194,8 @@ export default function MapFilterSheet({
           <button
             type="button"
             onClick={() => {
-              const keep: DiscoveryQuery = {};
-              for (const k of ["bbox", "area", "market", "census", "place", "near", "radius", "text", "brands"] as const) if (draft[k] !== undefined) (keep as Record<string, unknown>)[k] = draft[k];
-              setDraft(keep);
+              // Refinements go; the lens, geography and the search stay.
+              setDraft(clearedRefinements(draft));
               setDateMode("quick");
               setCustomTime(false);
             }}
@@ -161,19 +208,39 @@ export default function MapFilterSheet({
         <div className="flex-1 overflow-y-auto overscroll-contain px-4">
           <Section title="Show">
             <div className="flex flex-wrap gap-2">
-              <Chip on={!lens} onClick={() => set({ entities: undefined, open: undefined })}>Everything</Chip>
-              <Chip on={lens === "event"} onClick={() => set({ entities: ["event"], open: undefined })}>Events</Chip>
-              <Chip on={lens === "appearance"} onClick={() => set({ entities: ["appearance"], open: undefined })}>Pop-Ups</Chip>
-              <Chip on={lens === "place"} onClick={() => { setDateMode("quick"); setDraft((d) => ({ ...clearTime(d), entities: ["place"] })); }}>Places</Chip>
+              {MAP_LENSES.map((l) => (
+                <Chip key={l.lens} on={lens === l.lens} onClick={() => chooseLens(l.lens)}>
+                  {l.label}
+                </Chip>
+              ))}
             </div>
-            {placesOnly && (
+            {lens === "all" && <p className="mt-2.5 text-sm text-ink/60">Choose what you want to explore to see more filters.</p>}
+            {lens === "place" && showOpen && (
               <div className="mt-2.5 flex flex-wrap gap-2">
                 <Chip on={draft.open === "now"} onClick={() => set({ open: draft.open ? undefined : "now" })}>Open Now</Chip>
               </div>
             )}
           </Section>
 
-          {!placesOnly && (
+          {alsoApplied.length > 0 && (
+            <Section title="Also Applied">
+              <div className="flex flex-wrap gap-2">
+                {alsoApplied.map((c) => (
+                  <button key={c.key} type="button" onClick={() => setDraft(() => {
+                    const { offset: _o, ...next } = c.without;
+                    return next;
+                  })} aria-label={`Remove ${labels[c.key] ?? c.label}`} className="flex min-h-9 items-center gap-1.5 rounded-full border border-findmi/40 bg-findmi-50 px-3 text-[13px] font-semibold text-findmi-700 hover:border-findmi">
+                    {labels[c.key] ?? c.label}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" className="h-3 w-3" aria-hidden>
+                      <path d="M6 6l12 12M18 6 6 18" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {happening && (
             <Section title="When">
               <div className="flex flex-wrap gap-2">
                 {QUICK_WHEN.map((w) => (
@@ -258,10 +325,10 @@ export default function MapFilterSheet({
             </Section>
           )}
 
-          {!placesOnly && (
+          {happening && (categories.length > 0 || formats.length > 0 || (draft.brands?.length ?? 0) > 1) && (
             <Section title="What" aside={taxCount > 1 ? <ModeToggle label="Match categories" value={draft.catMode ?? "any"} onChange={(m) => set({ catMode: m === "any" ? undefined : m })} /> : null}>
               <div className="flex flex-wrap gap-2">
-                {options.categories.map((c) => (
+                {categories.map((c) => (
                   <Chip key={c.slug} on={Boolean(draft.categories?.includes(c.slug))} onClick={() => set({ categories: toggle(draft.categories, c.slug) })}>
                     {c.name}
                   </Chip>
@@ -279,14 +346,14 @@ export default function MapFilterSheet({
                   </div>
                 </div>
               ))}
-              {options.formats.length > 0 && (
+              {formats.length > 0 && (
                 <div className="mt-3">
                   <button type="button" aria-expanded={showFormats} onClick={() => setShowFormats((v) => !v)} className="text-xs font-bold text-findmi-700 hover:underline">
                     {showFormats ? "Fewer Types" : "More Types"}
                   </button>
                   {showFormats && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {options.formats.map((f) => (
+                      {formats.map((f) => (
                         <Chip key={f.slug} on={Boolean(draft.formats?.includes(f.slug))} onClick={() => set({ formats: toggle(draft.formats, f.slug) })}>
                           {f.name}
                         </Chip>
@@ -304,15 +371,17 @@ export default function MapFilterSheet({
             </Section>
           )}
 
-          {!placesOnly && (
+          {happening && (showFree || showPaid || benefits.length > 0) && (
             <Section title="Cost & Perks" aside={(draft.benefits?.length ?? 0) > 1 ? <ModeToggle label="Match perks" value={draft.benefitMode ?? "all"} onChange={(m) => set({ benefitMode: m === "all" ? undefined : m })} /> : null}>
-              <div className="flex flex-wrap gap-2">
-                <Chip on={!draft.free && !draft.paid} onClick={() => set({ free: undefined, paid: undefined })}>Any</Chip>
-                <Chip on={Boolean(draft.free)} onClick={() => set({ free: draft.free ? undefined : true, paid: undefined })}>Free</Chip>
-                <Chip on={Boolean(draft.paid)} onClick={() => set({ paid: draft.paid ? undefined : true, free: undefined })}>Paid</Chip>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {EVENT_BENEFITS.filter((b) => b !== "free_admission").map((b: EventBenefit) => (
+              {(showFree || showPaid) && (
+                <div className="flex flex-wrap gap-2">
+                  <Chip on={!draft.free && !draft.paid} onClick={() => set({ free: undefined, paid: undefined })}>Any</Chip>
+                  {showFree && <Chip on={Boolean(draft.free)} onClick={() => set({ free: draft.free ? undefined : true, paid: undefined })}>Free</Chip>}
+                  {showPaid && <Chip on={Boolean(draft.paid)} onClick={() => set({ paid: draft.paid ? undefined : true, free: undefined })}>Paid</Chip>}
+                </div>
+              )}
+              <div className={`flex flex-wrap gap-2 ${showFree || showPaid ? "mt-3" : ""}`}>
+                {benefits.map((b: EventBenefit) => (
                   <Chip key={b} on={Boolean(draft.benefits?.includes(b))} onClick={() => set({ benefits: toggle(draft.benefits, b) })}>
                     {BENEFIT_LABELS[b]}
                   </Chip>
@@ -321,17 +390,17 @@ export default function MapFilterSheet({
             </Section>
           )}
 
-          {!placesOnly && (
+          {happening && (audiences.length > 0 || entries.length > 0) && (
             <Section title="Who & How">
               <div className="flex flex-wrap gap-2">
-                {EVENT_AUDIENCES.map((a) => (
+                {audiences.map((a) => (
                   <Chip key={a} on={Boolean(draft.audience?.includes(a))} onClick={() => set({ audience: toggle(draft.audience, a) })}>
                     {AUDIENCE_LABELS[a]}
                   </Chip>
                 ))}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {ENTRY_MODES.map((m) => (
+              <div className={`flex flex-wrap gap-2 ${audiences.length ? "mt-3" : ""}`}>
+                {entries.map((m) => (
                   <Chip key={m} on={Boolean(draft.entry?.includes(m))} onClick={() => set({ entry: toggle(draft.entry, m) })}>
                     {ENTRY_LABELS[m]}
                   </Chip>

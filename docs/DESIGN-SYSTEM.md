@@ -31,8 +31,9 @@ component's current classes.
 - **Input capitalization** helpers (`lib/input-capitalization.ts`) for
   entity-name fields.
 - Map: MapLibre with a keyless OpenFreeMap "positron" default
-  (`NEXT_PUBLIC_MAP_STYLE_URL`). Map and filter UX is **under active QA**
-  and isn't canonical yet.
+  (`NEXT_PUBLIC_MAP_STYLE_URL`). The Map lens/filter model is canonical
+  (`CONSUMER-EXPERIENCE.md` § Map lenses and filters). Map visual polish
+  is still in QA.
 
 ## Rejected — don't reintroduce
 
