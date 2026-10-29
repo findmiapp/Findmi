@@ -1,289 +1,198 @@
-# FindMi — Project Memory
+# Findmi — Agent Operating Manual
 
-This file is read automatically at the start of every Claude Code session
-on this repo. It exists so settled product/architecture/design decisions
-don't have to be re-explained in every prompt. Treat everything below as
-already decided — don't re-litigate, re-audit, or re-ask about it unless
-the user explicitly raises it.
+Read automatically at the start of every Claude Code session. Keep it
+short: detailed knowledge lives in `/docs`. Everything marked *locked* is
+settled. Don't re-litigate it unless the user raises it.
 
-## 1. What FindMi is
+## 1. What Findmi is
 
-FindMi is a consumer discovery + marketplace platform centered on **time,
-place, movement, and discovery**. Core concepts: FindMi Here, Here Now,
-Businesses, Products, Appearances, Events, Locations, marketplace commerce.
+A real-world discovery platform. It connects consumers with Businesses and
+Brands, Products, Locations, Events (with Occurrences), Appearances,
+Availability and Moments. Around those entities it adds a Business Manager
+for owners, a marketplace, and a founder Admin. The entity graph and its
+relationships matter more than any one screen. Findmi isn't Yelp, a
+directory, an event calendar, a QR generator or a generic SaaS dashboard.
+Details: `docs/PRODUCT.md`.
 
-FindMi should feel like a consumer technology product — not Yelp, not a
-traditional directory, not a generic SaaS app, not a WordPress-style
-listing site. Don't casually redesign established systems while doing an
-unrelated feature pass.
+## 2. Authority hierarchy
 
-## 2. Brand / design system — locked
+When sources disagree:
 
-- Brand styling: Always render the brand name as **"Findmi"** in
-  user-facing copy. Capital F only — never "FindMi", "FindMI", or
-  "FINDMI". This supersedes any earlier "FindMi" capitalization
-  guidance in this file or elsewhere; existing code comments that still
-  say "FindMi" are historical prose, not a license to reintroduce that
-  casing into rendered copy.
-- Primary brand color, Findmi Aqua: **`#14B0BC`** (Tailwind `findmi`
-  color, with a full 50–900 tint/shade scale already defined in
-  `tailwind.config.ts`). Sampled directly from the real logo asset — the
-  authoritative source, not invented. Used scarcely and intentionally,
-  never as a flood background.
-- **Never** reintroduce `#C6FF00`, lime/acid-green, or purple SaaS
-  styling — those were explicitly rejected in earlier passes.
-- Aqua-filled primary buttons/badges use **white text and white icons**
-  (`text-white`, icons inherit via `currentColor`). Pale Aqua tints
-  (`bg-findmi-50`, `bg-findmi/NN`) are a different case — they're soft
-  highlight panels, not primary buttons, and correctly keep dark
-  `text-findmi-700` text. Don't "fix" those.
-- Typography: **Inter** is the approved typeface for the whole public
-  app — both body (`--font-inter`) and display/headings
-  (`--font-display`), loaded via `next/font/google` in `src/app/
-  layout.tsx`. Fallback stack (see `tailwind.config.ts`):
-  `Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica Neue,
-  Arial, sans-serif`. Do **not** introduce Space Grotesk, Plus Jakarta
-  Sans, or another trendy/geometric display font without explicit user
-  approval — both were tried and explicitly rejected as reading too
-  "tech/SaaS" against the original FindMi reference screenshots.
-  `globals.css` also softens `tracking-tight` specifically on
-  `.font-display` elements (`-0.006em`, not Tailwind's default
-  `-0.025em`) — a deliberate, centralized correction; don't revert it.
-- Visible section titles / headers use **Title Case** ("Upcoming Dates",
-  "What's Happening", "Hosted By"), written as intentional display copy —
-  never CSS `capitalize` on dynamic content. Sentences, descriptions,
-  button copy, form labels, entity names and user content are unaffected.
-- Typography direction generally: clean, consumer-oriented, open,
-  neo-grotesk, restrained weights, comfortable line-height — not
-  compressed, not dev-tool/SaaS-like.
-- If the user has supplied reference screenshots (of the original FindMi
-  site or elsewhere) in a session, those remain the visual authority for
-  whatever dimension they illustrate (typically typography) — match them
-  rather than substituting a generic interpretation, even in later
-  sessions that didn't see the images directly.
-- Don't invent a new visual system while doing unrelated work.
+1. Production schema + current code: what's actually implemented.
+2. Current tests (`tests/*.test.mjs`): executable expectations. Many are
+   source-inspection tests that encode approved copy and composition.
+3. `/docs/*.md`: intended product and architectural meaning.
+4. `docs/BACKLOG.md`: requested future work, not current functionality.
+5. Commit messages, history, conversation: evidence and rationale only.
 
-## 3. Product language — locked
+A request in a doc or a conversation isn't evidence the feature exists. A
+feature you can't see in the UI isn't evidence its infrastructure is
+missing. Commit bodies in this repo are detailed and are the best "why"
+source.
 
-- Use **FindMi Here** as the feature name. Not "FindMi Next" / "Find
-  Them Next" / "Where I'll Be Next" as a label or heading. Ordinary
-  sentences can still say things like "see where they'll be next" — this
-  rule is about the feature *name*, not banning the phrase everywhere.
-- **Here Now** is reserved for a genuinely live appearance (current time
-  falls between the appearance's start and end) — never guessed or
-  approximated.
-- Other established phrasing already in use: Follow Their Moves, Find
-  Them, Who You'll Find Here, What You'll Find. Don't force branded
-  wording into every sentence.
+## 3. Session start (before material changes)
 
-## 4. Environment constraints — DO NOT RE-DIAGNOSE
+1. Read this file and the relevant `/docs` files.
+2. Check branch/HEAD and uncommitted changes.
+3. **Find the existing implementation before designing anything.** Search
+   `src/lib`, `src/components`, the route tree and `supabase/migrations`.
+   Most concepts already exist: occurrences, importers, provenance,
+   Availability, QR, analytics, Moments, Collections, the manager shell and
+   host routing.
+4. Decide which kind of work it is: modifying, completing, or genuinely new.
+5. Report meaningful doc ↔ code discrepancies before making
+   architecture-altering assumptions.
 
-Claude's local sandbox **cannot** reach the production Supabase or
-Vercel hosts. This is known and expected — not a bug to investigate.
+Scope discipline: inspect only the target route/component, its direct
+dependencies and the relevant schema. Don't refactor unrelated code. Don't
+start the next logical feature: implement, QA, commit, push, report, stop.
 
-- Never spend time `ping`/`curl`/`nslookup`/`traceroute`-ing, or
-  otherwise re-diagnosing connectivity to those hosts. A local
-  empty/missing-data state on a data-dependent page is expected here and
-  is **not** evidence of a production regression.
-- Use the **Supabase MCP tools** (`apply_migration`, `execute_sql`,
-  `list_tables`, etc.) for real database inspection, verification, and
-  migrations — this does reach the real project.
-- Use `npm run build` / `npm run lint` locally for code verification.
-- Leave final live-behavior verification (does the deployed page
-  actually work) to the user against the real Vercel deployment — state
-  clearly in the final report what they need to check.
-- Don't re-explain or re-discover this constraint each session.
+## 4. Non-negotiables
 
-## 5. Supabase / database rules
+- **Find it, understand it, then modify it intentionally.** Never build a
+  second version of something Findmi already has.
+- Don't duplicate entities a relationship already models. Use Appearances
+  (Business ↔ Event/Occurrence/Location), Availability (Business/Product ↔
+  Location) and Occurrences (dates of one Event).
+- Don't rename established terminology casually (`docs/PRODUCT.md` §
+  Terminology). Don't rename internal identifiers just for cosmetics.
+- Never fabricate data, integration state or implementation status.
+- Update the canonical `/docs` in the same commit when product or
+  architectural truth changes. Ask yourself: does this change make any
+  statement in `/docs` false? Docs change when the truth changes, not on
+  every code change. `DECISIONS.md` isn't a changelog. `BACKLOG.md` holds
+  unresolved work only (dedupe it, remove verified-done items).
 
-- Production Supabase holds real data. Treat writes conservatively.
-- Schema changes: additive whenever practical, applied via
-  `mcp__Supabase__apply_migration` (not undocumented ad-hoc DDL),
-  inspected against the current live schema first (`list_tables` /
-  `execute_sql`), and never destructive without explicit approval.
-  Preserve existing rows/relationships — never delete data to "clean up."
-- Read the actual current rows before any production backfill or bulk
-  update.
-- `SUPABASE_SERVICE_ROLE_KEY` is server-only — has no `NEXT_PUBLIC_`
-  prefix, must never be imported from a `"use client"` file. Admin writes
-  go through `getAdminSupabase()` (`src/lib/admin/supabase-admin.ts`),
-  used only in Server Actions / Server Components. Public reads go
-  through the anon client (`src/lib/supabase.ts`), gated by RLS.
-- Don't rebuild admin authentication (`src/middleware.ts` + `src/lib/
-  admin/auth.ts` — a single shared `ADMIN_PASSWORD`, HMAC-signed session
-  cookie via Web Crypto, no accounts/roles). It's settled.
+## 5. Brand / design system — locked
 
-## 6. Known core architecture — don't re-audit
+- Brand name in user-facing copy: **"Findmi"**. Never "FindMi", "FindMI" or
+  "FINDMI". Old code comments saying "FindMi" are historical prose.
+- Findmi Aqua **`#14B0BC`** (Tailwind `findmi`, 50–900 scale in
+  `tailwind.config.ts`), used sparingly, never as a flood background.
+  Aqua-filled buttons/badges use white text and icons. Pale tints
+  (`bg-findmi-50`) keep `text-findmi-700`. Don't "fix" those.
+- **Never** reintroduce `#C6FF00` / lime / acid-green or purple SaaS
+  styling.
+- Typeface: **Inter** for body and display (`next/font/google` in
+  `src/app/layout.tsx`). No Space Grotesk, Plus Jakarta Sans or other
+  display fonts without explicit approval. `globals.css` softens
+  `tracking-tight` on `.font-display` (`-0.006em`). Keep it.
+- Visible section titles use **Title Case**, written as display copy,
+  never CSS `capitalize` on dynamic content.
+- User-supplied reference screenshots are the visual authority for
+  whatever they illustrate.
+- Reuse existing tokens/classes before styling anything. More in
+  `docs/DESIGN-SYSTEM.md`.
 
-These systems exist and work. Don't re-read/re-learn/re-explain them
-wholesale unless the task directly touches them — inspect only the
-specific files a task needs.
+## 6. Environment constraints — do not re-diagnose
 
-- Founder `/admin` + admin authentication (`src/app/admin/**`)
-- Business / Event / Location / Appearance / Product CRUD (admin)
-- Category homepage controls (`/admin/categories`, `show_on_home` /
-  `home_sort_order`)
-- Admin scalable search (`/admin/api/search`) + searchable relationship
-  pickers (`src/components/admin/RelationPicker.tsx`,
-  `useAdminSearch.ts`) — used instead of giant dropdowns/checklists
-- Supabase Storage (business/product/event images)
-- Public business profiles, product detail pages
-- FindMi Here (`/find`, `getFindMiHereFeed`) — appearances-based,
-  temporal (now/today/weekend/anytime)
-- Appearance → Event routing; Event → participating businesses
-  (`event_businesses`: `status`, `featured`, `offering_text`,
-  `display_order`)
-- Follow / Save (per-device localStorage, no accounts —
-  `src/lib/saved.ts`, `src/lib/cart.ts` follow the same pattern)
-- Homepage discovery composition (`src/app/(public)/page.tsx`)
-- Multi-vendor cart + checkout foundation (`src/lib/commerce/**`,
-  `src/app/(public)/cart/**`) — orders, order_items, vendor
-  allocations, manual settlement ledger, refund accounting, per-item
-  fulfillment (shipping/local_delivery/pickup/event_pickup), Stripe
-  customer-facing checkout (`src/app/api/webhooks/stripe/route.ts`)
+- This sandbox **can't** reach production Supabase or Vercel over HTTP.
+  That's expected. Don't ping/curl/nslookup them. An empty local data
+  state isn't a production regression.
+- Use the **Supabase MCP tools** (project `findmi`,
+  `drcbrzwchlirfspjgtik`) for real schema/data inspection and migrations.
+- Verify code with `npm run build`, `npm run lint` and `npm test`. Leave
+  live verification to the user and say exactly what to check.
 
-Don't rebuild any of the above merely because a new feature touches
-nearby code.
+## 7. Supabase / database rules
 
-## 7. Commerce business rules — locked
+- Production holds real data. Read rows before any backfill. Never delete
+  data to "clean up".
+- Schema changes: additive when practical, inspected against the live
+  schema first, applied with `mcp__Supabase__apply_migration`, and backed
+  by a matching file in `supabase/migrations/`. Nothing destructive without
+  explicit approval.
+- **The production migration ledger is incomplete.** About 33 repo
+  migrations have live schema but no ledger row. To check whether a
+  migration is applied, look for the object itself, not
+  `schema_migrations`. See `docs/DEPLOYMENT.md`.
+- `SUPABASE_SERVICE_ROLE_KEY` is server-only. Admin writes go through
+  `getAdminSupabase()` (`src/lib/admin/supabase-admin.ts`) in Server
+  Actions/Components only. Public reads use the anon client
+  (`src/lib/supabase.ts`) under RLS. Signed-in reads use `@supabase/ssr`
+  (`src/lib/supabase/*`).
+- Two separate auth boundaries share `src/middleware.ts` and never share a
+  cookie: founder `/admin` (one `ADMIN_PASSWORD`, HMAC cookie,
+  `src/lib/admin/auth.ts`, settled, don't rebuild) and consumer/owner
+  Supabase Auth (`/account/**`, `/my-world/journal/**`).
 
-See `src/lib/commerce/fees.ts`, `ledger.ts`, `processingFee.ts`,
-`quote.ts`, `settleOrder.ts` for the actual implementation.
+## 8. Commerce rules — locked
 
-- Default FindMi marketplace fee: **5%** of merchandise value, separate
-  from payment-processing fees.
-- Marketplace fee override precedence: campaign/promotion override
-  (reserved for later — `applied_fee_source: "campaign_override"`
-  exists as a type but nothing populates it yet) → product override
-  (`marketplace_fee_override_percent`) → business/vendor override
-  (`marketplace_fee_percent`) → platform default 5%.
-- Every order item **snapshots** its applied fee %, fee $, processing
-  payer, and vendor net at creation time. Never recompute historical
-  orders from current settings.
-- Default processing-fee responsibility: **vendor**. Override
-  precedence: product (`processing_fee_payer_override`) → business
-  (`processing_fee_payer`) → platform default (vendor). Customer-paid
-  processing shows as a visible, separate checkout line — never folded
-  silently into the item price.
-- FindMi controls settlement. Vendor funds go into `vendor_order_
-  allocations` with status **`held`** — never auto-paid. Admin records
-  manual payouts (`/admin/settlements`) against one or more orders.
-  **Do not** build or enable automatic vendor payouts without explicit
-  new instruction.
-- Vendors are responsible for fulfillment: shipping, local delivery,
-  local pickup, event pickup — configured per product
-  (`product_fulfillment_options`), and fulfillment can differ per item
-  within the same multi-vendor cart/checkout.
-- One customer checkout can span multiple vendors; the customer pays
-  FindMi once, and internal seller allocations are computed server-side
-  — never trust client-submitted prices/totals (see
-  `lib/commerce/quote.ts` — always re-reads products/business settings
-  fresh).
-- `stripe_account_id` / `stripe_connect_status` columns exist on
-  `businesses` for future Connect readiness only. **Do not** build
-  Connect onboarding or enable automatic transfers just because those
-  fields exist.
+Implementation: `src/lib/commerce/` (`fees.ts`, `ledger.ts`,
+`processingFee.ts`, `quote.ts`, `settleOrder.ts`).
 
-## 8. Admin UX principles
+- Marketplace fee defaults to **5%** of merchandise value, separate from
+  processing. Precedence: campaign override (reserved, unpopulated) →
+  product `marketplace_fee_override_percent` → business
+  `marketplace_fee_percent` → 5%.
+- Order items **snapshot** fee %, fee $, processing payer and vendor net.
+  Never recompute history.
+- The vendor pays processing by default (product → business → vendor).
+  Customer-paid processing is a visible, separate checkout line.
+- Vendor funds land in `vendor_order_allocations` as **`held`**. Payouts
+  are recorded manually (`/admin/settlements`). **No automatic payouts and
+  no Stripe Connect onboarding** without new explicit instruction, even
+  though `stripe_account_id` / `stripe_connect_status` exist.
+- Vendors own fulfillment per item (shipping / local delivery / pickup /
+  event pickup). Totals are always re-quoted server-side. Never trust
+  client prices.
 
-- Founder admin must scale past a handful of rows. Relationship
-  selection uses searchable, server-backed pickers
-  (`RelationPicker.tsx` / `/admin/api/search`, debounced, ≤20 results)
-  — not giant `<select>` dropdowns or full-table checklists — once an
-  entity count can plausibly grow past a screenful.
-- List-page search/filtering is server-side (`ilike`/`eq` pushed into
-  the Supabase query), never fetch-everything-then-filter-in-JS.
-- Admin UI should stay usable at ~390px mobile width.
-- Keep founder admin a lightweight internal tool — not an enterprise
-  CMS. Resist adding generality nobody asked for.
+## 9. Admin UX principles
 
-## 9. Scope / token efficiency
+Founder Admin is a lightweight internal tool. Relationship selection uses
+the server-backed `RelationPicker` / `/admin/api/search` (debounced, ≤20
+results), never giant selects. List filtering happens server-side. Admin
+should stay usable at about 390px.
 
-- Start from the current committed state. Don't reread the whole
-  repository for a targeted task.
-- Don't inspect git history unless the task specifically needs
-  historical context.
-- Don't repeat a previous functionality/architecture audit — those
-  findings already carried forward in this file are the audit.
-- Inspect only: the target route/component, its direct dependencies,
-  and the relevant schema/query code. Prefer targeted `Grep`/`Glob` and
-  specific file reads over broad exploration.
-- Before a large feature pass, briefly name the smallest set of
-  files/systems actually required, then stick to that set.
-- Don't refactor unrelated code, or "improve" a working system, just
-  because you noticed it while doing something else.
+## 10. Definition of done
 
-## 10. UI change rule
+1. Functionality implemented, reusing existing infrastructure.
+2. Required migrations applied through MCP, verified additive, and a repo
+   file added.
+3. Production data preserved.
+4. `npm run build` and `npm run lint` pass. Run `npm test` and name
+   pre-existing failures separately (see `docs/BACKLOG.md`).
+5. Responsive QA at 360/390/412px where UI changed.
+6. Canonical `/docs` updated if product/architecture truth changed.
+7. Committed with a clear, scoped message and pushed to the existing
+   working branch (never a new branch unless asked).
+8. The final report states plainly what still needs live verification.
 
-- Before changing any styling, look at the existing relevant design
-  tokens/classes first (`tailwind.config.ts`, `globals.css`, the
-  component's current className) and reuse the established Aqua,
-  typography, spacing, button, card, and navigation patterns.
-- Never invent a new font, color, or design direction without explicit
-  user instruction — see Section 2, which is the result of two prior
-  rejected attempts.
-- If the user supplies a reference screenshot, it's the visual
-  authority for whatever it's illustrating — match it, don't
-  paraphrase it into a generic interpretation.
+## 11. Final report format
 
-## 11. Definition of done
+Concise: starting/final commit, files changed, schema changes, what was
+implemented, build/lint/test results, push result, new env vars, manual
+config, and a short live-verification checklist. No repo-wide audits
+unless asked.
 
-A normal feature pass isn't complete until:
+## 12. Priorities
 
-1. The requested functionality is implemented.
-2. Any required database migrations are applied (via Supabase MCP) and
-   verified additive/non-destructive.
-3. Existing production data is preserved.
-4. `npm run build` passes.
-5. `npm run lint` passes.
-6. Relevant responsive QA is done where UI changed (typically 360/390/
-   412px; static/mocked content can be checked directly against the
-   local build even when Supabase-backed pages can't be — see Section 4).
-7. Changes are committed with a clear, scoped message.
-8. Changes are pushed to the existing working branch (never a new one
-   unless asked).
-9. The final response states plainly what — if anything — the user
-   still needs to verify live, rather than claiming full live
-   verification the sandbox can't actually perform.
+Findmi is approaching launch. Favor work that explains Findmi, populates
+it with real content, converts paying Businesses (Pro / Managed Pro), or
+runs the marketplace reliably. Don't scope-creep into Stripe Connect,
+automated payouts, native apps or a visual redesign unless asked.
 
-## 12. Final report format
+## 13. Documentation map (`/docs`)
 
-Keep it concise. Normally include: starting commit, final commit, files
-changed, schema/migration changes (if any), what was implemented,
-build/lint results, push result, any new environment variables, any
-manual configuration required, and a short live-verification checklist.
-Don't produce another repository-wide audit unless asked.
-
-## 13. Feature boundaries
-
-Don't automatically start the next logical feature after finishing the
-requested pass — implement, QA, commit, push, report, then **stop** and
-wait for the user. Don't scope-creep into vendor dashboards, Stripe
-Connect, analytics, messaging, reviews, advanced marketplace systems, or
-a visual redesign unless specifically requested.
-
-## 14. Current workflow priority
-
-FindMi is approaching market-launch readiness. Prioritize work that
-helps explain FindMi, populate it with real content, convert Founding
-Members ($99/yr), or operate the marketplace reliably — over speculative
-feature expansion. A feature that doesn't materially help launch, sell,
-operate, or validate FindMi should generally wait for explicit direction.
-
-## Reference: environment variables
-
-See `.env.example` for the authoritative list. As of this writing:
-Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`), admin (`ADMIN_PASSWORD`), Stripe Founding
-Membership Payment Link (`NEXT_PUBLIC_STRIPE_FOUNDING_LINK`, separate
-from marketplace checkout), Stripe marketplace checkout
-(`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`), Tally forms
-(`NEXT_PUBLIC_TALLY_ONBOARDING_URL`, `NEXT_PUBLIC_TALLY_INQUIRY_URL`),
-and `NEXT_PUBLIC_SITE_URL`.
+| File | Contents |
+| --- | --- |
+| `PRODUCT.md` | Thesis, users, entities, **terminology dictionary**, monetization |
+| `ARCHITECTURE.md` | Stack, app surfaces, auth boundaries, host routing, shared infrastructure |
+| `DATA-MODEL.md` | Entity ontology mapped to real tables |
+| `DESIGN-SYSTEM.md` | Visual/interaction conventions and rejected patterns |
+| `ROUTES-AND-IA.md` | Route tree and information architecture |
+| `BUSINESS-MANAGER.md` | Owner manager: shell, nav, destinations, infrastructure |
+| `CONSUMER-EXPERIENCE.md` | Home, discovery, Moments, Library, profiles |
+| `ANALYTICS.md` | Event taxonomy, Performance, QR measurement |
+| `INTEGRATIONS.md` | Supabase, Vercel, Stripe, Tally, Anthropic, Resend, geocoding, importers |
+| `DEPLOYMENT.md` | Reconciliation, verification, migrations, production procedure |
+| `DECISIONS.md` | Durable decisions + rationale (not a changelog) |
+| `BACKLOG.md` | Unresolved work only |
+| `RECONCILIATION-2026-10-29.md` | Audit record behind these docs (point-in-time) |
+| `BUSINESS_DEVELOPMENT_HANDOFF.md` | BD CRM handoff (pre-existing) |
 
 ## Reference: commands
 
-- `npm run dev` — local dev server
-- `npm run build` — production build (also runs type checking)
-- `npm run lint` — ESLint
-- `npm run start` — run a production build locally
+`npm run dev` · `npm run build` (includes type-check) · `npm run lint` ·
+`npm test` · `npm run start`. The full env var list is in `.env.example`
+(the authoritative source).
