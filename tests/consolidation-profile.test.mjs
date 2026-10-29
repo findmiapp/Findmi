@@ -101,22 +101,22 @@ test("Event page: the Location name links to the Location (listed only), View Lo
   assert.match(f, /View Location/);
 });
 
-test("Business Home Quick Access: compact shortcuts — ~2.9 cards per phone row, one row of six from md, short labels with full accessible names", () => {
+test("Business Home Create & Manage: compact landscape cards — ~2.3 per phone row, a grid from md, short labels with full accessible names", () => {
   const cards = read(`${B}/[id]/v2/ManagementCards.tsx`);
   // Header.
-  assert.match(cards, /<h2 id="quick-access-title" className="font-display text-card-title font-bold text-primary">\s*Quick Access\s*<\/h2>/);
-  assert.match(cards, /Create and manage what matters\./);
-  // Phone: one swipe row, 34% cards (~2.9 visible at 360–412px), snap, shell gutter.
-  assert.match(cards, /<ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-6 /);
-  assert.match(cards, /<li key=\{c\.key\} className="w-\[34%\] min-w-0 shrink-0 snap-start md:w-auto">/);
-  // Compact card: small icon tile, no description until xl, 32px actions.
-  assert.match(cards, /h-8 w-8 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700 xl:h-10 xl:w-10/);
-  assert.match(cards, /hidden w-full truncate text-microcopy text-muted xl:block">\{c\.description\}/);
+  assert.match(cards, /<h2 id="create-manage-title" className="font-display text-section-title font-bold text-primary">\s*Create &amp; Manage\s*<\/h2>/);
+  assert.doesNotMatch(cards, /Quick Access/);
+  // Phone: one swipe rail, 44% cards (~2.3 visible at 390px), snap, shell gutter.
+  assert.match(cards, /<ul className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-3 /);
+  assert.match(cards, /<li key=\{c\.key\} data-create-manage-card className="w-\[44%\] min-w-0 shrink-0 snap-start sm:w-\[30%\] md:w-auto">/);
+  // Landscape card: icon + title row, short description, both actions on one row.
+  assert.match(cards, /<p className="mt-1 line-clamp-2 text-\[11px\] leading-snug text-muted">\{c\.description\}<\/p>/);
+  assert.match(cards, /<div className="mt-auto flex gap-1\.5 pt-2">/);
   // Two distinct actions; short visible labels, full accessible names.
   assert.match(cards, /href=\{c\.addHref\}\n\s+aria-label=\{c\.addLabel\}/);
   assert.match(cards, /href=\{c\.viewHref\}\n\s+aria-label=\{c\.viewLabel\}/);
-  assert.match(cards, /<span className="truncate xl:hidden">Add<\/span>/);
-  assert.match(cards, /<span className="truncate xl:hidden">View All<\/span>/);
+  assert.match(cards, /<span className="truncate">Add<\/span>/);
+  assert.match(cards, /<span className="truncate">View All<\/span>/);
   assert.doesNotMatch(cards, /setInterval|autoplay|aria-label="Go to slide/i, "no auto-rotate, no dots");
   const items = read(`${B}/[id]/v2/managementCardItems.ts`);
   const order = ["events", "locations", "products", "qr", "moments", "targets"].map((k) => items.indexOf(`key: "${k}"`));

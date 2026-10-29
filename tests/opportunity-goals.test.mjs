@@ -272,7 +272,8 @@ test("Growth: hub with Goals / Opportunities / Ideas destinations; Home no longe
   assert.match(growth, /<GrowthNav /);
   assert.equal(/No recommendations yet/.test(growth), false);
   assert.equal(/HomeOpportunities|Opportunities For You/.test(HOME), false, "Home's own Opportunities section is retired — Growth owns matches");
-  assert.ok(HOME.indexOf("<NeedsAttentionBar") < HOME.indexOf('aria-labelledby="coming-up"'));
+  // Needs Attention now lives inside Inbox / Follow-Ups, after Coming Up (approved Overview hierarchy).
+  assert.ok(HOME.indexOf('aria-labelledby="coming-up"') < HOME.indexOf("<NeedsAttentionBar"));
   assert.equal(/Nothing happening yet/.test(DASHBOARD), false);
 });
 

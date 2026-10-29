@@ -45,26 +45,24 @@ const at = (marker) => {
   return i;
 };
 
-test("Home hierarchy: Status → Management cards → section rail → Needs Attention → Requests → Follow-Ups → Happening Now → Coming Up → Opportunities → Performance → Moments → Public Profile", () => {
+test("Home hierarchy: Status → section rail → Create & Manage → Happening Now → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance → Public Profile", () => {
   const order = [
     'aria-label="Business status"',
-    "<ManagementCards businessId={businessId} />",
     "<HomeSectionNav items={navItems} />",
-    "<NeedsAttentionBar items={needsAttention} />",
-    "<RequestsSection basePath={basePath} items={requests} expanded={requestsExpanded} />",
-    "<FollowUpsSection basePath={basePath} items={followUps} expanded={followUpsExpanded} />",
+    "<ManagementCards businessId={businessId} />",
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
+    'aria-labelledby="home-inbox-title"',
+    "<NeedsAttentionBar items={needsAttention} />",
+    "<HomeInboxRows",
     "<GrowthPanel",
     'aria-labelledby="performance-snapshot"',
-    "<MomentsStrip",
     'aria-labelledby="findmi-link"',
   ].map(at);
   for (let i = 1; i < order.length; i++) assert.ok(order[i - 1] < order[i], `marker #${i} out of order (${order.join(", ")})`);
   assert.doesNotMatch(HOME, /<Greeting \/>|aria-labelledby="quick-create"|const quick = |QuickActionsRail/, "management cards replace the Quick Create section and the Quick Actions rail");
-  // conditional sections disappear, never render empty
-  // The old large Brand Audit card, Ideas rail and Opportunities section are gone from Home.
-  assert.doesNotMatch(HOME, /BrandAuditEntry|Findmi Brand Audit|IdeasForYourBrand|HomeOpportunities|Create on Findmi/);
+  // The old large Brand Audit card, Ideas rail, Opportunities section and Recent Moments strip are gone from Home.
+  assert.doesNotMatch(HOME, /BrandAuditEntry|Findmi Brand Audit|IdeasForYourBrand|HomeOpportunities|Create on Findmi|<MomentsStrip|RequestsSection|FollowUpsSection/);
   assert.match(HOME, /\{liveNow\.length > 0 && \(\s*<section aria-labelledby="happening-now">/);
 });
 
@@ -86,39 +84,18 @@ test("sticky section rail: in-page anchors only, no Attention entry (it is a sta
   const items = HOME.slice(HOME.indexOf("const navItems"), HOME.indexOf("];", HOME.indexOf("const navItems")));
   assert.match(items, /\{ id: "overview", label: "Overview" \}/);
   assert.doesNotMatch(items, /Attention/, "the top-level Attention anchor is retired");
-  // Consolidation pass: Overview · Our Schedule · Opportunities · Performance.
+  // Overview · Our Schedule · Opportunities · Performance (unchanged labels).
   assert.match(items, /\{ id: "home-schedule", label: "Our Schedule" \}/);
   assert.doesNotMatch(items, /label: "Schedule"/, "never plain 'Schedule'");
   assert.doesNotMatch(items, /home-create|"Create"/, "creation lives on the management cards, not a Home section");
   assert.match(items, /\{ id: "home-growth", label: "Opportunities" \}/);
-  assert.match(items, /metrics \? \[\{ id: "home-performance", label: "Performance" \}\] : \[\]/);
+  assert.match(items, /\{ id: "home-performance", label: "Performance" \}/);
   assert.doesNotMatch(items, /Products|Findmi Here|More|Growth/, "never duplicates the bottom navigation");
   // every anchor target exists on Home, each with the sticky-chrome scroll margin
-  for (const id of ["home-schedule", "home-performance"]) assert.match(HOME, new RegExp(`id="${id}"[^>]*\\{?SECTION_CLASS|id="${id}" className=\\{\`[^\`]*\\$\\{SECTION_CLASS\\}`), id);
+  for (const id of ["home-schedule", "home-performance", "home-inbox"]) assert.match(HOME, new RegExp(`id="${id}"[^>]*\\{?SECTION_CLASS|id="${id}" className=\\{\`[^\`]*\\$\\{SECTION_CLASS\\}`), id);
   assert.match(HOME, /const SECTION_CLASS = "scroll-mt-\[104px\]";/);
   // sticky directly under the 48px owner header, ~44px tall, rail-internal horizontal scroll
   assert.match(NAV, /className="sticky top-12 z-30 /);
-  assert.match(NAV, /export const HOME_SECTION_STICKY_TOP = 48;/);
-  assert.match(NAV, /flex h-11 snap-x snap-mandatory scroll-px-3 items-center gap-1 overflow-x-auto px-3/);
-  assert.match(NAV, /flex h-8 shrink-0 snap-start items-center/);
-  assert.match(NAV, /<span ref=\{spacerRef\} aria-hidden="true" className="h-px shrink-0" \/>/, "end stop is a chip boundary");
-  assert.match(NAV, /spacer\.style\.width = `\$\{Math\.max\(0, stop \+ rail\.clientWidth - lastEnd - padRight - gap\)\}px`;/);
-  assert.match(NAV, /target = snapPoints\.find\(\(p\) => chipEnd \+ padRight <= p \+ rail\.clientWidth\) \?\? max;/, "auto-scroll rests on a chip boundary");
-  assert.match(read("src/components/OwnerHeader.tsx"), /<div className="h-\[3px\] bg-findmi" \/>\s*<div className="flex h-11 /, "header = 3px strip + 44px bar + 1px border");
-  // anchors: preventDefault + smooth scroll; Overview → top; reduced motion respected
-  assert.match(NAV, /href=\{`#\$\{item\.id\}`\}/);
-  assert.match(NAV, /e\.preventDefault\(\);/);
-  assert.match(NAV, /window\.scrollTo\(\{ top: 0,/);
-  assert.match(NAV, /scrollIntoView\(\{ behavior: smooth \? "smooth" : "auto", block: "start" \}\)/);
-  assert.match(NAV, /prefers-reduced-motion: reduce/);
-  assert.doesNotMatch(NAV, /next\/link|router\.push|useRouter/, "never route-changing");
-  // active state follows scrolling (rAF-throttled, cleaned up)
-  assert.match(NAV, /window\.addEventListener\("scroll", onScroll, \{ passive: true \}\);/);
-  assert.match(NAV, /window\.removeEventListener\("scroll", onScroll\);/);
-  assert.match(NAV, /aria-current=\{isActive \? "location" : undefined\}/);
-  // a tapped section stays active until its smooth scroll settles (short pages)
-  assert.match(NAV, /lockRef\.current = \{ id, timer: window\.setTimeout\(\(\) => \(lockRef\.current = null\), 600\) \};/);
-  assert.match(NAV, /if \(lock\) \{[\s\S]*?return;\s*\}/);
 });
 
 test("Create sheet: five actions in the intentional order (ONE Event entry), each with icon + title + one explanatory line", () => {
@@ -160,11 +137,13 @@ test("Management cards: Events · Locations · Products · QR Codes · Moments �
   assert.match(ITEMS, /MANAGEMENT_CARD_ORDER: ManagementCardKey\[\] = \["events", "locations", "products", "qr", "moments", "targets"\]/);
   assert.match(ITEMS, /businessCreateActions\(/, "built on the shared create definitions");
   assert.doesNotMatch(ITEMS, /choose.*business|which business/i);
-  assert.match(CARDS, /<nav aria-label="Manage Your Business" className="mt-2">/);
-  assert.match(CARDS, /snap-x snap-mandatory[^"]*md:grid md:snap-none md:grid-cols-6/, "one compact swipe row on phones, one row of six from md up");
+  assert.match(CARDS, /<h2 id="create-manage-title"[^>]*>\s*Create &amp; Manage\s*<\/h2>/);
+  assert.match(CARDS, /<nav aria-label="Create And Manage" className="mt-2">/);
+  assert.match(CARDS, /snap-x snap-mandatory[^"]*md:grid md:snap-none md:grid-cols-3[^"]*xl:grid-cols-6/, "one compact swipe rail on phones, a grid from md up");
   assert.match(CARDS, /rounded-2xl border border-black\/\[0\.08\] bg-white/, "rounded card, subtle light-gray border");
-  assert.match(CARDS, /bg-findmi-50 px-1\.5 text-\[12px\] font-bold text-findmi-700/, "+ Add: pale Aqua pill");
-  assert.match(CARDS, /bg-black\/\[0\.03\] px-1\.5 text-\[12px\] font-semibold text-secondary/, "View All: neutral pill");
+  assert.match(CARDS, /bg-findmi-50 px-1 text-\[12px\] font-bold text-findmi-700/, "+ Add: pale Aqua pill");
+  assert.match(CARDS, /bg-black\/\[0\.03\] px-1 text-\[12px\] font-semibold text-secondary/, "View All: neutral pill");
+  assert.match(CARDS, /<div className="mt-auto flex gap-1\.5 pt-2">/, "+ Add and View All share one row");
 });
 
 test("route integrity: every creation destination is an existing Business-scoped flow that reads its params", () => {
@@ -277,14 +256,15 @@ test("every attention item has a title (what), a message (why) and an action", (
   assert.match(ATTENTION_BAR, /\{item\.actionLabel\}/);
 });
 
-test("Schedule: Happening Now (only when live) then Coming Up; a compact empty state that never repeats Quick Create", () => {
+test("Schedule: Happening Now (only when live) then a Coming Up rail; a compact empty state that routes to Add Event", () => {
   assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\}/);
   assert.match(PAGE, /liveActivities=\{homeActivities\.live\}/);
   assert.match(PAGE, /const homeActivities = buildHomeComingUp\(\s*dashboardAppearances,\s*hostedUpcoming\.map\(/);
-  const sched = HOME.slice(at('id="home-schedule"'), at("<MomentsStrip"));
-  assert.ok(sched.indexOf("<LiveCard") < sched.indexOf("<UpcomingRow"));
-  assert.match(sched, /<p className="mt-2 text-body text-muted">\{liveNow\.length > 0 \? "Nothing else scheduled yet\." : "Nothing scheduled yet\."\}<\/p>/);
-  assert.doesNotMatch(sched, /create\.where|create\.event|CreateActionIcon/, "Where I'll Be / Host An Event live in Quick Create only");
+  const sched = HOME.slice(at('id="home-schedule"'), at('id="home-inbox"'));
+  assert.ok(sched.indexOf("<LiveCard") < sched.indexOf("<UpcomingCard"));
+  assert.match(sched, /\{liveNow\.length > 0 \? "Nothing else scheduled yet" : "Nothing scheduled yet"\}/);
+  assert.match(sched, /href=\{managerHref\(businessId, "add-event"\)\}/, "the empty state routes to the one Add Event chooser (Hosting / Appearing At)");
+  assert.doesNotMatch(sched, /CreateActionIcon/);
 });
 
 test("Growth (Home mini-dashboard + Growth tab): existing data only, never Pro-gated, no fabricated metrics", () => {
@@ -292,8 +272,8 @@ test("Growth (Home mini-dashboard + Growth tab): existing data only, never Pro-g
   assert.doesNotMatch(GROWTH_VIEW, /\bpro\b/);
   const panel = read("src/app/(public)/account/business/[id]/v2/GrowthPanel.tsx");
   assert.doesNotMatch(panel, /\bpro\b/);
-  assert.match(panel, /GROWTH_DESTINATIONS/, "Home exposes all three destinations from the shared definition");
-  assert.match(panel, /growthDestinationStatus\(/, "real counts only");
+  assert.match(panel, /growthDestinationStatus\(summary, key\)/, "real counts only");
+  assert.match(panel, /href=\{growthHref\(basePath, key\)\}/, "each tile opens its existing Growth destination");
   assert.match(GROWTH_VIEW, /<GoalsSection /);
   assert.match(GROWTH_VIEW, /eligibleGrowthIdeas\(ideas, summary\.hasSignal\)/);
   assert.match(PAGE, /<GrowthGoalsView\s/);
@@ -302,12 +282,16 @@ test("Growth (Home mini-dashboard + Growth tab): existing data only, never Pro-g
 
 test("Performance: existing metrics + Free/Pro gating; all-zero explains itself instead of four zeros", () => {
   const perf = HOME.slice(at('aria-labelledby="performance-snapshot"'), at('aria-labelledby="findmi-link"'));
-  for (const l of ["Views", "Scans"]) assert.match(perf, new RegExp(`<MetricTile label="${l}"`));
-  assert.match(perf, /<MetricTile label=\{metrics\.actionsTaken\.value === 1 \? "Action" : "Actions"\} metric=\{metrics\.actionsTaken\}/, "1 Action, 0/N Actions");
-  assert.match(perf, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
-  assert.match(perf, /metrics\.profileViews\.value \+ metrics\.actionsTaken\.value \+ metrics\.qrScans\.value \+ metrics\.followers === 0 \? \(/);
-  assert.match(perf, /No activity yet\./);
-  assert.match(HOME, /const change = pro \? metric\.changeLabel : null;/);
+  assert.match(perf, /linkLabel=\{pro \? "View All" : "Unlock Full Analytics"\}/);
+  assert.match(perf, /<Suspense fallback=\{<HomePerformanceSkeleton \/>\}>/);
+  const TILES = read(`${B}/v2/HomePerformance.tsx`);
+  assert.match(TILES, /\{ key: "impressions", label: "Impressions", metric: headline\.impressions \}/);
+  assert.match(TILES, /\{ key: "views", label: "Profile Views", metric: headline\.profileViews \}/);
+  assert.match(TILES, /label: headline\.actionsTaken\.value === 1 \? "Action" : "Actions"/, "1 Action, 0/N Actions");
+  assert.match(TILES, /\{ key: "followers", label: "Followers", metric: \{ value: followers, changeLabel: null \} \}/);
+  assert.match(TILES, /metrics\.every\(\(m\) => m\.metric\.value === 0\) \? \(/);
+  assert.match(TILES, /No activity yet\./);
+  assert.match(TILES, /const change = pro \? metric\.changeLabel : null;/, "period change stays Pro");
 });
 
 test("Public Profile link is a compact utility row, not a major section; claim/copy/change preserved", () => {
@@ -325,4 +309,6 @@ test("BusinessHome stays a pure presentation component; /account Home is not tur
   assert.doesNotMatch(HOME, /\bawait\b|\bfetch\(|\bsupabase\b|createClient/i);
   assert.doesNotMatch(HOME, /isBusinessPro|plan_tier|plan_expires_at/);
   assert.doesNotMatch(ACCOUNT_HOME, /orderedCreateActions|BusinessHome|HomeSectionNav/);
+  // The two streamed modules read through the cached, already-authorized manager context.
+  for (const f of ["HomeInbox.tsx", "HomePerformance.tsx"]) assert.match(read(`${B}/v2/${f}`), /await getManagerCore\(businessId\)/, f);
 });

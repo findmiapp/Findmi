@@ -129,7 +129,9 @@ test("38. Follow-Up deep link → the relationship workspace", () => {
   });
   assert.equal(place.href, R.relationshipHref(B_MOCKTAIL, { kind: "location", locationId: L_SOHO }));
   assert.equal(biz.href, R.relationshipHref(B_MOCKTAIL, { kind: "business", targetId: T_BABYLIST_BIZ }));
-  assert.match(read(`${V2}/BusinessHome.tsx`), /Open Relationship/);
+  // Home's Inbox / Follow-Ups row opens that exact workspace.
+  assert.match(read("src/lib/home-inbox.ts"), /href: f\.href,/);
+  assert.match(read(`${V2}/HomeInbox.tsx`), /<Link\s+href=\{item\.href\}/);
 });
 
 test("39. Request deep links: Inquiry → Inquiry, Opportunity → Opportunity — never a generic Open", () => {
@@ -387,9 +389,9 @@ test("50. Find Us Here regression: Presence still offers the factual add path fo
   assert.match(read(`${V2}/RelationshipWorkspace.tsx`), /When you&rsquo;re available here, add this place to your public footprint\./);
 });
 
-test("51/52. Home Requests and Follow-Ups keep their sections and ordering", () => {
-  const home = read(`${V2}/BusinessHome.tsx`);
-  assert.match(home, /\{item\.actionLabel\}/);
+test("51/52. Home Requests and Follow-Ups keep their ordering inside Home's one Inbox / Follow-Ups list", () => {
+  assert.match(read("src/lib/home-inbox.ts"), /\.\.\.requests\.map\(requestItem\)/);
+  assert.match(read("src/lib/business-requests.ts"), /actionLabel: "Review Inquiry"/);
   assert.match(read("src/lib/business-follow-ups.ts"), /items\.sort\(\(a, b\) => a\.rank - b\.rank/);
 });
 

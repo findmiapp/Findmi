@@ -113,7 +113,7 @@ test("Growth mini-dashboard: Goals · Opportunities · Ideas as direct links wit
   assert.equal(G.growthHref("/b", "opportunities"), "/b?tab=opportunities");
   assert.equal(G.growthHref("/b", "ideas"), "/b?tab=growth&view=ideas");
   const panel = read(`${B}/v2/GrowthPanel.tsx`);
-  assert.match(panel, /GROWTH_DESTINATIONS\.map/);
+  assert.match(panel, /HOME_GROWTH_TILES\.map/);
   assert.doesNotMatch(panel, /Math\.random|mock|demo/i);
   assert.doesNotMatch(read("src/lib/growth.ts"), /Residential Sampling|Workplace Activation/, "no hard-coded universal ideas");
 });
@@ -180,8 +180,9 @@ test("Moments tab: media-first grid over the existing Moments tables, posted as 
   const view = read(`${B}/v2/MomentsView.tsx`);
   assert.match(view, /Add A Moment/);
   assert.match(view, /aspect-\[4\/5\]/);
-  assert.match(read(`${B}/v2/BusinessHome.tsx`), /<MomentsStrip/);
-  assert.match(view, /if \(moments\.length === 0\) return null;/, "Home strip omitted when empty");
+  // Home no longer carries a Recent Moments strip: Moments has its own bottom-nav
+  // destination and a Create & Manage card.
+  assert.doesNotMatch(read(`${B}/v2/BusinessHome.tsx`), /<MomentsStrip/);
 });
 
 // ── Performance / QR ──────────────────────────────────────────────────────

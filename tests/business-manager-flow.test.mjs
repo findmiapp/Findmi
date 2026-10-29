@@ -98,7 +98,8 @@ test("4. 'Public Actions' lands on the Public Actions section of Public Profile"
 });
 
 test("5. Set Your Goals opens the Goals editor step, which the page reads", () => {
-  assert.match(read(`${B}/v2/GrowthPanel.tsx`), /brand-audit\?step=goals/);
+  // Home's Goals tile opens Growth → Goals, whose own setup links carry ?step=goals.
+  assert.match(read(`${B}/v2/GrowthPanel.tsx`), /href=\{growthHref\(basePath, key\)\}/);
   assert.match(read(`${B}/v2/GrowthView.tsx`), /\?step=goals/);
   assert.match(read(`${B}/brand-audit/page.tsx`), /STEPS\.includes\(stepParam as AuditStep\)/);
 });
@@ -260,11 +261,12 @@ test("28. destinations are the existing / canonical flows (Event chooser, search
   assert.equal(by("locations").viewHref, L.managerHref(BIZ, "our-locations"));
 });
 
-test("29. cards: rounded, light-gray border, Aqua icon tile; one swipeable snap row on phones (founder direction), grid from sm up", () => {
+test("29. cards: rounded, light-gray border, Aqua icon tile; one swipeable snap row on phones (founder direction), grid from md up", () => {
   const CARDS = read(`${B}/v2/ManagementCards.tsx`);
-  assert.match(CARDS, /<nav aria-label="Manage Your Business" className="mt-2">/);
-  assert.match(CARDS, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-6/);
-  assert.match(CARDS, /h-8 w-8 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700/);
+  assert.match(CARDS, /<nav aria-label="Create And Manage" className="mt-2">/);
+  assert.match(CARDS, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-3/);
+  assert.match(CARDS, /rounded-2xl border border-black\/\[0\.08\] bg-white/);
+  assert.match(CARDS, /items-center justify-center rounded-lg bg-findmi-50 text-findmi-700/);
 });
 
 test("30. the old Quick Create section and Quick Actions rail are gone; the cards sit directly under identity", () => {
@@ -273,15 +275,16 @@ test("30. the old Quick Create section and Quick Actions rail are gone; the card
   assert.ok(HOME.indexOf("<ManagementCards") < HOME.indexOf("<NeedsAttentionBar"));
 });
 
-test("31. Home order: identity → Management cards → Needs Attention → Requests → Follow-Ups → Coming Up → Opportunities → Performance → utility", () => {
-  const order = ['aria-label="Business status"', "<ManagementCards", "<NeedsAttentionBar", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
+test("31. Home order: identity → section nav → Create & Manage → Coming Up → Inbox / Follow-Ups → Growth Manager → Performance → utility", () => {
+  const order = ['aria-label="Business status"', "<HomeSectionNav", "<ManagementCards", 'aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
 
-test("32. Needs Attention, Requests and Follow-Ups render nothing at zero", () => {
+test("32. Needs Attention renders nothing at zero; with no Requests, Follow-Ups or threads the Inbox module shows one clean empty state", () => {
   assert.match(read(`${B}/v2/NeedsAttentionBar.tsx`), /if \(items\.length === 0\) return null;/);
-  assert.match(HOME, /if \(!items\.length\) return null;|items\.length === 0\) return null/);
+  assert.match(HOME, /\{needsAttention\.length > 0 && \(/);
+  assert.match(read(`${B}/v2/HomeInbox.tsx`), /items\.length === 0 \?[\s\S]*Nothing needs your attention/);
 });
 
 // ── 6. Coming Up grouping ──────────────────────────────────────────────────
@@ -307,9 +310,9 @@ test("35. groupComingUp keeps order and omits empty buckets", () => {
   assert.deepEqual(g[1].items.map((x) => x.k), [2, 3]);
 });
 
-test("36. Coming Up renders the groups from existing data only", () => {
-  assert.match(HOME, /const comingUpGroups = groupComingUp\(comingUp\);/);
-  assert.match(HOME, /<h3 className="text-label font-bold uppercase text-subtle">\{g\.label\}<\/h3>/);
+test("36. Coming Up renders a chronological rail from existing data only", () => {
+  assert.match(HOME, /\{comingUp\.map\(\(item\) => \(/);
+  assert.match(HOME, /<UpcomingCard activity=\{item\} \/>/);
   assert.doesNotMatch(read("src/lib/home-schedule.ts"), /from\(|supabase/i);
 });
 

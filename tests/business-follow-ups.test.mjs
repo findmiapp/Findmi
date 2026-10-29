@@ -28,7 +28,8 @@ const read = (p) => readFileSync(p, "utf8");
 const HOME = read("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx");
 const PAGE = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
 const LIB = read("src/lib/business-follow-ups.ts");
-const SECTION = HOME.slice(HOME.indexOf("function FollowUpsSection"), HOME.indexOf("/** Short chip labels"));
+const INBOX_VIEW = read("src/app/(public)/account/business/[id]/v2/HomeInbox.tsx");
+const INBOX_LIB = read("src/lib/home-inbox.ts");
 
 const BASE = "/account/business/biz";
 const TODAY = "2026-10-22";
@@ -49,7 +50,8 @@ test("Mocktail-style: the Babylist Soho follow-up appears, opening the relations
       href: `${BASE}?tab=growth&view=targets&loc=babylist`,
     },
   ]);
-  assert.match(SECTION, /Open Relationship/);
+  // Home's Inbox / Follow-Ups row opens exactly that href (lib/home-inbox.ts).
+  assert.match(INBOX_LIB, /href: f\.href,/);
 });
 
 test("Passed is excluded, and a Target with no step and no date is not a follow-up", () => {
@@ -116,26 +118,27 @@ test("commercial Opportunities never enter Follow-Ups (nor Appearances, Find Us 
 
 // ── Home rendering ──────────────────────────────────────────────────────────
 
-test("1–3 follow-ups render as stacked cards; more than 3 shows the first 3 + See All (URL state, no new destination)", () => {
+test("follow-ups render as rows of Home's one ranked Inbox / Follow-Ups list; the first few, then Show More (URL state, no new destination)", () => {
   assert.equal(F.FOLLOW_UPS_INITIAL_LIMIT, 3);
-  assert.match(SECTION, /const shown = expanded \? items : items\.slice\(0, FOLLOW_UPS_INITIAL_LIMIT\);/);
-  assert.match(SECTION, /<ul className="mt-2\.5 flex flex-col gap-2">/, "stacked, never a carousel");
-  assert.doesNotMatch(SECTION, /overflow-x|snap-|carousel/);
-  assert.match(SECTION, /href=\{expanded \? `\$\{basePath\}#home-follow-ups` : `\$\{basePath\}\?followups=all#home-follow-ups`\}/);
-  assert.match(SECTION, /linkLabel=\{expanded \? "Show Less" : `See All \$\{items\.length\}`\}/);
-  assert.match(PAGE, /followUpsExpanded=\{rawSearchParams\.followups === "all"\}/);
+  assert.match(INBOX_VIEW, /const shown = expanded \? items : items\.slice\(0, HOME_INBOX_LIMIT\);/);
+  assert.match(INBOX_VIEW, /<ul className="divide-y[^"]*">/, "stacked rows, never a carousel");
+  assert.doesNotMatch(INBOX_VIEW, /overflow-x|snap-|carousel/);
+  assert.match(INBOX_VIEW, /href=\{expanded \? `\$\{basePath\}#home-inbox` : `\$\{basePath\}\?inbox=all#home-inbox`\}/);
+  // The older ?followups=all link still expands the same list.
+  assert.match(PAGE, /inboxExpanded=\{\[rawSearchParams\.inbox, rawSearchParams\.followups, rawSearchParams\.requests\]\.includes\("all"\)\}/);
 });
 
-test("zero follow-ups render nothing — no heading, no empty state; the generic Next and “All Caught Up” are gone", () => {
-  assert.match(SECTION, /^function FollowUpsSection[^\n]*\n\s*if \(items\.length === 0\) return null;/);
-  assert.match(SECTION, /title="Follow-Ups"/);
-  assert.doesNotMatch(HOME, /All Caught Up|Nothing needs your attention|title="Next"|>\s*Next\s*</);
+test("zero follow-ups: no section of their own; the Inbox / Follow-Ups module shows one clean empty state when nothing at all needs attention", () => {
+  assert.doesNotMatch(HOME, /function FollowUpsSection|title="Follow-Ups"/);
+  assert.match(INBOX_VIEW, /items\.length === 0 \?/);
+  assert.match(INBOX_VIEW, /Nothing needs your attention/);
+  assert.doesNotMatch(HOME, /All Caught Up|title="Next"|>\s*Next\s*</);
   assert.doesNotMatch(HOME + PAGE, /business-next|NextSection|nextExpanded/);
 });
 
-test("Home order around Follow-Ups: Requests → Follow-Ups → Schedule", () => {
+test("Home order around Follow-Ups: Coming Up → Inbox / Follow-Ups → Growth Manager → Performance", () => {
   const at = (m) => HOME.indexOf(m);
-  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', "<MomentsStrip", 'aria-labelledby="findmi-link"'].map(at);
+  const order = ['aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<NeedsAttentionBar items={needsAttention} />", "<HomeInboxRows", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map(at);
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -184,8 +187,8 @@ test("Growth Opportunity counts and Coming Up / Opportunities / Performance / ma
   const view = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx");
   assert.match(view, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length,/);
   assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
-  assert.match(HOME, /g\.items\.map\(\(item\) => \(/);
+  assert.match(HOME, /comingUp\.map\(\(item\) => \(/);
   assert.match(HOME, /<GrowthPanel basePath=\{basePath\} summary=\{growth\} \/>/);
-  assert.match(HOME, /linkLabel=\{pro \? "View Performance" : "Unlock Full Analytics"\}/);
+  assert.match(HOME, /linkLabel=\{pro \? "View All" : "Unlock Full Analytics"\}/);
   assert.match(HOME, /<ManagementCards businessId=\{businessId\} \/>/);
 });

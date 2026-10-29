@@ -29,7 +29,8 @@ const HOME = read("src/app/(public)/account/business/[id]/v2/BusinessHome.tsx");
 const PAGE = read("src/app/(public)/account/business/[id]/(manager)/page.tsx");
 const LIB = read("src/lib/business-requests.ts");
 const CODE = LIB.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-const SECTION = HOME.slice(HOME.indexOf("function RequestsSection"), HOME.indexOf("/** Short chip labels"));
+const INBOX_VIEW = read("src/app/(public)/account/business/[id]/v2/HomeInbox.tsx");
+const INBOX_LIB = read("src/lib/home-inbox.ts");
 
 const BASE = "/account/business/biz";
 // An Opportunity item as Home has it: its group is the canonical businessOpportunityGroup.
@@ -137,22 +138,18 @@ test("every source is this Business's own: another Business's state, or a privat
 
 // ── Home rendering ──────────────────────────────────────────────────────────
 
-test("zero Requests render nothing; 1–3 stack; more than 3 shows the first 3 + See All (URL state); never a carousel", () => {
-  assert.match(SECTION, /^function RequestsSection[^\n]*\n\s*if \(items\.length === 0\) return null;/);
-  assert.doesNotMatch(SECTION, /All Caught Up|Nothing needs|empty/i);
+test("Requests render as rows of Home's one ranked Inbox / Follow-Ups list — right after overdue Follow-Ups and unread threads; first few, then Show More (URL state); never a carousel", () => {
   assert.equal(Q.REQUESTS_INITIAL_LIMIT, 3);
-  assert.match(SECTION, /const shown = expanded \? items : items\.slice\(0, REQUESTS_INITIAL_LIMIT\);/);
-  assert.match(SECTION, /<ul className="mt-2\.5 flex flex-col gap-2">/);
-  assert.doesNotMatch(SECTION, /overflow-x|snap-|carousel/);
-  assert.match(SECTION, /href=\{expanded \? `\$\{basePath\}#home-requests` : `\$\{basePath\}\?requests=all#home-requests`\}/);
-  assert.match(SECTION, /linkLabel=\{expanded \? "Show Less" : `See All \$\{items\.length\}`\}/);
-  assert.match(SECTION, /title="Requests"/);
-  assert.doesNotMatch(SECTION, /"Inbox"/, "the account Inbox keeps its name");
-  assert.match(PAGE, /requestsExpanded=\{rawSearchParams\.requests === "all"\}/);
+  assert.doesNotMatch(HOME, /function RequestsSection|title="Requests"/);
+  assert.match(INBOX_LIB, /\.\.\.overdue\.map\(followUpItem\),\s*\.\.\.unread\.map\([^\n]*\),\s*\.\.\.requests\.map\(requestItem\),/);
+  assert.match(INBOX_VIEW, /const shown = expanded \? items : items\.slice\(0, HOME_INBOX_LIMIT\);/);
+  assert.doesNotMatch(INBOX_VIEW, /overflow-x|snap-|carousel/);
+  // the older ?requests=all link still expands the same list
+  assert.match(PAGE, /inboxExpanded=\{\[rawSearchParams\.inbox, rawSearchParams\.followups, rawSearchParams\.requests\]\.includes\("all"\)\}/);
 });
 
-test("Home order: Needs Attention → Requests → Follow-Ups → Happening Now → Coming Up → … ", () => {
-  const order = ["<NeedsAttentionBar items={needsAttention} />", "<RequestsSection", "<FollowUpsSection", 'aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', "<GrowthPanel", 'aria-labelledby="performance-snapshot"', "<MomentsStrip", 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
+test("Home order: Coming Up → Inbox / Follow-Ups (Needs Attention bar, then the ranked rows) → Growth Manager → Performance", () => {
+  const order = ['aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<NeedsAttentionBar items={needsAttention} />", "<HomeInboxRows", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -175,9 +172,8 @@ test("Growth counts, Coming Up and Follow-Ups are unchanged", () => {
   const view = read("src/app/(public)/account/business/[id]/v2/GrowthView.tsx");
   assert.match(view, /matchesAwaitingResponse: opportunityItems\.filter\(\(i\) => i\.view\.group === "for_you"\)\.length,/);
   assert.match(view, /matchesInProgress: opportunityItems\.filter\(\(i\) => i\.view\.group === "confirmed" \|\| i\.view\.group === "interested"\)\.length,/);
-  assert.match(HOME, /const comingUpGroups = groupComingUp\(comingUp\);/);
-  assert.match(HOME, /g\.items\.map\(\(item\) => \(/);
+  assert.match(HOME, /\{comingUp\.map\(\(item\) => \(/);
   assert.match(PAGE, /comingUp=\{homeActivities\.comingUp\}/);
   assert.match(PAGE, /buildFollowUps\(\{ basePath: `\/account\/business\/\$\{id\}`, targets: followUpTargets, today: followUpToday\(\) \}\)/);
-  assert.match(HOME, /<FollowUpsSection basePath=\{basePath\} items=\{followUps\} expanded=\{followUpsExpanded\} \/>/);
+  assert.match(HOME, /followUps=\{followUps\} requests=\{requests\}/);
 });

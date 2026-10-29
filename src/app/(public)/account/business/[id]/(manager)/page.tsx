@@ -367,7 +367,9 @@ type ManagerSearchParams = {
     dc?: string;
     dq?: string;
     dp?: string;
-    /** Home: "all" shows every Follow-Up / Request instead of the first three. */
+    /** Home: "all" shows every Inbox / Follow-Ups row instead of the first few
+     * (`followups` / `requests` are the older links to the same expansion). */
+    inbox?: string;
     followups?: string;
     requests?: string;
 };
@@ -1535,13 +1537,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       null as Awaited<ReturnType<typeof getGeographyDetail>> | null
     ),
     whenP(
-      activeTab === "moments" || onHome,
-      () => getBusinessMoments(id, activeTab === "moments" ? { viewerUserId: user?.id ?? null, withDisplay: true } : { limit: 6, viewerUserId: user?.id ?? null }),
+      activeTab === "moments",
+      () => getBusinessMoments(id, { viewerUserId: user?.id ?? null, withDisplay: true }),
       emptyMoments as Awaited<ReturnType<typeof getBusinessMoments>>
     ),
     whenP(activeTab === "opportunities" && opportunityView === "explore", () => getExploreItems(id, exploreFilters), null as Awaited<ReturnType<typeof getExploreItems>> | null),
     whenP(onPast, () => getPastAppearancesForBusiness(id, 30), [] as Awaited<ReturnType<typeof getPastAppearancesForBusiness>>),
-    whenP((onPerformance && pro) || onHome, () => getOwnerBusinessPerformance(admin, id, perfRange), null as Awaited<ReturnType<typeof getOwnerBusinessPerformance>> | null),
+    // Home reads its Performance pulse itself, streamed (v2/HomePerformance.tsx).
+    whenP(onPerformance && pro, () => getOwnerBusinessPerformance(admin, id, perfRange), null as Awaited<ReturnType<typeof getOwnerBusinessPerformance>> | null),
     // QR tab — every campaign this Business owns, grouped by lifecycle.
     whenP(activeTab === "qr" || onPerformance, () => getBusinessQrCampaigns(admin, id), [] as Awaited<ReturnType<typeof getBusinessQrCampaigns>>),
     // The schedule/hosted reads, and the Products list, load their own
@@ -1697,7 +1700,9 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
       imageUrl: h.coverImageUrl ?? business.cover_image_url ?? business.logo_url ?? null,
       href: `/account/event/${h.id}?business_id=${encodeURIComponent(id)}`,
     })),
-    countUpcomingDatesPerPreviewGroup(allScheduleRows, eventIdsWithOccurrenceProjections)
+    countUpcomingDatesPerPreviewGroup(allScheduleRows, eventIdsWithOccurrenceProjections),
+    // Home's Coming Up rail shows up to six upcoming items.
+    6
   );
   // "Materially affects discovery" — the same fields a visitor would
   // actually need to find/trust this business, not every optional field
@@ -1834,24 +1839,6 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
   scheduleLoadMoreParams.set("schedule_limit", String(scheduleLimitUsed + SCHEDULE_PAGE_SIZE));
   const scheduleLoadMoreHref = `${basePath}?${scheduleLoadMoreParams.toString()}`;
 
-  // /account V2 Home — the performance snapshot reads these already-
-  // computed values (no new analytics definition).
-  const overviewPulse = {
-    profileViews: {
-      value: performanceData?.headline.profileViews.value ?? 0,
-      changeLabel: performanceData?.headline.profileViews.changeLabel ?? null,
-    },
-    qrScans: {
-      value: performanceData?.qr?.totalScans ?? 0,
-      changeLabel: null,
-    },
-    actionsTaken: {
-      value: performanceData?.headline.actionsTaken.value ?? 0,
-      changeLabel: performanceData?.headline.actionsTaken.changeLabel ?? null,
-    },
-    followers: followerSummary.totalCount,
-  };
-
   return (
     // The persistent shell (identity, switcher, navigation) is the layout
     // above this page; this returns the content view only.
@@ -1963,25 +1950,14 @@ async function ManagerContent({ id, rawSearchParams }: { id: string; rawSearchPa
               liveActivities={homeActivities.live}
               comingUp={homeActivities.comingUp}
               needsAttention={needsAttention}
-              followUps={followUps}
-              followUpsExpanded={rawSearchParams.followups === "all"}
-              metrics={
-                performanceData
-                  ? {
-                      profileViews: overviewPulse.profileViews,
-                      actionsTaken: overviewPulse.actionsTaken,
-                      qrScans: overviewPulse.qrScans,
-                      followers: overviewPulse.followers,
-                    }
-                  : null
-              }
-              metricsRangeLabel={performanceData?.rangeLabel ?? null}
               requests={requests}
-              requestsExpanded={rawSearchParams.requests === "all"}
+              followUps={followUps}
+              inboxExpanded={[rawSearchParams.inbox, rawSearchParams.followups, rawSearchParams.requests].includes("all")}
+              performanceRange={perfRange}
+              followers={followerSummary.totalCount}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
               growth={growthSummary!}
-              recentMoments={businessMoments.moments}
             />
           </div>
         )}

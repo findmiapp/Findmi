@@ -47,8 +47,8 @@ test("Management cards never overflow the PAGE at phone width: the swipe row scr
   // -mx-4 matches the shell's px-4 exactly, so the row reaches the screen
   // edge and no further; overflow is contained in the row itself.
   assert.match(read(`${B}/v2/BusinessAppShell.tsx`), /max-w-6xl px-4 pb-28/);
-  assert.match(cards, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-6/);
-  assert.match(cards, /min-w-0 shrink-0 snap-start/);
+  assert.match(cards, /-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [^"]*md:grid md:snap-none md:grid-cols-3/);
+  assert.match(cards, /w-\[44%\] min-w-0 shrink-0 snap-start/);
 });
 
 test("Moment creation uses the canonical Moments photo icon — never the pencil", () => {
@@ -68,14 +68,14 @@ test("Moment creation uses the canonical Moments photo icon — never the pencil
   assert.match(read("src/app/(public)/journal/[id]/page.tsx"), /function EditPencilGlyph/);
 });
 
-test("Home Opportunities + Growth Manager: summary kept as FOUR thin controls deep-linking to the exact state", () => {
+test("Home Growth Manager: THREE compact tools (Goals · Opportunities · Ideas) deep-linking to the exact state", () => {
   const panel = code(read(`${B}/v2/GrowthPanel.tsx`));
-  assert.match(panel, /<nav aria-label=\{OPPORTUNITIES_MANAGER_TITLE\}>/);
-  assert.match(panel, /GROWTH_DESTINATIONS\.map/);
-  assert.match(panel, /href=\{growthHref\(basePath, d\)\}/);
-  assert.match(panel, /growthDestinationStatus\(summary, d\)/);
-  assert.match(panel, /className="flex h-11 /, "thin, not big cards");
-  assert.match(panel, /Open Opportunities/);
+  assert.match(panel, /<nav aria-label="Growth Manager">/);
+  assert.match(panel, /HOME_GROWTH_TILES\.map/);
+  assert.match(panel, /href=\{growthHref\(basePath, key\)\}/);
+  assert.match(panel, /growthDestinationStatus\(summary, key\)/);
+  assert.match(panel, /grid grid-cols-3 gap-2/, "one compact row of three");
+  assert.match(panel, /href=\{`\$\{basePath\}\?tab=growth`\}/, "View All opens the full Growth workspace");
 });
 
 // ── 2–3. Findmi Here: Events ────────────────────────────────────────────────
@@ -302,8 +302,8 @@ test("Add Business: bounded, throttled lookup over the existing public brand mat
 // ── 16. Performance frozen ──────────────────────────────────────────────────
 
 test("Performance views were not touched by this pass", () => {
-  // The Home snapshot keeps its exact Performance contract.
-  const home = code(read(`${B}/v2/BusinessHome.tsx`));
-  assert.match(home, /<MetricTile label="Views"/);
-  assert.match(home, /<MetricTile label="Scans"/);
+  // The Home pulse keeps the Performance system's own headline metrics.
+  const tiles = code(read(`${B}/v2/HomePerformance.tsx`));
+  assert.match(tiles, /metric: headline\.profileViews/);
+  assert.match(tiles, /metric: headline\.actionsTaken/);
 });

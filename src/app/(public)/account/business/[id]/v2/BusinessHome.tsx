@@ -1,61 +1,49 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
 import ChevronIcon from "@/components/ChevronIcon";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
 import type { HomeActivity, NeedsAttentionItem } from "@/lib/business-dashboard";
-import type { BusinessMoment } from "@/lib/business-moments";
 import type { GrowthSummary } from "@/lib/growth";
-import { FOLLOW_UPS_INITIAL_LIMIT, type FollowUp } from "@/lib/business-follow-ups";
-import { REQUESTS_INITIAL_LIMIT, type BusinessRequest } from "@/lib/business-requests";
-import { formatTime } from "@/lib/format";
+import type { FollowUp } from "@/lib/business-follow-ups";
+import type { BusinessRequest } from "@/lib/business-requests";
+import type { OwnerPerformanceRange } from "@/lib/analytics/ownerPerformance";
+import { formatDateShort, formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
-import { groupComingUp } from "@/lib/home-schedule";
 import { managerHref } from "@/lib/manager-links";
 import ManagementCards from "./ManagementCards";
 import HomeSectionNav, { type HomeSectionNavItem } from "./HomeSectionNav";
 import NeedsAttentionBar from "./NeedsAttentionBar";
 import GrowthPanel from "./GrowthPanel";
-import { MomentsStrip } from "./MomentsView";
+import { HomeInboxRows, HomeInboxSkeleton } from "./HomeInbox";
+import { HomePerformanceSkeleton, HomePerformanceTiles } from "./HomePerformance";
 
-// Same zone lib/format.ts formats every owner/public time in.
-const APP_TIMEZONE = "America/New_York";
-
-/** Business Home — the command center for ONE Business: a summary /
+/** Business Home — the operating dashboard for ONE Business: a summary /
  * control surface, never a second management interface (Findmi Here,
  * Moments, Performance, Growth, More, the Event Manager keep the depth).
- * Built only from data the page already loads; a section with nothing
- * truthful to say is omitted, never rendered empty.
+ * Built only from real Findmi data; nothing is invented to fill a module.
  *
- * Business Manager redesign — locked top-to-bottom hierarchy, each block
+ * Business Manager Overview — locked top-to-bottom hierarchy, each block
  * answering one question:
- *   A. Business status          — publication status + View Public Profile
- *   A2. Quick Actions           — the thin swipeable rail of everyday
- *                                 creation flows, one tap each (replaces the
- *                                 old Quick Create section)
- *   B. Sticky Home section rail — Overview · Schedule · Growth ·
- *                                 Performance (in-page anchors)
- *   C. Needs Attention          — exceptions this Business can fix; a compact,
- *                                 collapsed status bar; absent at zero
- *   C2. Requests                — conditional; sent TO this Business and waiting
- *                                 on it (lib/business-requests.ts)
- *   D. Follow-Ups               — conditional; this Business's own Target
- *                                 follow-ups (lib/business-follow-ups.ts)
- *   E. Happening Now            — conditional; live Appearances + hosted Events
- *   F. Coming Up                — WHAT'S HAPPENING: grouped Today / Tomorrow /
- *                                 This Week / Later, one row per Event
- *   H. Growth                   — HOW CAN FINDMI HELP US GROW: the compact
- *                                 mini-dashboard / setup state
- *   I. Performance              — HOW IS IT PERFORMING (existing metrics)
- *   G. Recent Moments           — conditional; latest Moments, See All
- *   K. Public Profile           — the Findmi link as a utility row (managing
- *                                 the profile lives at More → Public Profile)
- * Sections never reorder; conditional ones simply disappear. */
-
-export interface HomeMetric {
-  value: number;
-  changeLabel: string | null;
-}
+ *   A. Business status       — publication status + Manage / View Public Profile
+ *   B. Section rail          — Overview · Our Schedule · Opportunities ·
+ *                              Performance (sticky, in-page anchors)
+ *   C. Create & Manage       — WHAT CAN I CREATE / MANAGE: landscape cards,
+ *                              + Add / View All each (ManagementCards)
+ *   D. Coming Up             — WHAT'S HAPPENING NEXT: Happening Now (only when
+ *                              live), then a chronological rail, one card per
+ *                              Event / standalone Appearance
+ *   E. Inbox / Follow-Ups    — WHAT NEEDS MY ATTENTION: Needs Attention bar +
+ *                              one ranked list of Follow-Ups, Inbox threads and
+ *                              Requests (lib/home-inbox.ts)
+ *   F. Growth Manager        — HOW CAN I GROW: Goals · Opportunities · Ideas
+ *   G. Performance           — HOW AM I PERFORMING: four headline metrics
+ *   H. Public Profile Link   — a utility row (the Findmi link / handle)
+ * Sections never reorder. E's list and G's tiles each stream in behind their
+ * own Suspense boundary (sized like the module), so the shell, Create & Manage
+ * and Coming Up never wait on the Inbox or the analytics read, and a failure
+ * in either stays inside its module. */
 
 export type HomePublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
 
@@ -82,15 +70,13 @@ export default function BusinessHome({
   comingUp,
   needsAttention,
   requests,
-  requestsExpanded = false,
   followUps,
-  followUpsExpanded = false,
-  metrics,
-  metricsRangeLabel,
+  inboxExpanded = false,
+  performanceRange,
+  followers,
   businessHandle,
   updateHandleAction,
   growth,
-  recentMoments,
 }: {
   basePath: string;
   businessId: string;
@@ -100,40 +86,36 @@ export default function BusinessHome({
   pro: boolean;
   /** Happening Now — every live Appearance group / hosted Event (lib/business-dashboard.ts buildHomeComingUp). */
   liveActivities: HomeActivity[];
-  /** Next few not-yet-live items, chronological, one per Event / standalone Appearance. */
+  /** Next not-yet-live items, chronological, one per Event / standalone Appearance. */
   comingUp: HomeActivity[];
   needsAttention: NeedsAttentionItem[];
   /** Requests — sent TO this Business, waiting on it (lib/business-requests.ts). */
   requests: BusinessRequest[];
-  /** `?requests=all`: every Request instead of the first three. */
-  requestsExpanded?: boolean;
   /** Follow-Ups — already ordered (lib/business-follow-ups.ts buildFollowUps). */
   followUps: FollowUp[];
-  /** `?followups=all`: every Follow-Up instead of the first three. */
-  followUpsExpanded?: boolean;
-  metrics: { profileViews: HomeMetric; actionsTaken: HomeMetric; qrScans: HomeMetric; followers: number } | null;
-  metricsRangeLabel: string | null;
+  /** `?inbox=all`: every ranked Inbox / Follow-Ups row instead of the first few. */
+  inboxExpanded?: boolean;
+  /** The Performance range Home summarizes (the Performance page's default). */
+  performanceRange: OwnerPerformanceRange;
+  /** Follower total (getBusinessFollowerSummary). */
+  followers: number;
   businessHandle: string | null;
   updateHandleAction: (formData: FormData) => void | Promise<void>;
   /** The one Growth summary (lib/growth.ts) — goals, preferences, matches. */
   growth: GrowthSummary;
-  /** Latest Moments posted as this Business (empty = the strip is omitted). */
-  recentMoments: BusinessMoment[];
 }) {
   const liveNow = liveActivities;
   const status = STATUS_COPY[publicationStatus] ?? STATUS_COPY.draft;
   const publicHref = businessSlug ? `/business/${businessSlug}` : null;
-  // Needs Attention is a status bar, not a destination — it has no rail entry.
   const navItems: HomeSectionNavItem[] = [
     { id: "overview", label: "Overview" },
     { id: "home-schedule", label: "Our Schedule" },
     { id: "home-growth", label: "Opportunities" },
-    ...(metrics ? [{ id: "home-performance", label: "Performance" }] : []),
+    { id: "home-performance", label: "Performance" },
   ];
-  const comingUpGroups = groupComingUp(comingUp);
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-6">
       {/* A. Status — identity + Free/Pro live in the context bar above. */}
       <section aria-label="Business status" className="-mb-2">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -158,35 +140,25 @@ export default function BusinessHome({
         {status.line && <p className="mt-1 text-metadata text-muted">{status.line}</p>}
       </section>
 
-      {/* A2. Management destinations — Events, Locations, Products, QR
-          Codes, Moments, Targets — each with View All (manage) and + Add
-          (the canonical creation flow). */}
-      <ManagementCards businessId={businessId} />
-
-      {/* B. Sticky in-page section rail. */}
+      {/* B. Sticky in-page section rail (the existing manager section nav). */}
       <HomeSectionNav items={navItems} />
 
-      {/* C. Needs Attention — exceptions only; renders nothing at zero. */}
-      <NeedsAttentionBar items={needsAttention} />
+      {/* C. Create & Manage — Events, Locations, Products, QR Codes, Moments,
+          Targets — each with + Add (canonical creation flow) and View All. */}
+      <ManagementCards businessId={businessId} />
 
-      {/* C2. Requests — only when something sent to this Business waits on it. */}
-      <RequestsSection basePath={basePath} items={requests} expanded={requestsExpanded} />
-
-      {/* D. Follow-Ups — only when this Business has any. */}
-      <FollowUpsSection basePath={basePath} items={followUps} expanded={followUpsExpanded} />
-
-      {/* E + F. Schedule — Happening Now (only when live), then Coming Up. */}
-      <div id="home-schedule" className={`flex flex-col gap-7 ${SECTION_CLASS}`}>
+      {/* D. Schedule — Happening Now (only when live), then Coming Up. */}
+      <div id="home-schedule" className={`flex flex-col gap-4 ${SECTION_CLASS}`}>
         {liveNow.length > 0 && (
           <section aria-labelledby="happening-now">
             <h2 id="happening-now" className="flex items-center gap-2 font-display text-section-title font-bold text-primary">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60 motion-reduce:animate-none" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
               </span>
               Happening Now
             </h2>
-            <div className="mt-3 flex flex-col gap-3">
+            <div className="mt-2.5 flex flex-col gap-2.5">
               {liveNow.map((a) => (
                 <LiveCard key={a.key} activity={a} />
               ))}
@@ -197,59 +169,64 @@ export default function BusinessHome({
         <section aria-labelledby="coming-up">
           <SectionTitle id="coming-up" title="Coming Up" href={`${basePath}?tab=findmi-here`} linkLabel="See All" />
           {comingUp.length > 0 ? (
-            <div className="mt-2.5 flex flex-col gap-3">
-              {comingUpGroups.map((g) => (
-                <div key={g.bucket}>
-                  <h3 className="text-label font-bold uppercase text-subtle">{g.label}</h3>
-                  <ul className="mt-1.5 flex flex-col gap-2">
-                    {g.items.map((item) => (
-                      <li key={item.key}>
-                        <UpcomingRow activity={item} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+            <ul className="-mx-4 mt-2.5 flex snap-x snap-mandatory scroll-px-4 gap-2.5 overflow-x-auto overscroll-x-contain px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:mx-0 lg:scroll-px-0 lg:px-0 [&::-webkit-scrollbar]:hidden">
+              {comingUp.map((item) => (
+                <li key={item.key} data-coming-up-card className="w-[80%] min-w-0 shrink-0 snap-start sm:w-[46%] lg:w-[calc((100%-1.25rem)/3)]">
+                  <UpcomingCard activity={item} />
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
-            // Compact: the Quick Actions above already offer Where I'll Be / Event.
-            <p className="mt-2 text-body text-muted">{liveNow.length > 0 ? "Nothing else scheduled yet." : "Nothing scheduled yet."}</p>
+            <div className="mt-2.5 flex items-center gap-3 rounded-2xl border border-dashed border-black/15 px-3.5 py-3">
+              <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+                <NavIcon name="calendar" className="h-[18px] w-[18px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-card-title font-semibold text-primary">{liveNow.length > 0 ? "Nothing else scheduled yet" : "Nothing scheduled yet"}</span>
+                <span className="block text-metadata text-muted">Add an Event you&rsquo;re hosting or appearing at.</span>
+              </span>
+              <Link
+                href={managerHref(businessId, "add-event")}
+                className="flex h-9 shrink-0 items-center rounded-full border border-findmi-200 bg-findmi-50 px-3 text-metadata font-bold text-findmi-700 transition hover:border-findmi-300 hover:bg-findmi-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+              >
+                + Add Event
+              </Link>
+            </div>
           )}
         </section>
       </div>
 
-      {/* H. Growth — the compact mini-dashboard, or the setup state. */}
+      {/* E. Inbox / Follow-Ups — what needs attention. The Needs Attention bar
+          (renders nothing at zero) is synchronous; the ranked rows stream. */}
+      <section id="home-inbox" aria-labelledby="home-inbox-title" className={SECTION_CLASS}>
+        <SectionTitle id="home-inbox-title" title="Inbox / Follow-Ups" href={managerHref(businessId, "inbox")} linkLabel="View All" />
+        {needsAttention.length > 0 && (
+          <div className="mt-2.5">
+            <NeedsAttentionBar items={needsAttention} />
+          </div>
+        )}
+        <Suspense fallback={<HomeInboxSkeleton />}>
+          <HomeInboxRows businessId={businessId} basePath={basePath} followUps={followUps} requests={requests} expanded={inboxExpanded} />
+        </Suspense>
+      </section>
+
+      {/* F. Growth Manager — Goals · Opportunities · Ideas. */}
       <GrowthPanel basePath={basePath} summary={growth} />
 
-      {/* I. Performance — existing metrics; trends + full Analytics stay Pro. */}
-      {metrics && (
-        <section id="home-performance" aria-labelledby="performance-snapshot" className={SECTION_CLASS}>
-          <SectionTitle
-            id="performance-snapshot"
-            title="Performance"
-            href={managerHref(businessId, "performance")}
-            linkLabel={pro ? "View Performance" : "Unlock Full Analytics"}
-          />
-          {metricsRangeLabel && <p className="mt-0.5 text-metadata text-subtle">{metricsRangeLabel}</p>}
-          {metrics.profileViews.value + metrics.actionsTaken.value + metrics.qrScans.value + metrics.followers === 0 ? (
-            <p className="mt-2 text-body text-muted">
-              No activity yet. Profile views, actions, QR scans and followers will appear here as people find your Business on Findmi.
-            </p>
-          ) : (
-            <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-              <MetricTile label="Views" metric={metrics.profileViews} pro={pro} />
-              <MetricTile label={metrics.actionsTaken.value === 1 ? "Action" : "Actions"} metric={metrics.actionsTaken} pro={pro} />
-              <MetricTile label="Scans" metric={metrics.qrScans} pro={pro} />
-              <MetricTile label="Followers" metric={{ value: metrics.followers, changeLabel: null }} pro={pro} />
-            </div>
-          )}
-        </section>
-      )}
+      {/* G. Performance — existing metrics; trends + full Analytics stay Pro. */}
+      <section id="home-performance" aria-labelledby="performance-snapshot" className={SECTION_CLASS}>
+        <SectionTitle
+          id="performance-snapshot"
+          title="Performance"
+          href={managerHref(businessId, "performance")}
+          linkLabel={pro ? "View All" : "Unlock Full Analytics"}
+        />
+        <Suspense fallback={<HomePerformanceSkeleton />}>
+          <HomePerformanceTiles businessId={businessId} range={performanceRange} followers={followers} />
+        </Suspense>
+      </section>
 
-      {/* G. Recent Moments — only when this Business has posted some. */}
-      <MomentsStrip basePath={basePath} moments={recentMoments} />
-
-      {/* K. Public Profile — a utility row, not an operational section. */}
+      {/* H. Public Profile — a utility row, not an operational section. */}
       <section aria-labelledby="findmi-link" className="border-t border-black/[0.06] pt-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 id="findmi-link" className="text-label font-bold uppercase text-subtle">
@@ -269,100 +246,6 @@ export default function BusinessHome({
         </div>
       </section>
     </div>
-  );
-}
-
-const FOLLOW_UP_META_TONE: Record<NonNullable<FollowUp["due"]>, string> = {
-  overdue: "font-semibold text-amber-700",
-  today: "font-semibold text-findmi-700",
-  soon: "text-muted",
-  later: "text-muted",
-};
-
-/** Follow-Ups — this Business's own Target next steps (private to it), never a
- * task list: each row opens the relationship that owns it. Absent when there
- * are none (no heading, no empty state). First three, then See All (URL state). */
-function FollowUpsSection({ basePath, items, expanded }: { basePath: string; items: FollowUp[]; expanded: boolean }) {
-  if (items.length === 0) return null;
-  const more = items.length > FOLLOW_UPS_INITIAL_LIMIT;
-  const shown = expanded ? items : items.slice(0, FOLLOW_UPS_INITIAL_LIMIT);
-  return (
-    <section id="home-follow-ups" aria-labelledby="home-follow-ups-title" className={SECTION_CLASS}>
-      {more ? (
-        <SectionTitle
-          id="home-follow-ups-title"
-          title="Follow-Ups"
-          href={expanded ? `${basePath}#home-follow-ups` : `${basePath}?followups=all#home-follow-ups`}
-          linkLabel={expanded ? "Show Less" : `See All ${items.length}`}
-        />
-      ) : (
-        <h2 id="home-follow-ups-title" className="font-display text-section-title font-bold text-primary">
-          Follow-Ups
-        </h2>
-      )}
-      <ul className="mt-2.5 flex flex-col gap-2">
-        {shown.map((item) => (
-          <li key={item.key}>
-            <Link
-              href={item.href}
-              className="block rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
-            >
-              <span className="block truncate text-card-title font-semibold text-primary">{item.title}</span>
-              <span className={`line-clamp-2 block break-words text-metadata ${item.due ? FOLLOW_UP_META_TONE[item.due] : "text-muted"}`}>{item.meta}</span>
-              {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
-              <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
-                Open Relationship
-                <ChevronIcon direction="right" className="h-3 w-3" />
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** Requests — Opportunities, Event invitations and new orders waiting on this
- * Business. A projection of the records that own them (nothing stored): a row
- * disappears once the Business responds. Absent when there are none (no
- * heading, no empty state). First three, then See All (URL state). */
-function RequestsSection({ basePath, items, expanded }: { basePath: string; items: BusinessRequest[]; expanded: boolean }) {
-  if (items.length === 0) return null;
-  const more = items.length > REQUESTS_INITIAL_LIMIT;
-  const shown = expanded ? items : items.slice(0, REQUESTS_INITIAL_LIMIT);
-  return (
-    <section id="home-requests" aria-labelledby="home-requests-title" className={SECTION_CLASS}>
-      {more ? (
-        <SectionTitle
-          id="home-requests-title"
-          title="Requests"
-          href={expanded ? `${basePath}#home-requests` : `${basePath}?requests=all#home-requests`}
-          linkLabel={expanded ? "Show Less" : `See All ${items.length}`}
-        />
-      ) : (
-        <h2 id="home-requests-title" className="font-display text-section-title font-bold text-primary">
-          Requests
-        </h2>
-      )}
-      <ul className="mt-2.5 flex flex-col gap-2">
-        {shown.map((item) => (
-          <li key={item.key}>
-            <Link
-              href={item.href}
-              className="block rounded-2xl border border-black/[0.07] bg-white px-3.5 py-3 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
-            >
-              <span className="block truncate text-card-title font-semibold text-primary">{item.title}</span>
-              <span className="line-clamp-2 block break-words text-metadata font-semibold text-findmi-700">{item.meta}</span>
-              {item.detail && <span className="mt-0.5 line-clamp-2 block break-words text-body text-secondary">{item.detail}</span>}
-              <span className="mt-1.5 flex items-center gap-1 text-metadata font-bold text-accent">
-                {item.actionLabel}
-                <ChevronIcon direction="right" className="h-3 w-3" />
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -411,64 +294,37 @@ function LiveCard({ activity: a }: { activity: HomeActivity }) {
   );
 }
 
-function UpcomingRow({ activity: a }: { activity: HomeActivity }) {
-  const month = new Date(a.startAt).toLocaleDateString("en-US", { month: "short", timeZone: APP_TIMEZONE });
-  const day = new Date(a.startAt).toLocaleDateString("en-US", { day: "numeric", timeZone: APP_TIMEZONE });
+/** One Coming Up card: date · time, title, place, and what kind of activity it
+ * is. A multi-date Event is ONE card at its next date, with the rest counted
+ * ("+ N More Dates" — every date is under See All). */
+function UpcomingCard({ activity: a }: { activity: HomeActivity }) {
   return (
     <Link
       href={a.href}
-      className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white p-2 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+      className="flex h-full items-center gap-3 rounded-2xl border border-black/[0.07] bg-white p-2.5 transition hover:border-black/15 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
     >
-      {/* Real imagery when the Event / Location has any; otherwise the date
-          block itself carries the row. */}
-      <span className="relative flex h-14 w-14 shrink-0 flex-col items-center justify-center overflow-hidden rounded-xl bg-black/[0.04]">
-        {a.imageUrl ? (
-          <>
-            <SupabaseImage src={a.imageUrl} alt="" fill sizes="56px" className="object-cover" />
-            <span className="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[10px] font-bold uppercase leading-tight tracking-wide text-white">
-              {month} {day}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted">{month}</span>
-            <span className="font-display text-xl font-bold leading-none text-primary">{day}</span>
-          </>
-        )}
+      <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black/[0.04] text-ink/25">
+        {a.imageUrl ? <SupabaseImage src={a.imageUrl} alt="" fill sizes="64px" className="object-cover" /> : <NavIcon name="calendar" className="h-6 w-6" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-card-title font-semibold text-primary">{a.title}</span>
-        <span className="block truncate text-metadata text-muted">
-          {a.kind === "hosted_event" ? "Hosting · " : ""}
-          {a.temporal.label} · {formatTime(a.startAt)}
-          {a.endAt ? `\u2013${formatTime(a.endAt)}` : ""}
+        <span className="block truncate text-metadata font-semibold text-findmi-700">
+          {formatDateShort(a.startAt)} · {formatTime(a.startAt)}
         </span>
-        {a.place && <span className="block truncate text-metadata text-muted">{a.place}</span>}
-        {/* A multi-date Event is one row: its next date above, the rest
-            summarized here (every date is under See All). */}
-        {a.moreDates > 0 && (
-          <span className="block truncate text-metadata font-semibold text-findmi-700">
-            {a.moreDates === 1 ? "+ 1 More Date" : `+ ${a.moreDates} More Dates`}
+        <span className="mt-0.5 block truncate text-card-title font-semibold text-primary">{a.title}</span>
+        {a.place && (
+          <span className="mt-0.5 flex min-w-0 items-center gap-1 text-metadata text-muted">
+            <NavIcon name="pin" className="h-3 w-3 shrink-0" />
+            <span className="truncate">{a.place}</span>
           </span>
         )}
+        <span className="mt-1 flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 text-microcopy font-bold uppercase text-subtle">{a.kind === "hosted_event" ? "Hosting" : "Appearing"}</span>
+          {a.moreDates > 0 && (
+            <span className="truncate text-microcopy font-semibold text-findmi-700">{a.moreDates === 1 ? "+ 1 More Date" : `+ ${a.moreDates} More Dates`}</span>
+          )}
+          {a.pendingLabel && <Chip tone="amber">{a.pendingLabel}</Chip>}
+        </span>
       </span>
-      {a.pendingLabel ? (
-        <Chip tone="amber">{a.pendingLabel}</Chip>
-      ) : (
-        <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
-      )}
     </Link>
-  );
-}
-
-function MetricTile({ label, metric, pro }: { label: string; metric: HomeMetric; pro: boolean }) {
-  const change = pro ? metric.changeLabel : null;
-  const up = change?.startsWith("+");
-  return (
-    <div className="min-w-0 rounded-xl bg-black/[0.03] px-2.5 py-2.5">
-      <p className="font-display text-xl font-bold leading-none text-primary tabular-nums">{metric.value.toLocaleString()}</p>
-      <p className="mt-1 truncate text-metadata font-medium text-muted">{label}</p>
-      {change && <p className={`mt-0.5 text-microcopy font-bold ${up ? "text-accent" : "text-subtle"}`}>{change}</p>}
-    </div>
   );
 }

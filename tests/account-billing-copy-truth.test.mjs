@@ -105,7 +105,7 @@ test("every remaining PRO_PLAN feature claim corresponds to something genuinely 
   // the Business Manager's own tab-gating code.
   if (/Analytics|Performance|Discovery-source|Audience insights/.test(features)) {
     assert.match(BUSINESS_PAGE, /const onPerformance = activeTab === "performance"/);
-    assert.match(BUSINESS_PAGE, /\(onPerformance && pro\)/, "Performance/Analytics claims require the Performance tab's query itself to be pro-gated, not just its UI");
+    assert.match(BUSINESS_PAGE, /whenP\(onPerformance && pro, \(\) => getOwnerBusinessPerformance\(/, "Performance/Analytics claims require the Performance tab's query itself to be pro-gated, not just its UI");
   }
   // Customer Inquiries claim -> re-checked just above (server-enforced).
   assert.match(features, /Customer Inquiries/);
