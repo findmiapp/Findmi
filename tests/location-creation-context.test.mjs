@@ -171,9 +171,9 @@ test("the canonical Moments icon is the dedicated photo/image glyph, distinct fr
   assert.match(NAV_ICON, /Moments — a photo \(Moments are captured experiences\)\. Distinct\s*\n\s*\/\/ from "target", which also means Performance \/ Analytics\./);
 });
 
-test("'My Moments' (Personal bottom nav) already uses the canonical photo icon, not target/radar", () => {
-  assert.match(PERSONAL_SHELL, /key: "myworld", label: "My Moments", href: "\/my-world\/journal", icon: <NavIcon name="moments"/);
-  assert.doesNotMatch(PERSONAL_SHELL, /label: "My Moments"[^}]*NavIcon name="target"/);
+test("'My Journal' (Personal bottom nav) uses the canonical photo icon, not target/radar", () => {
+  assert.match(PERSONAL_SHELL, /key: "myworld", label: "My Journal", href: "\/journal", icon: <NavIcon name="moments"/);
+  assert.doesNotMatch(PERSONAL_SHELL, /label: "My Journal"[^}]*NavIcon name="target"/);
 });
 
 test("the two remaining NavIcon target/radar usages are legitimately Performance/Analytics, not Moments — correctly left alone", () => {

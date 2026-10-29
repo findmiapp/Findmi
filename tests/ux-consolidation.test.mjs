@@ -59,7 +59,7 @@ test("Moment creation uses the canonical Moments photo icon — never the pencil
   assert.match(quick, /label="Add Moment"[\s\S]*?icon=\{<NavIcon name="moments"/);
   assert.doesNotMatch(quick, /PencilGlyph/);
   assert.doesNotMatch(code(read("src/components/opportunities/OpportunityGlyphs.tsx")), /M17 3a2\.1 2\.1 0 013 3L8\.5 17\.5/);
-  for (const f of ["src/app/(public)/event/[slug]/EventPublicView.tsx", "src/app/(public)/location/[slug]/LocationPublicView.tsx", "src/app/(public)/business/[slug]/BusinessPublicView.tsx", "src/app/(public)/product/[slug]/page.tsx", "src/app/(public)/my-world/journal/page.tsx", "src/app/(public)/moments/page.tsx", `${B}/v2/MomentsView.tsx`]) {
+  for (const f of ["src/app/(public)/event/[slug]/EventPublicView.tsx", "src/app/(public)/location/[slug]/LocationPublicView.tsx", "src/app/(public)/business/[slug]/BusinessPublicView.tsx", "src/app/(public)/product/[slug]/page.tsx", "src/app/(public)/journal/MyJournal.tsx", "src/app/(public)/moments/page.tsx", `${B}/v2/MomentsView.tsx`]) {
     const src = code(read(f));
     assert.doesNotMatch(src, /\+ Add Moment/, f);
     assert.match(src, /<NavIcon name="moments"/, f);
@@ -159,13 +159,13 @@ const card = (tags, follow = {}) => ({ tags, follow: { businessSlugs: [], eventI
 const NONE = { businessSlugs: [], eventIds: [], locationIds: [] };
 
 test("feed state: Explore default; each mode owns its category; legacy ?filter= still lands", () => {
-  assert.deepEqual(F.parseMomentFeedState({}), { mode: "explore", categories: { explore: "all", "for-you": "all" } });
+  assert.deepEqual(F.parseMomentFeedState({}), { mode: "explore", categories: { explore: "all", "for-you": "all", "my-moments": "all" }, display: "feed" });
   const s = F.parseMomentFeedState({ mode: "for-you", cat: "pop-ups" });
   assert.equal(s.mode, "for-you");
   assert.equal(s.categories["for-you"], "pop-ups");
   assert.equal(s.categories.explore, "all", "For You's category is never forced onto Explore");
   assert.equal(F.parseMomentFeedState({ filter: "following" }).mode, "for-you");
-  assert.deepEqual(F.parseMomentFeedState({ filter: "food-drink" }).categories, { explore: "food-drink", "for-you": "all" });
+  assert.deepEqual(F.parseMomentFeedState({ filter: "food-drink" }).categories, { explore: "food-drink", "for-you": "all", "my-moments": "all" });
   assert.equal(F.momentFeedQuery("explore", "all"), "");
   assert.equal(F.momentFeedQuery("for-you", "classes", "2026-01-01_x"), "mode=for-you&cat=classes&cursor=2026-01-01_x");
 });
@@ -187,7 +187,7 @@ test("For You is real ordering from the viewer's own follows — not a cosmetic 
 test("Moments UI: mode toggle, per-mode category state, swipeable chip rail with gutter", () => {
   const ui = code(read("src/components/moments/MomentsDiscovery.tsx"));
   // Correction pass: the three-mode control (Explore · For You · My Moments).
-  assert.match(ui, /<MomentsModeTabs active=\{mode\} onSelect=\{setMode\} \/>/);
+  assert.match(ui, /\{showModes && <MomentsModeTabs active=\{mode\} onSelect=\{ownCards \? undefined : setMode\} display=\{display\} \/>\}/);
   assert.match(ui, /setCategories\(\(prev\) => \(\{ \.\.\.prev, \[mode\]: c \}\)\)/);
   assert.match(ui, /-mx-4 mt-3 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4/);
   assert.match(ui, /From What You Follow/);
@@ -255,11 +255,10 @@ test("composer: You Have A Moment In Progress — Continue restores its own cont
 
 // ── 12–14. Journal, /join, Add Business ─────────────────────────────────────
 
-test("Journal alignment: My Moments ↔ /moments ↔ Saved & Following, same records", () => {
-  const mine = read("src/app/(public)/my-world/journal/page.tsx");
-  assert.match(mine, /href="\/moments"/);
-  assert.match(mine, /href="\/account\/saved"/); // the one Saved library (Personal Library pass)
-  assert.match(read("src/components/moments/MomentsDiscovery.tsx"), /href=\{momentsModeHref\("my-moments"\)\}/);
+test("Journal alignment: My Moments (feed) → My Journal (history), same records; no Saved or Explore detours in the Journal", () => {
+  const journal = code(read("src/app/(public)/journal/MyJournal.tsx"));
+  assert.doesNotMatch(journal, /href="\/moments"|href="\/account\/saved"|Saved &(amp;)? Following/);
+  assert.match(read("src/components/moments/MomentsDiscovery.tsx"), /<Link href=\{MY_JOURNAL_HREF\}[\s\S]{0,160}View My Journal/);
   assert.doesNotMatch(read("src/components/moments/MomentsDiscovery.tsx"), /World Journal|My World/);
 });
 

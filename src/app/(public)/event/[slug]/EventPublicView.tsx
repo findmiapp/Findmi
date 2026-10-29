@@ -790,8 +790,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
         </div>
       )}
       <div className="mt-4">
-        <Link href="/my-world/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
-          View My Moments
+        <Link href="/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
+          View My Journal
           <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
       </div>

@@ -113,7 +113,7 @@ export default async function NewJournalEntryPage({
   // Contextual Moment Composer V1 — Cancel returns to wherever this
   // composer was actually opened from; a blank /my-world/journal/new
   // visit (no prefill resolved) keeps the existing, correct fallback.
-  const cancelHref = locationPrefill?.href ?? businessPrefill?.href ?? productPrefill?.href ?? eventPrefill?.href ?? "/my-world/journal";
+  const cancelHref = locationPrefill?.href ?? businessPrefill?.href ?? productPrefill?.href ?? eventPrefill?.href ?? "/journal";
 
   // Moments V2 — every contextual start is a PREFILL of the same composer,
   // never a separate workflow; everything prefilled stays removable.

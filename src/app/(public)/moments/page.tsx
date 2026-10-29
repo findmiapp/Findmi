@@ -4,17 +4,17 @@ import BrandHeading from "@/components/BrandHeading";
 import NavIcon from "@/components/NavIcon";
 import MomentsDiscovery from "@/components/moments/MomentsDiscovery";
 import { getMomentFeed, type MomentFeedPage } from "@/lib/moment-discovery";
-import { MY_MOMENTS_LIMIT, isMyMomentsFilter, parseMomentFeedState } from "@/lib/moment-filters";
+import { ADD_MOMENT_HREF, parseMomentFeedState } from "@/lib/moment-filters";
 import MyMomentsView from "@/components/moments/MyMomentsView";
 import MomentsModeTabs from "@/components/moments/MomentsModeTabs";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getJournalArchiveEntries, type JournalIndexEntry } from "@/lib/journal";
 
 /** Findmi Moments — the general network Moments destination (homepage
  * Moments action and "See All"). ONE canonical Moments feed in three modes:
  * Explore and For You (see MomentsDiscovery), each with its own category,
- * and My Moments (the viewer's own history — MyMomentsView);
- * public browsing needs no account. Every public, published Moment, newest
+ * and My Moments (the viewer's own Moments — the same feed and cards over
+ * an owner-scoped read, MyMomentsView); each as a Feed or on the Map
+ * (?display=map). Public browsing needs no account. Every public, published Moment, newest
  * experience first, keyset-paginated with the same "Older Moments" /
  * "Newest" convention as /journal. The per-subject collections stay at
  * /journal?business=… etc. Add Moment opens the one Moment composer
@@ -27,23 +27,25 @@ export const metadata: Metadata = {
   description: "Real experiences at Findmi Businesses, Events and Locations, shared by people who were there.",
 };
 
-const ADD_MOMENT_HREF = "/my-world/journal/new";
-
-export default async function MomentsPage({ searchParams }: { searchParams: Promise<{ cursor?: string; filter?: string; mode?: string; cat?: string }> }) {
+export default async function MomentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cursor?: string; filter?: string; mode?: string; cat?: string; display?: string }>;
+}) {
   const params = await searchParams;
   const cursor = params.cursor ?? null;
-  // My Moments: the viewer's own Moments — an owner-scoped, bounded read;
-  // the public feed isn't loaded at all in this mode.
-  const myMode = params.mode === "my-moments";
-  let myEntries: JournalIndexEntry[] | null = null;
+  const feedState = parseMomentFeedState(params);
+  // My Moments: the viewer's own Moments — the same feed read, owner-scoped
+  // (their session; drafts/private included); the public feed isn't loaded.
+  const myMode = feedState.mode === "my-moments";
+  let myPage: MomentFeedPage | null = null;
   if (myMode) {
     const supabase = await getServerSupabase();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    myEntries = user ? await getJournalArchiveEntries(user.id, { limit: MY_MOMENTS_LIMIT }) : null;
+    myPage = user ? await getMomentFeed({ limit: PAGE_SIZE, cursor, owner: { client: supabase, userId: user.id } }) : null;
   }
-  const feedState = parseMomentFeedState(params);
   const page: MomentFeedPage = myMode ? { cards: [], nextCursor: null } : await getMomentFeed({ limit: PAGE_SIZE, cursor });
 
   return (
@@ -67,7 +69,7 @@ export default async function MomentsPage({ searchParams }: { searchParams: Prom
       <p className="mt-1 text-sm text-ink/60">Real experiences, shared by people who were there.</p>
       <div className="mt-5">
         {myMode ? (
-          <MyMomentsView entries={myEntries} filter={isMyMomentsFilter(params.filter) ? params.filter : "all"} />
+          <MyMomentsView page={myPage} state={feedState} cursor={cursor} />
         ) : page.cards.length > 0 || cursor ? (
           <MomentsDiscovery cards={page.cards} layout="grid" initialState={feedState} pagination={{ basePath: "/moments", cursor, nextCursor: page.nextCursor }} />
         ) : (

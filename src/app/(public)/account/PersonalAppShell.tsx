@@ -59,7 +59,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { key: "home", label: "Home", href: "/account", icon: <NavIcon name="home" className="h-[22px] w-[22px]" />, match: (p) => p === "/account", primary: true },
   // My Moments — the personal Moments destination (route unchanged).
-  { key: "myworld", label: "My Moments", href: "/my-world/journal", icon: <NavIcon name="moments" className="h-[22px] w-[22px]" />, match: (p) => p.startsWith("/my-world/journal"), primary: true },
+  { key: "myworld", label: "My Journal", href: "/journal", icon: <NavIcon name="moments" className="h-[22px] w-[22px]" />, match: (p) => p === "/journal", primary: true },
   // No "Schedule" here: /account/schedule is the operator schedule of the
   // Pages you manage (business/event/location memberships), not a plan of
   // Events you're going to — it stays reachable from each Business's More

@@ -1301,7 +1301,7 @@ export async function publishJournalEntry(entryId: string, visibility: "private"
     return { error: "Name this Moment before publishing." };
   }
   await admin.from("journal_entries").update({ visibility, status: "published" }).eq("id", entryId);
-  revalidatePath("/my-world/journal");
+  revalidatePath("/journal");
   revalidatePath(`/journal/${entryId}`);
   redirect(`/journal/${entryId}`);
 }
@@ -1314,7 +1314,7 @@ export async function saveJournalAsDraft(entryId: string): Promise<{ ok: true } 
     const { admin } = await requireOwnEntry(entryId);
     const { error } = await admin.from("journal_entries").update({ status: "draft", visibility: "private" }).eq("id", entryId);
     if (error) return { error: error.message };
-    revalidatePath("/my-world/journal");
+    revalidatePath("/journal");
     revalidatePath(`/journal/${entryId}`);
     return { ok: true };
   } catch (err) {
@@ -1333,6 +1333,6 @@ export async function deleteJournalEntryAction(entryId: string): Promise<{ error
   // this explicit removal above.
   const { error } = await admin.from("journal_entries").delete().eq("id", entryId);
   if (error) return { error: error.message };
-  revalidatePath("/my-world/journal");
-  redirect("/my-world/journal");
+  revalidatePath("/journal");
+  redirect("/journal");
 }

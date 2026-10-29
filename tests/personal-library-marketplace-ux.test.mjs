@@ -106,9 +106,10 @@ test("Collections degrade gracefully before the migration exists", async () => {
   assert.match(read("src/components/CollectionPicker.tsx"), /if \(!available\) return null;/);
 });
 
-test("ONE signed-in library: /saved and /my-world send signed-in people to /account/saved", () => {
+test("ONE signed-in library: /saved sends signed-in people to /account/saved; /my-world is retired (→ /journal)", () => {
   assert.match(read("src/app/(public)/saved/page.tsx"), /if \(authed\) router\.replace\("\/account\/saved"\);/);
-  assert.match(read("src/app/(public)/my-world/page.tsx"), /syncLocalToAccountOnce\(\);\n\s+router\.replace\("\/account\/saved"\);/);
+  // Moments pass: /my-world is no longer a page — a redirect to My Journal.
+  assert.match(read("next.config.mjs"), /\{ source: "\/my-world", missing: \[jcHost\], destination: "\/journal", permanent: true \}/);
   const nav = read("src/lib/primary-nav.ts");
   assert.match(nav, /\{ href: "\/account\/saved", label: "Your Library", icon: "bookmark"/);
   assert.doesNotMatch(nav, /label: "Saved & Following"/);

@@ -7,7 +7,7 @@ import OnboardingProgress from "@/components/OnboardingProgress";
 import { updateProfile } from "../../account/profile/actions";
 
 export const metadata: Metadata = {
-  title: "Personalize your Passbook",
+  title: "Personalize Findmi",
   robots: { index: false },
 };
 // Session-sensitive, per-user content — must never be statically or
@@ -63,7 +63,7 @@ export default async function JoinPassbookPage({
       <OnboardingProgress step={2} total={3} labels={STEPS} />
 
       <h1 className="mt-5 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-        Personalize your Passbook
+        Personalize Findmi
       </h1>
       <p className="mt-2 text-sm text-ink/60">A couple of quick details — you can change these anytime.</p>
 

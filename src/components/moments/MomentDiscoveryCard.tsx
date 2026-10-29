@@ -14,7 +14,8 @@ export function momentDateLabel(ymd: string, now = new Date()): string {
   });
 }
 
-/** Findmi Moments discovery card — the collage carries the card; then the
+/** Findmi Moments card — THE canonical Moment card for every /moments mode
+ * (Explore, For You, My Moments) and the homepage rail. The collage carries the card; then the
  * title, "Location · date", and the author as attribution at the bottom
  * with the photo count. No engagement counts (none exist to show). The
  * whole card is one link (keyboard focusable, one tab stop). */
@@ -29,7 +30,7 @@ export default function MomentDiscoveryCard({
   heroOnly = false,
   onHeroSettled,
 }: {
-  moment: Pick<MomentFeedCard, "title" | "href" | "entryDate" | "contextLabel" | "media" | "photoCount" | "author">;
+  moment: Pick<MomentFeedCard, "title" | "href" | "entryDate" | "contextLabel" | "media" | "photoCount" | "author"> & Partial<Pick<MomentFeedCard, "ownerBadge">>;
   className?: string;
   sizes?: string;
   priority?: boolean;
@@ -45,7 +46,17 @@ export default function MomentDiscoveryCard({
       href={moment.href}
       className={`group block min-w-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-findmi focus-visible:ring-offset-2 ${className}`}
     >
-      <div className="transition-opacity group-hover:opacity-95 motion-safe:group-active:scale-[0.99]">
+      <div className="relative transition-opacity group-hover:opacity-95 motion-safe:group-active:scale-[0.99]">
+        {/* My Moments only: the owner sees what isn't visible to others yet. */}
+        {moment.ownerBadge && (
+          <span
+            className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${
+              moment.ownerBadge === "Draft" ? "bg-amber-100 text-amber-800" : "bg-white/95 text-ink/60"
+            }`}
+          >
+            {moment.ownerBadge}
+          </span>
+        )}
         <MomentMediaCollage
           items={moment.media}
           total={moment.photoCount}

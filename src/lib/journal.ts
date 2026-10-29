@@ -468,6 +468,28 @@ export type JournalArchiveFilter = "all" | "places" | "brands" | "products" | "e
  * of batched queries (entries once, media once, connections once, signed
  * URLs once) no matter how many periods a visitor pages through in one
  * request, and still zero N+1 regardless of how many entries exist. */
+/** "My Moments" ownership — ONE rule for every owner-scoped Moment read
+ * (the Journal archive and /moments → My Moments): my Personal Moments plus
+ * Moments posted as a Business I currently own/manage. `authorship` false
+ * (column not yet present): just my own rows. */
+export function scopeToOwnMoments<Q extends { eq: (c: string, v: string) => Q; is: (c: string, v: null) => Q; or: (f: string) => Q }>(
+  query: Q,
+  userId: string,
+  authorship: boolean,
+  managedIds: readonly string[]
+): Q {
+  if (!authorship) return query.eq("user_id", userId);
+  if (managedIds.length === 0) return query.eq("user_id", userId).is("author_business_id", null);
+  return query.or(`and(user_id.eq.${userId},author_business_id.is.null),author_business_id.in.(${managedIds.join(",")})`);
+}
+
+/** The viewer's own-Moments scope inputs (authorship column + managed Businesses). */
+export async function ownMomentsScope(supabase: SupabaseClient, userId: string): Promise<{ authorship: boolean; managedIds: string[] }> {
+  const authorship = await hasMomentAuthorship();
+  const managedIds = authorship ? (await getViewerAuthorContext(supabase, userId)).managed.map((b) => b.id) : [];
+  return { authorship, managedIds };
+}
+
 export async function getJournalArchiveEntries(userId: string, options?: { limit?: number }): Promise<JournalIndexEntry[]> {
   const supabase = await getServerSupabase();
   // Identity V1 — My Moments = my Personal Moments plus Moments posted as
@@ -481,11 +503,7 @@ export async function getJournalArchiveEntries(userId: string, options?: { limit
       "id, title, entry_date, entry_time, visibility, status, location_id, manual_location_name, manual_location_city, location:locations(name)" +
         (authorship ? ", author_business_id, author_business:businesses!author_business_id(name)" : "")
     );
-  query = !authorship
-    ? query.eq("user_id", userId)
-    : managedIds.length === 0
-      ? query.eq("user_id", userId).is("author_business_id", null)
-      : query.or(`and(user_id.eq.${userId},author_business_id.is.null),author_business_id.in.(${managedIds.join(",")})`);
+  query = scopeToOwnMoments(query, userId, authorship, managedIds);
   query = query
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });

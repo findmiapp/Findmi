@@ -212,6 +212,13 @@ const nextConfig = {
     return [
       { source: "/jc", has: [jcHost], destination: "/", permanent: false },
       { source: "/jc/:path*", has: [jcHost], destination: "/:path*", permanent: false },
+      // Moments consolidation — "My World" is retired. Its personal Moment
+      // history is My Journal (/journal); old bookmarks and links land there
+      // with their query (view/date/filter) intact. Only these two exact
+      // paths: the Moment composer and editor (/my-world/journal/new,
+      // /my-world/journal/<id>/edit) are unchanged. Findmi host only.
+      { source: "/my-world", missing: [jcHost], destination: "/journal", permanent: true },
+      { source: "/my-world/journal", missing: [jcHost], destination: "/journal", permanent: true },
     ];
   },
   async rewrites() {

@@ -679,7 +679,7 @@ export default async function AccountHomePage({
         )}
 
         {momentTiles.length > 0 && (
-          <HomeSection id="your-moments" title="Your Recent Moments" href="/my-world/journal" linkLabel="See All">
+          <HomeSection id="your-moments" title="Your Recent Moments" href="/journal" linkLabel="See All">
             <div className={RAIL_CLASS + " lg:grid-cols-6"}>
               {momentTiles.map((tile) => (
                 <WorldTileCard key={tile.key} tile={tile} />

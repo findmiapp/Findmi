@@ -30,15 +30,15 @@ export default async function JoinWelcomePage() {
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">You&rsquo;re all set</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">Welcome to Findmi.</h1>
       <p className="mx-auto mt-3 max-w-sm text-base text-ink/60">
-        Start discovering businesses and events, and build your own Digital Passbook as you go.
+        Start discovering businesses and events, and build your own Journal of the places and experiences you&rsquo;ve lived as you go.
       </p>
 
       <div className="mt-8 flex flex-col gap-3">
         <Link
-          href="/my-world"
+          href="/journal"
           className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          Start Building Your Passbook
+          Start Your Journal
         </Link>
         <Link
           href="/find"

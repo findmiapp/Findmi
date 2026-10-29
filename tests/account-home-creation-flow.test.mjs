@@ -67,7 +67,8 @@ test("Create on Findmi: five owner-facing actions — ONE Event entry (Hosting /
   assert.ok(!actions.some((a) => /Appearance/i.test(a.label)), "Appearance is never a Create on Findmi label");
   // Add a Moment routes into the one existing composer (no second composer).
   assert.equal(CA.businessCreateActions("/account/business/biz", "biz").moment.href, "/my-world/journal/new?business=biz&postAs=biz");
-  assert.ok(existsSync("src/app/(public)/my-world/journal/new/page.tsx") && existsSync("src/app/(public)/my-world/journal/page.tsx"));
+  // The composer route is unchanged; the history it saves into is My Journal (/journal).
+  assert.ok(existsSync("src/app/(public)/my-world/journal/new/page.tsx") && existsSync("src/app/(public)/journal/MyJournal.tsx"));
   const by = Object.fromEntries(actions.map((a) => [a.key, a.href]));
   // UX consolidation: Where I'll Be and Host an Event became ONE Event entry
   // that asks Hosting / Appearing At first. The participation composer
@@ -82,7 +83,7 @@ test("Create on Findmi: five owner-facing actions — ONE Event entry (Hosting /
 
 test("Account Home terminology: From Pages You Follow, Your Recent Moments, Pages I Manage; My World is not a heading", () => {
   assert.match(HOME, /title="From Pages You Follow"/);
-  assert.match(HOME, /title="Your Recent Moments" href="\/my-world\/journal"/, "the /my-world route itself is unchanged");
+  assert.match(HOME, /title="Your Recent Moments" href="\/journal"/, "See All opens My Journal");
   assert.match(HOME, /title="Pages I Manage"/);
   assert.doesNotMatch(HOME, /title="[^"]*My World[^"]*"|title="From Brands You Follow"|title="Your Moments"/);
   assert.doesNotMatch(HOME, />\s*(Must Have|Must Do|Want|Have|Done)\s*</, "the old intent taxonomy is not surfaced");

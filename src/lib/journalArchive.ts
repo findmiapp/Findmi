@@ -244,3 +244,40 @@ export function buildYearMonthSummaries(entries: JournalIndexEntry[], year: numb
     };
   });
 }
+
+// ── My Journal reads NOW → PAST ──────────────────────────────────────────
+// Personal history is newest first in every view (Day / Week / Month /
+// Year / All). These helpers order already-loaded entries; the archive read
+// itself (lib/journal getJournalArchiveEntries) arrives entry_date desc,
+// created_at desc, which is the tie-break kept here (stable sort).
+
+/** Newest first: later date first; within a date a known later time first,
+ * then entries without a time (in their arrival order: newest created). */
+export function sortNewestFirst(entries: JournalIndexEntry[]): JournalIndexEntry[] {
+  return entries
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => {
+      if (a.e.entry_date !== b.e.entry_date) return a.e.entry_date < b.e.entry_date ? 1 : -1;
+      const ta = a.e.entry_time;
+      const tb = b.e.entry_time;
+      if (ta && tb && ta !== tb) return ta < tb ? 1 : -1;
+      if (ta && !tb) return -1;
+      if (!ta && tb) return 1;
+      return a.i - b.i;
+    })
+    .map(({ e }) => e);
+}
+
+/** Day groups, newest day first, each day's entries newest first. */
+export function groupNewestFirst(entries: JournalIndexEntry[]): [string, JournalIndexEntry[]][] {
+  const byDate = groupEntriesByDate(sortNewestFirst(entries));
+  return [...byDate.entries()].sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0));
+}
+
+/** Year view: only the months that hold Moments, latest month first — no
+ * run of empty months to scroll past before reaching real history. */
+export function buildYearHistory(entries: JournalIndexEntry[], year: number): JournalYearMonthSummary[] {
+  return buildYearMonthSummaries(entries, year)
+    .filter((m) => m.count > 0)
+    .reverse();
+}

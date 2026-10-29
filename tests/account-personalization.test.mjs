@@ -5,7 +5,7 @@
 // environment can't render (no jsdom). No network, no Production data.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 
 globalThis.__SESSION = null;
@@ -364,17 +364,17 @@ test("Account Home reads run in parallel batches (no per-rail waterfall)", () =>
 
 // ── TERMINOLOGY / NAV / SWITCHER / ICONS ───────────────────────────────
 
-test("consumer-facing My World / Your world / Journal strings targeted here are gone; My Moments works", () => {
+test("consumer-facing My World strings are gone; the personal history is My Journal at /journal", () => {
   const shell = read("src/app/(public)/account/PersonalAppShell.tsx");
-  assert.match(shell, /label: "My Moments", href: "\/my-world\/journal"/);
+  assert.match(shell, /label: "My Journal", href: "\/journal"/);
   assert.doesNotMatch(shell, /label: "My World"/);
   assert.doesNotMatch(read("src/lib/primary-nav.ts"), /label: "My World"/);
-  assert.match(read("src/lib/primary-nav.ts"), /\{ href: "\/my-world\/journal", label: "My Moments", icon: "moments"/);
-  const world = read("src/app/(public)/my-world/page.tsx");
-  assert.doesNotMatch(world, />Your world<|>\s*Journal\s*</);
+  assert.match(read("src/lib/primary-nav.ts"), /\{ href: "\/journal", label: "My Journal", icon: "moments"/);
+  // /my-world is no longer a page — a compatibility redirect to /journal.
+  assert.ok(!existsSync("src/app/(public)/my-world/page.tsx"));
   const ev = read("src/app/(public)/event/[slug]/EventPublicView.tsx");
   assert.doesNotMatch(ev, /appear in your Journal|^\s*View Your Journal\s*$/m, "rendered copy (code comments may keep history)");
-  assert.match(ev, /View My Moments/);
+  assert.match(ev, /View My Journal/);
   assert.match(read("src/app/(public)/journal/page.tsx"), /heading: `\$\{name\}'s Moments`/);
   assert.doesNotMatch(HOME, /Start Your World/);
 });

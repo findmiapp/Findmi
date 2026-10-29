@@ -44,12 +44,13 @@ test("three modes with deterministic URLs; My Moments auth links return to My Mo
   assert.equal(F.momentsModeHref("explore"), "/moments");
   assert.equal(F.momentsModeHref("for-you"), "/moments?mode=for-you");
   assert.equal(F.momentsModeHref("my-moments"), "/moments?mode=my-moments");
-  assert.equal(F.momentsModeHref("my-moments", "events"), "/moments?mode=my-moments&filter=events");
+  assert.equal(F.momentsModeHref("my-moments", "map"), "/moments?mode=my-moments&display=map");
   const { login, signup } = F.myMomentsAuthHrefs();
   assert.equal(login, "/login?next=%2Fmoments%3Fmode%3Dmy-moments");
   assert.equal(signup, "/signup?next=%2Fmoments%3Fmode%3Dmy-moments");
-  assert.equal(F.isMyMomentsFilter("places"), true);
-  assert.equal(F.isMyMomentsFilter("evil"), false);
+  // My Moments uses the same category chips as Explore / For You (no
+  // separate type-filter set): a retired ?filter=places just lands on All.
+  assert.equal(F.parseMomentFeedState({ mode: "my-moments", filter: "places" }).categories["my-moments"], "all");
 });
 
 test("board navigation: adjacent board in a fixed order; only a dominant horizontal swipe counts", () => {
@@ -63,27 +64,27 @@ test("board navigation: adjacent board in a fixed order; only a dominant horizon
   assert.equal(F.swipeDirection(-80, 70), null, "mostly vertical scrolling never changes the view");
 });
 
-test("/moments: My Moments is an owner-scoped, bounded read of the canonical journal records", () => {
+test("/moments: My Moments is an owner-scoped read through the SAME feed loader and cards", () => {
   const page = code(read("src/app/(public)/moments/page.tsx"));
-  assert.match(page, /const myMode = params\.mode === "my-moments";/);
-  assert.match(page, /getJournalArchiveEntries\(user\.id, \{ limit: MY_MOMENTS_LIMIT \}\)/);
+  assert.match(page, /const myMode = feedState\.mode === "my-moments";/);
+  assert.match(page, /getMomentFeed\(\{ limit: PAGE_SIZE, cursor, owner: \{ client: supabase, userId: user\.id \} \}\)/);
   assert.match(page, /myMode \? \{ cards: \[\], nextCursor: null \} : await getMomentFeed/, "the public feed isn't loaded in My Moments");
   assert.equal(F.MY_MOMENTS_LIMIT, 48);
   const view = read("src/components/moments/MyMomentsView.tsx");
-  assert.match(view, /entries === null \? \(\s*<SignedOut \/>/, "signed out ≠ empty");
+  assert.match(view, /if \(page === null\) \{[\s\S]*?<SignedOut \/>/, "signed out ≠ empty");
   assert.match(view, /My Moments holds the experiences you document on Findmi/);
   assert.match(view, />\s*Log In\s*</);
   assert.match(view, />\s*Create Account\s*</);
-  assert.match(view, /filterByObjectType\(entries, filter\)/, "existing archive filters");
-  assert.match(view, /href="\/my-world\/journal"/, "full history one tap away");
-  assert.match(view, /href="\/account\/saved"/, "the one Saved library linked (Personal Library pass)");
-  assert.doesNotMatch(view, /My World|World Journal/);
+  assert.match(view, /<MomentsDiscovery cards=\{page\.cards\} layout="grid" initialState=\{state\}/, "the canonical feed, not a second card list");
+  assert.doesNotMatch(view, /JournalArchiveCard|My World|World Journal|account\/saved/);
 });
 
-test("mode tabs: Explore/For You switch in place; My Moments is a real navigation", () => {
+test("mode tabs: Explore/For You switch in place; My Moments is a real navigation; full width", () => {
   const tabs = read("src/components/moments/MomentsModeTabs.tsx");
   assert.match(tabs, /if \(onSelect && m !== "my-moments"\)/);
-  assert.match(tabs, /href=\{momentsModeHref\(m\)\}/);
+  assert.match(tabs, /href=\{momentsModeHref\(m, display\)\}/);
+  assert.match(tabs, /className="flex w-full rounded-full bg-black\/\[0\.05\] p-1"/);
+  assert.match(tabs, /flex h-9 min-w-0 flex-1 items-center justify-center/, "each mode an equal share");
 });
 
 test("Moments grid: swipe the content surface between category boards (pan-y, no card swiping)", () => {

@@ -1,23 +1,21 @@
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
 import type { ReactNode } from "react";
-import { redirect } from "next/navigation";
-import { getServerSupabase } from "@/lib/supabase/server";
 import { getJournalArchiveEntries, type JournalArchiveFilter, type JournalIndexEntry } from "@/lib/journal";
 import {
   buildMonthGrid,
   buildWeekDays,
-  buildYearMonthSummaries,
+  buildYearHistory,
   dayLabel,
   entriesForDay,
   entriesForMonth,
   entriesForWeek,
   filterByObjectType,
-  groupEntriesByDate,
+  groupNewestFirst,
   monthYearLabel,
   parseAnchorDate,
   shiftAnchor,
-  sortByTimeOfDay,
+  sortNewestFirst,
   toYmd,
   todayYmd,
   weekRangeLabel,
@@ -27,8 +25,7 @@ import {
 } from "@/lib/journalArchive";
 import JournalArchiveCard from "@/components/journal/JournalArchiveCard";
 import ChevronIcon from "@/components/ChevronIcon";
-
-export const dynamic = "force-dynamic";
+import { ADD_MOMENT_HREF } from "@/lib/moment-filters";
 
 const VIEWS: { key: JournalArchiveView; label: string }[] = [
   { key: "day", label: "Day" },
@@ -36,8 +33,8 @@ const VIEWS: { key: JournalArchiveView; label: string }[] = [
   { key: "month", label: "Month" },
   { key: "year", label: "Year" },
   // Journal V2 Pass 2 — ALL is not another calendar granularity; it's the
-  // chronological archive view of the complete Passbook (see this page's
-  // own header note and the "all" branch below).
+  // chronological archive view of the complete Journal (see the "all"
+  // branch below).
   { key: "all", label: "All" },
 ];
 
@@ -51,32 +48,22 @@ const FILTERS: { key: JournalArchiveFilter; label: string }[] = [
   { key: "events", label: "Events" },
 ];
 
-/** Journal V1.1 — the Journal Index rebuilt as a chronological, visual
- * archive: time (Day/Week/Month/Year) is the primary organizing
- * dimension, object type (All/Places/Brands/Products/Events) a secondary
- * filter on top of it — reversed from the old Index, where five type
- * pills were the only navigation and the whole page was one flat grid.
- *
- * One route, one view-mode control — not four separate pages — driven by
- * `?view=`, `?date=` (the period anchor) and `?day=` (an explicit date
- * selected within Month/Week view), all plain searchParams so back/
- * forward and shareable links behave normally with no client state at
- * all. The entire page stays a Server Component: one batched data fetch
- * (getJournalArchiveEntries — same fixed number of queries regardless of
- * which period/filter is showing, see its own comment) feeds every
- * view's slicing, which happens in plain JS (lib/journalArchive.ts). */
-export default async function JournalIndexPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string; date?: string; day?: string; filter?: string; sort?: string }>;
-}) {
-  const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=" + encodeURIComponent("/my-world/journal"));
+export type MyJournalParams = { view?: string; date?: string; day?: string; filter?: string; sort?: string };
 
-  const params = await searchParams;
+/** My Journal (/journal) — the signed-in person's personal history of
+ * their Moments: the same journal_entries records /moments → My Moments
+ * shows as a feed, here organized by time. Time (Day/Week/Month/Year/All)
+ * is the primary dimension, object type (All/Places/Brands/Products/Events)
+ * a secondary filter. Every view reads NOW → PAST (lib/journalArchive
+ * sortNewestFirst / groupNewestFirst / buildYearHistory).
+ *
+ * One route, one view-mode control, driven by `?view=`, `?date=` (the
+ * period anchor), `?day=` (a date selected within Month/Week), `?filter=`
+ * and `?sort=` (All only) — plain searchParams, so Back/forward and shared
+ * links behave normally with no client state. A Server Component: one
+ * batched fetch (getJournalArchiveEntries) feeds every view's slicing.
+ * The /journal page signs the visitor in first (canonical /login?next=). */
+export default async function MyJournal({ userId, params }: { userId: string; params: MyJournalParams }) {
   const view = (VIEWS.some((v) => v.key === params.view) ? params.view : "month") as JournalArchiveView;
   const filterKey = (FILTERS.some((f) => f.key === params.filter) ? params.filter : "all") as JournalArchiveFilter;
   const anchor = parseAnchorDate(params.date);
@@ -89,7 +76,7 @@ export default async function JournalIndexPage({
   const sortKey = (params.sort === "oldest" ? "oldest" : "newest") as JournalArchiveSort;
   const today = todayYmd();
 
-  const allEntries = await getJournalArchiveEntries(user.id);
+  const allEntries = await getJournalArchiveEntries(userId);
   const journalIsEmpty = allEntries.length === 0;
   const entries = filterByObjectType(allEntries, filterKey);
 
@@ -101,7 +88,7 @@ export default async function JournalIndexPage({
     qp.set("sort", next.sort ?? sortKey);
     const day = next.day === undefined ? explicitDay : next.day;
     if (day) qp.set("day", day);
-    return `/my-world/journal?${qp.toString()}`;
+    return `/journal?${qp.toString()}`;
   }
 
   const prevHref = hrefFor({ date: toYmd(shiftAnchor(anchor, view, -1)), day: null });
@@ -112,8 +99,8 @@ export default async function JournalIndexPage({
 
   if (view === "month") {
     const grid = buildMonthGrid(anchor);
-    const monthEntries = entriesForMonth(entries, anchor);
-    const byDate = groupEntriesByDate(monthEntries);
+    const monthEntries = sortNewestFirst(entriesForMonth(entries, anchor));
+    const byDate = new Map(groupNewestFirst(monthEntries));
     const monthPrefix = toYmd(anchor).slice(0, 7);
     const selectedDay = explicitDay && explicitDay.startsWith(monthPrefix) ? explicitDay : null;
     temporalLabel = monthYearLabel(anchor);
@@ -128,7 +115,7 @@ export default async function JournalIndexPage({
                 Show full month
               </Link>
             </div>
-            <EntryList entries={entriesForDay(monthEntries, selectedDay)} className="mt-3" emptyLabel="No entries this day." />
+            <EntryList entries={entriesForDay(monthEntries, selectedDay)} className="mt-3" emptyLabel="No Moments this day." />
           </div>
         ) : (
           <div className="mt-6 flex flex-col gap-6">
@@ -148,11 +135,13 @@ export default async function JournalIndexPage({
     );
   } else if (view === "week") {
     const weekDays = buildWeekDays(anchor);
-    const weekEntries = entriesForWeek(entries, weekDays);
-    const byDate = groupEntriesByDate(weekEntries);
+    const weekEntries = sortNewestFirst(entriesForWeek(entries, weekDays));
+    const days = groupNewestFirst(weekEntries);
+    const byDate = new Map(days);
     const weekYmds = weekDays.map(toYmd);
-    const defaultDay = weekYmds.find((ymd) => byDate.has(ymd)) ?? (weekYmds.includes(today) ? today : null);
-    const selectedDay = explicitDay && weekYmds.includes(explicitDay) ? explicitDay : defaultDay;
+    // No day picked: the whole week's history, newest day first. A picked
+    // day (from the strip) narrows to it.
+    const selectedDay = explicitDay && weekYmds.includes(explicitDay) ? explicitDay : null;
     temporalLabel = weekRangeLabel(weekDays);
     body = (
       <>
@@ -160,18 +149,32 @@ export default async function JournalIndexPage({
         <div className="mt-6">
           {selectedDay ? (
             <>
-              <DateHeading ymd={selectedDay} />
-              <EntryList entries={entriesForDay(weekEntries, selectedDay)} className="mt-3" emptyLabel="No entries this day." />
+              <div className="flex items-center justify-between gap-2">
+                <DateHeading ymd={selectedDay} />
+                <Link href={hrefFor({ day: null })} className="shrink-0 text-xs font-semibold text-findmi-700 hover:text-findmi-800">
+                  Show full week
+                </Link>
+              </div>
+              <EntryList entries={entriesForDay(weekEntries, selectedDay)} className="mt-3" emptyLabel="No Moments this day." />
             </>
-          ) : (
+          ) : days.length === 0 ? (
             <EmptyPeriod label="No Moments this week." />
+          ) : (
+            <div className="flex flex-col gap-6">
+              {days.map(([ymd, dayEntries]) => (
+                <div key={ymd}>
+                  <DateHeading ymd={ymd} />
+                  <EntryList entries={dayEntries} className="mt-3" />
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </>
     );
   } else if (view === "day") {
     const ymd = toYmd(anchor);
-    const dayEntries = sortByTimeOfDay(entriesForDay(entries, ymd));
+    const dayEntries = sortNewestFirst(entriesForDay(entries, ymd));
     temporalLabel = dayLabel(anchor);
     body = (
       <div className="mt-6">
@@ -191,17 +194,26 @@ export default async function JournalIndexPage({
     );
   } else if (view === "year") {
     const year = anchor.getFullYear();
-    const summaries = buildYearMonthSummaries(entries, year);
+    const months = buildYearHistory(entries, year);
     temporalLabel = yearLabel(anchor);
-    body = (
-      <div className="mt-6 flex flex-col divide-y divide-black/5">
-        {summaries.map((m) => {
-          const monthDate = new Date(year, m.month, 1);
-          const content = (
-            <div className="flex items-center justify-between gap-3 py-3.5">
+    body =
+      months.length === 0 ? (
+        <div className="mt-6">
+          <EmptyPeriod label={`No Moments in ${year}.`} />
+        </div>
+      ) : (
+        <div className="mt-6 flex flex-col divide-y divide-black/5">
+          {months.map((m) => (
+            <Link
+              key={m.month}
+              href={hrefFor({ view: "month", date: toYmd(new Date(year, m.month, 1)), day: null })}
+              className="flex items-center justify-between gap-3 py-3.5 transition hover:bg-black/[0.015]"
+            >
               <div className="min-w-0">
                 <p className="text-sm font-bold text-ink">{m.label}</p>
-                <p className="text-xs text-ink/50">{m.count > 0 ? `${m.count} ${m.count === 1 ? "Moment" : "Moments"}` : "No Moments"}</p>
+                <p className="text-xs text-ink/50">
+                  {m.count} {m.count === 1 ? "Moment" : "Moments"}
+                </p>
               </div>
               {m.previewCoverUrls.length > 0 && (
                 <div className="flex shrink-0 -space-x-2">
@@ -211,20 +223,10 @@ export default async function JournalIndexPage({
                   ))}
                 </div>
               )}
-            </div>
-          );
-          return m.count > 0 ? (
-            <Link key={m.month} href={hrefFor({ view: "month", date: toYmd(monthDate), day: null })} className="transition hover:bg-black/[0.015]">
-              {content}
             </Link>
-          ) : (
-            <div key={m.month} className="opacity-50">
-              {content}
-            </div>
-          );
-        })}
-      </div>
-    );
+          ))}
+        </div>
+      );
   } else {
     // Journal V2 Pass 2 — "all": the complete chronological archive, not
     // another time-windowed period. `entries` (already filtered by object
@@ -235,10 +237,11 @@ export default async function JournalIndexPage({
     // "Oldest first" is a plain reverse of that same stable order, never a
     // second query or a different tie-break rule.
     temporalLabel = "All";
-    const allViewEntries = sortKey === "oldest" ? [...entries].reverse() : entries;
+    const newest = sortNewestFirst(entries);
+    const allViewEntries = sortKey === "oldest" ? [...newest].reverse() : newest;
     body = (
       <div className="mt-6">
-        <EntryList entries={allViewEntries} emptyLabel="No entries yet." />
+        <EntryList entries={allViewEntries} emptyLabel="No Moments match this filter." />
       </div>
     );
   }
@@ -247,23 +250,11 @@ export default async function JournalIndexPage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">My Moments</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">My Journal</h1>
           <p className="mt-1.5 max-w-md text-sm text-ink/60">Your personal history of the places, brands and experiences you&rsquo;ve lived.</p>
-          {/* Journal alignment — My Moments is the personal history view of
-              the SAME Moments (journal_entries) that /moments explores and
-              that Saved & Following (intent) leads to; one record, linked
-              both ways, never a second content system. */}
-          <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold">
-            <Link href="/moments" className="text-findmi-700 hover:underline">
-              Explore Moments
-            </Link>
-            <Link href="/account/saved" className="text-findmi-700 hover:underline">
-              Saved
-            </Link>
-          </p>
         </div>
         <Link
-          href="/my-world/journal/new"
+          href={ADD_MOMENT_HREF}
           className="flex gap-1.5 h-9 shrink-0 items-center justify-center rounded-full bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
@@ -273,12 +264,12 @@ export default async function JournalIndexPage({
 
       {journalIsEmpty ? (
         <div className="mt-10 rounded-2xl border border-dashed border-black/15 p-8 text-center">
-          <p className="font-display text-lg font-bold tracking-tight text-ink">Your Moments start here.</p>
+          <p className="font-display text-lg font-bold tracking-tight text-ink">Start building your Journal.</p>
           <p className="mx-auto mt-1.5 max-w-xs text-sm text-ink/55">
-            Save a place you visited, something you tried, an event you attended or a day you want to remember.
+            Every Moment you add — a place you visited, something you tried, an event you went to — becomes part of your history here.
           </p>
           <Link
-            href="/my-world/journal/new"
+            href={ADD_MOMENT_HREF}
             className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
@@ -395,7 +386,7 @@ function EmptyPeriod({ label }: { label: string }) {
   return (
     <div className="rounded-2xl border border-dashed border-black/15 px-5 py-7 text-center">
       <p className="text-sm text-ink/50">{label}</p>
-      <Link href="/my-world/journal/new" className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 hover:text-findmi-800">
+      <Link href={ADD_MOMENT_HREF} className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 hover:text-findmi-800">
         <span aria-hidden="true" className="inline-flex"><NavIcon name="moments" className="h-4 w-4 shrink-0" /></span>
         Add Moment
       </Link>

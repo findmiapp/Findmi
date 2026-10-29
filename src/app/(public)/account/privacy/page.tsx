@@ -90,7 +90,7 @@ export default async function PrivacyAndDataPage({
                 ["Pages Followed", summary.pagesFollowed, "/account/following"],
                 ["Saved Items", summary.savedItems, "/account/saved"],
                 ["Organized Items", summary.organizedItems, "/account/saved"],
-                ["Moments", summary.moments, "/my-world/journal"],
+                ["Moments", summary.moments, "/journal"],
               ].map(([label, value, href]) => (
                 <Link key={label as string} href={href as string} className="rounded-2xl border border-black/5 px-4 py-3 transition hover:border-black/15">
                   <dt className="text-metadata text-muted">{label}</dt>

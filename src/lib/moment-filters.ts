@@ -155,30 +155,46 @@ export const MOMENT_CATEGORY_LABELS: Record<MomentCategoryKey, string> = {
 export const isMomentFeedMode = (v: unknown): v is MomentFeedMode => v === "explore" || v === "for-you";
 export const isMomentCategoryKey = (v: unknown): v is MomentCategoryKey => typeof v === "string" && (MOMENT_CATEGORY_KEYS as readonly string[]).includes(v);
 
+// The URL carries mode, that mode's category and the display:
+//   /moments                          Explore · All · Feed
+//   /moments?mode=for-you&cat=pop-ups For You · Pop-Ups
+//   /moments?mode=my-moments          My Moments (the viewer's own)
+//   …&display=map                     the same dataset on the map
+// The legacy ?filter= still lands (following → For You, a category →
+// Explore + that category, a retired My Moments type filter → All).
+
+export type MomentsPageMode = MomentFeedMode | "my-moments";
+export type MomentsDisplay = "feed" | "map";
+export const isMomentsDisplay = (v: unknown): v is MomentsDisplay => v === "feed" || v === "map";
+
 export interface MomentFeedState {
-  mode: MomentFeedMode;
+  mode: MomentsPageMode;
   /** Each mode's own category. */
-  categories: Record<MomentFeedMode, MomentCategoryKey>;
+  categories: Record<MomentsPageMode, MomentCategoryKey>;
+  display: MomentsDisplay;
 }
 
-/** URL → feed state. Default: Explore, All. */
-export function parseMomentFeedState(params: { mode?: unknown; cat?: unknown; filter?: unknown }): MomentFeedState {
-  const categories: Record<MomentFeedMode, MomentCategoryKey> = { explore: "all", "for-you": "all" };
-  if (isMomentFeedMode(params.mode)) {
-    if (isMomentCategoryKey(params.cat)) categories[params.mode] = params.cat;
-    return { mode: params.mode, categories };
+/** URL → feed state. Default: Explore, All, Feed. */
+export function parseMomentFeedState(params: { mode?: unknown; cat?: unknown; filter?: unknown; display?: unknown }): MomentFeedState {
+  const categories: Record<MomentsPageMode, MomentCategoryKey> = { explore: "all", "for-you": "all", "my-moments": "all" };
+  const display: MomentsDisplay = isMomentsDisplay(params.display) ? params.display : "feed";
+  if (isMomentFeedMode(params.mode) || params.mode === "my-moments") {
+    const mode = params.mode as MomentsPageMode;
+    if (isMomentCategoryKey(params.cat)) categories[mode] = params.cat;
+    return { mode, categories, display };
   }
   // Legacy ?filter=
-  if (params.filter === "following") return { mode: "for-you", categories };
-  if (isMomentCategoryKey(params.filter) && params.filter !== "all") return { mode: "explore", categories: { ...categories, explore: params.filter } };
-  return { mode: "explore", categories };
+  if (params.filter === "following") return { mode: "for-you", categories, display };
+  if (isMomentCategoryKey(params.filter) && params.filter !== "all") return { mode: "explore", categories: { ...categories, explore: params.filter }, display };
+  return { mode: "explore", categories, display };
 }
 
-/** Feed state → query string (active mode + its category only). */
-export function momentFeedQuery(mode: MomentFeedMode, category: MomentCategoryKey, cursor?: string | null): string {
+/** Feed state → query string (active mode + its category + display). */
+export function momentFeedQuery(mode: MomentsPageMode, category: MomentCategoryKey, cursor?: string | null, display: MomentsDisplay = "feed"): string {
   const qs = new URLSearchParams();
   if (mode !== "explore") qs.set("mode", mode);
   if (category !== "all") qs.set("cat", category);
+  if (display !== "feed") qs.set("display", display);
   if (cursor) qs.set("cursor", cursor);
   return qs.toString();
 }
@@ -206,36 +222,30 @@ export function orderForYou<T extends { tags: readonly MomentFilterKey[]; follow
 
 // ── My Moments: the third mode ─────────────────────────────────────────────
 //
-// /moments has three modes: Explore and For You (discovery over the public
-// network, client-side over one loaded page) and My Moments — the signed-in
-// person's OWN documented history: the same journal_entries records, read
-// owner-scoped and bounded (lib/journal getJournalArchiveEntries with a
-// limit) on the server, with the full calendar archive one tap away at
-// /my-world/journal. Signed out, My Moments explains itself and offers Log
-// In / Create Account that return to it — never a fake empty state.
+// /moments has three modes over ONE card system: Explore and For You
+// (discovery over the public network, client-side over one loaded page) and
+// My Moments — the signed-in person's OWN Moments, the same journal_entries
+// read owner-scoped on the server (lib/moment-discovery getMomentFeed with
+// `owner`), drafts and private Moments badged. Their chronological history
+// is My Journal (/journal). Signed out, My Moments explains itself and
+// offers Log In / Create Account that return to it — never a fake empty state.
 
-export type MomentsPageMode = MomentFeedMode | "my-moments";
 export const MOMENTS_PAGE_MODES: readonly MomentsPageMode[] = ["explore", "for-you", "my-moments"];
 export const MOMENTS_PAGE_MODE_LABELS: Record<MomentsPageMode, string> = { ...MOMENT_FEED_MODE_LABELS, "my-moments": "My Moments" };
 
-/** Bounded page of the viewer's own Moments shown on /moments. */
+/** Page size of the viewer's own Moments on /moments. */
 export const MY_MOMENTS_LIMIT = 48;
 
-export type MyMomentsFilter = "all" | "places" | "brands" | "products" | "events";
-export const MY_MOMENTS_FILTERS: readonly { key: MyMomentsFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "places", label: "Places" },
-  { key: "brands", label: "Brands" },
-  { key: "products", label: "Products" },
-  { key: "events", label: "Events" },
-];
-export const isMyMomentsFilter = (v: unknown): v is MyMomentsFilter => typeof v === "string" && MY_MOMENTS_FILTERS.some((f) => f.key === v);
+/** My Journal — the personal chronological history of the viewer's Moments. */
+export const MY_JOURNAL_HREF = "/journal";
+
+/** The one Moment composer (signed-out visitors may start a Moment there). */
+export const ADD_MOMENT_HREF = "/my-world/journal/new";
 
 /** Where each mode lives (deterministic, shareable URLs). */
-export function momentsModeHref(mode: MomentsPageMode, filter?: MyMomentsFilter): string {
-  if (mode === "explore") return "/moments";
-  if (mode === "for-you") return "/moments?mode=for-you";
-  return filter && filter !== "all" ? `/moments?mode=my-moments&filter=${filter}` : "/moments?mode=my-moments";
+export function momentsModeHref(mode: MomentsPageMode, display: MomentsDisplay = "feed"): string {
+  const q = momentFeedQuery(mode, "all", null, display);
+  return q ? `/moments?${q}` : "/moments";
 }
 
 /** Log In / Create Account links that come straight back to My Moments.

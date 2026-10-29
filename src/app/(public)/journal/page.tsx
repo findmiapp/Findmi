@@ -1,19 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import JournalCollection from "@/components/journal/JournalCollection";
 import ChevronIcon from "@/components/ChevronIcon";
 import { getBusinessBySlug, getEventBySlug, getLocationBySlug, getProductBySlug } from "@/lib/data";
 import { getPublicJournalCollection, momentsHeading, type JournalSubjectType } from "@/lib/journal-distribution";
 import { resolvePublicJournalAuthor } from "@/lib/journal-author";
+import { getServerSupabase } from "@/lib/supabase/server";
+import MyJournal, { type MyJournalParams } from "./MyJournal";
 
-/** Journal Distribution V1 — the "See all" destination for one public
+/** /journal — two things, decided by the query:
+ *   • no subject → MY JOURNAL, the signed-in person's own chronological
+ *     history (MyJournal; signed out → the canonical /login?next=/journal…).
+ *     Replaces /my-world and /my-world/journal (next.config redirects).
+ *   • a subject (?business= / event= / location= / product= / author=) →
+ *     that public Moment collection, unchanged (below).
+ *
+ * Journal Distribution V1 — the "See all" destination for one public
  * object's Journal collection: /journal?business=<slug> (or event=,
  * location=, product=). Slugs, not ids, matching every other public
  * route. Subjects resolve through the same public loaders their own pages
  * use, so a hidden/unpublished object 404s here too. Keyset-paginated
  * ("Older experiences"); the exact total is computed on the first page
- * only. Deliberately not a global Journal homepage — no subject, no page.
+ * only.
  *
  * Recovery pass — /journal?author=<entryId>: one author's public Journal
  * (the byline link on an entry). Keyed on a PUBLIC entry, never a user id
@@ -23,7 +32,9 @@ import { resolvePublicJournalAuthor } from "@/lib/journal-author";
 const PAGE_SIZE = 24;
 const SUBJECT_TYPES: JournalSubjectType[] = ["business", "event", "location", "product"];
 
-type SearchParams = Partial<Record<JournalSubjectType | "author" | "cursor", string>>;
+type SearchParams = Partial<Record<JournalSubjectType | "author" | "cursor", string>> & MyJournalParams;
+
+const hasSubject = (params: SearchParams) => Boolean(params.author) || SUBJECT_TYPES.some((t) => typeof params[t] === "string" && params[t]);
 type Subject = { type: JournalSubjectType | "author"; id: string; name: string; href: string; slug: string; heading: string };
 
 async function resolveSubject(params: SearchParams): Promise<Subject | null> {
@@ -58,7 +69,9 @@ async function resolveEntitySubject(params: SearchParams) {
 }
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SearchParams> }): Promise<Metadata> {
-  const subject = await resolveSubject(await searchParams);
+  const params = await searchParams;
+  if (!hasSubject(params)) return { title: "My Journal", robots: { index: false } };
+  const subject = await resolveSubject(params);
   if (!subject) return { title: "Moments" };
   return {
     title: subject.heading,
@@ -68,6 +81,17 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export default async function JournalCollectionPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
+  if (!hasSubject(params)) {
+    const supabase = await getServerSupabase();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => typeof e[1] === "string")).toString();
+      redirect("/login?next=" + encodeURIComponent(qs ? `/journal?${qs}` : "/journal"));
+    }
+    return <MyJournal userId={user.id} params={params} />;
+  }
   const subject = await resolveSubject(params);
   if (!subject) notFound();
 

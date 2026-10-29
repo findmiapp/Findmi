@@ -19,8 +19,8 @@ export const YOUR_FINDMI_NAV: PrimaryNavItem[] = [
   // ONE personal library: Things I Want, Want To Do / Go, Following,
   // Saved and Collections all live at /account/saved (signed-in /saved and
   // /my-world redirect there).
-  { href: "/account/saved", label: "Your Library", icon: "bookmark", match: ["/account/saved", "/saved", "=/my-world"] },
-  { href: "/my-world/journal", label: "My Moments", icon: "moments", match: ["/my-world/journal"] },
+  { href: "/account/saved", label: "Your Library", icon: "bookmark", match: ["/account/saved", "/saved"] },
+  { href: "/journal", label: "My Journal", icon: "moments", match: ["=/journal"] },
   { href: "/my-world/journal/new", label: "Add Moment", match: [] },
   { href: "/account/messages", label: "Messages", match: ["/account/messages"] },
   { href: "/account", label: "Account", icon: "person", match: [] },

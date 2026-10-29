@@ -6,17 +6,18 @@ import type { MomentFeedCard } from "@/lib/moment-discovery";
 import {
   MOMENT_CATEGORY_KEYS,
   MOMENT_CATEGORY_LABELS,
-  MOMENT_FEED_MODE_LABELS,
+  MOMENTS_PAGE_MODE_LABELS,
+  MY_JOURNAL_HREF,
   adjacentBoard,
-  momentsModeHref,
   mergeFollowKeys,
   momentFeedQuery,
   momentInCategory,
   orderForYou,
   type MomentCategoryKey,
-  type MomentFeedMode,
   type MomentFeedState,
   type MomentFollowKeys,
+  type MomentsDisplay,
+  type MomentsPageMode,
 } from "@/lib/moment-filters";
 import { getFollowedSlugs } from "@/lib/followed";
 import { getFollowedEventIds } from "@/lib/followedEvents";
@@ -27,12 +28,16 @@ import MomentDiscoveryCard from "./MomentDiscoveryCard";
 import MomentsModeTabs from "./MomentsModeTabs";
 import { useBoardSwipe } from "./useBoardSwipe";
 import { useNearViewport } from "./useNearViewport";
+import MomentsMap from "./MomentsMap";
 
 const NO_FOLLOWS: MomentFollowKeys = { businessSlugs: [], eventIds: [], locationIds: [] };
-const DEFAULT_STATE: MomentFeedState = { mode: "explore", categories: { explore: "all", "for-you": "all" } };
+const DEFAULT_STATE: MomentFeedState = { mode: "explore", categories: { explore: "all", "for-you": "all", "my-moments": "all" }, display: "feed" };
 
-/** Findmi Moments discovery — ONE canonical Moments feed in two modes over
- * the same public cards (lib/moment-filters):
+/** Findmi Moments — ONE canonical Moments feed and card system for all
+ * three modes (lib/moment-filters). Explore and For You run over the same
+ * public cards; My Moments renders the viewer's OWN cards (loaded
+ * owner-scoped by /moments) through the very same chips, cards and map —
+ * the mode changes the dataset, never the presentation:
  *   Explore  the broad Findmi network, newest experience first.
  *   For You  the viewer's own signals first — Moments connected to what
  *            they follow (account follows when signed in, plus this
@@ -43,21 +48,30 @@ const DEFAULT_STATE: MomentFeedState = { mode: "explore", categories: { explore:
  * mode's category). Category chips are a horizontally swipeable rail with
  * the page gutter; a category chip only appears when a loaded Moment
  * matches it — never an empty, decorative filter. On /moments the URL
- * tracks the active mode and its category. */
+ * tracks the active mode, its category and the display (Feed / Map: the
+ * same filtered Moments on the shared Findmi map — MomentsMap). The
+ * homepage preview passes showModes={false}: no mode switch there, just the
+ * category rail and the rail of cards. */
 export default function MomentsDiscovery({
   cards,
   layout,
   initialState = DEFAULT_STATE,
   pagination,
+  showModes = true,
 }: {
   cards: MomentFeedCard[];
   layout: "carousel" | "grid";
   initialState?: MomentFeedState;
   /** /moments only: keyset pagination links (mode + category carried along). */
   pagination?: { basePath: string; cursor: string | null; nextCursor: string | null };
+  showModes?: boolean;
 }) {
-  const [mode, setMode] = useState<MomentFeedMode>(initialState.mode);
-  const [categories, setCategories] = useState<Record<MomentFeedMode, MomentCategoryKey>>(initialState.categories);
+  const [mode, setMode] = useState<MomentsPageMode>(initialState.mode);
+  const [categories, setCategories] = useState<Record<MomentsPageMode, MomentCategoryKey>>(initialState.categories);
+  const [display, setDisplay] = useState<MomentsDisplay>(initialState.display);
+  // My Moments' cards are the viewer's own (a server read), so switching to
+  // Explore / For You from there is a real navigation, not an in-place swap.
+  const ownCards = initialState.mode === "my-moments";
   const [follows, setFollows] = useState<MomentFollowKeys>(NO_FOLLOWS);
   const [signedIn, setSignedIn] = useState(false);
   // Until the account follows have loaded, For You's copy would guess — so it waits.
@@ -86,9 +100,9 @@ export default function MomentsDiscovery({
   }, []);
 
   const category = categories[mode];
-  const hrefFor = (m: MomentFeedMode, c: MomentCategoryKey, cursor: string | null = null) => {
+  const hrefFor = (m: MomentsPageMode, c: MomentCategoryKey, cursor: string | null = null, d: MomentsDisplay = display) => {
     if (!pagination) return "#";
-    const q = momentFeedQuery(m, c, cursor);
+    const q = momentFeedQuery(m, c, cursor, d);
     return q ? `${pagination.basePath}?${q}` : pagination.basePath;
   };
   // /moments: keep the address bar in step (shareable, Back-safe) without a
@@ -98,12 +112,13 @@ export default function MomentsDiscovery({
     const next = hrefFor(mode, category, pagination.cursor);
     if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(window.history.state, "", next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, category]);
+  }, [mode, category, display]);
 
   const chipCategories = MOMENT_CATEGORY_KEYS.filter((k) => k === "all" || k === category || cards.some((c) => momentInCategory(c, k)));
   const inCategory = useMemo(() => cards.filter((c) => momentInCategory(c, category)), [cards, category]);
   const forYou = useMemo(() => orderForYou(inCategory, follows), [inCategory, follows]);
-  const visible = mode === "explore" ? inCategory : [...forYou.fromFollows, ...forYou.more];
+  const visible = mode === "for-you" ? [...forYou.fromFollows, ...forYou.more] : inCategory;
+  const showMap = layout === "grid" && display === "map";
 
   const setCategory = (c: MomentCategoryKey) => setCategories((prev) => ({ ...prev, [mode]: c }));
 
@@ -134,12 +149,23 @@ export default function MomentsDiscovery({
 
   return (
     <div>
-      <MomentsModeTabs active={mode} onSelect={setMode} />
+      {showModes && <MomentsModeTabs active={mode} onSelect={ownCards ? undefined : setMode} display={display} />}
+
+      {layout === "grid" && (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <DisplaySwitch display={display} onChange={setDisplay} />
+          {mode === "my-moments" && (
+            <Link href={MY_JOURNAL_HREF} className="shrink-0 text-metadata font-semibold text-findmi-700 hover:underline">
+              View My Journal
+            </Link>
+          )}
+        </div>
+      )}
 
       <div
         ref={chipRailRef}
         role="group"
-        aria-label={`Filter ${MOMENT_FEED_MODE_LABELS[mode]} by category`}
+        aria-label={`Filter ${MOMENTS_PAGE_MODE_LABELS[mode]} by category`}
         className="-mx-4 mt-3 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 sm:-mx-6 sm:scroll-px-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {chipCategories.map((key) => {
@@ -163,18 +189,13 @@ export default function MomentsDiscovery({
       </div>
 
       {forYouNote && <p className="mt-3 text-metadata text-muted">{forYouNote}</p>}
-      {/* Journal alignment: a signed-in viewer's own Moments — their
-          personal history over time — are the same records, one tap away. */}
-      {signedIn && pagination && (
-        <p className="mt-3 text-metadata text-muted">
-          Your own Moments become your personal history in{" "}
-          <Link href={momentsModeHref("my-moments")} className="font-semibold text-findmi-700 hover:underline">
-            My Moments
-          </Link>
-          .
-        </p>
-      )}
 
+      {showMap ? (
+        <div className="mt-4">
+          <MomentsMap cards={visible} />
+        </div>
+      ) : (
+        <>
       {layout === "grid" && chipCategories.length > 1 && (
         // Board position: which view of the swipeable sequence is showing.
         <div aria-hidden="true" className="mt-3 flex justify-center gap-1.5 sm:hidden">
@@ -215,6 +236,8 @@ export default function MomentsDiscovery({
           renderCards(visible)
         )}
       </div>
+        </>
+      )}
 
       {pagination && (pagination.nextCursor || pagination.cursor) && (
         <nav className="mt-8 flex items-center justify-between gap-3 text-sm font-semibold">
@@ -234,6 +257,31 @@ export default function MomentsDiscovery({
           )}
         </nav>
       )}
+    </div>
+  );
+}
+
+/** Feed | Map — the same Moments as a feed or on the map. */
+function DisplaySwitch({ display, onChange }: { display: MomentsDisplay; onChange: (d: MomentsDisplay) => void }) {
+  const opts: { key: MomentsDisplay; label: string }[] = [
+    { key: "feed", label: "Feed" },
+    { key: "map", label: "Map" },
+  ];
+  return (
+    <div role="group" aria-label="Show Moments as" className="flex rounded-full border border-black/10 bg-white p-0.5">
+      {opts.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          aria-pressed={display === o.key}
+          onClick={() => onChange(o.key)}
+          className={`h-7 rounded-full px-3.5 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
+            display === o.key ? "bg-findmi-600 text-white" : "text-ink/60 hover:text-ink"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

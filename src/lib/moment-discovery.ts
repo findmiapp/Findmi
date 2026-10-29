@@ -1,12 +1,14 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabase } from "./supabase";
-import { resolveSignedUrls } from "./journal";
+import { ownMomentsScope, resolveSignedUrls, scopeToOwnMoments } from "./journal";
 import { authorColumn, resolveMomentAuthors } from "./moment-authorship";
 import { MAX_COLLAGE_REGIONS, orderPreviewMedia } from "./moment-collage";
 import { momentCategoryTags, type MomentFilterKey, type MomentFollowKeys } from "./moment-filters";
 
 // Findmi Moments discovery feed — the public, cross-entity Moment feed for
-// the homepage carousel and /moments. Same visibility contract as
+// the homepage carousel and /moments (and, owner-scoped, /moments → My
+// Moments: same cards, the viewer's own Moments). Same visibility contract as
 // journal-distribution.ts: reads use the ANON client, so RLS decides (only
 // visibility='public' AND status='published' rows are readable) and the
 // filters below restate that, never widen it. Media stay in the private
@@ -34,6 +36,19 @@ export interface MomentFeedCard {
   tags: MomentFilterKey[];
   /** Public keys for the "Following" filter (matched on this device). */
   follow: MomentFollowKeys;
+  /** Where it happened on a map — ONLY from a real relationship: the
+   * Moment's own Location, else a connected Event date's Location (never a
+   * hidden-location Event, never a Business, never geocoded text). */
+  geo: MomentGeo | null;
+  /** Owner feed only (My Moments): not visible to others yet. */
+  ownerBadge?: "Draft" | "Private" | null;
+}
+
+export interface MomentGeo {
+  lat: number;
+  lng: number;
+  locationId: string;
+  place: string;
 }
 
 export interface MomentFeedPage {
@@ -53,6 +68,7 @@ function parseCursor(cursor: string | null | undefined): { date: string; id: str
 
 const one = <T>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
 
+type EntryLocation = { id: string; name: string; latitude: number | null; longitude: number | null; is_demo: boolean | null; category: unknown };
 type EntryRow = {
   id: string;
   user_id: string;
@@ -60,25 +76,47 @@ type EntryRow = {
   entry_date: string;
   author_label: string | null;
   author_business_id?: string | null;
-  location: { id: string; name: string; category: { slug: string } | { slug: string }[] | null } | { id: string; name: string; category: unknown }[] | null;
+  visibility?: string;
+  status?: string;
+  location: EntryLocation | EntryLocation[] | null;
   journal_entry_connections: { business_id: string | null; event_id: string | null; event_occurrence_id: string | null }[] | null;
 };
 
-/** One page of the public Moment feed. */
-export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cursor?: string | null } = {}): Promise<MomentFeedPage> {
-  const supabase = getSupabase();
+/** A usable map point for a Location row (listed, real coordinates). */
+function locationGeo(l: EntryLocation | null | undefined): MomentGeo | null {
+  if (!l || l.is_demo || typeof l.latitude !== "number" || typeof l.longitude !== "number") return null;
+  if (!Number.isFinite(l.latitude) || !Number.isFinite(l.longitude)) return null;
+  return { lat: l.latitude, lng: l.longitude, locationId: l.id, place: l.name };
+}
+
+/** One page of the Moment feed. Default: the PUBLIC network feed (anon
+ * client, RLS + public/published filters). `owner`: the signed-in person's
+ * OWN Moments (My Moments) — read with their session client under the same
+ * ownership rule as the Journal archive (lib/journal scopeToOwnMoments),
+ * drafts and private Moments included, photos signed for the owner. Same
+ * card shape, ordering and cursor either way. */
+export async function getMomentFeed({
+  limit = 12,
+  cursor,
+  owner,
+}: { limit?: number; cursor?: string | null; owner?: { client: SupabaseClient; userId: string } } = {}): Promise<MomentFeedPage> {
+  const supabase = owner?.client ?? getSupabase();
   if (!supabase) return EMPTY;
   const pageSize = Math.max(1, Math.min(limit, 48));
 
   let query = supabase
     .from("journal_entries")
     .select(
-      "id, user_id, title, entry_date, author_label" +
+      "id, user_id, title, entry_date, author_label, visibility, status" +
         (await authorColumn()) +
-        ", location:locations(id, name, category:categories(slug)), journal_entry_connections(business_id, event_id, event_occurrence_id)"
-    )
-    .eq("visibility", "public")
-    .eq("status", "published");
+        ", location:locations(id, name, latitude, longitude, is_demo, category:categories(slug)), journal_entry_connections(business_id, event_id, event_occurrence_id)"
+    );
+  if (owner) {
+    const scope = await ownMomentsScope(owner.client, owner.userId);
+    query = scopeToOwnMoments(query, owner.userId, scope.authorship, scope.managedIds);
+  } else {
+    query = query.eq("visibility", "public").eq("status", "published");
+  }
   const after = parseCursor(cursor);
   if (after) query = query.or(`entry_date.lt.${after.date},and(entry_date.eq.${after.date},id.lt.${after.id})`);
   const { data, error } = await query.order("entry_date", { ascending: false }).order("id", { ascending: false }).limit(pageSize + 1);
@@ -97,12 +135,24 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
 
   const [{ data: mediaRows }, { data: occRows }, { data: bizRows }] = await Promise.all([
     supabase.from("journal_entry_media").select("id, journal_entry_id, storage_path, is_cover, display_order").in("journal_entry_id", ids),
-    occurrenceIds.length ? supabase.from("event_occurrences").select("id, event_id").in("id", occurrenceIds) : Promise.resolve({ data: [] }),
+    occurrenceIds.length
+      ? supabase
+          .from("event_occurrences")
+          .select("id, event_id, location:locations(id, name, latitude, longitude, is_demo, category:categories(slug)), event:events(location_visibility)")
+          .in("id", occurrenceIds)
+      : Promise.resolve({ data: [] }),
     businessIds.length
       ? supabase.from("businesses").select("id, slug, name, business_categories(category:categories(slug))").in("id", businessIds)
       : Promise.resolve({ data: [] }),
   ]);
-  const eventOfOccurrence = new Map(((occRows ?? []) as { id: string; event_id: string }[]).map((o) => [o.id, o.event_id]));
+  type OccRow = { id: string; event_id: string; location: EntryLocation | EntryLocation[] | null; event: { location_visibility: string | null } | { location_visibility: string | null }[] | null };
+  const occList = (occRows ?? []) as OccRow[];
+  const eventOfOccurrence = new Map(occList.map((o) => [o.id, o.event_id]));
+  // An Event date's Location is a map point unless the Event hides its
+  // location (lib/event-location-privacy — only 'hidden' withholds a place).
+  const geoOfOccurrence = new Map(
+    occList.map((o) => [o.id, one(o.event)?.location_visibility === "hidden" ? null : locationGeo(one(o.location))] as const)
+  );
   const eventIds = [
     ...new Set(
       conns
@@ -130,10 +180,10 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
   const previewPaths = new Map<string, string[]>();
   for (const [entryId, list] of mediaByEntry) previewPaths.set(entryId, orderPreviewMedia(list).slice(0, MAX_COLLAGE_REGIONS).map((m) => m.storage_path));
 
-  const [signed, authors] = await Promise.all([resolveSignedUrls([...previewPaths.values()].flat(), "card", { publicView: true }), resolveMomentAuthors(page)]);
+  const [signed, authors] = await Promise.all([resolveSignedUrls([...previewPaths.values()].flat(), "card", { publicView: !owner }), resolveMomentAuthors(page)]);
 
   const cards: MomentFeedCard[] = page.map((r) => {
-    const location = one(r.location as EntryRow["location"]) as { id: string; name: string; category: unknown } | null;
+    const location = one(r.location);
     const locationCat = location ? one(location.category as { slug: string } | { slug: string }[] | null)?.slug : null;
     const rConns = r.journal_entry_connections ?? [];
     const rBiz = rConns.map((c) => (c.business_id ? businesses.get(c.business_id) : null)).filter((b): b is NonNullable<typeof b> => Boolean(b));
@@ -143,6 +193,10 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
     const rEvents = rEventIds.map((id) => events.get(id)).filter((e): e is NonNullable<typeof e> => Boolean(e));
     const cats = [...rBiz.flatMap((b) => b.cats), ...rEvents.flatMap((e) => e.cats), ...(locationCat ? [locationCat] : [])];
     const author = authors.get(r.id);
+    const geo =
+      locationGeo(location) ??
+      rConns.map((c) => (c.event_occurrence_id ? (geoOfOccurrence.get(c.event_occurrence_id) ?? null) : null)).find((g): g is MomentGeo => Boolean(g)) ??
+      null;
     return {
       id: r.id,
       title: r.title,
@@ -160,6 +214,8 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
         // Connected Businesses and the Business that published it.
         businessIds: [...new Set([...rConns.map((c) => c.business_id), r.author_business_id ?? null].filter((v): v is string => Boolean(v)))],
       },
+      geo,
+      ownerBadge: owner ? (r.status === "draft" ? "Draft" : r.visibility === "private" ? "Private" : null) : undefined,
     };
   });
 
