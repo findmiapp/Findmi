@@ -93,14 +93,38 @@ Business/Brand → Products → Locations / Events(→Occurrences) → Appearanc
 ## Monetization
 
 - **Business plans** (`plan_tier`): `free` · `pro` · `pro_seller`.
-  Recurring commercial plans: **Pro** and **Managed Pro**, monthly or
-  annual, priced only through Stripe Price IDs in env. Planning figures
-  are $20/mo · $149/yr (Pro) and $49 · $399 (Managed Pro). The legacy
-  $99/yr one-time checkout is the fallback until recurring billing is
-  configured. Which one is live in production: [VERIFY]. [CODE]
-- Pro is associated with Performance change/trend detail, inquiries
-  tooling and market allowances (`lib/entitlements.ts`). QR creation is
-  never plan-gated. [CODE]
+  `isBusinessPro` = tier pro/pro_seller **and** (`plan_expires_at` null or
+  in the future). [CODE]
+- **Displayed pricing (public):** `/join/business` and
+  `/account/business/new` say Business Pages are **free** ("Free. No
+  trial. No credit card.") and show **no** Pro pricing. Pro pricing
+  appears only at `/upgrade/pro` (reached from the manager's "Upgrade to
+  Pro" links). [CODE]
+- **Checkout path at `/upgrade/pro`:** if
+  `STRIPE_SUBSCRIPTIONS_SECRET_KEY` and all four recurring Price IDs are
+  set, it shows the recurring picker (Pro $20/mo · $149/yr, Managed Pro
+  $49/mo · $399/yr, display values in `lib/commerce/plans.ts`, charged
+  from env Price IDs). Otherwise it shows the **legacy $99 / one year,
+  one-time** Stripe Checkout. [CODE]
+- **Production evidence (2026-10-29):** `business_subscriptions` has **0
+  rows** (no recurring subscription has ever been created). Of 35 `pro`
+  Businesses, only **1** is `plan_source = paid`, through a live one-time
+  Checkout session (Sept 2026). The rest are admin/complimentary/invite
+  grants, 27 of them with no expiry. Whether the recurring env vars are set
+  in Vercel can't be read from here. The admin diagnostic
+  `/admin/api/stripe-subscriptions-diagnostic` or the Vercel env settings
+  will answer it. [SCHEMA] / [VERIFY]
+- **Legacy `membership_plans` rows** (Founding 500 `annual_price` 1, Pro
+  249, Multi-Region 750, all flagged active/public) are still in the
+  database, but no current page renders `PlanCheckoutForm`, so that
+  checkout is unreachable from the UI. The 25 `memberships` rows all date
+  from Aug 2026. [SCHEMA][CODE]
+- **What Pro actually gates in code:** the full Performance dashboard
+  (Free sees the QR snapshot, Home headline numbers and an upgrade
+  prompt), change/trend labels, Customer Inquiries (settings + the General
+  Inquiry profile button), the Orders pill's relevance, the Pro badge, and
+  market allowances (`getBusinessMarketLimit`). **QR creation isn't
+  gated.** [CODE]
 - **Marketplace**: a 5% default marketplace fee. Findmi holds funds and
   pays out manually (see `/CLAUDE.md` §8).
 - **Claims**: a $20 listing activation through Tally payment. [CODE]

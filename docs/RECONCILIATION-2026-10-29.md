@@ -138,3 +138,41 @@ Discovery Lanes, taxonomy v2, the embed widget (`/embed/business/[slug]`),
   checkout (`NEXT_PUBLIC_STRIPE_FOUNDING_LINK` is no longer read).
 - The env var list was incomplete (Resend, Anthropic, Tally secrets,
   subscriptions, map/geocoder, retention, direct messaging flag).
+
+## 7. Addendum: operational verification pass (2026-10-29, later)
+
+These are read-only findings. Nothing in production was changed.
+Canonical facts were moved into `DEPLOYMENT.md`, `PRODUCT.md`,
+`INTEGRATIONS.md`, `ARCHITECTURE.md` and `BACKLOG.md`.
+
+- **Deployment.** Evidence comes from the GitHub Deployments API (the
+  repo is public) and git ancestry. Production = the default branch
+  `claude/findmi-mvp-marketplace-3tvcik`. It auto-deploys on push, and
+  every push to any branch gets a Preview. Production was running
+  `aa7d1e2` (deployed 2026-10-29 15:41 UTC). `3b2f195` was Preview only.
+  The rollback procedure isn't documented. The options are listed in
+  `DEPLOYMENT.md`.
+- **Billing.** Public copy says Business Pages are free. `/upgrade/pro`
+  shows the recurring picker only when the recurring Stripe env is fully
+  set, and otherwise shows the legacy $99/yr one-time checkout.
+  Production has 0 `business_subscriptions` rows and 1 paid Pro (a
+  one-time live Checkout). The legacy `membership_plans` checkout is
+  unreachable from the UI. Vercel env values can't be read from here.
+- **Moments → Following.** The standalone filter has been replaced by
+  For You ordering. With current production data an empty result is
+  correct for 6 of the 8 users who follow something. Live check still
+  pending.
+- **Brand Build.** Code path: `/join/brand` → Review Your Brand
+  (`/account/business/new?source=brand…`) → `create_owned_business`
+  (free, `pending_review`) → `/account?created=<id>` → "Pending Review"
+  card. Production has 5 `pending_review` Businesses. No test records
+  were created.
+- **"Public Actions".** There are 5 owner-facing stale strings plus 1
+  admin help text, listed in `BACKLOG.md` with proposed replacements.
+  None were changed.
+- **Highperlocal.** A separate brand deployment on an unmerged Sept 9
+  branch, using its own Supabase project. The Vercel previews stopped
+  around Oct 28. Supabase MCP access to the project is denied, so its
+  schema and content weren't inspected.
+- **Live site.** `findmi.app` is outside this session's network
+  allowlist, so no live page was fetched.

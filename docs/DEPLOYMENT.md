@@ -4,9 +4,35 @@ Deployment starts with reconciliation, not implementation.
 
 ## Known facts
 
-- Hosting: Vercel. The production branch mapping isn't in the repo:
-  **[VERIFY]** in the Vercel dashboard. Sessions work on an assigned
-  feature branch and push only there.
+- Hosting: Vercel, Git-integrated with the public GitHub repo
+  `findmiapp/Findmi`. Vercel posts a GitHub Deployment for every build, so
+  `GET https://api.github.com/repos/findmiapp/Findmi/deployments` (no auth
+  needed) is the readable record of what's deployed.
+- **Production branch: `claude/findmi-mvp-marketplace-3tvcik`.** That's
+  the repo's GitHub default branch, and every Production deployment SHA is
+  that branch's tip at the time. (Inferred from deployment records, since
+  the Vercel project setting isn't readable from here. It's consistent
+  with every record.)
+- **Production deploys automatically when that branch is pushed.**
+  "Manual" means a human-approved fast-forward of the default branch.
+  Pattern: work is pushed to a session branch (`ccr-*` / `claude/*`) →
+  Vercel builds a **Preview** for every push to any branch → after
+  approval, the default branch is fast-forwarded → Vercel builds
+  **Production** (for example, preview `aa7d1e2` at 15:10, production
+  `aa7d1e2` at 15:41 on 2026-10-29).
+- Preview URLs follow `findmi-<hash>-findmiapp-7326s-projects.vercel.app`.
+  The repo's listed homepage is `https://findmi-one.vercel.app`. The public
+  domain is `findmi.app`. This sandbox can't fetch `findmi.app` because
+  it's outside the session network allowlist.
+- As of 2026-10-29 17:20 UTC, production is running **`aa7d1e2`**.
+  `3b2f195` (the docs pass) has a **Preview only** and isn't in
+  production.
+- Until about 2026-10-28 12:05 UTC, two Vercel projects (`findmi` and
+  `highperlocal`) built from this repo. After that, deployments carry
+  unsuffixed `Preview` / `Production` environment names, which is
+  consistent with only one project still being connected.
+- Sessions work on an assigned feature branch and push only there. They
+  never push the default branch without approval.
 - The sandbox can't reach production Supabase or Vercel over HTTP (see
   `/CLAUDE.md` §6). Database work goes through Supabase MCP. Live page
   verification is done by the user.
@@ -68,8 +94,21 @@ Every new env var goes into `.env.example` with a comment, and is named in
 the final report as manual configuration. Server-only secrets never get
 a `NEXT_PUBLIC_` prefix.
 
+## Rollback
+
+There's no documented or observed rollback procedure. Two options exist:
+
+1. **Vercel Instant Rollback.** In the Vercel dashboard, promote a
+   previous Production deployment. It's fast, and Git is untouched, so the
+   default branch and production will then differ until it's reconciled.
+2. **`git revert`** on the default branch, then push. Production rebuilds
+   automatically. This keeps Git and production in sync. Never reset or
+   force-push the default branch.
+
+Which one is preferred is the founder's call. **[VERIFY]**
+
 ## Still to establish — [VERIFY]
 
-The production branch, CI (none in repo: no `.github/workflows`), preview
-deployment behavior, the rollback procedure, and whether the Highperlocal
-Supabase project is used anywhere.
+CI (there's none in the repo: no `.github/` directory), the preferred
+rollback option, and the Vercel project settings themselves (production
+branch, env vars). Only the founder can read those.

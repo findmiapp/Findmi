@@ -95,8 +95,10 @@ not SLAs.
   There's no `SITE=` env var.
 - Findmi-only redirects use `missing: [jcHost]`.
 - SoHo Centric, The Hamptons Guide and Explore Staten Island have **no
-  code**. A separate Supabase project "Highperlocal" exists. Its relation
-  to Findmi is [VERIFY].
+  code**.
+- **Highperlocal** is a separate brand deployment prepared on an unmerged
+  branch, with its own Supabase project. It isn't part of Findmi
+  production. See `INTEGRATIONS.md`.
 
 ## Security posture [CODE]
 
