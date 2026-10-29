@@ -84,7 +84,7 @@ test("mode tabs: Explore/For You switch in place; My Moments is a real navigatio
   assert.match(tabs, /if \(onSelect && m !== "my-moments"\)/);
   assert.match(tabs, /href=\{momentsModeHref\(m, display\)\}/);
   assert.match(tabs, /className="flex w-full rounded-full bg-black\/\[0\.05\] p-1"/);
-  assert.match(tabs, /flex h-9 min-w-0 flex-1 items-center justify-center/, "each mode an equal share");
+  assert.match(tabs, /flex h-9 min-w-0 flex-auto items-center justify-center/, "the modes fill the width, each sized to its label");
 });
 
 test("Moments grid: swipe the content surface between category boards (pan-y, no card swiping)", () => {

@@ -23,20 +23,39 @@ export function momentMapFeatures(moments: readonly MapMoment[]): MapFeature[] {
     if (at) at.ids.push(m.id);
     else byLocation.set(m.geo.locationId, { geo: m.geo, ids: [m.id], first: m });
   }
-  return [...byLocation.values()].map(({ geo, ids, first }) => ({
+  // Marker hierarchy: unselected = a compact dot carrying the Moment count
+  // (pinText); the label is the PLACE (never a Moment title, never "+N");
+  // selected = the canvas' rich marker — place name over "N Moments".
+  return [...byLocation.values()].map(({ geo, ids }) => ({
     id: `moments:${geo.locationId}`,
     lng: geo.lng,
     lat: geo.lat,
     count: ids.length,
-    label: ids.length === 1 ? first.title : geo.place,
+    label: geo.place,
     place: geo.place,
-    status: `${ids.length} ${ids.length === 1 ? "Moment" : "Moments"}`,
+    status: momentCountLabel(ids.length),
     live: false,
     tone: "place" as const,
     logo: null,
     locationId: geo.locationId,
     keys: ids,
+    pinText: String(ids.length),
+    plainLabel: true,
   }));
+}
+
+export const momentCountLabel = (n: number) => `${n} ${n === 1 ? "Moment" : "Moments"}`;
+
+/** The selected marker, if it still exists in the current dataset — a
+ * selection made before a mode / category change never outlives its marker. */
+export function validSelection(features: readonly MapFeature[], selectedId: string | null): string | null {
+  return selectedId && features.some((f) => f.id === selectedId) ? selectedId : null;
+}
+
+/** The Moments a selected marker stands for, in feed order. */
+export function momentsAt<T extends { id: string }>(features: readonly MapFeature[], selectedId: string | null, moments: readonly T[]): T[] {
+  const f = selectedId ? features.find((x) => x.id === selectedId) : null;
+  return f ? moments.filter((m) => f.keys.includes(m.id)) : [];
 }
 
 /** Map frame for the Moments shown (null when none is on the map). */

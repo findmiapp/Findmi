@@ -187,7 +187,7 @@ test("For You is real ordering from the viewer's own follows — not a cosmetic 
 test("Moments UI: mode toggle, per-mode category state, swipeable chip rail with gutter", () => {
   const ui = code(read("src/components/moments/MomentsDiscovery.tsx"));
   // Correction pass: the three-mode control (Explore · For You · My Moments).
-  assert.match(ui, /\{showModes && <MomentsModeTabs active=\{mode\} onSelect=\{ownCards \? undefined : setMode\} display=\{display\} \/>\}/);
+  assert.match(ui, /\{showModes && \(\s*<div className="min-w-0 flex-1">\s*<MomentsModeTabs active=\{mode\} onSelect=\{ownCards \? undefined : setMode\} display=\{display\} \/>/);
   assert.match(ui, /setCategories\(\(prev\) => \(\{ \.\.\.prev, \[mode\]: c \}\)\)/);
   assert.match(ui, /-mx-4 mt-3 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4/);
   assert.match(ui, /From What You Follow/);

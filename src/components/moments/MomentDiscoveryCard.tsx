@@ -29,6 +29,7 @@ export default function MomentDiscoveryCard({
   load = true,
   heroOnly = false,
   onHeroSettled,
+  variant = "feed",
 }: {
   moment: Pick<MomentFeedCard, "title" | "href" | "entryDate" | "contextLabel" | "media" | "photoCount" | "author"> & Partial<Pick<MomentFeedCard, "ownerBadge">>;
   className?: string;
@@ -39,8 +40,41 @@ export default function MomentDiscoveryCard({
   load?: boolean;
   heroOnly?: boolean;
   onHeroSettled?: () => void;
+  /** "tray": the compact row of this same card for the Moments map's result
+   * tray (first photo, title, place · date, author) — same link, same data. */
+  variant?: "feed" | "tray";
 }) {
   const initial = moment.author?.name.trim().charAt(0).toUpperCase() ?? "";
+  if (variant === "tray") {
+    const photo = moment.media[0]?.url ?? null;
+    return (
+      <Link
+        href={moment.href}
+        className={`group flex min-w-0 gap-3 rounded-2xl border border-black/5 bg-white p-2 outline-none transition hover:border-black/10 focus-visible:ring-2 focus-visible:ring-findmi ${className}`}
+      >
+        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-mist">
+          {photo ? (
+            <Image src={photo} alt="" fill unoptimized sizes="80px" className="object-cover" />
+          ) : (
+            <span aria-hidden className="flex h-full w-full items-center justify-center font-display text-lg font-bold text-ink/25">
+              {moment.title.slice(0, 1)}
+            </span>
+          )}
+          {moment.ownerBadge && (
+            <span className={`absolute left-1 top-1 rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wide ${moment.ownerBadge === "Draft" ? "bg-amber-100 text-amber-800" : "bg-white/95 text-ink/60"}`}>
+              {moment.ownerBadge}
+            </span>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <p className="line-clamp-2 break-words font-display text-[14px] font-semibold leading-snug text-ink">{moment.title}</p>
+          <p className="mt-0.5 truncate text-metadata text-ink/55">{momentDateLabel(moment.entryDate)}</p>
+          {moment.author && <p className="mt-0.5 truncate text-metadata font-semibold text-ink/70">{moment.author.name}</p>}
+        </div>
+        <span aria-hidden className="self-center pr-1 text-ink/30 transition group-hover:text-ink/60">›</span>
+      </Link>
+    );
+  }
   return (
     <Link
       href={moment.href}

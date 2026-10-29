@@ -26,7 +26,7 @@ const e = (id, entry_date, entry_time = null) => ({ id, entry_date, entry_time, 
 
 test("homepage: a preview module — no Explore / For You / My Moments switch; category rail and card rail stay", () => {
   assert.match(HOME, /<MomentsDiscovery cards=\{momentFeed\.cards\} layout="carousel" showModes=\{false\} \/>/);
-  assert.match(code(DISC), /\{showModes && <MomentsModeTabs /, "the switch only renders when asked");
+  assert.match(code(DISC), /\{showModes && \(\s*<div className="min-w-0 flex-1">\s*<MomentsModeTabs /, "the switch only renders when asked");
   assert.match(code(DISC), /role="group"\s+aria-label=\{`Filter \$\{MOMENTS_PAGE_MODE_LABELS\[mode\]\} by category`\}/, "category rail unchanged for every layout");
   assert.match(DISC, /function MomentCarousel\(/, "homepage cards keep the carousel presentation");
 });
@@ -70,7 +70,7 @@ test("/moments: My Moments renders the SAME canonical cards through the same fee
 });
 
 test("/moments: My Moments links lightly to My Journal; empty and signed-out states are intentional", () => {
-  assert.match(DISC, /mode === "my-moments" && \(\s*<Link href=\{MY_JOURNAL_HREF\}[\s\S]*?View My Journal/);
+  assert.match(DISC, /mode === "my-moments" && \([\s\S]{0,120}<Link href=\{MY_JOURNAL_HREF\}[\s\S]*?View My Journal/);
   const view = read("src/components/moments/MyMomentsView.tsx");
   assert.match(view, /Your Moments will appear here\./);
   assert.match(view, /href=\{ADD_MOMENT_HREF\}[\s\S]*?Add Moment/);
@@ -106,7 +106,7 @@ test("momentMapFeatures: one marker per Location with the Moment count; un-place
     features.map((f) => [f.id, f.count, f.label, f.status, f.keys]),
     [
       ["moments:L1", 2, "Eataly", "2 Moments", ["m1", "m2"]],
-      ["moments:L2", 1, "Pop-Up", "1 Moment", ["m3"]],
+      ["moments:L2", 1, "Duffy Square", "1 Moment", ["m3"]],
     ]
   );
   assert.ok(features.every((f) => f.live === false && f.tone === "place"), "never the red LIVE treatment");

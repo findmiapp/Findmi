@@ -72,10 +72,10 @@ function toGeoJSON(features: MapFeature[]): GeoJSON.FeatureCollection {
         id: f.id,
         count: f.count,
         liveN: f.live ? 1 : 0,
-        label: f.count > 1 ? `${f.label} +${f.count - 1}` : f.label,
+        label: f.count > 1 && !f.plainLabel ? `${f.label} +${f.count - 1}` : f.label,
         statusLine: f.live ? (f.status && f.status !== "LIVE" ? `LIVE · ${f.status}` : "LIVE") : f.status,
         logo: f.logo ? `logo:${f.logo}` : "",
-        initial: (f.label || f.place || "?").slice(0, 1).toUpperCase(),
+        initial: f.pinText ?? (f.label || f.place || "?").slice(0, 1).toUpperCase(),
         // Archive maps (Map Everywhere) may promote a few results to rich
         // labels at city zoom; /map never sets it.
         promoted: f.promoted ? 1 : 0,
@@ -130,7 +130,7 @@ function selectedElement(f: MapFeature): HTMLElement {
     img.alt = "";
     img.className = "h-full w-full object-contain";
     mark.appendChild(img);
-  } else mark.textContent = (f.label || "?").slice(0, 1).toUpperCase();
+  } else mark.textContent = f.pinText ?? (f.label || "?").slice(0, 1).toUpperCase();
   const text = document.createElement("div");
   text.className = "flex min-w-0 flex-col leading-tight";
   const name = document.createElement("span");

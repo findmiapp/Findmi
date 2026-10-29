@@ -470,6 +470,11 @@ export interface MapFeature {
    * (a few top results), ordered by `rank` (lower first). */
   promoted?: boolean;
   rank?: number;
+  /** Optional, additive (Moments map): text drawn inside the marker dot
+   * instead of the label's initial (e.g. its Moment count), and a label
+   * shown as-is (no "+N" suffix). Unset everywhere else → unchanged. */
+  pinText?: string;
+  plainLabel?: boolean;
 }
 
 export function isEventsLens(q: DiscoveryQuery): boolean {

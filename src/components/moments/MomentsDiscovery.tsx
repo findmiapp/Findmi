@@ -9,6 +9,7 @@ import {
   MOMENTS_PAGE_MODE_LABELS,
   MY_JOURNAL_HREF,
   adjacentBoard,
+  forYouAuthHrefs,
   mergeFollowKeys,
   momentFeedQuery,
   momentInCategory,
@@ -29,6 +30,7 @@ import MomentsModeTabs from "./MomentsModeTabs";
 import { useBoardSwipe } from "./useBoardSwipe";
 import { useNearViewport } from "./useNearViewport";
 import MomentsMap from "./MomentsMap";
+import { VIEW_MODE_ICONS } from "@/components/map/ViewModeSwitch";
 
 const NO_FOLLOWS: MomentFollowKeys = { businessSlugs: [], eventIds: [], locationIds: [] };
 const DEFAULT_STATE: MomentFeedState = { mode: "explore", categories: { explore: "all", "for-you": "all", "my-moments": "all" }, display: "feed" };
@@ -100,10 +102,10 @@ export default function MomentsDiscovery({
   }, []);
 
   const category = categories[mode];
-  const hrefFor = (m: MomentsPageMode, c: MomentCategoryKey, cursor: string | null = null, d: MomentsDisplay = display) => {
-    if (!pagination) return "#";
+  const hrefFor = (m: MomentsPageMode, c: MomentCategoryKey, cursor: string | null = null, d: MomentsDisplay = display, base = pagination?.basePath) => {
+    if (!base) return "#";
     const q = momentFeedQuery(m, c, cursor, d);
-    return q ? `${pagination.basePath}?${q}` : pagination.basePath;
+    return q ? `${base}?${q}` : base;
   };
   // /moments: keep the address bar in step (shareable, Back-safe) without a
   // server round trip — the cards are already loaded.
@@ -138,27 +140,33 @@ export default function MomentsDiscovery({
     if (left < rail.scrollLeft || left + chip.offsetWidth > rail.scrollLeft + rail.clientWidth) rail.scrollTo({ left: Math.max(0, left - 16), behavior: "smooth" });
   }, [category, mode]);
 
-  const forYouNote =
-    mode !== "for-you" || !followsReady || forYou.personalized
-      ? null
-      : signedIn
-        ? "Follow Businesses, Events and Places to personalize For You. Showing the latest Moments for now."
-        : "Sign in and follow Businesses, Events and Places to personalize For You. Showing the latest Moments for now.";
+  const unpersonalized = mode === "for-you" && followsReady && !forYou.personalized;
+  const forYouNote = unpersonalized && signedIn ? "Follow Businesses, Events and Places to personalize For You. Showing the latest Moments for now." : null;
+  // Signed out: a compact, actionable prompt (never a wall) — Log In /
+  // Create Account return to exactly this view (mode, category, display).
+  const forYouAuth = unpersonalized && !signedIn ? forYouAuthHrefs(hrefFor("for-you", category, null, display, "/moments")) : null;
 
   const renderCards = (list: MomentFeedCard[]) => (layout === "carousel" ? <MomentCarousel cards={list} /> : <MomentGrid cards={list} />);
 
   return (
     <div>
-      {showModes && <MomentsModeTabs active={mode} onSelect={ownCards ? undefined : setMode} display={display} />}
-
-      {layout === "grid" && (
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <DisplaySwitch display={display} onChange={setDisplay} />
-          {mode === "my-moments" && (
-            <Link href={MY_JOURNAL_HREF} className="shrink-0 text-metadata font-semibold text-findmi-700 hover:underline">
-              View My Journal
-            </Link>
+      {/* ONE control row: the primary mode selector takes most of the width,
+          the compact Feed | Map display selector sits beside it. */}
+      {(showModes || layout === "grid") && (
+        <div data-moments-controls className="flex items-center gap-2">
+          {showModes && (
+            <div className="min-w-0 flex-1">
+              <MomentsModeTabs active={mode} onSelect={ownCards ? undefined : setMode} display={display} />
+            </div>
           )}
+          {layout === "grid" && <DisplaySwitch display={display} onChange={setDisplay} />}
+        </div>
+      )}
+      {layout === "grid" && mode === "my-moments" && (
+        <div className="mt-2 flex justify-end">
+          <Link href={MY_JOURNAL_HREF} className="text-metadata font-semibold text-findmi-700 hover:underline">
+            View My Journal
+          </Link>
         </div>
       )}
 
@@ -189,6 +197,21 @@ export default function MomentsDiscovery({
       </div>
 
       {forYouNote && <p className="mt-3 text-metadata text-muted">{forYouNote}</p>}
+      {forYouAuth && (
+        <section aria-label="Personalize For You" data-for-you-auth className="mt-3 rounded-2xl border border-findmi-100 bg-findmi-50/60 px-4 py-3.5">
+          <p className="text-sm font-bold text-ink">Personalize For You</p>
+          <p className="mt-0.5 text-metadata text-ink/65">Log in or create an account to follow Businesses, Events and Places and get Moments picked for you.</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Link href={forYouAuth.login} className="inline-flex h-9 items-center rounded-full bg-findmi px-4 text-[13px] font-bold text-white transition hover:bg-findmi-600">
+              Log In
+            </Link>
+            <Link href={forYouAuth.signup} className="inline-flex h-9 items-center rounded-full border border-black/10 bg-white px-4 text-[13px] font-bold text-ink transition hover:border-black/20">
+              Create Account
+            </Link>
+          </div>
+          <p className="mt-2.5 text-metadata text-ink/50">Showing the latest Moments for now.</p>
+        </section>
+      )}
 
       {showMap ? (
         <div className="mt-4">
@@ -261,27 +284,40 @@ export default function MomentsDiscovery({
   );
 }
 
-/** Feed | Map — the same Moments as a feed or on the map. */
+/** Feed | Map — the same Moments as a feed or on the map. The secondary
+ * control beside the mode selector: Findmi's list / map icons (the archive
+ * View switch's icon set), labels from 420px up; below that icon-only, each
+ * button still named for assistive tech and the pressed one filled Aqua. */
 function DisplaySwitch({ display, onChange }: { display: MomentsDisplay; onChange: (d: MomentsDisplay) => void }) {
-  const opts: { key: MomentsDisplay; label: string }[] = [
-    { key: "feed", label: "Feed" },
-    { key: "map", label: "Map" },
+  const opts: { key: MomentsDisplay; label: string; icon: string }[] = [
+    { key: "feed", label: "Feed", icon: VIEW_MODE_ICONS.list },
+    { key: "map", label: "Map", icon: VIEW_MODE_ICONS.map },
   ];
   return (
-    <div role="group" aria-label="Show Moments as" className="flex rounded-full border border-black/10 bg-white p-0.5">
-      {opts.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          aria-pressed={display === o.key}
-          onClick={() => onChange(o.key)}
-          className={`h-7 rounded-full px-3.5 text-metadata font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
-            display === o.key ? "bg-findmi-600 text-white" : "text-ink/60 hover:text-ink"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div role="group" aria-label="Show Moments as" className="flex shrink-0 rounded-full bg-black/[0.05] p-1">
+      {opts.map((o) => {
+        const on = display === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            aria-pressed={on}
+            aria-label={o.label}
+            title={o.label}
+            onClick={() => onChange(o.key)}
+            className={`flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40 ${
+              on ? "bg-findmi text-white shadow-sm" : "text-muted hover:text-primary"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden>
+              <path d={o.icon} />
+            </svg>
+            <span aria-hidden="true" className="hidden min-[420px]:inline">
+              {o.label}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -98,7 +98,7 @@ test("follows nothing → follow prompt; follows things with no qualifying Momen
   const ui = read("src/components/moments/MomentsDiscovery.tsx");
   // For You (which replaced the Following chip) says "no signal" only after
   // account follows load — never a guess.
-  assert.match(ui, /mode !== "for-you" \|\| !followsReady \|\| forYou\.personalized/, "the For You note is decided only after account follows load");
+  assert.match(ui, /const unpersonalized = mode === "for-you" && followsReady && !forYou\.personalized;/, "the For You note / sign-in prompt is decided only after account follows load");
   assert.match(ui, /fetch\("\/api\/account\/follow-keys"\)/);
   assert.match(ui, /getAccountSession\(\)/, "guests never call the account endpoint");
 });

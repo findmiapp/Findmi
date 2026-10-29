@@ -523,22 +523,22 @@ export default async function HomePage({
               size="home"
               trailing={
                 // A preview module, not the Moments app: no Explore / For You /
-                // My Moments switch here — View All opens /moments, My Journal
-                // the viewer's own history (/journal signs them in first).
-                <span className="flex shrink-0 items-center gap-3">
-                  <Link
-                    href="/moments"
-                    className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
-                  >
+                // My Moments switch here — one compact, quiet grouped control:
+                // View All opens /moments, My Journal the viewer's own history
+                // (/journal signs them in first).
+                <nav
+                  aria-label="Findmi Moments"
+                  data-moments-actions
+                  className="flex shrink-0 items-stretch overflow-hidden rounded-lg border border-black/10 bg-white text-xs font-semibold text-ink/70"
+                >
+                  <Link href="/moments" className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
                     View All
                   </Link>
-                  <Link
-                    href={MY_JOURNAL_HREF}
-                    className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
-                  >
+                  <span aria-hidden="true" className="w-px bg-black/10" />
+                  <Link href={MY_JOURNAL_HREF} className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
                     My Journal
                   </Link>
-                </span>
+                </nav>
               }
             />
             <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>

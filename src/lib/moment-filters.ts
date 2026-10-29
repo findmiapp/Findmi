@@ -256,6 +256,16 @@ export function myMomentsAuthHrefs(): { login: string; signup: string } {
   return { login: `/login?next=${next}`, signup: `/signup?next=${next}` };
 }
 
+/** Signed-out For You: Log In / Create Account that come back to the exact
+ * For You view (`returnTo`, e.g. /moments?mode=for-you&cat=food-drink&display=map).
+ * Only a /moments path is accepted — anything else falls back to plain For
+ * You — and the login/signup pages re-check it (getSafeRedirect). */
+export function forYouAuthHrefs(returnTo: string): { login: string; signup: string } {
+  const target = /^\/moments(\?|$)/.test(returnTo) ? returnTo : momentsModeHref("for-you");
+  const next = encodeURIComponent(target);
+  return { login: `/login?next=${next}`, signup: `/signup?next=${next}` };
+}
+
 /** Board navigation: the next / previous view in a fixed sequence, or null
  * at either end (a swipe past the end does nothing). */
 export function adjacentBoard<T>(order: readonly T[], current: T, direction: 1 | -1): T | null {
