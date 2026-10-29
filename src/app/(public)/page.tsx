@@ -517,11 +517,12 @@ export default async function HomePage({
       {momentFeed.cards.length > 0 && (
         <section className="py-6" aria-labelledby="home-moments-heading">
           <div className="mb-3 px-4 sm:px-6">
-            {/* Phones: the title keeps its own full line (never wraps); the
-                View All | My Journal control sits on a compact right-aligned
-                row before the description. From sm up they share one row. */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-              <BrandHeading id="home-moments-heading" accent="Moments" size="home" className="whitespace-nowrap" />
+            {/* One row at every width: the title (never wraps, never shrinks)
+                on the left; the compact View All | My Journal control pushed
+                right at its own intrinsic width (ml-auto — never stretched
+                to fill the row). Denser on phones so both fit; roomier from sm. */}
+            <div className="flex items-center gap-1.5 min-[380px]:gap-2 sm:gap-3">
+              <BrandHeading id="home-moments-heading" accent="Moments" size="home" className="shrink-0 whitespace-nowrap" />
               {/* A preview module, not the Moments app: no Explore / For You /
                   My Moments switch here — one compact, quiet grouped control:
                   View All opens /moments, My Journal the viewer's own history
@@ -529,13 +530,13 @@ export default async function HomePage({
               <nav
               aria-label="Findmi Moments"
               data-moments-actions
-              className="flex shrink-0 items-stretch self-end sm:self-auto overflow-hidden rounded-lg border border-black/10 bg-white text-xs font-semibold text-ink/70"
+              className="ml-auto flex shrink-0 items-stretch overflow-hidden whitespace-nowrap rounded-md border border-black/10 bg-white text-[11px] font-semibold text-ink/70 min-[380px]:text-xs sm:rounded-lg"
             >
-              <Link href="/moments" className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
+              <Link href="/moments" className="flex h-[30px] items-center px-[5px] transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 min-[380px]:px-2 sm:h-8 sm:px-2.5">
                 View All
               </Link>
               <span aria-hidden="true" className="w-px bg-black/10" />
-              <Link href={MY_JOURNAL_HREF} className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
+              <Link href={MY_JOURNAL_HREF} className="flex h-[30px] items-center px-[5px] transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 min-[380px]:px-2 sm:h-8 sm:px-2.5">
                 My Journal
               </Link>
             </nav>

@@ -28,7 +28,7 @@ const CARDS = [
 
 test("homepage: View All + My Journal are ONE compact grouped control (not loose underlined links)", () => {
   const nav = HOME.slice(HOME.indexOf("data-moments-actions"), HOME.indexOf("</nav>", HOME.indexOf("data-moments-actions")));
-  assert.match(HOME, /<nav\s+aria-label="Findmi Moments"\s+data-moments-actions\s+className="flex shrink-0 items-stretch self-end sm:self-auto overflow-hidden rounded-lg border border-black\/10 bg-white text-xs font-semibold/);
+  assert.match(HOME, /<nav\s+aria-label="Findmi Moments"\s+data-moments-actions\s+className="ml-auto flex shrink-0 items-stretch overflow-hidden whitespace-nowrap rounded-md border border-black\/10 bg-white text-\[11px\] font-semibold text-ink\/70 min-\[380px\]:text-xs sm:rounded-lg"/);
   assert.match(nav, /<Link href="\/moments"[^>]*>\s*View All\s*<\/Link>/);
   assert.match(nav, /<Link href=\{MY_JOURNAL_HREF\}[^>]*>\s*My Journal\s*<\/Link>/);
   assert.match(nav, /<span aria-hidden="true" className="w-px bg-black\/10" \/>/, "a divider between the two halves");
@@ -38,12 +38,14 @@ test("homepage: View All + My Journal are ONE compact grouped control (not loose
   assert.match(HOME, /<MomentsDiscovery cards=\{momentFeed\.cards\} layout="carousel" showModes=\{false\} \/>/);
 });
 
-test("homepage: the title keeps one full line on phones; the control takes a compact right-aligned row (shared row from sm)", () => {
-  assert.match(HOME, /<div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">\s*<BrandHeading id="home-moments-heading" accent="Moments" size="home" className="whitespace-nowrap" \/>/);
-  // The control is no longer squeezed into BrandHeading's trailing slot (no font-size change).
+test("homepage: title and control share ONE row at every width — title never wraps or shrinks; control compact, right-aligned", () => {
+  assert.match(HOME, /<div className="flex items-center gap-1\.5 min-\[380px\]:gap-2 sm:gap-3">\s*<BrandHeading id="home-moments-heading" accent="Moments" size="home" className="shrink-0 whitespace-nowrap" \/>/);
   const section = HOME.slice(HOME.indexOf('aria-labelledby="home-moments-heading"'), HOME.indexOf("<MomentsDiscovery cards={momentFeed.cards}"));
-  assert.doesNotMatch(section, /trailing=/);
-  assert.match(section, /data-moments-actions[\s\S]*?<\/nav>\s*<\/div>\s*<p className=\{HOMEPAGE_SECTION_SUBTITLE_CLASS\}>Real experiences/, "control row sits before the description");
+  assert.doesNotMatch(section, /flex-col|justify-between|trailing=/, "no stacked row, no stretched control");
+  // Denser on phones (<380px: 11px, 5px segments; 380+: 12px, 8px), roomier from sm.
+  assert.equal(section.split('className="flex h-[30px] items-center px-[5px] transition').length - 1, 2);
+  assert.match(section, /min-\[380px\]:px-2 sm:h-8 sm:px-2\.5"/);
+  assert.match(section, /<\/nav>\s*<\/div>\s*<p className=\{HOMEPAGE_SECTION_SUBTITLE_CLASS\}>Real experiences/, "description directly below the row");
 });
 
 // ── One control row ─────────────────────────────────────────────────────────
