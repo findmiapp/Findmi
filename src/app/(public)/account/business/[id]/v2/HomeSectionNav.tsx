@@ -31,6 +31,10 @@ export interface HomeSectionNavItem {
 
 export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] }) {
   const [active, setActive] = useState<string>("overview");
+  // True once the rail is pinned under the header: it then gets a soft bottom
+  // edge so content scrolling beneath it never visually merges into it.
+  const [stuck, setStuck] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   // After a tap, the tapped section stays active until that smooth scroll
   // settles — on a short page the last sections can't reach the sticky
@@ -56,7 +60,12 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
       }
       setActive(current);
     };
+    const updateStuck = () => {
+      const navTop = navRef.current?.getBoundingClientRect().top;
+      setStuck(navTop !== undefined && window.scrollY > 0 && navTop <= HOME_SECTION_STICKY_TOP + 0.5);
+    };
     const onScroll = () => {
+      updateStuck();
       const lock = lockRef.current;
       if (lock) {
         // Still settling from a tap: extend the lock, keep the tapped id.
@@ -69,6 +78,7 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
       if (!frame) frame = window.requestAnimationFrame(update);
     };
     update();
+    updateStuck();
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
     return () => {
@@ -147,8 +157,10 @@ export default function HomeSectionNav({ items }: { items: HomeSectionNavItem[] 
 
   return (
     <nav
+      ref={navRef}
       aria-label="On this page"
-      className="sticky top-12 z-30 -mx-4 border-b border-black/[0.06] bg-paper/95 backdrop-blur sm:-mx-6 lg:mx-0"
+      data-stuck={stuck || undefined}
+      className={`sticky top-12 z-30 -mx-4 border-b border-black/[0.06] bg-paper transition-shadow sm:-mx-6 lg:mx-0 ${stuck ? "shadow-[0_6px_12px_-8px_rgba(0,0,0,0.18)]" : ""}`}
     >
       <div
         ref={railRef}

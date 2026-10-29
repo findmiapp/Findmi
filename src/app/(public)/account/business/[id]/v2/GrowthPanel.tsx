@@ -21,7 +21,7 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
   return (
     <section id="home-growth" aria-labelledby="growth-title" className="scroll-mt-[104px]">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="growth-title" className="font-display text-section-title font-bold text-primary">
+        <h2 id="growth-title" className="font-display text-section-title font-bold leading-tight text-primary">
           Growth Manager
         </h2>
         <Link href={`${basePath}?tab=growth`} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
@@ -30,10 +30,10 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
         </Link>
       </div>
 
-      {/* ONE shared panel split into three short cells — compact management
-          shortcuts, not three standalone cards. */}
+      {/* ONE shared toolbar split into three short cells: icon + name on one
+          line, the real status under it — management shortcuts, not cards. */}
       <nav aria-label="Growth Manager">
-        <ul className="mt-2 grid grid-cols-3 divide-x divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
+        <ul className="mt-1.5 grid grid-cols-3 divide-x divide-black/[0.06] overflow-hidden rounded-xl border border-black/[0.07] bg-white">
           {HOME_GROWTH_TILES.map(({ key, label }) => {
             const status = growthDestinationStatus(summary, key);
             return (
@@ -41,14 +41,16 @@ export default function GrowthPanel({ basePath, summary }: { basePath: string; s
                 <Link
                   href={growthHref(basePath, key)}
                   aria-label={`${label}: ${status.value}`}
-                  className="flex h-full min-w-0 flex-col px-2 py-2 transition hover:bg-findmi-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 min-[380px]:px-2.5 sm:flex-row sm:items-center sm:gap-2.5 sm:px-3 sm:py-2.5"
+                  className="flex h-full min-h-11 min-w-0 flex-col justify-center px-1.5 py-1.5 transition hover:bg-findmi-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 min-[380px]:px-2 sm:flex-row sm:items-center sm:gap-2 sm:px-3"
                 >
-                  <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-findmi-50 text-findmi-700 sm:h-8 sm:w-8 sm:rounded-lg">
-                    {key === "goals" ? <NavIcon name="target" className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : key === "opportunities" ? <NavIcon name="compass" className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <BulbGlyph className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
-                  </span>
-                  <span className="mt-1 min-w-0 flex-1 sm:mt-0">
-                    <span className="block truncate text-[12px] font-bold leading-tight text-primary min-[380px]:text-[13px]">{label}</span>
-                    <span className={`mt-px line-clamp-2 block text-[11px] leading-tight ${status.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{status.value}</span>
+                  <span className="block min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span aria-hidden="true" className="shrink-0 text-findmi-700">
+                        {key === "goals" ? <NavIcon name="target" className="h-3 w-3 min-[380px]:h-3.5 min-[380px]:w-3.5" /> : key === "opportunities" ? <NavIcon name="compass" className="h-3 w-3 min-[380px]:h-3.5 min-[380px]:w-3.5" /> : <BulbGlyph className="h-3 w-3 min-[380px]:h-3.5 min-[380px]:w-3.5" />}
+                      </span>
+                      <span className="truncate text-[12px] font-bold leading-tight tracking-[-0.01em] text-primary min-[400px]:text-[13px]">{label}</span>
+                    </span>
+                    <span className={`mt-0.5 line-clamp-2 block text-[11px] leading-tight ${status.highlight ? "font-semibold text-findmi-700" : "text-muted"}`}>{status.value}</span>
                   </span>
                   <ChevronIcon direction="right" className="hidden h-3 w-3 shrink-0 text-subtle sm:block" />
                 </Link>

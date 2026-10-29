@@ -149,7 +149,7 @@ test("Requests render as rows of Home's one ranked Inbox / Follow-Ups list — r
 });
 
 test("Home order: Coming Up → Inbox / Follow-Ups (Needs Attention bar, then the ranked rows) → Growth Manager → Performance", () => {
-  const order = ['aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<NeedsAttentionBar items={needsAttention} />", "<HomeInboxRows", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
+  const order = ['aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<NeedsAttentionBar items={needsAttention} titleId=\"home-inbox-title\"", "<HomeInboxRows", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map((m) => HOME.indexOf(m));
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -163,7 +163,7 @@ test("Needs Attention no longer carries Event Invitations, New Orders or the Fin
   assert.doesNotMatch(read("src/lib/business-dashboard.ts"), /pending-market|new-orders|Findmi Area Requested/);
   const ids = DASH.buildNeedsAttentionItems({ ...base, profileIncomplete: true, upcomingAppearances: [{ id: "a1", title: "Night Market", hasImage: false, hasVenue: false, editHref: "/edit" }] }).map((i) => i.id);
   assert.deepEqual(ids, ["missing-image-a1", "missing-venue-a1", "incomplete-profile"]);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /if \(items\.length === 0\) return null;/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /const count = items\.length;[\s\S]*\{count > 0 && \([\s\S]*\{count > 0 && open && \(/);
 });
 
 // ── Neighbours unchanged ────────────────────────────────────────────────────

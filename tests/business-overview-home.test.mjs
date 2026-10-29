@@ -132,8 +132,9 @@ test("Coming Up is chronological, excludes past dates, and keeps a multi-date Ev
 test("Coming Up renders as a horizontal rail of up to six, with a useful empty state", () => {
   assert.match(PAGE, /countUpcomingDatesPerPreviewGroup\(allScheduleRows, eventIdsWithOccurrenceProjections\),\s*\/\/[^\n]*\n\s*6\s*\)/);
   // Compact landscape schedule cards: ~1.6 visible at 390px, three across on desktop.
-  assert.match(HOME, /data-coming-up-card className="w-\[64%\] min-w-0 shrink-0 snap-start sm:w-\[40%\] lg:w-\[calc\(\(100%-1rem\)\/3\)\]"/);
-  assert.match(HOME, /relative flex h-12 w-12 shrink-0/, "compact thumbnail");
+  // Dense landscape schedule cards: ~2 visible at 390px, four across on desktop.
+  assert.match(HOME, /data-coming-up-card className="w-\[50%\] min-w-0 shrink-0 snap-start sm:w-\[34%\] lg:w-\[calc\(\(100%-1\.125rem\)\/4\)\]"/);
+  assert.match(HOME, /relative flex h-10 w-10 shrink-0/, "compact thumbnail");
   assert.match(HOME, /\{a\.moreDates === 1 \? "\+ 1 More Date" : `\+ \$\{a\.moreDates\} More Dates`\}/);
   assert.match(HOME, /href=\{managerHref\(businessId, "add-event"\)\}/);
   // ended Appearances never reach Home: the schedule read is upcoming-only
@@ -186,7 +187,8 @@ test("Inbox preview reads the ONE conversation system through the authorized man
   assert.match(INBOX, /const \{ admin, user \} = await getManagerCore\(businessId\);/);
   assert.match(INBOX, /listConversationsForUser\(admin, user\.id\)/);
   assert.match(INBOX, /threadHref: \(cid\) => managerThreadHref\(businessId, cid\)/);
-  assert.match(HOME, /href=\{managerHref\(businessId, "inbox"\)\} linkLabel="View All"/, "routes into the canonical Inbox");
+  assert.match(HOME, /viewAllHref=\{managerHref\(businessId, "inbox"\)\}/, "routes into the canonical Inbox");
+  assert.match(read(`${B}/v2/NeedsAttentionBar.tsx`), /<Link href=\{viewAllHref\}[^>]*>\s*View All/);
   assert.match(INBOX, /Nothing needs your attention/);
   assert.doesNotMatch(read("src/lib/home-inbox.ts"), /from\(|supabase|insert|update\(/i, "pure: nothing stored, no new status");
 });

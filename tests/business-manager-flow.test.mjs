@@ -282,9 +282,9 @@ test("31. Home order: identity → Create & Manage → section nav → Coming Up
 });
 
 test("32. Needs Attention renders nothing at zero; with no Requests, Follow-Ups or threads the Inbox module shows one clean empty state", () => {
-  assert.match(read(`${B}/v2/NeedsAttentionBar.tsx`), /if \(items\.length === 0\) return null;/);
-  // The compact Needs Attention row is the first row of the Inbox panel (and returns null at zero).
-  assert.match(HOME, /<div data-inbox-panel [^>]*>\s*<NeedsAttentionBar items=\{needsAttention\} \/>/);
+  assert.match(read(`${B}/v2/NeedsAttentionBar.tsx`), /const count = items\.length;[\s\S]*\{count > 0 && \([\s\S]*\{count > 0 && open && \(/);
+  // No Needs Attention row on Home: its count sits in the Inbox heading (absent at zero); the panel holds only the rows.
+  assert.match(HOME, /<NeedsAttentionBar items=\{needsAttention\} titleId="home-inbox-title" title="Inbox \/ Follow-Ups" viewAllHref=\{managerHref\(businessId, "inbox"\)\} \/>\s*<div data-inbox-panel [^>]*>\s*<Suspense/);
   assert.match(read(`${B}/v2/HomeInbox.tsx`), /items\.length === 0 \?[\s\S]*Nothing needs your attention/);
 });
 

@@ -39,25 +39,22 @@ export async function HomePerformanceTiles({ businessId, range, followers }: { b
   if (!data) return <p className="mt-2 text-body text-muted">Performance couldn&rsquo;t load right now.</p>;
 
   const metrics = homePerformanceMetrics(data.headline, followers);
-  return (
-    <>
-      <p className="text-metadata text-subtle">{data.rangeLabel}</p>
-      {metrics.every((m) => m.metric.value === 0) ? (
-        <p className="mt-1.5 text-body text-muted">
-          No activity yet. Impressions, profile views, actions and followers will appear here as people find your Business on Findmi.
-        </p>
-      ) : (
-        // ONE compact strip: four metrics across at every phone width, the
-        // number the strongest element.
-        <ul className="mt-2 grid grid-cols-4 divide-x divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
-          {metrics.map((m) => (
-            <li key={m.key} className="min-w-0">
-              <MetricCell label={m.label} metric={m.metric} pro={pro} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
+  // The range ("Last 30 Days") is in the section heading (BusinessHome), so the
+  // strip starts right under it.
+  return metrics.every((m) => m.metric.value === 0) ? (
+    <p className="mt-1 text-body text-muted">
+      No activity yet. Impressions, profile views, actions and followers will appear here as people find your Business on Findmi.
+    </p>
+  ) : (
+    // ONE compact strip: four metrics across at every phone width, the number
+    // the strongest element.
+    <ul className="mt-1.5 grid grid-cols-4 divide-x divide-black/[0.06] overflow-hidden rounded-xl border border-black/[0.07] bg-white">
+      {metrics.map((m) => (
+        <li key={m.key} className="min-w-0">
+          <MetricCell label={m.label} metric={m.metric} pro={pro} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -72,26 +69,22 @@ function MetricCell({ label, metric, pro }: { label: string; metric: HomeMetric;
   const up = change?.startsWith("+");
   const exact = metric.value.toLocaleString("en-US");
   return (
-    <div className="flex h-full min-w-0 flex-col px-2 py-2 min-[380px]:px-2.5" title={`${label}: ${exact}`}>
-      {/* A fixed two-line label row, bottom-aligned, so every number in the
-          strip sits on the same line whether its label wraps or not. */}
-      <p className="flex h-[28px] items-end text-[11px] font-medium leading-tight text-muted">
-        <span className="line-clamp-2">{label}</span>
+    <div className="flex h-full min-w-0 flex-col px-1.5 py-1.5 min-[380px]:px-2" title={`${label}: ${exact}`}>
+      {/* One label line where it fits; where "Profile Views" must wrap (narrow
+          phones) every label gets the same two-line, bottom-aligned row, so the
+          numbers still sit on one line. */}
+      <p className="flex h-[26px] items-end text-[11px] font-medium leading-tight tracking-[-0.01em] text-muted min-[380px]:h-auto">
+        <span className="line-clamp-2 min-[380px]:truncate">{label}</span>
       </p>
-      <p className="pt-1 font-display text-lg font-bold leading-none text-primary tabular-nums min-[380px]:text-xl" aria-label={`${exact} ${label}`}>
+      <p className="mt-0.5 font-display text-lg font-bold leading-none text-primary tabular-nums min-[380px]:text-[19px]" aria-label={`${exact} ${label}`}>
         {formatMetricValue(metric.value)}
       </p>
-      {change && <p className={`mt-0.5 truncate text-[11px] font-bold leading-tight ${up ? "text-accent" : "text-subtle"}`}>{change}</p>}
+      {change && <p className={`mt-0.5 truncate text-[10px] font-bold leading-tight ${up ? "text-accent" : "text-subtle"}`}>{change}</p>}
     </div>
   );
 }
 
 /** Same geometry as the metric strip. */
 export function HomePerformanceSkeleton() {
-  return (
-    <div aria-hidden="true">
-      <span className="mt-1 block h-3 w-24 animate-pulse rounded bg-black/[0.05] motion-reduce:animate-none" />
-      <div className="mt-2 h-[68px] animate-pulse rounded-2xl border border-black/[0.05] bg-black/[0.03] motion-reduce:animate-none" />
-    </div>
-  );
+  return <div aria-hidden="true" className="mt-1.5 h-[52px] animate-pulse rounded-xl border border-black/[0.05] bg-black/[0.03] motion-reduce:animate-none" />;
 }

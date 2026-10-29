@@ -52,6 +52,12 @@ const RANGE_LABELS: Record<OwnerPerformanceRange, string> = {
   all: "All Time",
 };
 
+/** The human label of a range ("Last 30 Days") — the same label the data's
+ * own `rangeLabel` carries, available before the data is read. */
+export function ownerPerformanceRangeLabel(range: OwnerPerformanceRange): string {
+  return RANGE_LABELS[range];
+}
+
 interface RangeBounds {
   /** null only for "all" — no lower bound on the query at all. */
   currentStartIso: string | null;

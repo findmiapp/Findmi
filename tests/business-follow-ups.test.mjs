@@ -122,7 +122,7 @@ test("follow-ups render as rows of Home's one ranked Inbox / Follow-Ups list; th
   assert.equal(F.FOLLOW_UPS_INITIAL_LIMIT, 3);
   assert.match(INBOX_VIEW, /const shown = expanded \? items : items\.slice\(0, HOME_INBOX_LIMIT\);/);
   // Stacked rows inside ONE Inbox / Follow-Ups panel (BusinessHome owns the container).
-  assert.match(HOME, /data-inbox-panel className="mt-2 divide-y [^"]*"/, "stacked rows, never a carousel");
+  assert.match(HOME, /data-inbox-panel className="mt-1\.5 divide-y [^"]*"/, "stacked rows, never a carousel");
   assert.match(INBOX_VIEW, /shown\.map\(\(item\) => <InboxRow key=\{item\.key\} item=\{item\} \/>\)/);
   assert.doesNotMatch(INBOX_VIEW, /overflow-x|snap-|carousel/);
   assert.match(INBOX_VIEW, /href=\{expanded \? `\$\{basePath\}#home-inbox` : `\$\{basePath\}\?inbox=all#home-inbox`\}/);
@@ -140,7 +140,7 @@ test("zero follow-ups: no section of their own; the Inbox / Follow-Ups module sh
 
 test("Home order around Follow-Ups: Coming Up → Inbox / Follow-Ups → Growth Manager → Performance", () => {
   const at = (m) => HOME.indexOf(m);
-  const order = ['aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<NeedsAttentionBar items={needsAttention} />", "<HomeInboxRows", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map(at);
+  const order = ['aria-labelledby="happening-now"', 'aria-labelledby="coming-up"', 'aria-labelledby="home-inbox-title"', "<NeedsAttentionBar items={needsAttention} titleId=\"home-inbox-title\"", "<HomeInboxRows", "<GrowthPanel", 'aria-labelledby="performance-snapshot"', 'aria-labelledby="findmi-link"'].map(at);
   assert.ok(order.every((i) => i > 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
@@ -182,7 +182,7 @@ test("Needs Attention is unchanged: exceptions only, never Target follow-ups, hi
   assert.deepEqual(DASH.buildNeedsAttentionItems(base), []);
   const ids = DASH.buildNeedsAttentionItems({ ...base, profileIncomplete: true, dueTargets: { count: 1, first: { locationId: "l1", name: "Cafe", nextAction: "x", overdue: true } } }).map((i) => i.id);
   assert.deepEqual(ids, ["incomplete-profile"]);
-  assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /if \(items\.length === 0\) return null;/);
+  assert.match(read("src/app/(public)/account/business/[id]/v2/NeedsAttentionBar.tsx"), /const count = items\.length;[\s\S]*\{count > 0 && \([\s\S]*\{count > 0 && open && \(/);
 });
 
 test("Growth Opportunity counts and Coming Up / Opportunities / Performance / management cards are unchanged", () => {

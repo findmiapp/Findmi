@@ -57,9 +57,9 @@ export async function HomeInboxRows({
   return (
     <>
       {items.length === 0 ? (
-        <div className="flex items-center gap-2.5 px-3 py-2.5">
-          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50 text-findmi-700">
-            <CheckGlyph className="h-4 w-4" />
+        <div className="flex items-center gap-2.5 px-2.5 py-2">
+          <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-findmi-50 text-findmi-700">
+            <CheckGlyph className="h-3.5 w-3.5" />
           </span>
           <span className="min-w-0">
             <span className="block text-[14px] font-semibold leading-snug text-primary">Nothing needs your attention</span>
@@ -72,7 +72,7 @@ export async function HomeInboxRows({
       {(hidden > 0 || (expanded && items.length > HOME_INBOX_LIMIT)) && (
         <Link
           href={expanded ? `${basePath}#home-inbox` : `${basePath}?inbox=all#home-inbox`}
-          className="flex min-h-10 items-center justify-center gap-1 px-3 text-metadata font-semibold text-accent transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
+          className="flex min-h-9 items-center justify-center gap-1 px-3 text-metadata font-semibold text-accent transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
         >
           {expanded ? "Show Less" : `Show ${hidden} More`}
           <ChevronIcon direction={expanded ? "up" : "down"} className="h-3 w-3" />
@@ -102,24 +102,24 @@ function InboxRow({ item }: { item: HomeInboxItem }) {
   return (
     <Link
       href={item.href}
-      className="flex items-center gap-2.5 px-3 py-2 transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
+      className="flex min-h-[52px] items-center gap-2.5 px-2.5 py-1.5 transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40"
     >
-      <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${ICON_TILE[item.kind]}`}>
+      <span aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${ICON_TILE[item.kind]}`}>
         {item.kind === "follow_up" ? (
-          <NavIcon name="target" className="h-4 w-4" />
+          <NavIcon name="target" className="h-3.5 w-3.5" />
         ) : item.kind === "request" ? (
-          <NavIcon name="storefront" className="h-4 w-4" />
+          <NavIcon name="storefront" className="h-3.5 w-3.5" />
         ) : (
-          <MailGlyph className="h-4 w-4" />
+          <MailGlyph className="h-3.5 w-3.5" />
         )}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-[14px] font-semibold leading-snug text-primary">{item.title}</span>
+          <span className="truncate text-[14px] font-semibold leading-tight text-primary">{item.title}</span>
           {item.at && <span className="shrink-0 text-microcopy text-subtle">{shortWhen(item.at)}</span>}
         </span>
-        <span className={`block truncate text-[12px] leading-snug ${TONE_CLASS[item.tone]}`}>{item.state}</span>
-        {item.detail && <span className="block truncate text-[12px] leading-snug text-secondary">{item.detail}</span>}
+        <span className={`block truncate text-[12px] leading-tight ${TONE_CLASS[item.tone]}`}>{item.state}</span>
+        {item.detail && <span className="block truncate text-[12px] leading-tight text-secondary">{item.detail}</span>}
       </span>
       <ChevronIcon direction="right" className="h-3 w-3 shrink-0 text-ink/25" />
     </Link>
@@ -140,9 +140,9 @@ export function HomeInboxSkeleton() {
   return (
     <>
       {[0, 1, 2].map((i) => (
-        <div key={i} aria-hidden="true" className="flex items-center gap-2.5 px-3 py-2">
-          <span className="h-8 w-8 shrink-0 animate-pulse rounded-lg bg-black/[0.05] motion-reduce:animate-none" />
-          <span className="flex min-w-0 flex-1 flex-col gap-1.5 py-1">
+        <div key={i} aria-hidden="true" className="flex min-h-[52px] items-center gap-2.5 px-2.5 py-1.5">
+          <span className="h-7 w-7 shrink-0 animate-pulse rounded-md bg-black/[0.05] motion-reduce:animate-none" />
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="h-3.5 w-2/5 animate-pulse rounded bg-black/[0.06] motion-reduce:animate-none" />
             <span className="h-3 w-3/5 animate-pulse rounded bg-black/[0.04] motion-reduce:animate-none" />
             <span className="h-3 w-1/2 animate-pulse rounded bg-black/[0.03] motion-reduce:animate-none" />

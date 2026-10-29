@@ -53,7 +53,7 @@ test("Home hierarchy: Status → Create & Manage → section rail → Happening 
     'aria-labelledby="happening-now"',
     'aria-labelledby="coming-up"',
     'aria-labelledby="home-inbox-title"',
-    "<NeedsAttentionBar items={needsAttention} />",
+    '<NeedsAttentionBar items={needsAttention} titleId="home-inbox-title"',
     "<HomeInboxRows",
     "<GrowthPanel",
     'aria-labelledby="performance-snapshot"',
@@ -95,7 +95,8 @@ test("sticky section rail: in-page anchors only, no Attention entry (it is a sta
   for (const id of ["home-schedule", "home-performance", "home-inbox"]) assert.match(HOME, new RegExp(`id="${id}"[^>]*\\{?SECTION_CLASS|id="${id}" className=\\{\`[^\`]*\\$\\{SECTION_CLASS\\}`), id);
   assert.match(HOME, /const SECTION_CLASS = "scroll-mt-\[104px\]";/);
   // sticky directly under the 48px owner header, ~44px tall, rail-internal horizontal scroll
-  assert.match(NAV, /className="sticky top-12 z-30 /);
+  assert.match(NAV, /className=\{`sticky top-12 z-30 [^`]*bg-paper /, "opaque, so content never shows through");
+  assert.match(NAV, /data-stuck=\{stuck \|\| undefined\}/, "a soft edge once pinned");
 });
 
 test("Create sheet: five actions in the intentional order (ONE Event entry), each with icon + title + one explanatory line", () => {
@@ -188,19 +189,19 @@ const base = { businessId: "biz", hasPrimaryMarket: true, pendingMarketRequestTe
 test("complete profile, geography assigned, nothing pending → no attention items (section omitted)", () => {
   assert.deepEqual(BD.buildNeedsAttentionItems(base), []);
   // The bar itself renders nothing at zero.
-  assert.match(ATTENTION_BAR, /if \(items\.length === 0\) return null;/);
+  assert.match(ATTENTION_BAR, /const count = items\.length;[\s\S]*\{count > 0 && \([\s\S]*\{count > 0 && open && \(/);
 });
 
-test("Needs Attention is a compact status bar: collapsed by default, count badge, circular chevron, tap expands inline", () => {
+test("Needs Attention is a compact count in the Inbox heading: collapsed by default, count badge, tap expands the items inline", () => {
   assert.match(ATTENTION_BAR, /"use client";/);
   assert.match(ATTENTION_BAR, /const \[open, setOpen\] = useState\(false\);/, "collapsed by default");
   assert.match(ATTENTION_BAR, /aria-expanded=\{open\}/);
   assert.match(ATTENTION_BAR, /aria-controls=\{panelId\}/);
   assert.match(ATTENTION_BAR, /onClick=\{\(\) => setOpen\(\(v\) => !v\)\}/, "the whole row toggles");
-  assert.match(ATTENTION_BAR, /Needs Attention<\/span>/);
+  assert.match(ATTENTION_BAR, />\s*Needs Attention\s*<\/span>/);
   assert.match(ATTENTION_BAR, /rounded-full bg-amber-500/, "small circular count badge");
-  assert.match(ATTENTION_BAR, /rounded-full bg-white[^"]*"[^>]*>\s*<ChevronIcon direction="down" className=\{`[^`]*\$\{open \? "rotate-180" : ""\}`\}/, "circular chevron that rotates");
-  assert.match(ATTENTION_BAR, /\{open && \(\s*<ul id=\{panelId\}/, "items only when expanded");
+  assert.match(ATTENTION_BAR, /<ChevronIcon direction="down" className=\{`[^`]*\$\{open \? "rotate-180" : ""\}`\}/, "chevron that rotates");
+  assert.match(ATTENTION_BAR, /\{count > 0 && open && \(\s*<ul id=\{panelId\}/, "items only when expanded");
   assert.match(ATTENTION_BAR, /href=\{item\.actionHref\}/, "each item keeps its existing CTA");
   // Detection/logic is untouched: Home still feeds the same items.
   assert.match(PAGE, /needsAttention=\{needsAttention\}/);
@@ -296,7 +297,7 @@ test("Performance: existing metrics + Free/Pro gating; all-zero explains itself 
 
 test("Public Profile is ONE compact utility panel (link + Copy Link / Change, Manage Profile, Photos); claim/copy/change preserved", () => {
   const util = HOME.slice(at('aria-labelledby="findmi-link"'));
-  assert.match(util, /^aria-labelledby="findmi-link" className="rounded-2xl border border-black\/\[0\.07\] bg-white px-3 py-2\.5">/);
+  assert.match(util, /^aria-labelledby="findmi-link" className="rounded-xl border border-black\/\[0\.07\] bg-white px-3 py-2">/);
   assert.match(util, />\s*Public Profile\s*<\/h2>/);
   assert.match(util, /href=\{managerHref\(businessId, "profile"\)\}[^>]*>\s*Manage Profile\s*</);
   assert.match(util, /href=\{managerHref\(businessId, "gallery"\)\}[^>]*>\s*Photos\s*</);
