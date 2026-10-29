@@ -234,16 +234,68 @@ test("an Event prefill alone is not a draft: nothing is stored until the guest a
   assert.equal(titleInput().value, "Spring Pop-Up", "the prefill is still shown");
 });
 
-test("precedence: an existing guest draft wins; URL Event context only FILLS what is missing", async () => {
+// UX consolidation: a generic draft opened into a DIFFERENT (Event) context
+// is never silently merged — the guest is asked first ("switch").
+test("a Moment in progress meets a different Event context: ask first; the stored draft is untouched; Continue Moment restores it with its OWN context", async () => {
   await load();
   await goStage("Your Moment");
   await type(titleInput(), "Earlier Story");
   await type(notesInput(), "Written before opening the Event link.");
+  const before = window.localStorage.getItem(DRAFT_KEY);
+  const draftId = storedDraft().draftId;
   await load({ initial: eventInitial() });
-  assert.equal(titleInput().value, "Earlier Story", "existing title is not replaced by the Event's");
+  assert.ok(document.body.textContent.includes("You Have A Moment In Progress"), "the guest is asked");
+  assert.ok(document.body.textContent.includes("Continue your unfinished Moment?"), "a context-free draft has no context label");
+  assert.equal(window.localStorage.getItem(DRAFT_KEY), before, "untouched while the choice is pending");
+  await click(buttons("Continue Moment", document.body)[0]);
+  await settle();
+  assert.equal(document.body.textContent.includes("You Have A Moment In Progress"), false);
+  await goStage("Your Moment");
+  assert.equal(titleInput().value, "Earlier Story");
   assert.equal(notesInput().value, "Written before opening the Event link.");
-  assert.equal(mentions("Spring Pop-Up"), 1, "the URL's Event was added to the draft");
-  assert.deepEqual(storedDraft().events.map((e) => e.value), ["ev-1"], "and the merge is persisted");
+  assert.equal(mentions("Spring Pop-Up"), 0, "the newly opened Event is not mixed in");
+  assert.equal(storedDraft().draftId, draftId, "the same draft");
+  assert.deepEqual(storedDraft().events, [], "no Event merged into the stored draft");
+  assertNoServerTouch();
+});
+
+test("Start A New Moment: the page's Event prefill is shown; the old draft and its photos stay stored until the new Moment is actually begun", async () => {
+  await load();
+  await goStage("Photos");
+  await addPhotos(png("earlier.png", [4]));
+  await goStage("Your Moment");
+  await type(titleInput(), "Earlier Story");
+  const before = window.localStorage.getItem(DRAFT_KEY);
+  const old = storedDraft();
+  assert.equal(storedMediaKeys().length, 1);
+
+  await load({ initial: eventInitial() });
+  await click(buttons("Start A New Moment", document.body)[0]);
+  await settle();
+  assert.equal(document.body.textContent.includes("You Have A Moment In Progress"), false);
+  assert.equal(titleInput().value, "Spring Pop-Up", "a clean composer with the Event's prefill");
+  assert.equal(window.localStorage.getItem(DRAFT_KEY), before, "choosing alone does not replace the stored draft");
+  assert.deepEqual(storedMediaKeys(), old.media.map((m) => m.localId), "nor release its photos");
+
+  // Leaving before editing loses nothing: the old Moment is still offered.
+  await load({ initial: eventInitial() });
+  assert.ok(document.body.textContent.includes("You Have A Moment In Progress"), "still in progress after a reload");
+  assert.equal(window.localStorage.getItem(DRAFT_KEY), before);
+  await click(buttons("Start A New Moment", document.body)[0]);
+  await settle();
+
+  // The first real edit begins the new Moment: it takes the device's one slot.
+  await goStage("Your Moment");
+  await type(notesInput(), "A brand new story.");
+  await settle();
+  const next = storedDraft();
+  assert.notEqual(next.draftId, old.draftId, "a new draft replaced the old one");
+  assert.equal(next.title, "Spring Pop-Up");
+  assert.equal(next.notes, "A brand new story.");
+  assert.deepEqual(next.events.map((e) => e.value), ["ev-1"]);
+  assert.deepEqual(next.media, []);
+  assert.deepEqual(storedMediaKeys(), [], "the old draft's photos are released only now");
+  assertNoServerTouch();
 });
 
 test("8-10 + 6. a selected Event, Location, Business and Product all survive a reload", async () => {

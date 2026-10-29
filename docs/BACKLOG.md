@@ -6,12 +6,6 @@ active work. Reconciled against code on 2026-10-29.
 
 ## Bugs
 
-- **Guest Moment draft precedence (test failing).**
-  `tests/guest-moment-reload.test.mjs:237`: opening an Event link replaces
-  an existing guest draft's title ("Earlier Story" → "Spring Pop-Up").
-  The URL Event context should only fill missing fields. Deterministic,
-  and it predates this reconciliation. Reuse: `lib/guest-moment-draft.ts` /
-  the composer.
 - **Stale copy: "Public Actions"** (the tab is now "Profile Buttons").
   These are the user-facing occurrences. The comments, identifiers,
   `entity_public_actions` and test titles are fine as they are.

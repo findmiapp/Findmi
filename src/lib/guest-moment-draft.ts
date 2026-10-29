@@ -6,10 +6,11 @@
 // `media` array carries — never here, never base64'd into localStorage.
 //
 // Exactly ONE guest Moment draft per device (the smallest correct
-// solution for V1): starting a contextual Moment (from an Event/Business/
-// Location/Product page) while an unfinished generic one already exists
-// never destroys it — it simply isn't offered to resume until the person
-// returns to the plain, context-free Add Moment entry point.
+// solution for V1): opening the composer from a different Event/Business/
+// Location/Product context while an unfinished Moment exists asks first
+// (You Have A Moment In Progress — lib/guest-moment-session.ts
+// decideGuestStartup "switch"). Nothing is silently merged, and the stored
+// draft is only replaced once a new Moment is actually begun.
 import type { JournalManualLocationState, MomentEventPick, MomentPick } from "./moment-composer";
 import type { JournalEntrySectionRow } from "./journal-sections";
 

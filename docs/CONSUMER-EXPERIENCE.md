@@ -47,7 +47,13 @@ Curation is deterministic (`tests/homepage-curation-contract.test.mjs`):
   newest first.
 - Composer (`/my-world/journal/new`): guest-first. Signed-out users can
   draft. Identity is required at Save & Publish, and the draft is kept
-  (`lib/guest-moment-*`). Sections include The Experience, The Place, Food
+  (`lib/guest-moment-*`). One guest draft per device. Reopening the same
+  context restores it, and URL context only fills what it lacks. Opening a
+  different Event / Business / Location / Product context while a Moment
+  with real content is in progress asks first (**You Have A Moment In
+  Progress**: Continue Moment restores it with its own context; Start A
+  New Moment keeps it stored until the new Moment's first edit). Never a
+  silent merge. Sections include The Experience, The Place, Food
   & Drink, Products, People, Details, Favorites. Connections to Business /
   Product / Event / Occurrence. Visibility and draft/published states.
 
