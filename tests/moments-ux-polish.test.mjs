@@ -28,7 +28,7 @@ const CARDS = [
 
 test("homepage: View All + My Journal are ONE compact grouped control (not loose underlined links)", () => {
   const nav = HOME.slice(HOME.indexOf("data-moments-actions"), HOME.indexOf("</nav>", HOME.indexOf("data-moments-actions")));
-  assert.match(HOME, /<nav\s+aria-label="Findmi Moments"\s+data-moments-actions\s+className="flex shrink-0 items-stretch overflow-hidden rounded-lg border border-black\/10 bg-white text-xs font-semibold/);
+  assert.match(HOME, /<nav\s+aria-label="Findmi Moments"\s+data-moments-actions\s+className="flex shrink-0 items-stretch self-end sm:self-auto overflow-hidden rounded-lg border border-black\/10 bg-white text-xs font-semibold/);
   assert.match(nav, /<Link href="\/moments"[^>]*>\s*View All\s*<\/Link>/);
   assert.match(nav, /<Link href=\{MY_JOURNAL_HREF\}[^>]*>\s*My Journal\s*<\/Link>/);
   assert.match(nav, /<span aria-hidden="true" className="w-px bg-black\/10" \/>/, "a divider between the two halves");
@@ -36,6 +36,14 @@ test("homepage: View All + My Journal are ONE compact grouped control (not loose
   assert.equal(F.MY_JOURNAL_HREF, "/journal");
   // Cards / category carousel below are unchanged.
   assert.match(HOME, /<MomentsDiscovery cards=\{momentFeed\.cards\} layout="carousel" showModes=\{false\} \/>/);
+});
+
+test("homepage: the title keeps one full line on phones; the control takes a compact right-aligned row (shared row from sm)", () => {
+  assert.match(HOME, /<div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">\s*<BrandHeading id="home-moments-heading" accent="Moments" size="home" className="whitespace-nowrap" \/>/);
+  // The control is no longer squeezed into BrandHeading's trailing slot (no font-size change).
+  const section = HOME.slice(HOME.indexOf('aria-labelledby="home-moments-heading"'), HOME.indexOf("<MomentsDiscovery cards={momentFeed.cards}"));
+  assert.doesNotMatch(section, /trailing=/);
+  assert.match(section, /data-moments-actions[\s\S]*?<\/nav>\s*<\/div>\s*<p className=\{HOMEPAGE_SECTION_SUBTITLE_CLASS\}>Real experiences/, "control row sits before the description");
 });
 
 // ── One control row ─────────────────────────────────────────────────────────

@@ -517,30 +517,29 @@ export default async function HomePage({
       {momentFeed.cards.length > 0 && (
         <section className="py-6" aria-labelledby="home-moments-heading">
           <div className="mb-3 px-4 sm:px-6">
-            <BrandHeading
-              id="home-moments-heading"
-              accent="Moments"
-              size="home"
-              trailing={
-                // A preview module, not the Moments app: no Explore / For You /
-                // My Moments switch here — one compact, quiet grouped control:
-                // View All opens /moments, My Journal the viewer's own history
-                // (/journal signs them in first).
-                <nav
-                  aria-label="Findmi Moments"
-                  data-moments-actions
-                  className="flex shrink-0 items-stretch overflow-hidden rounded-lg border border-black/10 bg-white text-xs font-semibold text-ink/70"
-                >
-                  <Link href="/moments" className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
-                    View All
-                  </Link>
-                  <span aria-hidden="true" className="w-px bg-black/10" />
-                  <Link href={MY_JOURNAL_HREF} className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
-                    My Journal
-                  </Link>
-                </nav>
-              }
-            />
+            {/* Phones: the title keeps its own full line (never wraps); the
+                View All | My Journal control sits on a compact right-aligned
+                row before the description. From sm up they share one row. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+              <BrandHeading id="home-moments-heading" accent="Moments" size="home" className="whitespace-nowrap" />
+              {/* A preview module, not the Moments app: no Explore / For You /
+                  My Moments switch here — one compact, quiet grouped control:
+                  View All opens /moments, My Journal the viewer's own history
+                  (/journal signs them in first). */}
+              <nav
+              aria-label="Findmi Moments"
+              data-moments-actions
+              className="flex shrink-0 items-stretch self-end sm:self-auto overflow-hidden rounded-lg border border-black/10 bg-white text-xs font-semibold text-ink/70"
+            >
+              <Link href="/moments" className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
+                View All
+              </Link>
+              <span aria-hidden="true" className="w-px bg-black/10" />
+              <Link href={MY_JOURNAL_HREF} className="flex h-8 items-center px-2.5 transition hover:bg-black/[0.03] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40">
+                My Journal
+              </Link>
+            </nav>
+            </div>
             <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>
           </div>
           <div className="px-4 sm:px-6">
