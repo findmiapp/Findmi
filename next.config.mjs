@@ -125,11 +125,13 @@ const nextConfig = {
       "upgrade-insecure-requests",
     ].join("; ");
 
-    // Permissions-Policy is identical on every route (embed included) —
-    // defined once, reused by both header blocks below rather than
-    // duplicated.
+    // Permissions-Policy — clearly-unused browser features stay off. The
+    // one difference between the blocks: Findmi's own pages allow
+    // geolocation for itself (the Map's Near Me, only ever on an explicit
+    // tap); /embed — framed on other sites — keeps it off entirely.
     const permissionsPolicy =
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), interest-cohort=()";
+      "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), magnetometer=(), gyroscope=(), interest-cohort=()";
+    const embedPermissionsPolicy = permissionsPolicy.replace("geolocation=(self)", "geolocation=()");
 
     // Embeddable Business Widget Phase 1 — /embed/* is the one public
     // surface deliberately meant to be framed by an arbitrary external
@@ -152,7 +154,8 @@ const nextConfig = {
     // against this exact Next.js version via a local production server +
     // curl, not assumed. Every other directive (script/style/img/connect/
     // font-src, nosniff, HSTS, Referrer-Policy, Permissions-Policy) stays
-    // identical to the site-wide policy — the widget uses next/image, the
+    // identical to the site-wide policy (except geolocation, off here) —
+    // the widget uses next/image, the
     // same Supabase-hosted images, and the same same-origin
     // /api/analytics/track fetch every other page already uses.
     const embedCsp = csp.replace("frame-ancestors 'none'", "frame-ancestors *");
@@ -197,7 +200,7 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           { key: "Content-Security-Policy", value: embedCsp },
-          { key: "Permissions-Policy", value: permissionsPolicy },
+          { key: "Permissions-Policy", value: embedPermissionsPolicy },
         ],
       },
     ];

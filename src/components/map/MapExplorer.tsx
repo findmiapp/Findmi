@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { bboxAround, type Bbox, type MapFeature } from "@/lib/discovery/map-core";
 import type { MapResponse, MapResultCard as Card } from "@/lib/discovery/map-server";
 import { mapHref, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, type DiscoveryWhen } from "@/lib/discovery/query";
-import { lensNoun, MAP_LENSES, mapLens, mapRefinements, normalizeMapLens, withLens, type MapLens } from "@/lib/discovery/map-filters";
+import { lensNoun, MAP_LENSES, MAP_WHEN_LABELS, mapLens, mapRefinements, normalizeMapLens, withLens, type MapLens } from "@/lib/discovery/map-filters";
 import { clearedQuery, derivedFrom, hasGeo } from "@/lib/discovery/search-state";
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
@@ -51,15 +51,20 @@ const bboxOf = (features: MapFeature[]): Bbox | null => {
 type Quick = { label: string; when?: DiscoveryWhen; flag?: "free" | "near" | "open" };
 // Quick filters follow the lens. Under All the time / Free shortcuts are
 // Happening refinements: tapping one moves the VISIBLE lens to Happening.
-const QUICK_TIME: Quick[] = [
-  { label: "Happening Now", when: "now" },
-  { label: "Up Next", when: "upnext" },
-  { label: "Today", when: "today" },
-  { label: "This Weekend", when: "weekend" },
-];
+// "Starting Soon" = not started, begins within 4 hours (MAP_WHEN_LABELS).
+const QUICK_TIME: Quick[] = (["now", "upnext", "today", "weekend"] as const).map((when) => ({ label: MAP_WHEN_LABELS[when], when }));
 const FREE: Quick = { label: "Free", flag: "free" };
 const OPEN: Quick = { label: "Open Now", flag: "open" };
 const NEAR: Quick = { label: "Near Me", flag: "near" };
+
+/** Near Me failure → what the viewer is told (never a silent no-op). */
+export function nearMeError(e: { code?: number; message?: string } | null | undefined): string {
+  if (e?.code === 1 && /permissions? policy/i.test(e.message ?? "")) return "We couldn’t get your location — location isn’t enabled on this page. Showing this area instead.";
+  if (e?.code === 1) return "We couldn’t get your location — location access is off for Findmi. Allow it in your browser’s site settings, or browse this area.";
+  if (e?.code === 2) return "We couldn’t get your location — your device couldn’t find it right now. Showing this area instead.";
+  if (e?.code === 3) return "We couldn’t get your location in time. Try Near Me again, or browse this area.";
+  return "We couldn’t get your location — showing this area instead. You can search any neighborhood or city.";
+}
 
 function Icon({ d, className = "h-5 w-5" }: { d: string; className?: string }) {
   return (
@@ -109,6 +114,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [text, setText] = useState(initialQuery.text ?? "");
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
+  // Near Me is waiting on the browser (permission prompt / position fix).
+  const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(nearRequested ? "near" : null);
   const [fit, setFit] = useState<{ bbox: Bbox; key: number } | null>(null);
   const [focus, setFocus] = useState<{ lng: number; lat: number; key: number } | null>(null);
@@ -381,13 +388,16 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // ---- Near Me: only on an explicit tap; position kept in memory only,
   // coarsened to ~100 m before it shapes a viewport.
   const nearMe = () => {
+    if (locating) return;
     if (!("geolocation" in navigator)) {
       setNotice("Location isn’t available in this browser — showing this area instead.");
       return;
     }
     setNotice(null);
+    setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        setLocating(false);
         const lat = Math.round(pos.coords.latitude * 1000) / 1000;
         const lng = Math.round(pos.coords.longitude * 1000) / 1000;
         setUserPos({ lat, lng });
@@ -395,7 +405,10 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         apply({ ...withoutGeo(query), near: true, bbox });
         setFit({ bbox, key: Date.now() });
       },
-      () => setNotice("We couldn’t get your location — showing this area instead. You can search any neighborhood or city."),
+      (err) => {
+        setLocating(false);
+        setNotice(nearMeError(err));
+      },
       { enableHighAccuracy: false, maximumAge: 300_000, timeout: 10_000 }
     );
   };
@@ -404,10 +417,12 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const facets = data?.facets;
   // An option is offered when the candidates can satisfy it — or when it's
   // already on (always removable). No availability yet → offered.
+  // Time shortcuts too: offered when something qualifies, or when on.
+  const timeOffered = (q: Quick) => !facets?.when || facets.when.includes(q.when!) || query.when === q.when;
   const quick: Quick[] =
     lens === "place"
       ? [...(!facets || facets.open || query.open ? [OPEN] : []), NEAR]
-      : [...QUICK_TIME, ...(!facets || facets.free || query.free ? [FREE] : []), NEAR];
+      : [...QUICK_TIME.filter(timeOffered), ...(!facets || facets.free || query.free ? [FREE] : []), NEAR];
   // A lens change is always visible: bring the rail (scrolled sideways to
   // reach a quick filter on a phone) back to its start, where the lens is.
   useEffect(() => {
@@ -553,12 +568,14 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
             key={q.label}
             type="button"
             aria-pressed={on}
+            aria-busy={q.flag === "near" && locating ? true : undefined}
             onClick={() => toggleQuick(q)}
             className={`flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold shadow-sm transition ${on ? "border-findmi bg-findmi text-white" : "border-black/[0.08] bg-white text-ink/80 hover:border-black/20"}`}
           >
             {q.when === "now" && <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${on ? "bg-white" : "bg-red-600"}`} />}
-            {q.flag === "near" && <Icon d={LOCATE} className="h-3.5 w-3.5" />}
-            {q.label}
+            {q.flag === "near" && locating && <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-findmi/30 border-t-findmi motion-reduce:animate-none" />}
+            {q.flag === "near" && !locating && <Icon d={LOCATE} className="h-3.5 w-3.5" />}
+            {q.flag === "near" && locating ? "Locating…" : q.label}
             {on && <Icon d={CLOSE} className="h-3 w-3" />}
           </button>
         );
@@ -588,10 +605,13 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     </>
   );
 
+  // Near Me found the viewer but nothing qualifies within the radius: say
+  // so (it isn't a filter conflict); Wider Area stays the next step.
+  const nearEmpty = Boolean(query.near);
   const emptyState = data && total === 0 && data.mapReady && (
     <div className="rounded-2xl border border-black/5 bg-white p-4">
-      <p className="font-display text-[15px] font-bold text-ink">Nothing matches all of these filters.</p>
-      <p className="mt-1 text-sm text-ink/60">Findmi never loosens your search on its own. Try one of these:</p>
+      <p className="font-display text-[15px] font-bold text-ink">{nearEmpty ? (filterCount ? "Nothing near you matches these filters." : "Nothing near you right now.") : "Nothing matches all of these filters."}</p>
+      <p className="mt-1 text-sm text-ink/60">{nearEmpty ? `Findmi looked within ${NEAR_ME_RADIUS_MILES} mi of you. Try one of these:` : "Findmi never loosens your search on its own. Try one of these:"}</p>
       {data.relaxations.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {data.relaxations.map((r) => (
@@ -741,7 +761,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   return (
     <div className="relative flex h-[calc(100dvh-3.5rem-var(--admin-bar-h))] overflow-hidden bg-paper lg:h-[calc(100dvh-4.0625rem)]">
       <p className="sr-only" aria-live="polite">
-        {loading ? "Updating results" : countLine}
+        {locating ? "Finding your location" : loading ? "Updating results" : countLine}
       </p>
 
       {/* MAP column (mobile: whole surface in Map view; desktop: ~62%) */}

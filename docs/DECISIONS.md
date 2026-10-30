@@ -120,6 +120,16 @@ Events / Pop-Ups / Places sheet with always-visible options; "What =
 Event categories" as the Map model. · **Implemented** for All /
 Happening / Places (`lib/discovery/map-filters.ts`).
 
+### Map time vocabulary and Happening order (Oct 2026)
+On the Map the four-hour window (`when=upnext`) is called **Starting
+Soon**; `/events` keeps **Up Next** for its chronological upcoming view.
+Inside the Happening lens, time order is authoritative (live first, then
+by start) and score only breaks ties, with no per-Brand cap. · Phone QA:
+one label meant two different things across surfaces, and ranking put a
+5 PM pop-up ahead of 9 AM ones on the same day. · "Up Next" on the Map;
+score + diversity order in Happening. · **Implemented**
+(`MAP_WHEN_LABELS`, `orderMapResults`).
+
 ### Commerce and settlement (Sept 2026, locked)
 5% default fee with snapshots, vendor-paid processing by default, held
 allocations, manual payouts, no Connect. See `/CLAUDE.md` §8.

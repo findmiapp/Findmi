@@ -70,6 +70,9 @@ const SS = await import("../src/lib/discovery/search-state.ts");
 const H = 3600e3;
 const NOW = Date.now();
 const iso = (ms) => new Date(ms).toISOString();
+// An occurrence's calendar date is its own LOCAL date (New York), never the
+// UTC one — they differ every evening from 8 PM ET.
+const nyDate = (ms) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 const IMG = "https://drcbrzwchlirfspjgtik.supabase.co/storage/v1/object/public/findmi-media/x.jpg";
 const NYC = "6d9a915c-0636-4e4f-a04b-3348cd0313ee";
 const SOHO = "0e580f5b-8ef7-4ad7-9ae7-e4faf896f436";
@@ -101,8 +104,8 @@ const TABLE = {
   events: [TABLI, { ...TABLI, id: "ev-gallery", slug: "fall-art-walk", name: "Fall Art Walk", host_business_id: null, venue_name: null }],
   // Tabli: one date two days out — eligible "anytime", not Happening Now.
   event_occurrences: [
-    { id: "occ-tabli", event_id: TABLI.id, location_id: EATALY.id, start_at: iso(NOW + 48 * H), end_at: iso(NOW + 60 * H), occurrence_date: iso(NOW + 48 * H).slice(0, 10), timezone: "America/New_York", status: "scheduled", created_at: TABLI.created_at },
-    { id: "occ-art", event_id: "ev-gallery", location_id: GALLERY.id, start_at: iso(NOW - H), end_at: iso(NOW + 3 * H), occurrence_date: iso(NOW).slice(0, 10), timezone: "America/New_York", status: "scheduled", created_at: TABLI.created_at },
+    { id: "occ-tabli", event_id: TABLI.id, location_id: EATALY.id, start_at: iso(NOW + 48 * H), end_at: iso(NOW + 60 * H), occurrence_date: nyDate(NOW + 48 * H), timezone: "America/New_York", status: "scheduled", created_at: TABLI.created_at },
+    { id: "occ-art", event_id: "ev-gallery", location_id: GALLERY.id, start_at: iso(NOW - H), end_at: iso(NOW + 3 * H), occurrence_date: nyDate(NOW), timezone: "America/New_York", status: "scheduled", created_at: TABLI.created_at },
   ],
   event_categories: [],
   event_formats: [],
@@ -275,16 +278,19 @@ async function submit(host, value) {
 }
 const last = (calls) => new URL(calls.at(-1), "https://findmi.test").searchParams;
 
-test('regression: "baby" → re-submit → Happening Now on/off still shows Babylist SoHo (no stale skipped fetch)', async () => {
+test('regression: "baby" → re-submit → Happening on/off still shows Babylist SoHo (no stale skipped fetch)', async () => {
   const { host, root, calls } = await mount();
   await submit(host, "baby");
   assert.deepEqual(shown(host), ["Babylist Soho"]);
   await submit(host, "baby");
-  await act(async () => btn(host, "Happening Now").click());
+  // The always-visible lens is the toggle: a time shortcut with nothing
+  // live for "baby" is (correctly) not offered at all (Map P0 availability).
+  assert.equal(btn(host, "Happening Now"), undefined, "nothing live matches “baby” → no Happening Now shortcut");
+  await act(async () => btn(host, "Happening").click());
   await settle();
-  assert.equal(countLine(host), "0", "Babylist is a Place: an explicit Happening Now lens legitimately excludes it");
+  assert.equal(countLine(host), "0", "Babylist is a Place: the Happening lens legitimately excludes it");
   const before = calls.length;
-  await act(async () => btn(host, "Happening Now").click());
+  await act(async () => btn(host, "All").click());
   await settle();
   assert.equal(calls.length, before + 1, "returning to the earlier query re-fetches instead of keeping the lens's results");
   assert.deepEqual(shown(host), ["Babylist Soho"]);

@@ -60,6 +60,13 @@ active work. Reconciled against code on 2026-10-29.
   zoom is 17, still stacked at 22. Fix: the canvas reports every hit
   point and the page opens one "N Here" tray. Not live in production as
   of Oct 29.
+- **Map interaction pass, also**: a single-result Location repeats its
+  name in the selected label, the sheet heading and the card; Near Me's
+  fixed 1.5 mi radius is empty outside dense areas (adaptive radius not
+  built).
+- **Homepage "Up Next" audit**: the homepage's wording and window are
+  separate from the Map's Starting Soon and `/events`' Up Next; audit
+  homepage discovery on its own.
 - **Brands lens** on the Map (All · Happening · Places · Brands). Needs
   a Brand result kind in `map-core` / `map-server` (start from
   `geo-results-server` `brandPresence` / `brandResults`), a decision on

@@ -13,14 +13,13 @@ import { BENEFIT_LABELS, ENTRY_LABELS, normalizeAudience, normalizeBenefits, nor
 import { matchLabels, queryChips, type ChipNames, type QueryChip } from "./chips";
 import {
   bboxCenter,
-  compareRankedMap,
-  diversify,
   haystackOf,
   isValidCoordinate,
   mapFeatures,
   mapKinds,
   mapStatus,
   matchesMapItem,
+  orderMapResults,
   rankMapItem,
   relaxationCandidates,
   taxonomyTerms,
@@ -33,7 +32,7 @@ import {
   type PersonalSignals,
   type RankedMapItem,
 } from "./map-core";
-import { mapFacets, type MapFacets } from "./map-filters";
+import { hasDateWindow, mapFacets, mapLens, withoutDateWindow, type MapFacets } from "./map-filters";
 import { mapHref, type DiscoveryQuery } from "./query";
 import { getPersonalContext, getVocabulary, taxonomyFor, type Vocabulary } from "./server";
 import { prefilterBounds } from "./time";
@@ -586,7 +585,13 @@ export async function runMapDiscovery(q: DiscoveryQuery, opts: RunMapOptions = {
   // the database; every candidate's Location is in scope.
   const placeIds = executed.place ? new Set(candidates.map((i) => i.location.id)) : undefined;
   const matched = candidates.filter((i) => matchesMapItem(i, executed, { now, placeIds }));
-  const facets = opts.facets === false ? undefined : mapFacets(candidates, executed, { now, placeIds });
+  let facets: MapFacets | undefined;
+  if (opts.facets !== false) {
+    // Time shortcuts need candidates without the current date window: the
+    // same set when there is none, else one extra bounded load.
+    const untimed = mapLens(executed) === "place" ? null : hasDateWindow(executed) ? (await loadMapItems(withoutDateWindow(executed), now)).items : candidates;
+    facets = mapFacets(candidates, executed, { now, placeIds }, untimed);
+  }
 
   const brandNames: Record<string, string> = {};
   for (const i of candidates) for (const b of i.brands) brandNames[b.slug] = b.name;
@@ -600,8 +605,10 @@ export async function runMapDiscovery(q: DiscoveryQuery, opts: RunMapOptions = {
 
   const center = executed.bbox ? bboxCenter(executed.bbox as Bbox) : null;
   const labels = matchLabels(q, names);
-  const ranked = matched.map((i) => rankMapItem(i, { now, center, nearMe: Boolean(q.near), personal: opts.personal ?? null, matchLabels: labels })).sort(compareRankedMap);
-  const { items, overflow } = diversify(ranked, executed);
+  const ranked = matched.map((i) => rankMapItem(i, { now, center, nearMe: Boolean(q.near), personal: opts.personal ?? null, matchLabels: labels }));
+  // Happening: time is authoritative (live, then soonest); All / Places
+  // keep score + Brand diversity.
+  const { items, overflow } = orderMapResults(ranked, executed, now, mapLens(executed) === "happening");
   const total = items.length;
   const href = opts.href ?? ((next: DiscoveryQuery) => mapHref(next, opts.view));
   if (opts.countOnly) {

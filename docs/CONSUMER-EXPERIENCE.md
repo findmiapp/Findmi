@@ -30,7 +30,8 @@ Curation is deterministic (`tests/homepage-curation-contract.test.mjs`):
 
 ### Map lenses and filters [CODE][TEST]
 
-`lib/discovery/map-filters.ts`, `tests/map-filters-p0.test.mjs`.
+`lib/discovery/map-filters.ts`, `tests/map-filters-p0.test.mjs`,
+`tests/map-p0-corrections.test.mjs`.
 
 - **Lens** is the primary control and leads the chip rail: **All ·
   Happening · Places**. The intended hierarchy adds **Brands** (its own
@@ -49,14 +50,45 @@ Curation is deterministic (`tests/homepage-curation-contract.test.mjs`):
   off again returns to All). Places hides time filters instead of
   switching the lens. The URL is normalized so the visible lens is what
   runs.
+- **Time shortcuts** (rail and sheet): Happening Now · **Starting Soon**
+  · Today · This Weekend (the sheet adds Tomorrow, This Week, Next Week,
+  This Month, Next Month and custom date, range, month and year).
+  **Starting Soon** = not started yet and begins within the next 4 hours
+  (`time.ts` `UP_NEXT_HOURS`; URL `when=upnext`). The Map never labels
+  it "Up Next": `/events`' **Up Next** is a different thing, its
+  chronological "everything upcoming" view (`lib/event-filter.ts`). The
+  homepage's "Up Next" wording isn't covered by this definition.
+- **Happening order is chronological**: live first (ending soonest),
+  then upcoming by start time; score (proximity, Featured, image,
+  follows) only breaks ties. No per-Brand cap in Happening. This reads
+  correctly for Happening Now (ending soonest), Starting Soon (by start),
+  Today (live, then by start) and This Weekend (Fri → Sat → Sun). All
+  and Places keep score + Brand diversity (`orderMapResults`).
+- **Near Me** asks for the browser's location only on a tap
+  (`Permissions-Policy: geolocation=(self)`; `/embed` keeps it off). The
+  chip shows **Locating…** while the browser answers. Failures are told
+  apart (location off for this page, access denied, unavailable, timed
+  out) and the map stays usable. The position is rounded to about 100 m,
+  held in memory only and never put in the URL; it shapes a 1.5 mi
+  viewport. Found but empty: "Nothing near you right now" (or "…matches
+  these filters"), with Wider Area as the next step.
+- **Markers** (shared canvas, every map): clusters show a count; a
+  result shows its Location's or Brand's logo in a compact shell from
+  zoom 12.5; no logo → an Aqua dot with an initial; a logo that can't be
+  drawn → the Findmi Place mark (`components/map/marker-images.ts`).
+  The selected result's label is kept wholly inside the usable map area
+  (screen edges, top controls, results sheet, map controls), and its
+  second line is dropped when it would only repeat the name.
 - Event categories are the Happening refinement, **not** the Map's final
   "What" model. Place categories and Business categories are planned;
   no cross-entity taxonomy mapping exists or is invented.
 - **Availability**: options appear only when the current candidates can
   satisfy them (`mapFacets`, one dimension at a time with every other
   constraint applied). An applied option always stays visible and
-  removable, even at zero results. Free, perks, audience and entry stay
-  in the engine and surface on their own when data supports them.
+  removable, even at zero results. This includes the named time
+  shortcuts (custom date controls aren't enumerated); the lens control
+  itself is always visible. Free, perks, audience and entry stay in the
+  engine and surface on their own when data supports them.
 - **One definition of applied refinements** (`mapRefinements`) drives
   the Filters badge, the chip rail and the sheet's Clear. Geography and
   the typed search aren't refinements. Refinements the sheet has no

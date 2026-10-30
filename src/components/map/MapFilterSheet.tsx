@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AUDIENCE_LABELS, BENEFIT_LABELS, ENTRY_LABELS, EVENT_AUDIENCES, EVENT_BENEFITS, ENTRY_MODES, type EventBenefit } from "@/lib/discovery/attributes";
-import { clearedRefinements, isUneditableRefinement, lensNoun, MAP_LENSES, mapLens, mapRefinements, withLens, type MapFacets } from "@/lib/discovery/map-filters";
-import { TIME_OF_DAY_LABELS, TIMES_OF_DAY, WHEN_LABELS, type DiscoveryQuery, type DiscoveryWhen, type MatchMode } from "@/lib/discovery/query";
+import { clearedRefinements, isUneditableRefinement, lensNoun, MAP_LENSES, MAP_TIME_SHORTCUTS, MAP_WHEN_LABELS, mapLens, mapRefinements, withLens, type MapFacets } from "@/lib/discovery/map-filters";
+import { TIME_OF_DAY_LABELS, TIMES_OF_DAY, type DiscoveryQuery, type MatchMode } from "@/lib/discovery/query";
 
 export interface TaxonomyOption {
   slug: string;
@@ -16,7 +16,6 @@ export interface FilterOptions {
   formats: { slug: string; name: string }[];
 }
 
-const QUICK_WHEN: DiscoveryWhen[] = ["now", "upnext", "today", "tomorrow", "weekend", "week", "next_week", "month", "next_month"];
 type DateMode = "quick" | "date" | "range" | "month" | "year";
 
 function Chip({ on, children, onClick, disabled }: { on: boolean; children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
@@ -243,9 +242,9 @@ export default function MapFilterSheet({
           {happening && (
             <Section title="When">
               <div className="flex flex-wrap gap-2">
-                {QUICK_WHEN.map((w) => (
+                {MAP_TIME_SHORTCUTS.filter((w) => !facets?.when || facets.when.includes(w) || draft.when === w).map((w) => (
                   <Chip key={w} on={dateMode === "quick" && draft.when === w} onClick={() => { setDateMode("quick"); setDraft((d) => ({ ...clearTime(d), ...(d.when === w ? {} : { when: w }) })); }}>
-                    {WHEN_LABELS[w]}
+                    {MAP_WHEN_LABELS[w]}
                   </Chip>
                 ))}
               </div>

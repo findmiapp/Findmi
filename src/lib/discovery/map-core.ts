@@ -7,7 +7,9 @@
 // Eligibility and prominence are separate: matchesMapItem() is the only
 // eligibility predicate (deterministic, explainable); rankMapItem() and
 // diversify() only ORDER qualifying items — nothing that qualifies is ever
-// dropped by ranking, and an explicit Brand search is never capped.
+// dropped by ranking, and an explicit Brand search is never capped. In the
+// Happening lens time is authoritative instead (orderMapResults): live
+// first, then by start — score only breaks ties, no per-Brand cap.
 //
 // Marker semantics depend on the lens (see mapFeatures):
 //   • default / mixed — the Location is the geographic anchor: ONE marker
@@ -388,6 +390,29 @@ export function compareRankedMap(a: RankedMapItem, b: RankedMapItem): number {
   return a.item.key.localeCompare(b.item.key);
 }
 
+/** Happening order: live first (ending soonest), then upcoming by start
+ * time (a date-only item at the start of its day); score only breaks ties.
+ * Happening Now, Starting Soon, Today and This Weekend all read correctly
+ * from this one rule. */
+export function compareChronological(now: Date): (a: RankedMapItem, b: RankedMapItem) => number {
+  const startMs = (i: MapItem) => {
+    if (i.start_at) return Date.parse(i.start_at);
+    const d = i.occurrence_date ?? i.start_date;
+    return d ? Date.parse(`${d}T00:00:00Z`) : Number.POSITIVE_INFINITY;
+  };
+  const endMs = (i: MapItem) => (i.end_at ? Date.parse(i.end_at) : Number.POSITIVE_INFINITY);
+  return (a, b) => {
+    const la = a.item.kind !== "place" && isHappeningNow(a.item, now);
+    const lb = b.item.kind !== "place" && isHappeningNow(b.item, now);
+    if (la !== lb) return la ? -1 : 1;
+    if (la && endMs(a.item) !== endMs(b.item)) return endMs(a.item) - endMs(b.item);
+    const sa = startMs(a.item);
+    const sb = startMs(b.item);
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return compareRankedMap(a, b);
+  };
+}
+
 // ------------------------------------------------------------ diversity
 
 export interface BrandOverflow {
@@ -443,6 +468,15 @@ export function diversify(ranked: RankedMapItem[], q: DiscoveryQuery, cap = 2): 
   }
   const overflow = [...brandTotals.values()].filter((t) => t.total > cap).sort((a, b) => b.total - a.total || a.brand.name.localeCompare(b.brand.name));
   return { items: [...lead, ...later], overflow };
+}
+
+/** The result order for a lens. Happening: chronological, with every
+ * date of one Event at one Location folded under its earliest (or live)
+ * date and no per-Brand cap (it would pull a Brand's later dates out of
+ * time order). Everything else: score + Brand diversity, unchanged. */
+export function orderMapResults(ranked: RankedMapItem[], q: DiscoveryQuery, now: Date, happening: boolean): { items: RankedMapItem[]; overflow: BrandOverflow[] } {
+  if (happening) return diversify([...ranked].sort(compareChronological(now)), q, Number.POSITIVE_INFINITY);
+  return diversify([...ranked].sort(compareRankedMap), q);
 }
 
 // ------------------------------------------------------------ markers

@@ -20,7 +20,7 @@
 import { queryChips, type QueryChip } from "./chips";
 import { isFamily, isFreeAdmission, matchesMapItem, openNowAt, type MapItem, type MatchContext } from "./map-core";
 import type { EntryMode, EventAudience, EventBenefit } from "./attributes";
-import { isEventShaped, type DiscoveryEntity, type DiscoveryQuery } from "./query";
+import { isEventShaped, WHEN_LABELS, type DiscoveryEntity, type DiscoveryQuery, type DiscoveryWhen } from "./query";
 
 export type MapLens = "all" | "happening" | "place";
 export const MAP_LENSES: { lens: MapLens; label: string }[] = [
@@ -31,7 +31,18 @@ export const MAP_LENSES: { lens: MapLens; label: string }[] = [
 
 export const HAPPENING_ENTITIES: DiscoveryEntity[] = ["event", "appearance"];
 
-const TIME_KEYS = ["when", "date", "from", "to", "month", "year", "tod", "tfrom", "tto"] as const;
+/** The named time shortcuts the Map offers (rail + filter sheet). Custom
+ * date / range / month / year controls aren't enumerated. */
+export const MAP_TIME_SHORTCUTS: DiscoveryWhen[] = ["now", "upnext", "today", "tomorrow", "weekend", "week", "next_week", "month", "next_month"];
+
+/** Map wording for time windows. `upnext` on the Map is STARTING SOON:
+ * not started yet, begins within the next 4 hours (time.ts
+ * UP_NEXT_HOURS). It is deliberately not called "Up Next" here — /events'
+ * "Up Next" is its chronological upcoming view, a different thing. */
+export const MAP_WHEN_LABELS: Record<DiscoveryWhen, string> = { ...WHEN_LABELS, upnext: "Starting Soon" };
+
+const WINDOW_KEYS = ["when", "date", "from", "to", "month", "year"] as const;
+const TIME_KEYS = [...WINDOW_KEYS, "tod", "tfrom", "tto"] as const;
 /** Refinements that only mean something for dated activity. */
 const HAPPENING_KEYS = [...TIME_KEYS, "categories", "formats", "catMode", "benefits", "benefitMode", "audience", "entry", "free", "paid", "family", "access", "endingSoonHours", "justAnnouncedDays"] as const;
 /** Refinements that only mean something for Places. */
@@ -139,12 +150,21 @@ export function clearedRefinements(q: DiscoveryQuery): DiscoveryQuery {
 
 // ------------------------------------------------------------ availability
 
+/** Does the query carry a date window (named or custom)? */
+export const hasDateWindow = (q: DiscoveryQuery) => WINDOW_KEYS.some((k) => q[k] !== undefined);
+/** The query without its date window (time of day kept). */
+export const withoutDateWindow = (q: DiscoveryQuery) => omit(q, WINDOW_KEYS);
+
 /** Values the current candidate set can satisfy, per refinement dimension.
  * Each dimension is computed against the query WITHOUT that dimension (so
  * choosing Free never hides Paid, choosing one category never hides the
  * others), but with everything else — lens, geography, time, text, Brands
  * and the other refinements — applied. */
 export interface MapFacets {
+  /** Named time shortcuts with at least one result (other constraints —
+   * lens, geography, time of day, text, refinements — applied). Absent =
+   * unknown (everything offered). */
+  when?: DiscoveryWhen[];
   categories: string[];
   formats: string[];
   benefits: EventBenefit[];
@@ -155,7 +175,7 @@ export interface MapFacets {
   open: boolean;
 }
 
-export function mapFacets(items: readonly MapItem[], q: DiscoveryQuery, ctx: MatchContext): MapFacets {
+export function mapFacets(items: readonly MapItem[], q: DiscoveryQuery, ctx: MatchContext, untimed?: readonly MapItem[] | null): MapFacets {
   const pass = (drop: readonly string[]) => {
     const scoped = omit(q, drop);
     return items.filter((i) => matchesMapItem(i, scoped, ctx));
@@ -164,8 +184,19 @@ export function mapFacets(items: readonly MapItem[], q: DiscoveryQuery, ctx: Mat
   const dated = (list: MapItem[]) => list.filter((i) => i.kind !== "place");
 
   const tax = dated(pass(["categories", "formats", "catMode"]));
+  // Time: evaluated over candidates loaded WITHOUT a date window (`untimed`
+  // — the same candidates when the query has none), each shortcut in place
+  // of the current window. Places never carry time.
+  let when: DiscoveryWhen[] | undefined;
+  if (untimed && mapLens(q) !== "place") {
+    const base = omit(q, WINDOW_KEYS);
+    const timeCtx: MatchContext = q.place ? { ...ctx, placeIds: new Set(untimed.map((i) => i.location.id)) } : ctx;
+    const dates = untimed.filter((i) => i.kind !== "place");
+    when = MAP_TIME_SHORTCUTS.filter((w) => dates.some((i) => matchesMapItem(i, { ...base, when: w }, timeCtx)));
+  }
   const cost = dated(pass(["free", "paid"]));
   return {
+    ...(when ? { when } : {}),
     categories: collect(tax, (i) => i.categories),
     formats: collect(tax, (i) => i.formats),
     benefits: collect(dated(pass(["benefits", "benefitMode"])), (i) => i.benefits),

@@ -188,7 +188,8 @@ test("availability: no data → nothing offered (Free, perks, audience, entry hi
 
 test("server: availability rides on both full and count-only responses; relaxation counts skip it", () => {
   const src = read("src/lib/discovery/map-server.ts");
-  assert.match(src, /const facets = opts\.facets === false \? undefined : mapFacets\(candidates, executed, \{ now, placeIds \}\);/);
+  assert.match(src, /if \(opts\.facets !== false\) \{/);
+  assert.match(src, /facets = mapFacets\(candidates, executed, \{ now, placeIds \}, untimed\);/);
   assert.match(src, /relaxations: \[\], truncated, mapReady, facets,/, "count-only (the filter sheet's draft count) carries it");
   assert.match(src, /countOnly: true, facets: false/);
 });
@@ -232,7 +233,7 @@ test("the lens leads the existing chip rail: All · Happening · Places, then qu
   assert.equal(row.firstElementChild, rail(host), "the lens is first in the rail — no extra row over the map");
   assert.deepEqual([...rail(host).querySelectorAll('[role="radio"]')].map((b) => b.textContent), ["All", "Happening", "Places"]);
   assert.equal(lensOn(host), "All");
-  for (const label of ["Happening Now", "Up Next", "Today", "This Weekend", "Free", "Near Me"]) assert.ok(btn(row, label), label);
+  for (const label of ["Happening Now", "Starting Soon", "Today", "This Weekend", "Free", "Near Me"]) assert.ok(btn(row, label), label);
   assert.equal(btn(row, "Open Now"), undefined, "Open Now is a Places refinement");
   root.unmount();
 });
@@ -285,7 +286,7 @@ test("Places: no time filters and no Free — Open Now instead; leaving All neve
   assert.equal(lensOn(host), "Places");
   assert.deepEqual(params(calls).getAll("type"), ["place"]);
   assert.equal(params(calls).get("when"), null, "time is dropped, not left to do nothing");
-  for (const label of ["Happening Now", "Up Next", "Today", "This Weekend", "Free"]) assert.equal(btn(rail(host).parentElement, label), undefined, label);
+  for (const label of ["Happening Now", "Starting Soon", "Today", "This Weekend", "Free"]) assert.equal(btn(rail(host).parentElement, label), undefined, label);
   assert.ok(btn(host, "Open Now"));
   assert.ok(btn(host, "Near Me"));
   await act(async () => btn(host, "Open Now").click());

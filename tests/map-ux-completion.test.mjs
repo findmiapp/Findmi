@@ -237,7 +237,8 @@ test("Search This Area after an Area query: nudges are ignored, a real move offe
 
 test("quick temporal lenses change the actual query", async () => {
   const { host, root, calls } = await mount();
-  for (const [label, when] of [["Happening Now", "now"], ["Up Next", "upnext"], ["Today", "today"], ["This Weekend", "weekend"]]) {
+  // On the Map the four-hour window reads "Starting Soon" (URL: when=upnext).
+  for (const [label, when] of [["Happening Now", "now"], ["Starting Soon", "upnext"], ["Today", "today"], ["This Weekend", "weekend"]]) {
     const b = [...host.querySelectorAll("button")].find((x) => x.textContent.trim() === label);
     await act(async () => b.click());
     await settle();

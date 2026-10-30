@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpressionSpecification, GeoJSONSource, Map as MLMap, MapGeoJSONFeature, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
+import { labelShift, LOGO_IMAGE_SIZE, logoPlaceholder, placeFallbackImage, secondaryLine, SELECTED_ANCHOR_OFFSET } from "./marker-images";
 
 // Discovery Map renderer. Population rendering is entirely native MapLibre
 // layers on ONE clustered GeoJSON source (no React/DOM marker per result):
@@ -93,7 +94,7 @@ async function loadLogoImage(url: string): Promise<ImageData | null> {
     img.decoding = "async";
     img.onload = () => {
       try {
-        const size = 64;
+        const size = LOGO_IMAGE_SIZE;
         const c = document.createElement("canvas");
         c.width = size;
         c.height = size;
@@ -136,10 +137,16 @@ function selectedElement(f: MapFeature): HTMLElement {
   const name = document.createElement("span");
   name.className = "max-w-[11rem] truncate text-[13px] font-bold text-ink";
   name.textContent = f.label;
-  const status = document.createElement("span");
-  status.className = "max-w-[11rem] truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
-  status.textContent = f.live ? (f.status && f.status !== "LIVE" ? `● LIVE · ${f.status}` : "● LIVE") : f.status || f.place;
-  text.append(name, status);
+  text.append(name);
+  // The second line (status / category / place) only when it adds
+  // something — never the name again.
+  const second = secondaryLine(f);
+  if (second) {
+    const status = document.createElement("span");
+    status.className = "max-w-[11rem] truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
+    status.textContent = second;
+    text.append(status);
+  }
   el.append(mark, text);
   return el;
 }
@@ -155,6 +162,43 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   cb.current = { onSelect, onViewportChange };
   const featuresRef = useRef(features);
   featuresRef.current = features;
+  const paddingRef = useRef(padding);
+  paddingRef.current = padding;
+
+  // Keep the selected label wholly inside the usable map area: clear of
+  // the screen edges, the top controls / results sheet (`padding`) and the
+  // map's own controls. Pans only by what's needed (never for a label
+  // that already fits).
+  const checkPending = useRef(false);
+  const keepSelectedVisible = useCallback(() => {
+    const map = mapRef.current;
+    const el = markerRef.current?.getElement();
+    const box = container.current;
+    if (!map || !el || !box) return;
+    // Mid-move (a focus pan, a fit): check once it has settled — never
+    // interrupt it.
+    if (map.isMoving()) {
+      if (!checkPending.current) {
+        checkPending.current = true;
+        map.once("moveend", () => {
+          checkPending.current = false;
+          keepSelectedVisibleRef.current();
+        });
+      }
+      return;
+    }
+    const c = box.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (!r.width || !c.width) return;
+    const pad = paddingRef.current ?? { top: 16, bottom: 16, left: 16, right: 16 };
+    const edge = 12;
+    const safe = { left: c.left + Math.max(edge, pad.left), right: c.right - Math.max(edge, pad.right), top: c.top + Math.max(edge, pad.top), bottom: c.bottom - Math.max(edge, pad.bottom) };
+    const obstacles = [...box.querySelectorAll(".maplibregl-ctrl-group, .maplibregl-ctrl-attrib-button")].map((o) => o.getBoundingClientRect()).filter((o) => o.width > 0);
+    const [dx, dy] = labelShift(r, safe, obstacles);
+    if (dx || dy) map.panBy([dx, dy], { duration: prefersReducedMotion() ? 0 : 300 });
+  }, []);
+  const keepSelectedVisibleRef = useRef(keepSelectedVisible);
+  keepSelectedVisibleRef.current = keepSelectedVisible;
 
   // ---- mount once
   useEffect(() => {
@@ -186,10 +230,13 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
       map.on("styleimagemissing", (e) => {
         const id = (e as { id: string }).id;
         if (!id.startsWith("logo:") || !map) return;
-        // Placeholder first (stops repeat events), real logo when it loads.
-        map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) }, { pixelRatio: 2 });
+        // Placeholder first (stops repeat events), then the logo — or the
+        // Findmi Place mark when it can't be drawn. All three share one
+        // size: updateImage rejects an image of different dimensions.
+        map.addImage(id, logoPlaceholder(), { pixelRatio: 2 });
         void loadLogoImage(id.slice(5)).then((data) => {
-          if (data && map?.hasImage(id)) map.updateImage(id, data);
+          const image = data ?? placeFallbackImage();
+          if (image && map?.hasImage(id)) map.updateImage(id, image);
         });
       });
       map.on("load", () => {
@@ -384,8 +431,11 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     markerRef.current?.remove();
     markerRef.current = null;
     const f = selectedId ? features.find((x) => x.id === selectedId) : null;
-    if (f) markerRef.current = new lib.Marker({ element: selectedElement(f), anchor: "left", offset: [-18, 0] }).setLngLat([f.lng, f.lat]).addTo(map);
-  }, [selectedId, features, ready]);
+    if (f) {
+      markerRef.current = new lib.Marker({ element: selectedElement(f), anchor: "left", offset: [-SELECTED_ANCHOR_OFFSET, 0] }).setLngLat([f.lng, f.lat]).addTo(map);
+      requestAnimationFrame(keepSelectedVisible);
+    }
+  }, [selectedId, features, ready, keepSelectedVisible]);
 
   // ---- programmatic camera moves
   useEffect(() => {
@@ -397,7 +447,13 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   useEffect(() => {
     if (!ready || !focus || !mapRef.current) return;
     const map = mapRef.current;
-    map.easeTo({ center: [focus.lng, focus.lat], zoom: Math.max(map.getZoom(), 14), ...(padding ? { padding } : {}), duration: prefersReducedMotion() ? 0 : 500 });
+    // Focusing the selected result: center its whole label (it hangs to the
+    // right of the point), not the point — then make sure it fits.
+    const marker = markerRef.current;
+    const at = marker?.getLngLat();
+    const width = marker && at && Math.abs(at.lng - focus.lng) < 1e-9 && Math.abs(at.lat - focus.lat) < 1e-9 ? marker.getElement().getBoundingClientRect().width : 0;
+    map.easeTo({ center: [focus.lng, focus.lat], zoom: Math.max(map.getZoom(), 14), ...(padding ? { padding } : {}), offset: [width ? -(width / 2 - SELECTED_ANCHOR_OFFSET) : 0, 0], duration: prefersReducedMotion() ? 0 : 500 });
+    if (width) keepSelectedVisible();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.key, ready]);
   useEffect(() => {
