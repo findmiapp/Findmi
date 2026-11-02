@@ -184,8 +184,14 @@ export default function HomepageBusinessRow({
            uniform width this exact call site used before that pass
            (w-[76vw] max-w-[340px] shrink-0 sm:w-96) — every card the same
            size at a given viewport, BusinessLogoCard itself untouched
-           (it's `w-full`, purely wrapper-driven). */
-        <div className="flex gap-3 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+           (it's `w-full`, purely wrapper-driven).
+           Content-driven heights on phones (items-start): a flex row
+           stretches every card to its TALLEST sibling, and the card's
+           mt-auto "View Brand" then sat under a phone-screen of blank space
+           whenever one card carried an Upcoming preview (2026-11-02
+           incident). Tablet/desktop keep the equal-height row
+           (sm:items-stretch), where several cards are visible at once. */
+        <div className="flex items-start gap-3 overflow-x-auto px-4 pb-2 sm:items-stretch sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {items.map((b, i) => (
             <div key={b.id} className="w-[76vw] max-w-[340px] shrink-0 sm:w-96">
               <BusinessLogoCard

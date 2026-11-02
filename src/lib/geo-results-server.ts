@@ -119,7 +119,7 @@ export async function brandPresence(businessIds: string[], now = new Date()): Pr
   const [ops, avail, apps] = await Promise.all([
     supabase.from("business_locations").select("business_id, location_id").in("business_id", ids),
     supabase.from("business_location_availability").select("business_id, location_id").in("business_id", ids).eq("status", "live").or(`starts_on.is.null,starts_on.lte.${today}`).or(`ends_on.is.null,ends_on.gte.${today}`),
-    supabase.from("appearances").select("id, business_id, location_id, start_at, end_at, timezone, status").in("business_id", ids).neq("status", "canceled").gt("end_at", now.toISOString()).not("location_id", "is", null).order("start_at").limit(GEO_LIMIT),
+    supabase.from("appearances").select("id, business_id, location_id, start_at, end_at, status").in("business_id", ids).neq("status", "canceled").gt("end_at", now.toISOString()).not("location_id", "is", null).order("start_at").limit(GEO_LIMIT),
   ]);
   const opRows = (ops.data ?? []) as Row[];
   const availRows = avail.error ? [] : ((avail.data ?? []) as Row[]);
@@ -220,7 +220,7 @@ export async function productPlaces(productId: string, now = new Date()): Promis
   const [avail, occs, apps] = await Promise.all([
     availIds.length ? supabase.from("business_location_availability").select("id, location_id").in("id", availIds).eq("status", "live").or(`starts_on.is.null,starts_on.lte.${today}`).or(`ends_on.is.null,ends_on.gte.${today}`) : Promise.resolve({ data: [] }),
     eventIds.length ? supabase.from("event_occurrences").select("id, event_id, location_id, start_at, end_at, occurrence_date, timezone, event:events!inner(slug, name, is_demo, location_visibility)").in("event_id", eventIds).eq("status", "scheduled").or(`end_at.gte.${nowIso},and(end_at.is.null,occurrence_date.gte.${today})`).not("location_id", "is", null).order("start_at").limit(50) : Promise.resolve({ data: [] }),
-    appIds.length ? supabase.from("appearances").select("id, location_id, start_at, end_at, timezone, title, business:businesses!appearances_business_id_fkey(slug, name)").in("id", appIds).neq("status", "canceled").gt("end_at", nowIso).not("location_id", "is", null) : Promise.resolve({ data: [] }),
+    appIds.length ? supabase.from("appearances").select("id, location_id, start_at, end_at, title, business:businesses!appearances_business_id_fkey(slug, name)").in("id", appIds).neq("status", "canceled").gt("end_at", nowIso).not("location_id", "is", null) : Promise.resolve({ data: [] }),
   ]);
   const availRows = (avail.data ?? []) as Row[];
   const occRows = ((occs.data ?? []) as Row[]).filter((o) => {

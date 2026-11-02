@@ -9,7 +9,11 @@ Curation is deterministic (`tests/homepage-curation-contract.test.mjs`):
 - **What's Happening**: up to 10 Events.
 - **Brands We Love**: tiered by upcoming presence (Appearances or hosting
   a live Event with an upcoming occurrence), then soonest, name, id. No
-  random shuffle.
+  random shuffle. Each card's Upcoming preview reads the SAME reconciled
+  activity as the Business page's Findmi Here (Appearances, approved
+  participation, and Events the Business hosts — one hosted-Event reader,
+  `fetchHostedPublicEventIds` in `lib/data.ts`). On phones the cards size
+  to their own content; from `sm` up the rail keeps equal heights.
 - **Featured Locations**: listed Locations with a renderable cover. Only
   `location_visibility = 'hidden'` is withheld.
 - **Moments module**: category rail + card rail. Heading actions View All

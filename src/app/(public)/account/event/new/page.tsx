@@ -13,6 +13,9 @@ import CategorySubcategoryField from "@/components/admin/CategorySubcategoryFiel
 import EventFormatField from "@/components/admin/EventFormatField";
 import { getAllCategories } from "@/lib/admin/queries";
 import { createMemberEvent } from "../actions";
+import { randomUUID } from "node:crypto";
+import PendingSubmitButton from "@/components/PendingSubmitButton";
+import { SUBMISSION_KEY_FIELD } from "@/lib/form-submission-keys";
 import EventNameWithSuggestions from "@/components/event/EventNameWithSuggestions";
 import ParticipatingBusinessesPicker from "@/components/event/ParticipatingBusinessesPicker";
 import MemberEventImageField from "../[id]/MemberEventImageField";
@@ -289,6 +292,9 @@ export default async function AddEventPage({
 
       <div className={`${businessContext ? "mt-2" : "mt-6"} rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6`}>
         <form action={createMemberEvent} className="flex flex-col gap-4">
+          {/* One-time key for this rendered form — a repeated submission is
+              deduplicated server-side (lib/form-submission-keys). */}
+          <input type="hidden" name={SUBMISSION_KEY_FIELD} value={randomUUID()} />
           {businessContext && <input type="hidden" name="business_id" value={businessContext.id} />}
           {/* Geography Foundation Pass 2 — Location selection/manual venue
               entry (EventLocationField, unchanged) plus a live Findmi
@@ -371,9 +377,7 @@ export default async function AddEventPage({
             </label>
           </div>
 
-          <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            Submit Event
-          </button>
+          <PendingSubmitButton className={`mt-2 ${primaryButtonClass}`}>Submit Event</PendingSubmitButton>
           {!businessContext && <p className="text-center text-metadata text-subtle">Free for every Findmi member.</p>}
         </form>
       </div>

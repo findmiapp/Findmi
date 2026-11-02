@@ -9,6 +9,7 @@ import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
+import SectionErrorBoundary from "@/components/SectionErrorBoundary";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import BusinessShortDescription from "@/components/BusinessShortDescription";
 import PersonCard from "@/components/PersonCard";
@@ -581,11 +582,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               (cover first, then this Business's own gallery). The
               placeholder never does. */}
           {business.cover_image_url && (
-            <ImageZoomTrigger
-              images={[business.cover_image_url, ...galleryImages.filter((u) => u !== business.cover_image_url)]}
-              alt={business.name}
-              label={`View larger image of ${business.name}`}
-            />
+            <SectionErrorBoundary name="cover zoom">
+              <ImageZoomTrigger
+                images={[business.cover_image_url, ...galleryImages.filter((u) => u !== business.cover_image_url)]}
+                alt={business.name}
+                label={`View larger image of ${business.name}`}
+              />
+            </SectionErrorBoundary>
           )}
           <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-10" />
         </div>
@@ -625,7 +628,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               </div>
             )}
             <div
-              className={`ml-auto flex flex-wrap shrink-0 items-center justify-end gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
+              className={`ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
             >
               {/* Public Message Action pass — MESSAGE sits directly left
                   of Follow, same row, never a standalone row of its own
@@ -808,14 +811,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           <div className="mt-5 max-w-xl">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">Featured Appearance</h2>
             <div className="mt-2">
-              <FeaturedAppearanceCard
-                title={featuredAppearance.title}
-                imageUrl={featuredImageUrl}
-                viewDetailsHref={featuredHref ?? "#findmi-here"}
-                directionsHref={featuredDirectionsHref}
-                dateTimeLine={featuredDateTimeLine}
-                venueLine={featuredVenueLine}
-              />
+              <SectionErrorBoundary name="Featured Appearance">
+                <FeaturedAppearanceCard
+                  title={featuredAppearance.title}
+                  imageUrl={featuredImageUrl}
+                  viewDetailsHref={featuredHref ?? "#findmi-here"}
+                  directionsHref={featuredDirectionsHref}
+                  dateTimeLine={featuredDateTimeLine}
+                  venueLine={featuredVenueLine}
+                />
+              </SectionErrorBoundary>
             </div>
           </div>
         </div>
@@ -888,6 +893,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             // section in this column, so it carries the "first item"
             // spacing CTA row/Bulletin used to.
             <section id="findmi-here" className="mt-6 scroll-mt-24 lg:mt-0">
+              <SectionErrorBoundary name="Findmi Here">
               <AppearanceFindMiHere
                 appearances={scheduleAppearances}
                 business={{
@@ -902,6 +908,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 analyticsContext={{ pageType: "business" }}
                 geo={scheduleGeo}
               />
+              </SectionErrorBoundary>
             </section>
           )}
 
@@ -927,7 +934,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               </h2>
               {wherePlaceCount > 1 && <p className="mt-1 text-sm text-ink/55">Tap a marker on the map to see location details.</p>}
               <div className="mt-3">
-                <ContextMap results={wherePlaces} label={`Map of where to find ${business.name}`} tall={wherePlaceCount > 1} initialSelect="single" />
+                <SectionErrorBoundary name="Where To Find Us map">
+                  <ContextMap results={wherePlaces} label={`Map of where to find ${business.name}`} tall={wherePlaceCount > 1} initialSelect="single" />
+                </SectionErrorBoundary>
               </div>
             </section>
           )}
@@ -984,7 +993,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             <section id="gallery" className="mt-8 scroll-mt-24">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
               <div className="mt-4">
-                <ImageGalleryStrip images={galleryImages} alt={business.name} />
+                <SectionErrorBoundary name="Gallery">
+                  <ImageGalleryStrip images={galleryImages} alt={business.name} />
+                </SectionErrorBoundary>
               </div>
             </section>
           )}

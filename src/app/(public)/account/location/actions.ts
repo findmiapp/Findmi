@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanGalleryUrls } from "@/lib/media-url";
 import { queueLocationGeocode } from "@/lib/geo/geocode-auto";
 import { recordProvenance } from "@/lib/provenance";
 import { redirect } from "next/navigation";
@@ -82,6 +83,20 @@ export async function uploadMemberLocationImage(
   locationId: string,
   formData: FormData
 ): Promise<{ url?: string; error?: string }> {
+  // Never let an upload throw back to the client: a rejected Server Action
+  // inside the caller's async transition takes the whole page down
+  // (2026-11-02 incident hardening).
+  try {
+    return await _uploadMemberLocationImageUnguarded(locationId, formData);
+  } catch {
+    return { error: "Upload failed. Please try again." };
+  }
+}
+
+async function _uploadMemberLocationImageUnguarded(
+  locationId: string,
+  formData: FormData
+): Promise<{ url?: string; error?: string }> {
   try {
     await requireLocationMember(locationId);
   } catch (err) {
@@ -113,6 +128,17 @@ export async function uploadMemberLocationImage(
  * path through the same validated pipeline as every Location image); the
  * URL is attached when the Location is created. */
 export async function uploadNewLocationImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  // Never let an upload throw back to the client: a rejected Server Action
+  // inside the caller's async transition takes the whole page down
+  // (2026-11-02 incident hardening).
+  try {
+    return await _uploadNewLocationImageUnguarded(formData);
+  } catch {
+    return { error: "Upload failed. Please try again." };
+  }
+}
+
+async function _uploadNewLocationImageUnguarded(formData: FormData): Promise<{ url?: string; error?: string }> {
   const sessionSupabase = await getServerSupabase();
   const {
     data: { user },
@@ -685,7 +711,7 @@ export async function updateMemberLocationPhotos(locationId: string, formData: F
   const redirectPath = `/account/location/${locationId}?tab=profile`;
   const admin = await requireLocationManager(locationId, redirectPath);
 
-  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const galleryUrls = cleanGalleryUrls(formData.getAll("gallery_image_url"));
   await admin.from("location_images").delete().eq("location_id", locationId);
   if (galleryUrls.length > 0) {
     await admin

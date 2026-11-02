@@ -111,3 +111,19 @@ Findmi (commercial inquiries). · Findmi brokers commercial relationships.
 ### Commerce and settlement (Sept 2026, locked)
 5% default fee with snapshots, vendor-paid processing by default, held
 allocations, manual payouts, no Connect. See `/CLAUDE.md` §8.
+
+### Creation forms are idempotent (Nov 2026)
+A creation form locks its submit button while pending
+(`components/PendingSubmitButton.tsx`) AND carries a one-time
+`submission_key` that its Server Action claims in `form_submission_keys`
+before writing; a repeated submission lands on the first result. ·
+2026-11-02: one Create Event form submitted three times produced three
+identical Events. · Not an occurrence-level uniqueness constraint: two
+identical dates on one Event aren't provably illegitimate, and the
+incident duplicated Events, not dates. · **Implemented** for Create Event.
+
+### Public pages contain client failures (Nov 2026)
+Client-heavy public sections render inside `SectionErrorBoundary`, and
+`app/(public)/error.tsx` backs every public page, so one failing component
+or malformed media record can't white-screen a page. Gallery URLs are
+validated on save (Findmi Storage only) and on read. · **Implemented**.

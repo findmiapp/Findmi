@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { isRenderableImageUrl, renderableImageUrls } from "./media-url";
 import { connectedEventIds, participantsExcludingHost } from "./event-roles";
 import { isCheckoutSupportedMethod } from "./commerce/fulfillment-support";
 import { applyMarketplaceProductFilter, isMarketplaceBusinessEligible } from "./commerce/marketplace-eligibility";
@@ -1331,7 +1332,9 @@ export async function getBusinessGalleryImages(businessId: string): Promise<stri
     .select("url")
     .eq("business_id", businessId)
     .order("display_order", { ascending: true, nullsFirst: false });
-  return (data ?? []).map((row) => row.url);
+  // Invalid media is skipped, never handed to a renderer (2026-11-02
+  // incident hardening — see lib/media-url).
+  return renderableImageUrls((data ?? []).map((row) => row.url));
 }
 
 // Business Preview Card — Gallery-Image Fallback experiment. Same
@@ -1360,8 +1363,9 @@ export async function getBusinessGalleryImagesMap(businessIds: string[]): Promis
     .limit(BUSINESS_GALLERY_FETCH_PER_BUSINESS * businessIds.length);
 
   for (const row of (data ?? []) as { business_id: string; url: string }[]) {
+    if (!isRenderableImageUrl(row.url)) continue;
     const list = result.get(row.business_id) ?? [];
-    if (list.length < BUSINESS_GALLERY_ITEMS_PER_BUSINESS) list.push(row.url);
+    if (list.length < BUSINESS_GALLERY_ITEMS_PER_BUSINESS) list.push(row.url.trim());
     result.set(row.business_id, list);
   }
   return result;
@@ -1829,6 +1833,41 @@ export function reconcileBusinessActivity(
  * then re-split into upcoming (end > now) / past by real end time. */
 export type BusinessActivityRow = AppearanceWithEventSlug & { derived?: boolean };
 
+/** Events each Business HOSTS (events.host_business_id) that are public:
+ * live, not demo, not archived/trashed. A hosted, published Event is
+ * canonical on its own (lib/event-roles.ts) — it belongs on the host's
+ * profile and on every "where is this Business showing up" surface without
+ * any participant row or Appearance. The ONE reader for that rule: the
+ * public Business page (getBusinessFindmiHereActivity) and the bulk
+ * homepage/discovery path (getUpcomingBusinessActivity) both call it, so the
+ * two can never disagree about whether a Business has upcoming activity
+ * (2026-11-02 incident: Magnolia / Tamagotchi hosted Events showed on their
+ * Business pages but not on Featured Business cards). */
+export async function fetchHostedPublicEventIds(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  businessIds: readonly string[]
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const ids = [...new Set(businessIds)];
+  if (ids.length === 0) return out;
+  const { data } = await supabase
+    .from("events")
+    .select("id, host_business_id")
+    .in("host_business_id", ids)
+    .eq("publication_status", "live")
+    .eq("is_demo", false)
+    .is("archived_at", null)
+    .is("trashed_at", null)
+    .order("id")
+    .limit(200 * ids.length);
+  for (const row of (data ?? []) as { id: string; host_business_id: string }[]) {
+    const list = out.get(row.host_business_id) ?? [];
+    list.push(row.id);
+    out.set(row.host_business_id, list);
+  }
+  return out;
+}
+
 export async function getBusinessFindmiHereActivity(
   businessId: string,
   { pastLimit = 24 }: { pastLimit?: number } = {}
@@ -1840,31 +1879,22 @@ export async function getBusinessFindmiHereActivity(
   ]);
   if (!supabase) return { upcoming, past, featuredEvents: [] };
 
-  const [{ data: eventLinks }, { data: occurrenceLinks }, { data: hostedRows }] = await Promise.all([
+  const [{ data: eventLinks }, { data: occurrenceLinks }, hostedRows] = await Promise.all([
     supabase.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved"),
     supabase
       .from("event_occurrence_businesses")
       .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug, is_demo, logo_url, cover_image_url), venue_name, address, city, state)")
       .eq("business_id", businessId)
       .eq("status", "approved"),
-    // Events this Business HOSTS (events.host_business_id) — canonical on
-    // their own (lib/event-roles.ts): a hosted, published Event is on the
-    // host's profile without any participant row or Appearance. Public
-    // only; a pending / rejected Event stays private to its managers.
-    supabase
-      .from("events")
-      .select("id")
-      .eq("host_business_id", businessId)
-      .eq("publication_status", "live")
-      .eq("is_demo", false)
-      .is("archived_at", null)
-      .is("trashed_at", null)
-      .limit(200),
+    // Events this Business HOSTS — the one shared reader (see
+    // fetchHostedPublicEventIds), so the Business page and every bulk
+    // discovery surface (homepage Featured Businesses) agree.
+    fetchHostedPublicEventIds(supabase, [businessId]),
   ]);
   // Hosting is Event-level connection, exactly like approved Event-level
   // participation (rule 2 below): the Event's own dates.
   const eventLinkIds = connectedEventIds(
-    ((hostedRows ?? []) as { id: string }[]).map((r) => r.id),
+    hostedRows.get(businessId) ?? [],
     ((eventLinks ?? []) as { event_id: string }[]).map((l) => l.event_id)
   );
 
@@ -3978,7 +4008,7 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
   const nowIso = new Date().toISOString();
   const select = "*, event:events(slug, is_demo, name, cover_image_url)";
 
-  const [upcomingRows, eventLevelRows, pastDateRows, eventLinks, occurrenceLinks] = await Promise.all([
+  const [upcomingRows, eventLevelRows, pastDateRows, eventLinks, occurrenceLinks, hostedByBusiness] = await Promise.all([
     fetchAllPages<BusinessActivityRow>((from, to) =>
       supabase
         .from("appearances")
@@ -4031,6 +4061,8 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
         .order("occurrence_id")
         .range(from, to)
     ),
+    // Hosted, public Events — the same rule the Business page applies.
+    fetchHostedPublicEventIds(supabase, ids),
   ]);
 
   const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
@@ -4044,6 +4076,7 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
   const eventIds = new Set<string>();
   for (const r of rows) if (r.event_id) eventIds.add(r.event_id);
   for (const l of eventLinks) eventIds.add(l.event_id);
+  for (const hosted of hostedByBusiness.values()) for (const id of hosted) eventIds.add(id);
   for (const o of occurrences) eventIds.add(o.occurrence.event_id);
   const eventData = eventIds.size
     ? await fetchAllPages<ActivityEventRow>((from, to) =>
@@ -4058,7 +4091,10 @@ async function getUpcomingBusinessActivity(businessIds: string[]): Promise<Map<s
     const reconciledRaw = reconcileBusinessActivity({
       businessId,
       rows: dedupeAppearances(rows.filter((r) => r.business_id === businessId)),
-      eventLinkIds: eventLinks.filter((l) => l.business_id === businessId).map((l) => l.event_id),
+      eventLinkIds: connectedEventIds(
+        hostedByBusiness.get(businessId) ?? [],
+        eventLinks.filter((l) => l.business_id === businessId).map((l) => l.event_id)
+      ),
       occurrences: occurrences.filter((o) => o.businessId === businessId).map((o) => o.occurrence),
       events,
     });
@@ -4203,7 +4239,8 @@ export async function getEventImages(eventId: string): Promise<{ gallery: string
   const gallery: string[] = [];
   const venue: string[] = [];
   for (const row of (data ?? []) as { url: string; kind: "event" | "venue" }[]) {
-    (row.kind === "venue" ? venue : gallery).push(row.url);
+    if (!isRenderableImageUrl(row.url)) continue;
+    (row.kind === "venue" ? venue : gallery).push(row.url.trim());
   }
   return { gallery, venue };
 }
@@ -4937,7 +4974,7 @@ export async function getLocationGalleryImages(locationId: string): Promise<stri
     .select("url")
     .eq("location_id", locationId)
     .order("display_order", { ascending: true, nullsFirst: false });
-  return (data ?? []).map((row) => row.url);
+  return renderableImageUrls((data ?? []).map((row) => row.url));
 }
 
 export interface LocationHappening {

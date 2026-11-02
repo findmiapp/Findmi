@@ -30,6 +30,28 @@ active work. Reconciled against code on 2026-10-29.
   owner self-serve QR creation has shipped and is free.
 - **Stale comment**: `v2/BusinessAppShell.tsx:14` lists the old nav order.
 
+- **Client exceptions aren't captured anywhere.** The 2026-11-02 Magnolia
+  "Application error" could not be tied to an exact exception: Vercel
+  doesn't record browser errors and the app has no client error reporting.
+  Public pages now contain failures (`SectionErrorBoundary`,
+  `app/(public)/error.tsx`), but the next one will again be invisible.
+  Needs a decision on a client error sink (e.g. an `analytics_events`
+  `client_error` event, or an error-tracking service).
+- **Other creation forms aren't idempotent yet.** Create Event has the
+  submit lock + submission key; Create Business / Location / Product and
+  the Event importer don't.
+- **Historical duplicates found during the 2026-11-02 audit (left
+  unchanged):** two identical "Freehold Octoberfest" Events
+  (`ec7860b8-8ba8-4251-808f-c86db591b519`, `33e20ddc-d7ed-4520-ada4-d1aa36e27d60`,
+  created 73s apart, both live, past); and several Business × Event/date
+  groups with repeated `appearances` rows (most already canceled).
+- **Brand map Pop-Ups ignore hosted Events.** `brandPresence`
+  (`lib/geo-results-server.ts`) maps Appearances at a Location but not a
+  Business's hosted Event dates.
+- **Orphaned uploads.** Photos uploaded into a form that's never saved
+  stay in `findmi-media` with no row (e.g. three Magnolia uploads on
+  2026-11-02). No cleanup job exists.
+
 ## Needs live verification (code exists; confirm behavior in production)
 
 - Moments **Following** (October QA report). Code investigation on

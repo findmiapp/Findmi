@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanGalleryUrls } from "@/lib/media-url";
 import { recordProvenance } from "@/lib/provenance";
 import { recordAccessEvents } from "@/lib/access-history";
 import { revalidatePath } from "next/cache";
@@ -173,7 +174,7 @@ export async function saveBusiness(id: string | null, formData: FormData) {
   // reinsert the submitted list in its current (already-reordered) DOM
   // order. Same reasoning already used for event_images/product
   // fulfillment options.
-  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const galleryUrls = cleanGalleryUrls(formData.getAll("gallery_image_url"));
   await supabase.from("business_images").delete().eq("business_id", businessId);
   if (galleryUrls.length > 0) {
     await supabase
@@ -356,7 +357,7 @@ export async function saveBusinessGallery(id: string, formData: FormData) {
   const editPath = `/admin/businesses/${id}?tab=profile`;
   const supabase = await requireAdminSupabase();
 
-  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const galleryUrls = cleanGalleryUrls(formData.getAll("gallery_image_url"));
   await supabase.from("business_images").delete().eq("business_id", id);
   if (galleryUrls.length > 0) {
     await supabase

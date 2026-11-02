@@ -188,8 +188,17 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
         if (!id.startsWith("logo:") || !map) return;
         // Placeholder first (stops repeat events), real logo when it loads.
         map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) }, { pixelRatio: 2 });
+        // updateImage() requires the SAME dimensions as the placeholder
+        // (1x1 vs the 64x64 logo), so it always threw inside this promise and
+        // no logo ever replaced its placeholder. Swap the image instead.
         void loadLogoImage(id.slice(5)).then((data) => {
-          if (data && map?.hasImage(id)) map.updateImage(id, data);
+          if (!data || !map?.hasImage(id)) return;
+          try {
+            map.removeImage(id);
+            map.addImage(id, data, { pixelRatio: 2 });
+          } catch {
+            // The map was torn down mid-load — nothing to draw into.
+          }
         });
       });
       map.on("load", () => {

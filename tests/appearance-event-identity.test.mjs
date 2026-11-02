@@ -316,16 +316,19 @@ test("J. Business Upcoming Schedule stays date-based; Featured uses presentation
 });
 
 // ── Card layout ───────────────────────────────────────────────────────────
-test("K. Featured Business cards are equal height: card fills its rail slot, CTA anchored, fixed-footprint preview", () => {
+test("K. Featured Business cards: equal height from sm up, content-driven on phones; CTA anchored, fixed-footprint preview", () => {
   const card = readFileSync("src/components/BusinessLogoCard.tsx", "utf8");
   assert.match(card, /className="group relative flex h-full w-full flex-col rounded-3xl/);
   assert.match(card, /className="relative flex flex-1 flex-col gap-1 rounded-b-3xl p-3\.5"/);
   assert.match(card, /className="mt-auto flex items-center gap-0\.5 pt-1 text-xs font-bold uppercase/);
   assert.match(card, /<div className="relative h-24 w-full shrink-0 overflow-hidden bg-black\/5">/);
   assert.match(card, /flex h-16 flex-col justify-center/);
-  for (const rail of ["src/components/HomepageBusinessRow.tsx", "src/components/Section.tsx"]) {
-    assert.doesNotMatch(readFileSync(rail, "utf8"), /items-start/, `${rail} rail must keep flex stretch`);
-  }
+  // 2026-11-02 incident: on a phone only one card is visible, and stretching
+  // every card to the tallest sibling left a phone-screen of blank space above
+  // "View Brand". Phones size to content; sm+ (several cards side by side)
+  // keep the equal-height stretch.
+  assert.match(readFileSync("src/components/HomepageBusinessRow.tsx", "utf8"), /className="flex items-start gap-3 overflow-x-auto px-4 pb-2 sm:items-stretch/);
+  assert.doesNotMatch(readFileSync("src/components/Section.tsx", "utf8"), /items-start/, "Section rail keeps flex stretch");
 });
 
 // ── Messaging OFF ─────────────────────────────────────────────────────────

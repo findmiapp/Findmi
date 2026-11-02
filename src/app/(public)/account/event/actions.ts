@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanGalleryUrls } from "@/lib/media-url";
 import { HOST_ALREADY_CONNECTED, isEventHost } from "@/lib/event-roles";
 import { recordProvenance } from "@/lib/provenance";
 import { isCreateScheduleMode, parseScheduleDates, resolveCreateSchedule } from "@/lib/event-create-schedule";
@@ -9,6 +10,7 @@ import { existingEventCategoryIds } from "@/lib/event-categories-server";
 import { cleanEventFormatIds, decideEventFormatWrite } from "@/lib/event-formats";
 import { syncEventFormats } from "@/lib/event-formats-server";
 import { redirect } from "next/navigation";
+import { claimSubmissionKey, completeSubmissionKey, readSubmissionKey, releaseSubmissionKey } from "@/lib/form-submission-keys";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -133,6 +135,20 @@ export async function uploadMemberEventImage(
   eventId: string,
   formData: FormData
 ): Promise<{ url?: string; error?: string }> {
+  // Never let an upload throw back to the client: a rejected Server Action
+  // inside the caller's async transition takes the whole page down
+  // (2026-11-02 incident hardening).
+  try {
+    return await _uploadMemberEventImageUnguarded(eventId, formData);
+  } catch {
+    return { error: "Upload failed. Please try again." };
+  }
+}
+
+async function _uploadMemberEventImageUnguarded(
+  eventId: string,
+  formData: FormData
+): Promise<{ url?: string; error?: string }> {
   try {
     await requireEventMember(eventId);
   } catch (err) {
@@ -164,6 +180,17 @@ export async function uploadMemberEventImage(
  * pipeline as uploadMemberEventImage (one Event media system for Quick
  * Create and the Event Manager). The URL is attached on creation. */
 export async function uploadNewEventImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  // Never let an upload throw back to the client: a rejected Server Action
+  // inside the caller's async transition takes the whole page down
+  // (2026-11-02 incident hardening).
+  try {
+    return await _uploadNewEventImageUnguarded(formData);
+  } catch {
+    return { error: "Upload failed. Please try again." };
+  }
+}
+
+async function _uploadNewEventImageUnguarded(formData: FormData): Promise<{ url?: string; error?: string }> {
   const sessionSupabase = await getServerSupabase();
   const {
     data: { user },
@@ -390,6 +417,24 @@ export async function createMemberEvent(formData: FormData) {
     }
   }
 
+  // Idempotency (2026-11-02 incident: one form submitted three times in ~5s
+  // created three identical Events). Claimed only once every validation
+  // above has passed, immediately before anything is written. A repeated
+  // submission of this same rendered form lands on the Event the first one
+  // created instead of creating another (lib/form-submission-keys).
+  const submissionKey = readSubmissionKey(formData);
+  const claim = await claimSubmissionKey(admin, { key: submissionKey, kind: "create_event", userId: user.id });
+  if (claim.status === "duplicate") {
+    const { data: existing } = await admin.from("events").select("id, publication_status").eq("id", claim.entityId).maybeSingle();
+    if (existing) {
+      const again = new URLSearchParams({ submitted: existing.id });
+      if (hostBusinessId) again.set("business_id", hostBusinessId);
+      if (existing.publication_status === "live") again.set("live", "1");
+      redirect(`${CREATE_EVENT_PATH}?${again.toString()}`);
+    }
+  }
+  if (claim.status === "in_progress") fail("This Event is already being created. Check your Events before submitting again.");
+
   const created = hostBusinessId
     ? await createHostedEvent(admin, { userId: user.id, viaAdmin: hostViaAdmin, name: name!, slug, startAt: startIso!, endAt: endIso!, marketId: effectiveMarketId, hostBusinessId })
     : await admin
@@ -406,11 +451,13 @@ export async function createMemberEvent(formData: FormData) {
         .then(({ data, error }) => (error || !data ? { ok: false as const, code: error?.message ?? "" } : { ok: true as const, id: (data as { id: string }).id, viaAdmin: false }));
 
   if (!created.ok) {
+    await releaseSubmissionKey(admin, submissionKey);
     const message = CREATE_EVENT_FRIENDLY_ERROR[created.code] ?? "Couldn't create your event. Please try again.";
     fail(message);
   }
 
   const eventId = (created as { id: string }).id;
+  await completeSubmissionKey(admin, submissionKey, eventId);
   // A Business/user submission stays pending Admin review
   // (lib/event-publication.ts); only an Admin operating a Business
   // (Manage-As) publishes at once — createHostedEvent's viaAdmin path
@@ -1532,7 +1579,7 @@ export async function updateMemberEventImages(eventId: string, formData: FormDat
   const redirectPath = `/account/event/${eventId}?tab=details`;
   const admin = await requireEventManager(eventId, redirectPath);
 
-  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const galleryUrls = cleanGalleryUrls(formData.getAll("gallery_image_url"));
   const venueUrls = formData.getAll("venue_image_url").map(String).filter(Boolean);
   await admin.from("event_images").delete().eq("event_id", eventId).eq("kind", "event");
   await admin.from("event_images").delete().eq("event_id", eventId).eq("kind", "venue");

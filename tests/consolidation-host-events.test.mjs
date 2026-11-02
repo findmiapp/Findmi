@@ -152,5 +152,8 @@ test("9. pending_review Event: never public for the host (activity filter), visi
   globalThis.__DB = fakeDb(tables);
   assert.deepEqual((await D.getBusinessFindmiHereActivity(A)).upcoming, []);
   const data = read("src/lib/data.ts");
-  assert.match(data, /\.eq\("host_business_id", businessId\)\n\s+\.eq\("publication_status", "live"\)\n\s+\.eq\("is_demo", false\)/);
+  // One shared hosted-Event reader (2026-11-02 incident) for the Business
+  // page and the Featured Business cards — still live + non-demo only.
+  assert.match(data, /\.in\("host_business_id", ids\)\n\s+\.eq\("publication_status", "live"\)\n\s+\.eq\("is_demo", false\)/);
+  assert.match(data, /fetchHostedPublicEventIds\(supabase, \[businessId\]\)/);
 });

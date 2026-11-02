@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanGalleryUrls } from "@/lib/media-url";
 import { recordContextAcceptance } from "@/lib/legal/acceptance";
 import { recordProvenance } from "@/lib/provenance";
 
@@ -468,7 +469,7 @@ export async function updateBusinessGallery(businessId: string, formData: FormDa
   const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
   const fail = (message: string): never => redirect(appendQuery(redirectPath, { error: message }));
 
-  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const galleryUrls = cleanGalleryUrls(formData.getAll("gallery_image_url"));
 
   let insertedIds: string[] = [];
   if (galleryUrls.length > 0) {

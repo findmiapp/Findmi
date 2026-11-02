@@ -32,9 +32,9 @@ export default function OurLocations({
       <p className="mt-1 text-sm text-ink/55">
         {single ? `Visit ${businessName} in person.` : `Visit ${businessName} at ${locations.length} locations.`}
       </p>
-      <ul className={`mt-3 grid gap-3 ${single ? "" : "sm:grid-cols-2"}`}>
+      <ul className={`mt-3 grid grid-cols-1 gap-3 ${single ? "" : "sm:grid-cols-2"}`}>
         {locations.map((l) => (
-          <li key={l.locationId}>
+          <li key={l.locationId} className="min-w-0">
             <CompactLocationCard location={l} />
           </li>
         ))}

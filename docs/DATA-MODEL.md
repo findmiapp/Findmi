@@ -109,6 +109,8 @@ answers/markets), `business_intelligence_notes`, `admin_intelligence_reviews`.
   status.
 - `entity_provenance`: import source/method (service-role only).
 - `access_events`, `admin_audit_events`: audit trails.
+- `form_submission_keys`: one-time creation-form keys (idempotency; Create
+  Event today). Service-role only. See `lib/form-submission-keys.ts`.
 - Trust/privacy: `content_reports`, `privacy_requests`,
   `privacy_preferences`, `legal_acceptances`.
 

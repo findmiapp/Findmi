@@ -18,9 +18,9 @@ export default function FindUsAt({ businessName, locations }: { businessName: st
         Find Us Here
       </h2>
       <p className="mt-1 text-sm text-ink/55">Places that carry or serve {businessName}.</p>
-      <ul className={`mt-3 grid gap-3 ${single ? "" : "sm:grid-cols-2"}`}>
+      <ul className={`mt-3 grid grid-cols-1 gap-3 ${single ? "" : "sm:grid-cols-2"}`}>
         {locations.map((l) => (
-          <li key={l.locationId}>
+          <li key={l.locationId} className="min-w-0">
             <CompactLocationCard location={l} />
             <AvailabilityDetailLine detail={l.detail} className="px-3 pt-1.5" />
           </li>

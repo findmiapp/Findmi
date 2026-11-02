@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanGalleryUrls } from "@/lib/media-url";
 import { HOST_ALREADY_CONNECTED, isEventHost } from "@/lib/event-roles";
 import { eventAttributesFromForm } from "@/lib/discovery/attributes";
 import { recordProvenance } from "@/lib/provenance";
@@ -670,7 +671,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
   // save: delete the kind's existing rows, reinsert the submitted list in
   // its current (already-reordered) DOM order. Same reasoning already used
   // for product_fulfillment_options in saveProduct.
-  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const galleryUrls = cleanGalleryUrls(formData.getAll("gallery_image_url"));
   const venueUrls = formData.getAll("venue_image_url").map(String).filter(Boolean);
   await supabase.from("event_images").delete().eq("event_id", eventId).eq("kind", "event");
   await supabase.from("event_images").delete().eq("event_id", eventId).eq("kind", "venue");

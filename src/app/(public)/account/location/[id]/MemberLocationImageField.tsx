@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { uploadMemberLocationImage, uploadNewLocationImage } from "../actions";
 import { imageVariantUrl } from "@/lib/image-variants";
+import { uploadGalleryFiles } from "@/lib/gallery-upload";
 
 /** Member-facing image field for the Location Manager — same shape as
  * account/business/[id]/MemberImageField.tsx / account/event/[id]/
@@ -29,12 +30,17 @@ export default function MemberLocationImageField({
     e.target.value = "";
     if (!file) return;
     setError(null);
-    const fd = new FormData();
-    fd.set("file", file);
+    // The one guarded upload path (lib/gallery-upload): HEIC handling,
+    // resize, the request-size cap, and a caught failure. An upload that
+    // throws inside this async transition used to reach React's error
+    // boundary — there is none on these pages — and white-screen the whole
+    // form, losing everything typed (2026-11-02 incident hardening).
     startTransition(async () => {
-      const result = await (locationId ? uploadMemberLocationImage(locationId, fd) : uploadNewLocationImage(fd));
-      if (result.error) setError(result.error);
-      else if (result.url) setUrl(result.url);
+      const failures = await uploadGalleryFiles([file], {
+        upload: (fd) => (locationId ? uploadMemberLocationImage(locationId, fd) : uploadNewLocationImage(fd)),
+        onUploaded: (uploaded) => setUrl(uploaded),
+      });
+      setError(failures.length ? failures[0].reason.replace(/^./, (c) => c.toUpperCase()) : null);
     });
   }
 

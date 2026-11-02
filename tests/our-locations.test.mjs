@@ -134,7 +134,8 @@ test("placement + mobile: right after Findmi Here; compact cards, one column on 
   const products = view.indexOf("{products.length > 0 && (");
   assert.ok(here > 0 && here < ours && ours < products, "Findmi Here → Our Locations → Products");
   const section = read("src/components/OurLocations.tsx");
-  assert.match(section, /grid gap-3 \$\{single \? "" : "sm:grid-cols-2"\}/, "single column on phones; two from sm when several");
+  assert.match(section, /grid grid-cols-1 gap-3 \$\{single \? "" : "sm:grid-cols-2"\}/, "single minmax(0,1fr) column on phones (never wider than the page); two from sm when several");
+  assert.match(section, /<li key=\{l\.locationId\} className="min-w-0">/);
   assert.match(section, /truncate/, "long names/addresses never overflow");
   assert.match(section, /<LocationOpenBadge hours=\{location\.hours\} \/>/, "open/closed from existing Location hours");
 });
