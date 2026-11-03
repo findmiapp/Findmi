@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import Link from "next/link";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
@@ -29,10 +30,17 @@ import {
 } from "@/lib/event-filter";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Events",
   description: "Browse upcoming markets, pop-ups, and events on Findmi.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /events is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/events", await searchParams);
+}
 export const revalidate = 60;
 
 const PAGE_SIZE = 24;

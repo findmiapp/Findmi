@@ -5,6 +5,7 @@ import { ANALYTICS_IDENTIFIER_MAX_AGE_DAYS } from "@/lib/analytics/session-const
 import { FINDMI_PRIVACY_EMAIL, PRIVACY_LAST_UPDATED } from "@/lib/legal/published";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/privacy" },
   title: "Privacy Policy",
   description: "How Findmi collects, uses, shares and protects information, and the choices you have.",
 };

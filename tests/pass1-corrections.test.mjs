@@ -131,7 +131,7 @@ test("consumer discovery: every public Location listing/search path goes through
   assert.match(read("src/app/api/homepage-search/route.ts"), /searchLocations\(q, 4\)/);
   assert.match(read("src/lib/discovery/server.ts"), /getLocations\(\{ limit: 80/);
   assert.match(read("src/lib/jc/data.ts"), /getLocations\(/);
-  assert.match(read("src/app/sitemap.ts"), /applyLocationDiscoveryFilter\(supabase\.from\("locations"\)\.select\("slug"\)\)/);
+  assert.match(read("src/app/sitemap.ts"), /applyLocationDiscoveryFilter\(supabase\.from\("locations"\)\.select\("id, slug"\)\)/);
   assert.match(read("src/lib/account-home.ts"), /isLocationDiscoverable\(l\)/);
 });
 

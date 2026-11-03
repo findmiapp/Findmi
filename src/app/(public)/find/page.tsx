@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/indexing";
 import ActiveFilterChips from "@/components/discover/ActiveFilterChips";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import RefineSheet, { RefineSection } from "@/components/discover/RefineSheet";
@@ -26,10 +27,12 @@ import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
-export const metadata: Metadata = {
+// Index hygiene (lib/seo/indexing): never a search landing page — every
+// variant (e.g. ?when=tomorrow) is noindex, follow, canonical /find.
+export const metadata: Metadata = noindexMetadata({
   title: "Find",
   description: "Help me find something specific: search Findmi by what, where, and when.",
-};
+}, "/find");
 
 /**
  * Find V2 — Unify Search with Area-First Discovery pass. Free-text city

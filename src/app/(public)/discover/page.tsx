@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import BusinessCard from "@/components/BusinessCard";
@@ -24,10 +25,17 @@ import {
 import type { DiscoveryWindow } from "@/lib/format";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Discover",
   description: "Find what's happening around you on Findmi: by area, by time, by category.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /discover is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/discover", await searchParams);
+}
 export const revalidate = 60;
 
 /**

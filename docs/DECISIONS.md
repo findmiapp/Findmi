@@ -127,3 +127,14 @@ Client-heavy public sections render inside `SectionErrorBoundary`, and
 `app/(public)/error.tsx` backs every public page, so one failing component
 or malformed media record can't white-screen a page. Gallery URLs are
 validated on save (Findmi Storage only) and on read. · **Implemented**.
+
+### Search indexing policy (Nov 2026)
+One policy module (`lib/seo/indexing.ts`) plus a path-family
+`X-Robots-Tag` backstop decides what Google may index: canonical entity
+and editorial pages only. Filtered/stateful listing URLs and internal
+search are noindex, follow with a clean canonical; creation, account and
+transactional pages are noindex, follow; the sitemap lists exactly the
+canonical URLs pages declare (handles included). · Google had indexed
+Moment composer URLs and `/search?when=…`. · robots.txt blocking (hides
+the noindex from Google). · **Implemented** — see `ROUTES-AND-IA.md`
+§ Search indexing.

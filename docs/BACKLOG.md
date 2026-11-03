@@ -133,7 +133,7 @@ Occurrence selection and QR search · QR inside Performance · Admin Logout
 · removal of "Search as Instagram Instead" · Needs Attention folded into
 Home Inbox · "Coming Up" retired for consumer followed content · My World
 retired · existing event importer exposed to owners (`import-event`) ·
-SEO metadata/icons (reported done in October; not re-audited here) ·
+SEO metadata/icons (re-audited Nov 2026 — see ROUTES-AND-IA § Search indexing) ·
 Brand Build → `/account?created=<id>` "Pending Review" card (code path
 verified; 5 real `pending_review` Businesses in production, latest
 2026-10-27) · Performance Pro gating mapped (`PRODUCT.md` §

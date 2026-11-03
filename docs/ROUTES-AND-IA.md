@@ -104,3 +104,33 @@ root. `/jc/*` on that host redirects to `/*`.
 `/api/webhooks/{stripe,stripe/subscriptions,tally}`, `/api/cron/geocode`.
 Legacy `/api/follow*` and `/api/saved` remain. [VERIFY] whether anything
 still calls them.
+
+## Search indexing (Nov 2026) [CODE][TEST]
+
+Policy: `src/lib/seo/indexing.ts`; header backstop: `NOINDEX_PATH_SOURCES`
+in `next.config.mjs` (`X-Robots-Tag: noindex, follow`, Findmi host only);
+guarded by `tests/index-hygiene.test.mjs`.
+
+- **INDEX** (self-referencing canonical, in the sitemap): `/`, Business,
+  Event, Location (canonical = `/<handle>` when the entity has one, else
+  `/business|event|location/<slug>`), `/product/<slug>`, published public
+  Moments `/journal/<id>`, `/people/<slug>`, `/user/<username>` (opt-in
+  public profiles; not in the sitemap), `/guides/<slug>`,
+  `/explore/<market>/<area>`, bare listings (`/discover`, `/businesses`,
+  `/events`, `/locations`, `/moments`, `/marketplace`, `/map`), `/join`,
+  `/join/business`, `/about`, `/privacy`, `/terms`.
+- **NOINDEX, FOLLOW**: `/account/**` (managers, creation), `/my-world/**`
+  (Moment composer/editor), `/journal` (My Journal and `?business=` /
+  `?event=` Moment lists), `/event/<slug>/journal`, `/search`, `/find`,
+  `/saved`, `/you`, `/cart`, `/checkout/**`, `/login`, `/signup/**`,
+  `/forgot-password`, `/reset-password`, `/redeem/**`, `/upgrade/**`,
+  `/privacy-choices`, `/join/{brand,passbook,sales,start,success,welcome}`,
+  `/embed/**`, `/api/**`, non-discoverable Locations, non-public Moments,
+  owner previews, and ANY listing URL carrying state (filter, sort, page,
+  search term) — its canonical is the bare listing path. Tracking params
+  (`utm_*`, `gclid`, `fbclid`, `qr`, …) never count as state.
+- **PRIVATE**: `/admin/**` (password-gated, `robots.txt` disallow,
+  `noindex, nofollow`).
+
+Never add a noindex family to `robots.txt`: Google must crawl it to see
+the noindex.

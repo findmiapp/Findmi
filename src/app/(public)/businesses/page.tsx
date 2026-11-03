@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
 import { archiveView, archiveViewParam, brandArchive } from "@/lib/archive-params";
 import { bboxParam } from "@/lib/geo-results";
@@ -31,10 +32,17 @@ import type { BusinessWithCategories, Category } from "@/lib/types";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
 import { isCanonicalGeoScopeEmpty } from "@/lib/geo/entity-geo-core";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Businesses",
   description: "Search and browse businesses and vendors on Findmi.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /businesses is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/businesses", await searchParams);
+}
 export const revalidate = 60;
 
 const PAGE_SIZE = 24;

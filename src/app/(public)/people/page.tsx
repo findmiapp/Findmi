@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import PersonCard from "@/components/PersonCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import { getFeaturedPeople, getPublicPeople } from "@/lib/data";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "People",
   description: "Meet the founders, owners, makers, and creators behind Findmi brands.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /people is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/people", await searchParams);
+}
 export const revalidate = 60;
 
 export default async function PeoplePage({

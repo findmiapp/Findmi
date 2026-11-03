@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/indexing";
 import PrivacyChoicesPanel from "@/components/privacy/PrivacyChoicesPanel";
 
-export const metadata: Metadata = {
+// Index hygiene (lib/seo/indexing): never a search landing page — every
+// variant (e.g. ?when=tomorrow) is noindex, follow, canonical /privacy-choices.
+export const metadata: Metadata = noindexMetadata({
   title: "Privacy Choices",
   description: "Choose how Findmi may use analytics and personalization.",
-};
+}, "/privacy-choices");
 
 /** Privacy Choices, reachable by anyone (no account needed) from every
  * footer. The same panel as the Manage Privacy Choices sheet. */

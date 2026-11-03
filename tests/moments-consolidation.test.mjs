@@ -128,7 +128,8 @@ test("Moments Map reuses the one map renderer (DiscoveryMapCanvas) — no second
 
 test("/journal: no subject → My Journal (signed out → canonical login, returning to /journal); subjects unchanged", () => {
   assert.match(JPAGE, /if \(!hasSubject\(params\)\) \{[\s\S]*?redirect\("\/login\?next=" \+ encodeURIComponent\(qs \? `\/journal\?\$\{qs\}` : "\/journal"\)\);[\s\S]*?return <MyJournal userId=\{user\.id\} params=\{params\} \/>;/);
-  assert.match(JPAGE, /if \(!hasSubject\(params\)\) return \{ title: "My Journal", robots: \{ index: false \} \};/);
+  // Index hygiene (Nov 2026): noindex, follow via the shared policy.
+  assert.match(JPAGE, /if \(!hasSubject\(params\)\) return \{ title: "My Journal", robots: NOINDEX_FOLLOW \};/);
   assert.match(JPAGE, /const subject = await resolveSubject\(params\);\s*if \(!subject\) notFound\(\);/);
   assert.match(JOURNAL, />My Journal<\/h1>/);
   assert.match(JOURNAL, /Your personal history of the places, brands and experiences you&rsquo;ve lived\./);

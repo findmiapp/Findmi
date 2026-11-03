@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/indexing";
 import Link from "next/link";
 import ChevronIcon from "@/components/ChevronIcon";
 
-export const metadata: Metadata = {
+// Index hygiene (lib/seo/indexing): never a search landing page — every
+// variant (e.g. ?when=tomorrow) is noindex, follow, canonical /you.
+export const metadata: Metadata = noindexMetadata({
   title: "You",
   description: "Your Findmi: saved businesses and what you're following.",
-};
+}, "/you");
 
 export default function YouPage() {
   return (

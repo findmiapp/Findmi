@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/indexing";
 import Link from "next/link";
 import { DiscoveryGrid } from "@/components/discovery/DiscoveryTile";
 import DiscoverySignal from "@/components/discovery/DiscoverySignal";
@@ -6,10 +7,12 @@ import RelationshipButton from "@/components/discovery/RelationshipButton";
 import { mapHref, paramsToQuery, searchHref, WHEN_LABELS, type DiscoveryQuery } from "@/lib/discovery/query";
 import { getVocabulary, interpretSearch, runDiscovery } from "@/lib/discovery/server";
 
-export const metadata: Metadata = {
+// Index hygiene (lib/seo/indexing): never a search landing page — every
+// variant (e.g. ?when=tomorrow) is noindex, follow, canonical /search.
+export const metadata: Metadata = noindexMetadata({
   title: "Search",
   description: "Search Findmi by what, when and where: pop-ups, sample sales, events and places near you.",
-};
+}, "/search");
 export const dynamic = "force-dynamic";
 
 type Params = Record<string, string | string[] | undefined>;

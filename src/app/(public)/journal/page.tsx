@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NOINDEX_FOLLOW } from "@/lib/seo/indexing";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import JournalCollection from "@/components/journal/JournalCollection";
@@ -70,12 +71,16 @@ async function resolveEntitySubject(params: SearchParams) {
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SearchParams> }): Promise<Metadata> {
   const params = await searchParams;
-  if (!hasSubject(params)) return { title: "My Journal", robots: { index: false } };
+  // My Journal (personal) and the ?business=/?event=/… Moment lists are
+  // never search landing pages: the entity page and each public Moment
+  // (/journal/:id) are the indexable URLs (lib/seo/indexing).
+  if (!hasSubject(params)) return { title: "My Journal", robots: NOINDEX_FOLLOW };
   const subject = await resolveSubject(params);
-  if (!subject) return { title: "Moments" };
+  if (!subject) return { title: "Moments", robots: NOINDEX_FOLLOW };
   return {
     title: subject.heading,
     description: `${subject.heading} on Findmi.`,
+    robots: NOINDEX_FOLLOW,
   };
 }
 

@@ -5,6 +5,7 @@ import { resolveAboutHero, resolveAboutContact } from "@/lib/about-page";
 import { getSiteContactInfo } from "@/lib/contact-info";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/about" },
   title: "About",
   description: "Findmi connects what you discover online with where you can experience it in the real world.",
 };

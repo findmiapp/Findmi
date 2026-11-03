@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NOINDEX_FOLLOW } from "@/lib/seo/indexing";
 import { formatWhen, formatWhenTime } from "@/lib/event-time";
 import type { ReactNode } from "react";
 import Image from "@/components/SupabaseImage";
@@ -46,8 +47,11 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const result = await getJournalEntryWithRelations(id);
-  if (!result || result.entry.visibility !== "public") return { title: "Moment" };
+  // Only a published public Moment is a search landing page; an owner
+  // viewing their own private/draft Moment gets noindex (lib/seo/indexing).
+  if (!result || result.entry.visibility !== "public" || result.entry.status !== "published") return { title: "Moment", robots: NOINDEX_FOLLOW };
   return {
+    alternates: { canonical: `/journal/${result.entry.id}` },
     title: result.entry.title,
     description: result.entry.notes?.slice(0, 160) ?? `A Moment on Findmi${result.location ? ` at ${result.location.name}` : ""}.`,
   };

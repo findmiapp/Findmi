@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import Link from "next/link";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
 import AreaPicker from "@/components/discover/AreaPicker";
@@ -10,10 +11,17 @@ import ArchiveGeoShell from "@/components/map/ArchiveGeoShell";
 import { archiveView, archiveViewParam, placeArchive } from "@/lib/archive-params";
 import { bboxParam } from "@/lib/geo-results";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Locations",
   description: "Discover places on Findmi and see what's happening there.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /locations is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/locations", await searchParams);
+}
 export const revalidate = 60;
 
 // Same fixed result count the page always fetched (no load-more control

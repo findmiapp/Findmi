@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import Link from "next/link";
 import BrandHeading from "@/components/BrandHeading";
 import NavIcon from "@/components/NavIcon";
@@ -22,10 +23,17 @@ import { getServerSupabase } from "@/lib/supabase/server";
 
 const PAGE_SIZE = 24;
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Moments",
   description: "Real experiences at Findmi Businesses, Events and Locations, shared by people who were there.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /moments is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/moments", await searchParams);
+}
 
 export default async function MomentsPage({
   searchParams,

@@ -15,6 +15,37 @@ const mapOrigin = (() => {
 })();
 
 /** @type {import('next').NextConfig} */
+/** Google index hygiene (Nov 2026) — route families that are never search
+ * landing pages get `X-Robots-Tag: noindex, follow` on every response,
+ * whatever the page's own metadata says (pages set robots metadata too; see
+ * src/lib/seo/indexing.ts for the full INDEX / NOINDEX / PRIVATE policy).
+ * Path-only matches, so every query variant (/search?when=tomorrow,
+ * /my-world/journal/new?event=…) is covered. NOT disallowed in robots.txt:
+ * Google must be able to crawl these URLs to see the noindex. Findmi host
+ * only — JerseyCity.guide serves its own tree at the root. */
+export const NOINDEX_PATH_SOURCES = [
+  "/account/:path*", // account, Business/Event/Location managers, creation flows
+  "/my-world/:path*", // Moment composer + editor
+  "/journal", // My Journal and ?business=/?event= Moment lists (single Moments /journal/:id stay indexable)
+  "/event/:slug/journal", // redirect into the Moment composer
+  "/search", // internal search results, every filter combination
+  "/find",
+  "/saved",
+  "/you",
+  "/cart",
+  "/checkout/:path*",
+  "/login",
+  "/signup/:path*",
+  "/forgot-password",
+  "/reset-password",
+  "/redeem/:path*",
+  "/upgrade/:path*",
+  "/privacy-choices",
+  "/join/:step(brand|passbook|sales|start|success|welcome)",
+  "/embed/:path*",
+  "/api/:path*",
+];
+
 const nextConfig = {
   experimental: {
     // Appearance Import (admin) posts pasted text plus up to a handful of
@@ -187,6 +218,14 @@ const nextConfig = {
           { key: "Permissions-Policy", value: permissionsPolicy },
         ],
       },
+      ...NOINDEX_PATH_SOURCES.map((source) => ({
+        source,
+        missing: [jcHost],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, follow" }],
+      })),
+      // Founder Admin is PRIVATE (password-gated, robots.txt disallow);
+      // belt and braces for any admin response that's ever fetched.
+      { source: "/admin/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       {
         // The ONLY block that ever matches /embed (see the block above) —
         // deliberately omits X-Frame-Options entirely rather than trying

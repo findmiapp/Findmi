@@ -4,6 +4,7 @@ import LegalPage, { type LegalBlock, type LegalSection } from "@/components/lega
 import { FINDMI_HELLO_EMAIL, TERMS_LAST_UPDATED } from "@/lib/legal/published";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/terms" },
   title: "Terms of Service",
   description: "The terms that apply when you use Findmi.",
 };

@@ -22,6 +22,7 @@ export async function generateMetadata({
   return {
     title: person.name,
     description: person.short_bio ?? `Meet ${person.name} on Findmi.`,
+    alternates: { canonical: `/people/${person.slug}` },
     openGraph: {
       title: person.name,
       description: person.short_bio ?? undefined,

@@ -25,7 +25,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { market, area } = await params;
   const found = await findArea(market, area);
   if (!found) return { title: "Explore" };
-  return { title: `${found.area.name}, ${found.market.name}`, description: `What's happening in ${found.area.name} on Findmi: pop-ups, events, places and brands.` };
+  return {
+    title: `${found.area.name}, ${found.market.name}`,
+    description: `What's happening in ${found.area.name} on Findmi: pop-ups, events, places and brands.`,
+    alternates: { canonical: `/explore/${market}/${area}` },
+  };
 }
 
 /** Discovery Intelligence V1 — an Area page. Every section is the same

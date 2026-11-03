@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NOINDEX_FOLLOW, hasStateParams } from "@/lib/seo/indexing";
 import MapExplorer from "@/components/map/MapExplorer";
 import type { FilterOptions } from "@/components/map/MapFilterSheet";
 import { getMapPersonalSignals, runMapDiscovery } from "@/lib/discovery/map-server";
@@ -14,11 +15,12 @@ type Params = Record<string, string | string[] | undefined>;
  * filter combination: only the bare /map is indexable. */
 export async function generateMetadata({ searchParams }: { searchParams: Promise<Params> }): Promise<Metadata> {
   const params = await searchParams;
-  const filtered = Object.keys(params).length > 0;
+  const filtered = hasStateParams(params);
   return {
     title: "Map",
     description: "Find what's happening near you on Findmi — live now, later today, this weekend or any date, by place, brand and perks.",
-    ...(filtered ? { robots: { index: false, follow: true } } : {}),
+    alternates: { canonical: "/map" },
+    ...(filtered ? { robots: NOINDEX_FOLLOW } : {}),
   };
 }
 

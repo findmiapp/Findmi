@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { listingMetadata } from "@/lib/seo/indexing";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import Section, { HorizontalScroller } from "@/components/Section";
@@ -6,10 +7,17 @@ import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics"
 import { getFeaturedProducts, getHomeCategories, getMarketplaceProducts, getProductCategoryTree, searchBusinesses } from "@/lib/data";
 import { groupByBusinessCategory } from "@/lib/curation";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Marketplace",
   description: "Shop products from businesses you discover on Findmi.",
 };
+
+/** Index hygiene (lib/seo/indexing): the bare /marketplace is the indexable
+ * canonical; filtered / sorted / paged variants are noindex, follow and
+ * canonicalize to it. */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
+  return listingMetadata(BASE_METADATA, "/marketplace", await searchParams);
+}
 export const revalidate = 60;
 
 // Shared pill styling for the primary/secondary category browse rows —

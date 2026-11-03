@@ -21,6 +21,7 @@ export async function generateMetadata({
   const profile = await getPublicProfileByUsername(username);
   if (!profile) return { title: "Profile not found" };
   return {
+    alternates: { canonical: `/user/${profile.username}` },
     title: profile.display_name ? `${profile.display_name} (@${profile.username})` : `@${profile.username}`,
     description: profile.bio ?? `@${profile.username} on Findmi.`,
   };
