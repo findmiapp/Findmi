@@ -111,7 +111,10 @@ export default function SearchBar({
     <div ref={containerRef} className="relative w-full">
       <form
         onSubmit={handleSubmit}
-        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-3.5 pr-1 shadow-sm transition focus-within:border-ink/25 min-[360px]:pl-4"
+        // 50px tall as before: 2px + a 44px touch target + 2px + border. The
+        // submit target sits in what used to be the right padding, so the
+        // input keeps (and gains) the width.
+        className="flex w-full items-center gap-1 rounded-full border border-black/10 bg-white py-[2px] pl-3.5 pr-0 shadow-sm transition focus-within:border-ink/25 min-[360px]:pl-4"
       >
         <input autoCapitalize="none"
           value={q}
@@ -131,12 +134,15 @@ export default function SearchBar({
           placeholder={placeholder}
           className="min-w-0 flex-1 text-ellipsis bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
         />
+        {/* 44×44 touch target; the visible Aqua circle is 36px inside it. */}
         <button
           type="submit"
           aria-label="Search"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi text-white transition hover:bg-findmi-600"
+          className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white focus-visible:outline-none"
         >
-          <SearchGlyph className="h-[18px] w-[18px]" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-findmi transition group-hover:bg-findmi-600 group-focus-visible:ring-2 group-focus-visible:ring-findmi/40 group-focus-visible:ring-offset-1">
+            <SearchGlyph className="h-[18px] w-[18px]" />
+          </span>
         </button>
       </form>
 

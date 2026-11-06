@@ -245,7 +245,7 @@ export default async function HomePage({
         <Link
           href="/map"
           data-home-explore-map
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#D4D4D4] bg-[#F3F3F3] px-2.5 text-sm font-semibold text-[#333333] transition hover:border-[#C4C4C4] hover:bg-[#EAEAEA] active:scale-[0.98] active:bg-[#E2E2E2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#333333]/35 focus-visible:ring-offset-2 min-[360px]:px-3"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#D4D4D4] bg-[#F3F3F3] px-1.5 text-sm font-semibold text-[#333333] transition hover:border-[#C4C4C4] hover:bg-[#EAEAEA] active:scale-[0.98] active:bg-[#E2E2E2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#333333]/35 focus-visible:ring-offset-2 min-[360px]:px-2"
         >
           <NavIcon name="pin" className="h-4 w-4 shrink-0" />
           Explore Map

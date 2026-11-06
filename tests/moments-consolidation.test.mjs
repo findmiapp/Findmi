@@ -207,3 +207,14 @@ test("every Journal view uses the newest-first helpers", () => {
   assert.match(c, /const months = buildYearHistory\(entries, year\);/);
   assert.match(c, /const newest = sortNewestFirst\(entries\);/);
 });
+
+test("homepage toolbar sizing: Search submit keeps a 44×44 touch target (36px visible circle) inside the same 50px bar; Explore Map is slimmer", () => {
+  const bar = read("src/components/SearchBar.tsx");
+  assert.match(bar, /aria-label="Search"\s*className="group flex h-11 w-11 shrink-0/, "44×44 touch target");
+  assert.match(bar, /<span className="flex h-9 w-9 items-center justify-center rounded-full bg-findmi/, "36px visible Aqua circle");
+  assert.match(bar, /rounded-full border border-black\/10 bg-white py-\[2px\] pl-3\.5 pr-0/, "2 + 44 + 2 + border = the same 50px bar");
+  const link = HOME.slice(HOME.lastIndexOf("<Link", HOME.indexOf("data-home-explore-map")), HOME.indexOf("</Link>", HOME.indexOf("data-home-explore-map")));
+  assert.match(link, / px-1\.5 /);
+  assert.match(link, /min-\[360px\]:px-2"/);
+  assert.match(link, /text-sm font-semibold/, "the label keeps its size");
+});
