@@ -232,16 +232,13 @@ export default async function HomePage({
           Wrapper padding reuses the exact value the Bulletin block used
           in this same "right after Hero" slot below, rather than
           inventing a new one. */}
-      {/* Discovery toolbar: [ Search ……… ] [ Explore Map ] on ONE row at
+      {/* Discovery toolbar: [ Explore Map ] [ Search ……… ] on ONE row at
           every width. Search is the primary control (takes the remaining
           space; its placeholder ellipsizes); Explore Map is a slim, neutral
           secondary link to /map (#F3F3F3 / #D4D4D4 / #333333 — no Aqua),
-          vertically centered beside it, never wrapping. Not the canceled
+          vertically centered to its left, never wrapping. Not the canceled
           Oct 28 pattern (a heavy black "MAP" pill taking 23% of the row). */}
       <div data-home-search-toolbar className="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-4 min-[360px]:gap-2 sm:px-6">
-        <div className="min-w-0 flex-1">
-          <SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />
-        </div>
         <Link
           href="/map"
           data-home-explore-map
@@ -250,6 +247,9 @@ export default async function HomePage({
           <NavIcon name="pin" className="h-4 w-4 shrink-0" />
           Explore Map
         </Link>
+        <div className="min-w-0 flex-1">
+          <SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />
+        </div>
       </div>
 
       {/* Homepage Bulletin Carousel — one or more admin-managed editorial

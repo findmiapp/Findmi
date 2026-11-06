@@ -49,4 +49,4 @@ component's current classes.
 | Flower icon for manager navigation | Rejected. Performance uses a chart icon |
 | Chip-rail-only swipe for Moments | Doesn't satisfy board swipe |
 | Standalone Needs Attention row/nav | It's a badge inside Inbox / Follow-Ups |
-| Homepage Map button squeezed into the Search row (black "MAP" pill) | Experiment cancelled (`1c34590`). The approved entry is **Explore Map**: a slim neutral-gray link (#F3F3F3 / #D4D4D4 / #333333, pin icon, 40px) on the same row, right of Search, which keeps the remaining width. It links to `/map` (no embedded map) |
+| Homepage Map button squeezed into the Search row (black "MAP" pill) | Experiment cancelled (`1c34590`). The approved entry is **Explore Map**: a slim neutral-gray link (#F3F3F3 / #D4D4D4 / #333333, pin icon, 40px) on the same row, left of Search, which keeps the remaining width. It links to `/map` (no embedded map) |
