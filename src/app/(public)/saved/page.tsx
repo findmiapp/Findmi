@@ -8,6 +8,7 @@ import { getAccountSession } from "@/lib/accountSession";
 import BusinessCard from "@/components/BusinessCard";
 import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
+import GuestLibraryView from "@/components/GuestLibraryView";
 import { getSavedSlugs, getSavedEventSlugs, getSavedProductSlugs } from "@/lib/saved";
 import { cityState } from "@/lib/format";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
@@ -27,6 +28,7 @@ export default function SavedPage() {
   const [businesses, setBusinesses] = useState<BusinessWithCategories[] | null>(null);
   const [events, setEvents] = useState<FindmiEvent[] | null>(null);
   const [products, setProducts] = useState<SavedProduct[] | null>(null);
+  const [guestItems, setGuestItems] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +79,7 @@ export default function SavedPage() {
   }, [signedOut]);
 
   const loading = !signedOut || businesses === null || events === null || products === null;
-  const empty = !loading && businesses.length === 0 && events.length === 0 && products.length === 0;
+  const empty = !loading && businesses.length === 0 && events.length === 0 && products.length === 0 && !guestItems;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -89,6 +91,8 @@ export default function SavedPage() {
         </Link>{" "}
         to keep it with your account.
       </p>
+
+      {signedOut && <GuestLibraryView onState={setGuestItems} />}
 
       {loading ? null : empty ? (
         <p className="mt-10 text-sm text-ink/50">

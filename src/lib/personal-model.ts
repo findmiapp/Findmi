@@ -45,3 +45,26 @@ export const PERSONAL_RELATION_ACTIONS: Record<CollectionEntityType, readonly Pe
  * Not "Your Findmi": that is already the account menu's SECTION heading
  * (NavDesktop / HamburgerMenu) that this item sits inside. */
 export const PERSONAL_DESTINATION_NAME = "Your Library";
+
+/** The built-in lists one "Add to Collection" sheet offers per type — the
+ * existing relationships (user_entity_relationships), shown as lists next
+ * to the visitor's own Collections. One place for what used to be separate
+ * standalone buttons (Want To Do / Been, Want To Go / Been Here, I Have
+ * This) and the post-Save "Mark As" options (Must Do). Existing rows keep
+ * their relation values; nothing is renamed in the database. Product Want
+ * (product_wants, a demand signal) and Business Follow keep their own
+ * dedicated controls. */
+export const PERSONAL_LISTS: Record<CollectionEntityType, readonly PersonalRelationAction[]> = {
+  product: [{ relation: "have", label: "I Have This", activeLabel: "I Have This ✓" }],
+  event: [
+    { relation: "want", label: "Want To Do", activeLabel: "Want To Do ✓" },
+    { relation: "must_do", label: "Must Do", activeLabel: "Must Do ✓" },
+    { relation: "been", label: "Been", activeLabel: "Been ✓" },
+  ],
+  location: [
+    { relation: "want", label: "Want To Go", activeLabel: "Want To Go ✓" },
+    { relation: "must_do", label: "Must Do", activeLabel: "Must Do ✓" },
+    { relation: "been", label: "Been Here", activeLabel: "Been Here ✓" },
+  ],
+  business: [],
+};
