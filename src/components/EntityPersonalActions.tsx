@@ -130,7 +130,9 @@ export function AddToCollectionButton({ entityType, entityId, entityName, entity
         onClick={() => auth && setOpen(true)}
         aria-haspopup="dialog"
         data-add-to-collection
-        className={`inline-flex items-center gap-1 rounded-full border px-3.5 py-1.5 text-xs font-bold transition active:scale-[0.97] ${saved ? "border-findmi bg-findmi-50 text-findmi-700" : "border-black/10 bg-white text-ink hover:border-findmi"}`}
+        // Same footprint as the actions beside it (Message / Follow: h-9,
+        // rounded-lg) so a profile's action row reads as one set.
+        className={`inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border px-3 text-xs font-bold transition active:scale-[0.97] ${saved ? "border-findmi bg-findmi-50 text-findmi-700" : "border-black/10 bg-white text-ink hover:border-findmi"}`}
       >
         <span aria-hidden="true">{saved ? "✓" : "+"}</span> {saved ? "In Your Collections" : "Add to Collection"}
       </button>

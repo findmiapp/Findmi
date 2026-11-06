@@ -56,7 +56,8 @@ test("homepage: Explore Map (approved) — one plain link to /map right under th
   assert.match(link, /bg-findmi-50/);
   assert.match(link, /text-findmi-700/);
   assert.match(link, />\s*Explore Map\s*</);
-  assert.match(link, /w-full[^"]*sm:w-auto/, "full width (easy to reach) on phones");
+  assert.match(link, /inline-flex min-h-10 /, "a compact chip (≥40px tap target), not a second full-width block");
+  assert.doesNotMatch(link, /w-full/, "never full width");
   assert.equal((HOME.match(/href="\/map"/g) ?? []).length, 1, "one homepage Map entry, no duplicate control");
   assert.doesNotMatch(HOME, /DiscoveryMapCanvas|MapExplorer|maplibre/, "no map embedded on the homepage");
 });

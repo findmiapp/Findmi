@@ -236,20 +236,20 @@ export default async function HomePage({
         <SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />
       </div>
 
-      {/* Explore Map (approved 2026-11-06) — the homepage's one direct way
-          into the /map experience, right under Search. Keeps what made the
-          canceled Oct 28 experiment (a black "MAP" pill squeezed into the
-          Search row) wrong: Search stays full width and untouched, Findmi
-          Aqua tokens (pale tint + text-findmi-700), a plain link — no
-          embedded map, modal or geolocation. Full width on phones so it's
-          easy to reach; a compact pill from sm. */}
-      <div className="mx-auto max-w-6xl px-4 pt-2.5 sm:px-6">
+      {/* Explore Map — the homepage's one direct way into /map: a compact
+          chip tucked right under Search, part of the same search/discovery
+          group (not a second full-width block). Search stays full width and
+          untouched (the canceled Oct 28 experiment squeezed a black "MAP"
+          pill into the Search row). Findmi Aqua pale tint + text-findmi-700,
+          ≥40px tap target, a plain link — no embedded map, modal or
+          geolocation. */}
+      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
         <Link
           href="/map"
           data-home-explore-map
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-findmi/25 bg-findmi-50 px-4 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 active:scale-[0.98] sm:inline-flex sm:w-auto"
+          className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-findmi/25 bg-findmi-50 px-3.5 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 active:scale-[0.98]"
         >
-          <NavIcon name="pin" className="h-[18px] w-[18px] shrink-0" />
+          <NavIcon name="pin" className="h-4 w-4 shrink-0" />
           Explore Map
           <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
