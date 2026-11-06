@@ -100,7 +100,10 @@ export function placePreview(pin: { x: number; y: number }, card: { w: number; h
 export function previewPan(pin: { x: number; y: number }, card: { w: number; h: number }, view: { w: number; h: number }, pad: Insets): [number, number] {
   const s = previewSafeArea(view, pad);
   const wantX = view.w / 2;
+  // Card above the pin if the visible map is tall enough; otherwise the
+  // pin near the top with the card below it; only then the middle.
   const above = s.t + card.h + PREVIEW_PIN_GAP + 6;
-  const wantY = above <= s.b - 16 ? above : (s.t + s.b) / 2;
+  const below = s.t + 18;
+  const wantY = above <= s.b - 16 ? above : below + PREVIEW_PIN_GAP + card.h <= s.b ? below : (s.t + s.b) / 2;
   return [Math.round(pin.x - wantX), Math.round(pin.y - wantY)];
 }

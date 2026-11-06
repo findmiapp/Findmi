@@ -266,6 +266,14 @@ test("floating preview placement: above the pin when it fits, else below; inside
   const [dx, dy] = L.previewPan({ x: 195, y: 700 }, card, view, pad);
   const after = L.placePreview({ x: 195 - dx, y: 700 - dy }, card, view, pad);
   assert.ok(after.fits && after.side === "above", "one pan makes it fit above its pin");
+  // A short visible map (small phone, two results at one place): no room
+  // above → the pin goes near the top with the card below it.
+  const shortView = { w: 360, h: 684 };
+  const shortPad = { top: 136, bottom: 200, left: 28, right: 28 };
+  const tall = { w: 300, h: 294 };
+  const [sx, sy] = L.previewPan({ x: 180, y: 310 }, tall, shortView, shortPad);
+  const placed = L.placePreview({ x: 180 - sx, y: 310 - sy }, tall, shortView, shortPad);
+  assert.ok(placed.fits && placed.side === "below", "fits below its pin instead of covering it");
 });
 
 

@@ -68,7 +68,7 @@ export interface CanvasProps {
 
 const DEFAULT_PAD: Insets = { top: 24, bottom: 24, left: 24, right: 24 };
 /** A short visible map gets the shorter cover. */
-const COMPACT_MEDIA_BELOW = 300;
+const COMPACT_MEDIA_BELOW = 380;
 
 /** How long the full credits stay open on a map that set
  * autoCollapseAttribution. */
@@ -544,6 +544,19 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     ro.observe(cardEl);
     return () => ro.disconnect();
   }, [cardEl, tryFit]);
+  // The sheet / controls settled at a new height (a selection can change
+  // the tray): if the open preview no longer fits beside its pin, one more
+  // corrective pan. Never on the visitor's own map moves.
+  const padTop = padding?.top ?? 0;
+  const padBottom = padding?.bottom ?? 0;
+  useEffect(() => {
+    if (!floatingFeature.current || !cardSize.current) return;
+    const t = setTimeout(() => {
+      pendingFit.current = true;
+      tryFit();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [padTop, padBottom, tryFit]);
   // Escape closes the floating preview.
   useEffect(() => {
     if (!floatingId || selectedId !== floatingId) return;
