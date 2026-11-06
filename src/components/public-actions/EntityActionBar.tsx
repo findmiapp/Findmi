@@ -58,9 +58,10 @@ export default function EntityActionBar({
   /** Nobody manages this page on Findmi: a General Inquiry goes to Findmi
    * and says so (InquireButton's noRecipient). */
   noRecipient?: boolean;
-  /** "primary": the filled Findmi Aqua treatment (white text) for a single
-   * promoted action — the brand page's Inquire / Work With Us. */
-  variant?: "default" | "primary";
+  /** "compact": ONE content-width outline button (white, Aqua border and
+   * text, ~44px, left aligned, small message glyph) — the brand page's
+   * standalone Inquire / Work With Us. */
+  variant?: "default" | "compact";
 }) {
   const [sheet, setSheet] = useState<{ slot: number; type: PublicActionType | "opportunities" } | null>(null);
 
@@ -90,7 +91,8 @@ export default function EntityActionBar({
     : "flex h-12 w-full min-w-0 items-center justify-center rounded-2xl px-3 text-center text-sm font-bold uppercase leading-tight tracking-wide [text-wrap:balance] transition";
   // One treatment for every slot (the Native Rose outlined INQUIRE): no
   // action is promoted over another.
-  const cls = variant === "primary" ? `${base} bg-findmi text-white shadow-sm hover:bg-findmi-600` : `${base} border border-findmi/40 bg-white text-findmi-700 hover:bg-findmi-50`;
+  const compactCls = "inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-findmi bg-white px-5 text-sm font-semibold text-findmi-700 transition hover:bg-findmi-50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40";
+  const cls = variant === "compact" ? compactCls : `${base} border border-findmi/40 bg-white text-findmi-700 hover:bg-findmi-50`;
   // One analytics event family: canonical type + slot, never the label.
   const track = (a: PublicActionView) =>
     trackEvent({ event_name: "click_public_action", subject_type: kind, subject_id: entityId, [`${kind}_id`]: entityId, page_path: pagePath, metadata: { action_type: a.type, slot: a.slot } });
@@ -98,9 +100,9 @@ export default function EntityActionBar({
   return (
     <div className={className}>
       {actions.length > 0 && (
-        <div className={`grid ${grid} gap-2`} data-public-actions={actions.length}>
+        <div className={variant === "compact" ? "flex flex-wrap items-center gap-2" : `grid ${grid} gap-2`} data-public-actions={actions.length}>
           {actions.map((a) => (
-            <div key={a.slot} className="flex min-w-0" onClickCapture={() => track(a)}>
+            <div key={a.slot} className={variant === "compact" ? "flex min-w-0 max-w-full" : "flex min-w-0"} onClickCapture={() => track(a)}>
               {renderAction(a)}
             </div>
           ))}
@@ -120,7 +122,18 @@ export default function EntityActionBar({
 
   function renderAction(a: PublicActionView) {
     if (a.route === "general_inquiry")
-      return <InquireButton targetType={kind} targetId={entityId} targetName={entityName} label={a.label} topics={kind === "business" ? inquiryTopics : undefined} className={cls} noRecipient={noRecipient} />;
+      return (
+        <InquireButton
+          targetType={kind}
+          targetId={entityId}
+          targetName={entityName}
+          label={a.label}
+          topics={kind === "business" ? inquiryTopics : undefined}
+          className={cls}
+          noRecipient={noRecipient}
+          icon={variant === "compact" ? <MessageGlyph /> : undefined}
+        />
+      );
     if (a.route === "event_participation")
       return <MessageButton targetType="event" targetId={entityId} targetName={entityName} label={a.label} eventOccurrences={eventOccurrences} triggerClassName={cls} />;
     if (a.route === "website" && a.href)
@@ -264,5 +277,14 @@ function ActionSheet({
       </div>
     </div>,
     document.body
+  );
+}
+
+/** Small decorative message glyph for the compact inquiry button. */
+function MessageGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden="true">
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+    </svg>
   );
 }

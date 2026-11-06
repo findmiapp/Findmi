@@ -347,7 +347,12 @@ test("context map: text first, MapLibre only when the section nears the viewport
   await settle();
   assert.equal(globalThis.__canvas.cooperativeGestures, true, "one finger keeps scrolling the page");
   await act(async () => globalThis.__canvas.onSelect(`loc:${PIER.id}`));
-  assert.ok(host.querySelector(`[data-geo-card="br:b-kith@${PIER.id}"]`));
+  // Selectable contextual map: the shared floating preview at the marker
+  // (one result there → no redundant card below), and the map grows to fit.
+  assert.equal(globalThis.__canvas.preview?.featureId, `loc:${PIER.id}`);
+  assert.equal(globalThis.__canvas.preview.href, "/location/seaport-pier-17");
+  assert.equal(host.querySelector("[data-context-map-preview]")?.getAttribute("data-context-map-preview"), "open");
+  assert.equal(host.querySelector(`[data-geo-card="br:b-kith@${PIER.id}"]`), null);
   root.unmount();
   delete globalThis.IntersectionObserver;
 
@@ -358,6 +363,15 @@ test("context map: text first, MapLibre only when the section nears the viewport
   await act(async () => root2.render(React.createElement(ContextMap, { results: [single], label: "Map of Eataly" })));
   assert.equal(host2.querySelector("a").getAttribute("href"), "/map?place=eataly-chiosco", "one Location → that Place on the full Map");
   root2.unmount();
+  // A directions-only map (the Event page's Location block) has no preview.
+  const host3 = document.createElement("div");
+  document.body.appendChild(host3);
+  const root3 = createRoot(host3);
+  await act(async () => root3.render(React.createElement(ContextMap, { results: [single], label: "Map of Eataly", directionsOnly: true })));
+  await act(async () => fire?.());
+  if (globalThis.__canvas?.onSelect) await act(async () => globalThis.__canvas.onSelect(`loc:${EATALY.id}`));
+  assert.equal(globalThis.__canvas?.preview ?? null, null);
+  root3.unmount();
   assert.equal(G.placeResult({ ...UNPLACED }), null, "no coordinates → no map section at all");
 });
 

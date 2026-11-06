@@ -848,7 +848,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               actions={[inquiryCta]}
               inquiryTopics={enabledInquiryTopics}
               noRecipient={noRecipient}
-              variant="primary"
+              variant="compact"
             />
           </div>
         </div>

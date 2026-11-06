@@ -672,3 +672,13 @@ test("/discover → View On Map keeps the Area and time the Map understands", ()
   assert.equal(Q.discoverMapHref({ area: "soho" }), "/map", "an Area only counts inside its Market (as on /discover)");
   assert.equal(Q.discoverMapHref({ market: "Not A Slug" }), "/map", "invalid values are dropped");
 });
+
+test("/map draws dated results only at LISTED Locations — the same discovery rule as Findmi Here / Events / Brands maps", () => {
+  const src = read("src/lib/discovery/map-server.ts");
+  assert.match(src, /const listedLocation = \(raw: unknown\) => \(one\(raw as Row \| Row\[\]\) as Row \| null\)\?\.is_demo !== true;/);
+  assert.match(src, /for \(const r of occRows\) \{\s*if \(!listedLocation\(r\.location\)\) continue;/, "Event dates");
+  assert.match(src, /for \(const r of appRows\) \{\s*if \(!listedLocation\(r\.location\)\) continue;/, "Pop-Ups");
+  // Listed but without imagery (e.g. Duffy Square: no logo) still maps, unlinked.
+  assert.match(src, /slug: discoverable \? \(\(r\.slug as string\) \?\? null\) : null,/);
+  assert.doesNotMatch(src.slice(src.indexOf("const listedLocation"), src.indexOf("for (const r of appRows)")), /isLocationDiscoverable/, "imagery never decides whether a date maps");
+});

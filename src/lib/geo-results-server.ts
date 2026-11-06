@@ -319,7 +319,7 @@ export async function brandPlaceResults(business: { id: string; slug: string }):
  * show) as map results: each date at ITS OWN linked Location. A date with
  * no linked Location, or whose Event withholds the venue, isn't drawn. */
 export async function scheduleResults(
-  items: { id: string; title: string; start_at: string; end_at: string | null; location_id: string | null; location_hidden?: boolean; event_id?: string | null; event_occurrence_id?: string | null; event?: { slug: string } | null }[],
+  items: { id: string; title: string; start_at: string; end_at: string | null; location_id: string | null; location_hidden?: boolean; event_id?: string | null; event_occurrence_id?: string | null; flyer_image_url?: string | null; event?: { slug: string; cover_image_url?: string | null } | null }[],
   business: { slug: string; name: string; logo_url?: string | null }
 ): Promise<GeoResult[]> {
   const mappable = items.filter((a) => a.location_id && !a.location_hidden);
@@ -337,7 +337,9 @@ export async function scheduleResults(
       title: place.name,
       subtitle: a.title && a.title !== business.name ? a.title : null,
       href: a.event?.slug ? eventHref(a.event.slug, a.event_occurrence_id ?? null) : (place.href ?? `/business/${business.slug}`),
-      image: null,
+      // The date's own image (its flyer, else its Event's cover) for the
+      // floating map preview; the Brand's logo rides along.
+      image: a.flyer_image_url ?? a.event?.cover_image_url ?? null,
       logo: business.logo_url ?? null,
       status: live ? "LIVE" : when,
       live,

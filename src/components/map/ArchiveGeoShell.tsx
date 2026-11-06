@@ -9,7 +9,7 @@ import { bboxParam, boundsOf, geoFeatures, type GeoResponse, type GeoResult, typ
 import { DEFAULT_MAP_BBOX } from "@/lib/map-config";
 import { geoViewStorageKey, parseGeoViewHint, type GeoViewHint } from "@/lib/discovery/map-restore";
 import GeoResultCard from "./GeoResultCard";
-import type { MapPreview } from "./MapFloatingPreview";
+import { geoPreview } from "@/lib/geo-preview";
 import ViewModeSwitch from "./ViewModeSwitch";
 import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetState } from "./sheet";
 
@@ -50,9 +50,6 @@ const Glyph = ({ d, className = "h-4 w-4" }: { d: string; className?: string }) 
     <path d={d} />
   </svg>
 );
-
-/** Entity type in words on the floating preview. */
-const GEO_KIND: Record<GeoResult["kind"], string> = { event: "Event", place: "Place", brand: "Brand", appearance: "Pop-Up", product: "Product", opportunity: "Opportunity" };
 
 const isPhone = () => typeof window !== "undefined" && !(window.matchMedia?.("(min-width: 1024px)").matches ?? false);
 
@@ -262,25 +259,10 @@ export default function ArchiveGeoShell({
   }, [features]);
   const selectedFeature = features.find((f) => f.id === selected) ?? null;
   const selectedResults = useMemo(() => (selectedFeature && results ? results.filter((r) => selectedFeature.keys.includes(r.key)) : []), [selectedFeature, results]);
-  // The floating preview at a tapped marker: its lead result (LIVE first) —
-  // only for a real selection, never while browsing the Peek strip.
-  const lead = selected && selectedFeature ? (selectedResults.find((r) => r.live) ?? selectedResults[0] ?? null) : null;
-  const floatingPreview: MapPreview | null =
-    lead && selectedFeature
-      ? {
-          featureId: selectedFeature.id,
-          href: lead.href,
-          title: lead.title,
-          kind: GEO_KIND[lead.kind],
-          image: lead.image,
-          logo: lead.logo,
-          status: lead.live ? null : lead.status,
-          live: lead.live,
-          detail: null,
-          subtitle: lead.subtitle,
-          more: Math.max(0, selectedResults.length - 1),
-        }
-      : null;
+  // The floating preview at a tapped marker (lib/geo-preview — the same
+  // card every selectable map shows) — only for a real selection, never
+  // while browsing the Peek strip.
+  const floatingPreview = selected && results ? geoPreview(selectedFeature, results) : null;
   const initialBbox = useMemo<Bbox>(
     () => (lastView.current?.key === queryKey ? lastView.current.bbox : null) ?? bbox ?? (results ? boundsOf(results) : null) ?? DEFAULT_MAP_BBOX,
     // Only the first view of a mounted map matters.

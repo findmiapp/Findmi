@@ -340,7 +340,15 @@ export async function loadMapItems(q: DiscoveryQuery, now: Date): Promise<Loaded
     return out;
   };
 
+  // Discovery projection: a dated result is drawn only at a LISTED Location
+  // (is_demo ≠ true) — the same rule Findmi Here, the Events map and the
+  // Brands map apply (geo-results-server locationsById). An unlisted / Needs
+  // Review Location is drawn in context only on its Business's own map. A
+  // listed Location without imagery still maps (unlinked) as before.
+  const listedLocation = (raw: unknown) => (one(raw as Row | Row[]) as Row | null)?.is_demo !== true;
+
   for (const r of occRows) {
+    if (!listedLocation(r.location)) continue;
     const ev = one(r.event as Row | Row[]);
     const loc = toLocation(one(r.location as Row | Row[]) ?? {}, vocab);
     if (!ev || !loc) continue;
@@ -379,6 +387,7 @@ export async function loadMapItems(q: DiscoveryQuery, now: Date): Promise<Loaded
   }
 
   for (const r of appRows) {
+    if (!listedLocation(r.location)) continue;
     const occ = r.event_occurrence_id as string | null;
     if (occ && occIdSet.has(occ)) continue;
     const biz = one(r.business as Row | Row[]);
