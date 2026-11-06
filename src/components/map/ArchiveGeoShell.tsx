@@ -437,7 +437,8 @@ export default function ArchiveGeoShell({
         initialBbox={initialBbox}
         fit={fit}
         focus={focus}
-        padding={isPhone() ? { top: 56, bottom: (measured ? heights[sheet] : 140) + 12, left: 28, right: 28 } : undefined}
+        // Desktop: while Search This Area shows, the floating preview keeps below it.
+        padding={isPhone() ? { top: 56, bottom: (measured ? heights[sheet] : 140) + 12, left: 28, right: 28 } : showSearchArea ? { top: 56, bottom: 24, left: 24, right: 24 } : undefined}
         label={`Map of ${many}`}
         autoCollapseAttribution
         keepSelectionInView
@@ -587,7 +588,7 @@ export default function ArchiveGeoShell({
             className={`relative overflow-hidden bg-[#eef0ef] max-lg:absolute max-lg:inset-0 max-lg:[&_.maplibregl-ctrl-bottom-right]:!bottom-[calc(var(--sheet-h)+0.25rem)] ${sheet !== "peek" || dragH !== null ? "max-lg:[&_.maplibregl-ctrl-bottom-right]:hidden max-lg:[&_[data-search-area]]:hidden" : ""} lg:rounded-2xl lg:border lg:border-black/5 ${view === "split" ? "lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)] lg:min-h-[420px]" : "lg:h-[calc(100vh-12rem)] lg:min-h-[480px]"}`}
           >
             {mapCanvas}
-            <div data-search-area className="pointer-events-none absolute inset-x-0 top-3 z-[5] flex justify-center px-3">{searchAreaButton}</div>
+            <div data-search-area className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">{searchAreaButton}</div>
             {desktopSelection}
             {mobileSheet}
           </div>

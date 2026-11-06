@@ -725,8 +725,9 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           preview={floatingPreview}
           padding={
             screen.desktop
-              ? { top: 48, bottom: 48, left: 48, right: 48 }
-              : { top: (metrics.topReserve || 150) + 8, bottom: (measured ? heights[sheet] : 120) + 12, left: 28, right: 28 }
+              ? { top: showSearchArea && view === "map" ? 64 : 48, bottom: 48, left: 48, right: 48 }
+              : // While Search This Area shows (below the chips), its band is covered too.
+                { top: Math.max((metrics.topReserve || 150) + 8, showSearchArea && view === "map" ? 180 : 0), bottom: (measured ? heights[sheet] : 120) + 12, left: 28, right: 28 }
           }
         />
         {/* mobile top controls over the map */}
@@ -734,7 +735,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           {searchBar}
           {chipRow}
         </div>
-        <div className="pointer-events-none absolute inset-x-0 top-[8.25rem] flex justify-center lg:top-4">{searchAreaButton}</div>
+        <div className="pointer-events-none absolute inset-x-0 top-[8.25rem] z-30 flex justify-center lg:top-4">{searchAreaButton}</div>
 
         {/* mobile bottom sheet: Peek → Browse → Expanded, sized by content */}
         <section
