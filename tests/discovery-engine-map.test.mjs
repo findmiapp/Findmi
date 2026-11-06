@@ -333,7 +333,10 @@ test("serialization: every new dimension round-trips through a shareable URL", (
   };
   const back = Q.paramsToQuery(Q.queryToParams(q));
   assert.deepEqual(back, q);
-  assert.match(Q.mapHref({ area: "soho", free: true }, "feed"), /^\/map\?area=soho&free=1&view=feed$/);
+  assert.match(Q.mapHref({ area: "soho", free: true }, "list"), /^\/map\?area=soho&free=1&view=list$/);
+  assert.equal(Q.mapView("list"), "list");
+  assert.equal(Q.mapView("feed"), "list", "old Feed links still open the List");
+  assert.equal(Q.mapView(null), "map");
   assert.equal(Q.queryKey({ brands: ["a", "b"], free: true }), Q.queryKey({ free: true, brands: ["b", "a"] }), "order-independent identity");
   assert.doesNotMatch(Q.queryToParams({ brands: ["lavazza"] }).toString(), /[0-9a-f]{8}-[0-9a-f]{4}/, "slugs, not database ids");
 });
@@ -496,6 +499,9 @@ const DATA = {
 };
 
 async function mount(props = {}) {
+  // Each mount is a fresh visit: no earlier test's URL or history entry
+  // (Map Discovery Batch 2 resumes those on Back).
+  window.history.replaceState(null, "", "/map");
   const calls = [];
   const geo = [];
   globalThis.fetch = async (url) => {
@@ -543,7 +549,10 @@ test("marker → result and result → marker share one selection", async () => 
   await settle();
   assert.equal(globalThis.__canvas.selectedId, "loc:B");
   assert.ok(host.querySelector('[data-result-key="occ:2"][aria-current="true"]'), "the marker's result is highlighted");
-  assert.ok(host.textContent.includes("View Event"), "the selected preview offers the canonical page");
+  const open = host.querySelector('[data-result-key="occ:2"][aria-current="true"] a[href="/event/occ:2"]');
+  assert.ok(open, "the whole selected preview is the link to the canonical page");
+  assert.ok(open.className.includes("after:inset-0"), "stretched over the card");
+  assert.ok(!host.textContent.includes("View Event") && ![...host.querySelectorAll("a")].some((x) => x.textContent.trim() === "View"), "no separate View links");
   const select = host.querySelector('[data-result-key="occ:1"] button[aria-pressed]');
   await act(async () => select.click());
   await settle();
@@ -651,4 +660,25 @@ test("batch size is capped", async () => {
   const { client } = fakeAdmin(rows);
   const s = await GEO.runGeocodeBatch(client, { limit: 500, provider: provider({}), pauseMs: 0 });
   assert.equal(s.processed, 25);
+});
+
+test("/discover → View On Map keeps the Area and time the Map understands", () => {
+  assert.equal(Q.discoverMapHref({}), "/map");
+  assert.equal(Q.discoverMapHref({ when: "upcoming" }), "/map", "Upcoming is the Map's own default");
+  assert.match(Q.discoverMapHref({ market: "nyc", area: "soho", when: "weekend" }), /^\/map\?/);
+  const p = Q.paramsToQuery(new URLSearchParams(Q.discoverMapHref({ market: "nyc", area: "soho", when: "weekend" }).split("?")[1]));
+  assert.deepEqual({ market: p.market, area: p.area, when: p.when }, { market: "nyc", area: "soho", when: "weekend" });
+  assert.equal(Q.paramsToQuery(new URLSearchParams(Q.discoverMapHref({ when: "today" }).split("?")[1])).when, "today");
+  assert.equal(Q.discoverMapHref({ area: "soho" }), "/map", "an Area only counts inside its Market (as on /discover)");
+  assert.equal(Q.discoverMapHref({ market: "Not A Slug" }), "/map", "invalid values are dropped");
+});
+
+test("/map draws dated results only at LISTED Locations — the same discovery rule as Findmi Here / Events / Brands maps", () => {
+  const src = read("src/lib/discovery/map-server.ts");
+  assert.match(src, /const listedLocation = \(raw: unknown\) => \(one\(raw as Row \| Row\[\]\) as Row \| null\)\?\.is_demo !== true;/);
+  assert.match(src, /for \(const r of occRows\) \{\s*if \(!listedLocation\(r\.location\)\) continue;/, "Event dates");
+  assert.match(src, /for \(const r of appRows\) \{\s*if \(!listedLocation\(r\.location\)\) continue;/, "Pop-Ups");
+  // Listed but without imagery (e.g. Duffy Square: no logo) still maps, unlinked.
+  assert.match(src, /slug: discoverable \? \(\(r\.slug as string\) \?\? null\) : null,/);
+  assert.doesNotMatch(src.slice(src.indexOf("const listedLocation"), src.indexOf("for (const r of appRows)")), /isLocationDiscoverable/, "imagery never decides whether a date maps");
 });

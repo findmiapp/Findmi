@@ -32,6 +32,7 @@ import { calendarDate, calendarEndDate, compareChronological, compareScheduleOcc
 import { eventHref } from "./event-links";
 import { eventCategoryFilterIds, primaryEventCategoryId } from "./event-categories";
 import { editorialFeaturedEventsFor, type EditorialFeaturedEvent } from "./business-hero";
+import { unambiguousEventLocations } from "./event-location-resolution";
 import {
   applyEventLocationPrivacy,
   excludeHiddenEventRows,
@@ -1689,17 +1690,30 @@ const ACTIVITY_EVENT_COLUMNS = "id, slug, name, cover_image_url, start_at, end_a
  * approved, non-cancelled occurrence participations. Returns every
  * reconciled row, unsplit and unsorted — callers split by time. */
 export function reconcileBusinessActivity(
-  { businessId, rows, eventLinkIds, occurrences, events }: {
+  { businessId, rows, eventLinkIds, occurrences, events, eventLocations }: {
     businessId: string;
     rows: BusinessActivityRow[];
     eventLinkIds: string[];
     occurrences: ActivityOccurrence[];
     events: Map<string, ActivityEventRow>;
+    /** event_id → the Event's single Location, only where every
+     * non-cancelled date is at that one Location (lib/event-location-
+     * resolution). Event-level rows with no Location of their own use it,
+     * so they can be placed on the Business's map. */
+    eventLocations?: Map<string, LocationRef>;
   },
   nowIso: string = new Date().toISOString()
 ): BusinessActivityRow[] {
+  // An Event-level row with no Location of its own takes the Event's
+  // unambiguous single Location (never a guess; see eventLocations).
+  const placed = (r: BusinessActivityRow): BusinessActivityRow => {
+    if (!r.event_id || r.event_occurrence_id || r.location_id) return r;
+    const loc = eventLocations?.get(r.event_id);
+    return loc ? ({ ...r, location_id: loc.id, location: loc } as BusinessActivityRow) : r;
+  };
   // 1. Event-level Appearances follow the Event's own current schedule.
-  const reDated: BusinessActivityRow[] = rows.map((r) => {
+  const reDated: BusinessActivityRow[] = rows.map((r0) => {
+    const r = placed(r0);
     const e = r.event_id ? events.get(r.event_id) : null;
     if (!e || r.event_occurrence_id || !e.end_at) return r;
     if (e.start_at === r.start_at && e.end_at === r.end_at) return r;
@@ -1755,6 +1769,7 @@ export function reconcileBusinessActivity(
   for (const eventId of eventLinkIds) {
     const e = events.get(eventId);
     if (!e || !e.end_at || eventsWithRows.has(e.id)) continue;
+    const eventLoc = eventLocations?.get(e.id) ?? null;
     reconciled.push({
       ...base,
       id: `participation-${e.id}`,
@@ -1767,8 +1782,8 @@ export function reconcileBusinessActivity(
       address: e.address,
       city: e.city,
       state: e.state,
-      location_id: null,
-      location: null,
+      location_id: eventLoc?.id ?? null,
+      location: eventLoc,
       event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
     } as BusinessActivityRow);
     eventsWithRows.add(e.id);
@@ -1916,12 +1931,33 @@ export async function getBusinessFindmiHereActivity(
     .eq("is_demo", false);
   const events = new Map<string, ActivityEventRow>(((eventData ?? []) as ActivityEventRow[]).map((e) => [e.id, e]));
 
+  // Each Event's single Location (when all its dates share one), for
+  // Event-level rows that name no date — bounded to these Events.
+  const { data: eventDates } = await supabase
+    .from("event_occurrences")
+    .select("event_id, location_id, status, location:locations(id, name, slug, is_demo, logo_url, cover_image_url, archived_at, trashed_at)")
+    .in("event_id", Array.from(events.keys()))
+    .limit(2000);
+  type DateLoc = { event_id: string; location_id: string | null; status: string | null; location: (LocationRef & { archived_at?: string | null; trashed_at?: string | null }) | (LocationRef & { archived_at?: string | null; trashed_at?: string | null })[] | null };
+  const dateRows = (eventDates ?? []) as unknown as DateLoc[];
+  const locById = new Map<string, LocationRef>();
+  for (const d of dateRows) {
+    const l = Array.isArray(d.location) ? (d.location[0] ?? null) : d.location;
+    if (l && !l.archived_at && !l.trashed_at) locById.set(l.id, { id: l.id, name: l.name, slug: l.slug, is_demo: l.is_demo, logo_url: l.logo_url, cover_image_url: l.cover_image_url });
+  }
+  const eventLocations = new Map<string, LocationRef>();
+  for (const [eventId, locationId] of unambiguousEventLocations(dateRows)) {
+    const loc = locById.get(locationId);
+    if (loc) eventLocations.set(eventId, loc);
+  }
+
   const reconciled = reconcileBusinessActivity({
     businessId,
     rows,
     eventLinkIds,
     occurrences,
     events,
+    eventLocations,
   });
 
   // Findmi editorial Featured Events (events.is_featured) this Business is

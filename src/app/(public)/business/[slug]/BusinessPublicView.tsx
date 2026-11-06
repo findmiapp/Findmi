@@ -20,6 +20,7 @@ import ClaimButton from "@/components/ClaimButton";
 import AboutThisPage from "@/components/trust/AboutThisPage";
 import { getPageTrust } from "@/lib/provenance";
 import EntityActionBar from "@/components/public-actions/EntityActionBar";
+import { PUBLIC_ACTION_DEFAULT_LABELS } from "@/lib/public-actions-domain";
 import { loadPublicActions } from "@/lib/public-actions";
 import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -435,6 +436,14 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     website: isSafeExternalUrl(business.website_url) ? business.website_url : null,
   });
   const showMessageButton = await shouldShowMessageButton("business", business.id);
+  // Inquire / Work With Us — the General Inquiry action leaves the action
+  // bar and stands on its own below Featured Appearance (or in that slot
+  // when there's none) as the primary CTA. Same action and destination;
+  // the default "Inquire" reads "Inquire / Work With Us" here, while a
+  // manager's own custom label is kept.
+  const inquiryAction = publicActions.actions.find((a) => a.route === "general_inquiry") ?? null;
+  const barActions = publicActions.actions.filter((a) => a.route !== "general_inquiry");
+  const inquiryCta = inquiryAction ? { ...inquiryAction, label: inquiryAction.label === PUBLIC_ACTION_DEFAULT_LABELS.general_inquiry ? "Inquire / Work With Us" : inquiryAction.label } : null;
 
   const location = cityStateZip(business.city, business.state, business.postal_code);
   // categories[0] is the same "good enough for a compact label" primary-
@@ -758,7 +767,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
 
       {/* Public Actions — directly under identity (category, place, short
           bio) and above Featured Appearance: what a visitor can do here. */}
-      {(publicActions.actions.length > 0 || publicActions.opportunityCount > 0) && (
+      {(barActions.length > 0 || publicActions.opportunityCount > 0) && (
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mt-4 max-w-xl">
             <EntityActionBar
@@ -766,7 +775,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               entityId={business.id}
               entityName={business.name}
               pagePath={`/business/${business.slug}`}
-              actions={publicActions.actions}
+              actions={barActions}
               inquiryTopics={enabledInquiryTopics}
               opportunityCount={publicActions.opportunityCount}
               noRecipient={noRecipient}
@@ -822,6 +831,25 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 />
               </SectionErrorBoundary>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inquire / Work With Us — the primary CTA, right below Featured
+          Appearance (or here, in its slot, when the brand has none). */}
+      {inquiryCta && (
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className={`max-w-xl ${featuredAppearance ? "mt-3" : "mt-4"}`} data-brand-inquiry-cta>
+            <EntityActionBar
+              kind="business"
+              entityId={business.id}
+              entityName={business.name}
+              pagePath={`/business/${business.slug}`}
+              actions={[inquiryCta]}
+              inquiryTopics={enabledInquiryTopics}
+              noRecipient={noRecipient}
+              variant="compact"
+            />
           </div>
         </div>
       )}

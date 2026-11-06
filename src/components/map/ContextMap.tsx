@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { bboxAround, type Bbox } from "@/lib/discovery/map-core";
 import { boundsOf, geoFeatures, type GeoResult } from "@/lib/geo-results";
 import GeoResultCard from "./GeoResultCard";
+import { geoPreview } from "@/lib/geo-preview";
 
 // Map Everywhere — the contextual map on a detail page: where this is
 // happening / available / located. Not /map in a card: no filters, no
@@ -27,6 +28,7 @@ export default function ContextMap({
   onResult,
   initialSelect,
   scope,
+  directionsOnly = false,
 }: {
   results: GeoResult[];
   label: string;
@@ -44,6 +46,10 @@ export default function ContextMap({
    * keeps meaning the same thing (e.g. one Business's upcoming schedule),
    * never generic discovery around the area. See contextMapHref. */
   scope?: ContextMapScope;
+  /** A map that only shows where ONE known place is (the Event page's own
+   * Location block, an owner's Opportunity place): no selectable results,
+   * so no floating preview. Every other contextual map is selectable. */
+  directionsOnly?: boolean;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -91,20 +97,32 @@ export default function ContextMap({
   const single = places.length === 1;
   const selectedFeature = features.find((f) => f.id === selectedId) ?? null;
   const picked = selectedFeature ? results.filter((r) => selectedFeature.keys.includes(r.key)) : [];
+  // Selectable maps: the shared floating preview at the selected marker
+  // (lib/geo-preview — the same card as /map and the archive maps). The map
+  // grows while it's open so the card fits without clipping.
+  const preview = directionsOnly ? null : geoPreview(selectedFeature, results);
   const mapHref = contextMapHref(bbox, single ? places[0].place.href : null, scope);
 
   return (
     <div data-context-map className="flex flex-col gap-2">
-      <div ref={holder} className={`relative overflow-hidden rounded-2xl border border-black/5 bg-[#eef0ef] ${tall ? "h-64 sm:h-80" : "h-40 sm:h-48"}`}>
-        {visible && <DiscoveryMapCanvas features={features} selectedId={selectedId} onSelect={select} onViewportChange={() => undefined} initialBbox={bbox} cooperativeGestures autoCollapseAttribution label={label} />}
+      <div
+        ref={holder}
+        data-context-map-preview={preview ? "open" : undefined}
+        className={`relative overflow-hidden rounded-2xl border border-black/5 bg-[#eef0ef] transition-[height] duration-300 ease-out motion-reduce:transition-none ${preview ? "h-[23rem]" : tall ? "h-64 sm:h-80" : "h-40 sm:h-48"}`}
+      >
+        {visible && <DiscoveryMapCanvas features={features} selectedId={selectedId} onSelect={select} onViewportChange={() => undefined} initialBbox={bbox} cooperativeGestures autoCollapseAttribution label={label} preview={preview} padding={preview ? { top: 52, bottom: 24, left: 24, right: 24 } : undefined} />}
         <Link href={mapHref} className="absolute right-2 top-2 z-10 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm hover:border-black/20">
           View On Map
         </Link>
       </div>
-      {picked.length > 0 && (
+      {/* Several results at the selected place (the preview shows the lead
+          one): each card is the way in — a section's own detail view
+          (onResult) or the result's page — with no separate View link.
+          A directions-only map keeps its single card. */}
+      {(directionsOnly ? picked.length > 0 : picked.length > 1) && (
         <div className="flex flex-col gap-2">
           {picked.map((r) => (
-            <GeoResultCard key={r.key} result={r} compact onSelect={onResult} />
+            <GeoResultCard key={r.key} result={r} compact onSelect={onResult} viewLink={false} />
           ))}
         </div>
       )}

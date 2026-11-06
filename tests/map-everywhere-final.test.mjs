@@ -194,6 +194,8 @@ test("Brand detail Map = the SAME upcoming schedule: each date at its own Locati
   assert.deepEqual(geo.map((g) => g.key), ["app:a1", "app:a2"]);
   assert.equal(geo[1].live, true);
   assert.match(geo[1].href, /\/event\/art-walk\?occurrence=o4/);
+  assert.equal(geo[0].kind, "appearance", "a standalone date is a Pop-Up");
+  assert.equal(geo[1].kind, "event", "an Event-backed date (hosted / participating) is an Event");
   assert.equal(geo[0].title, "Seaport Pier 17", "markers name the place");
 
   const host = document.createElement("div");
@@ -209,7 +211,14 @@ test("Brand detail Map = the SAME upcoming schedule: each date at its own Locati
   assert.match(host.textContent, /2 of 4 dates on the map · 2 without locations/, "no fake presence; the rest is acknowledged");
   // Opens already showing the earliest mapped date (schedule order), not a blank map.
   assert.ok(globalThis.__canvas.selectedId, "a marker starts selected");
-  assert.deepEqual([...host.querySelectorAll("[data-context-map] [data-geo-card]")].map((c) => c.getAttribute("data-geo-card")), ["app:a1"], "its card is shown");
+  // The shared floating preview at that marker: the date itself leads, the
+  // place follows; tapping it opens the date's destination.
+  const fp = globalThis.__canvas.preview;
+  assert.equal(fp.featureId, globalThis.__canvas.selectedId);
+  assert.equal(fp.title, "Kith Pop-Up");
+  assert.equal(fp.subtitle, "Seaport Pier 17");
+  assert.equal(fp.kind, "Pop-Up");
+  assert.equal(host.querySelectorAll("[data-context-map] [data-geo-card]").length, 0, "one date there → no redundant card below");
   await act(async () => globalThis.__canvas.onSelect(null));
   assert.equal(globalThis.__canvas.selectedId, null, "the visitor can still clear / pick another marker");
   await act(async () => root.render(React.createElement(AppearanceFindMiHere, { appearances, business, galleryImages: [] })));
@@ -241,10 +250,10 @@ test("contextual map initial selection: one place opens selected; several places
   const root = createRoot(host);
   await act(async () => root.render(React.createElement(ContextMap, { results: [res("p1", STUDIO)], label: "m", initialSelect: "single" })));
   assert.ok(globalThis.__canvas.selectedId, "exactly one place: selected on arrival");
-  assert.equal(host.querySelectorAll("[data-geo-card]").length, 1, "its details shown immediately");
+  assert.equal(globalThis.__canvas.preview?.href, `/location/${STUDIO.slug}`, "its details shown immediately — the floating preview");
   await act(async () => root.render(React.createElement(ContextMap, { results: [res("p1", STUDIO), res("p2", PIER)], label: "m2", initialSelect: "single", key: "multi" })));
   assert.equal(globalThis.__canvas.selectedId, null, "several places: overview until a marker is tapped");
-  assert.equal(host.querySelectorAll("[data-geo-card]").length, 0);
+  assert.equal(globalThis.__canvas.preview, null);
   await act(async () => root.render(React.createElement(ContextMap, { results: [res("p1", STUDIO)], label: "m3", key: "plain" })));
   assert.equal(globalThis.__canvas.selectedId, null, "callers without initialSelect (Location / Event blocks) are unchanged");
   root.unmount();
@@ -257,4 +266,37 @@ test("shared Peek carousel: page-gutter inset on both ends, cards rest at the gu
   const shell = read("src/components/map/ArchiveGeoShell.tsx");
   assert.match(shell, /className="flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto px-4 pb-\[calc\(0\.75rem\+env\(safe-area-inset-bottom\)\)\] pt-1/);
   assert.match(shell, /getComputedStyle\(strip\)\.scrollPaddingLeft/, "browsing highlight measures from the resting gutter");
+});
+
+// ---------------------------------------------------------------- one floating preview everywhere (2026-11-06)
+
+test("geoPreview: one mapping for archive + contextual maps — lead result (LIVE first), date-led schedule titles, +N more here", async () => {
+  const GP = await import("../src/lib/geo-preview.ts");
+  const place = { id: "duffy", name: "Duffy Square", lat: 40.759, lng: -73.984, href: "/location/duffy-square", address: null };
+  const r = (key, o = {}) => ({ key, kind: "appearance", title: "Duffy Square", subtitle: "Tamagotchi Times Square Spectacular", href: "/event/tamagotchi-times-square-spectacular", image: "https://drcbrzwchlirfspjgtik.supabase.co/storage/v1/object/public/findmi-media/x.jpg", logo: null, status: "Sun, Nov 22", live: false, place, ...o });
+  const feature = { id: "loc:duffy", keys: ["app:1", "app:2"] };
+  const p = GP.geoPreview(feature, [r("app:1"), r("app:2", { live: true, title: "Duffy Square", subtitle: "Live Now Thing", href: "/event/live" })]);
+  assert.equal(p.title, "Live Now Thing", "LIVE leads");
+  assert.equal(p.subtitle, "Duffy Square", "the place follows the thing");
+  assert.equal(p.href, "/event/live");
+  assert.equal(p.kind, "Pop-Up");
+  assert.equal(p.more, 1);
+  assert.equal(GP.geoPreview(null, []), null);
+  const place2 = GP.geoPreview({ id: "loc:x", keys: ["p"] }, [{ ...r("p"), kind: "place", title: "Seaport", subtitle: "Retail", status: null }]);
+  assert.equal(place2.title, "Seaport", "non-schedule titles are kept");
+  const shell = read("src/components/map/ArchiveGeoShell.tsx");
+  const ctx = read("src/components/map/ContextMap.tsx");
+  for (const src of [shell, ctx]) assert.match(src, /geoPreview\(selectedFeature, results\)/, "no second preview implementation");
+  assert.match(ctx, /<GeoResultCard key=\{r\.key\} result=\{r\} compact onSelect=\{onResult\} viewLink=\{false\} \/>/, "no redundant View links on map result cards");
+  assert.match(read("src/components/event/EventLocationFeature.tsx"), /directionsOnly \/>/, "the Event page's directions map is left as it is");
+});
+
+test("every public discovery map uses the listed-Location rule: Events map + Guide events skip unlisted / archived / trashed date Locations", () => {
+  const geo = read("src/lib/geo-results-server.ts");
+  const fn = geo.slice(geo.indexOf("function eventRowResults"), geo.indexOf("// ---------------------------------------------------------------- Places"));
+  assert.match(fn, /if \(!lr \|\| lr\.is_demo === true \|\| lr\.archived_at \|\| lr\.trashed_at\) continue;/);
+  assert.match(geo, /\(opts\.inContext \|\| r\.is_demo !== true\)/, "locationsById: listed only unless a Business's own map");
+  assert.match(read("src/lib/discovery/map-server.ts"), /const listedLocation = /, "/map");
+  // Listed without imagery still maps (unlinked): eligibility only decides the link.
+  assert.match(geo, /placeOf = \(l: Row \| null \| undefined\): GeoPlace \| null => \(l \? geoPlace\(l as Parameters<typeof geoPlace>\[0\], \{ linkable: isLocationDiscoverable/);
 });

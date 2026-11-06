@@ -3,6 +3,7 @@ import MobileHeader from "@/components/MobileHeader";
 import AdminToolbar from "@/components/AdminToolbar";
 import Footer from "@/components/Footer";
 import SiteChrome from "@/components/SiteChrome";
+import GuestLibrarySync from "@/components/GuestLibrarySync";
 import PrivacyChoicesRoot from "@/components/privacy/PrivacyChoicesRoot";
 import { BusinessesProvider } from "@/components/BusinessesContext";
 import { isAdminSession } from "@/lib/admin/auth";
@@ -73,6 +74,8 @@ export default async function PublicLayout({ children }: { children: React.React
           renders there). One provider, no second fetch. */}
       <BusinessesProvider businesses={businesses}>{children}</BusinessesProvider>
       <PrivacyChoicesRoot authenticated={authenticated} />
+      {/* Guest saves (made signed out) → this account, once signed in. */}
+      <GuestLibrarySync authenticated={authenticated} />
     </SiteChrome>
   );
 }

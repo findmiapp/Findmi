@@ -65,9 +65,23 @@ Curation is deterministic (`tests/homepage-curation-contract.test.mjs`):
 
 From `lib/personal-model.ts`:
 
-- Detail pages have **no generic Save**. Product: Want / Have. Event: Want
-  To Do / Been. Location: Want To Go / Been. Business: Follow. Add to
-  Collection works everywhere.
+- Detail pages have **no generic Save** and no standalone status buttons:
+  ONE **Add to Collection** control whose sheet holds the type's built-in
+  lists (`PERSONAL_LISTS`: Event Want To Do / Must Do / Been; Place Want To
+  Go / Must Do / Been Here; Product I Have This — the existing
+  `user_entity_relationships`, values unchanged) and the visitor's own
+  Collections. Product Want (`product_wants`) and Business Follow keep
+  their own controls.
+- **Guest saving** (`lib/guest-library.ts`): signed out, lists and
+  Collections save on the device in a versioned, validated record (public
+  ids, names and links only — no account data). After 3 saves a
+  dismissible "Keep your collections safe" reminder appears once; saving
+  continues without prompts. Private browsing / blocked storage keeps saves
+  for the visit and says so. On sign-in / sign-up `GuestLibrarySync` merges
+  them via `/api/collections/import` (idempotent; same-named Collections
+  merge, duplicates skipped, only real visible entities) and clears the
+  device copy only after the server confirms. Signed-out `/saved` lists
+  them.
 - Mark As sheet (`SaveOrganizeSheet`): relationship states + Collections.
 - **Your Library** (`/account/saved`): Things I Want · Want To Do · Want To
   Go · Must Do · Have & Been · Following · Saved (legacy bookmarks) +

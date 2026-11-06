@@ -38,6 +38,7 @@ export default function InquireButton({
   className,
   track,
   noRecipient = false,
+  icon,
   findmiLabel = "Ask Findmi About This Page",
 }: {
   targetType: "business" | "event" | "location";
@@ -55,6 +56,8 @@ export default function InquireButton({
    * as a different kind of recipient). Business-only, same as `topics`. */
   productId?: string;
   className: string;
+  /** Optional small glyph before the label (decorative). */
+  icon?: React.ReactNode;
   /** Analytics Phase 2A — optional. Fires on the CTA activation (opening
    * this modal) only, never on the actual inquiry submission below — that
    * stays exactly the canonical Conversation-creating transactional flow,
@@ -169,6 +172,7 @@ export default function InquireButton({
   return (
     <>
       <button ref={buttonRef} type="button" onClick={openModal} className={className}>
+        {icon}
         {buttonLabel}
       </button>
 

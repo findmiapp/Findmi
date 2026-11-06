@@ -102,7 +102,7 @@ export default async function ExploreOpportunityPage({
               showCredits={false}
               showInvestment={false}
             />
-            {mapPlace && <ContextMap results={[mapPlace]} label={`Map of ${mapPlace.place.name}`} />}
+            {mapPlace && <ContextMap results={[mapPlace]} label={`Map of ${mapPlace.place.name}`} directionsOnly />}
           </div>
         </div>
       </div>

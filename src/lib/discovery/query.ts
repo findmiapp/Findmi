@@ -221,13 +221,37 @@ export function searchHref(q: DiscoveryQuery): string {
   return s ? `/search?${s}` : "/search";
 }
 
-/** The same query on the Map (or its Feed view). `view` is presentation
+/** The Map's presentation from a `view` param: "list" (the old "feed"
+ * links still open it), otherwise the map. */
+export function mapView(v: string | string[] | null | undefined): "map" | "list" {
+  const s = Array.isArray(v) ? v[0] : v;
+  return s === "list" || s === "feed" ? "list" : "map";
+}
+
+/** The same query on the Map (or its List view). `view` is presentation
  * only — it never changes what qualifies. */
-export function mapHref(q: DiscoveryQuery, view: "map" | "feed" = "map"): string {
+export function mapHref(q: DiscoveryQuery, view: "map" | "list" = "map"): string {
   const p = queryToParams(q);
-  if (view === "feed") p.set("view", "feed");
+  if (view === "list") p.set("view", "list");
   const s = p.toString();
   return s ? `/map?${s}` : "/map";
+}
+
+/** /discover → "View On Map": the same Area and time on the Map. Only what
+ * the Map's own vocabulary shares: /discover's `category` is a Business
+ * category (a different taxonomy from the Map's Event categories), so it
+ * isn't carried; "upcoming" is the Map's own default (no time chip). */
+export function discoverMapHref(p: { market?: string; area?: string; when?: string }): string {
+  const q: DiscoveryQuery = {};
+  const ok = (v?: string) => (v && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(v) && v.length <= 60 ? v : undefined);
+  const market = ok(p.market);
+  if (market) {
+    q.market = market;
+    const area = ok(p.area);
+    if (area) q.area = area;
+  }
+  if (p.when === "today" || p.when === "weekend") q.when = p.when;
+  return mapHref(q);
 }
 
 /** Stable identity of a query (for caching counts / de-duplicating

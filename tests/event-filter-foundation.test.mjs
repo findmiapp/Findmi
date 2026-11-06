@@ -23,6 +23,27 @@ registerHooks({
   },
 });
 
+// A controlled clock. The windows under test (Happening Now, Today,
+// Tomorrow, This Week, This Weekend) are defined relative to "now", and the
+// fixtures below are built from it — on a real Friday or Saturday,
+// "tomorrow" falls inside "this weekend" and the dimensions stop being
+// distinguishable, so the suite failed on some days of the week. Pinned to
+// a Wednesday at noon in New York (Findmi's app zone): Today, Tomorrow and
+// This Weekend are distinct days. Only argument-less Date() / Date.now()
+// read the pinned instant; explicit dates are untouched.
+const FIXED_NOW = Date.parse("2026-11-04T17:00:00Z"); // Wed Nov 4 2026, 12:00 ET
+const RealDate = Date;
+class FixedDate extends RealDate {
+  constructor(...args) {
+    if (args.length === 0) super(FIXED_NOW);
+    else super(...args);
+  }
+  static now() {
+    return FIXED_NOW;
+  }
+}
+globalThis.Date = FixedDate;
+
 const F = await import("../src/lib/event-filter.ts");
 const FMT = await import("../src/lib/format.ts");
 const D = await import("../src/lib/data.ts");

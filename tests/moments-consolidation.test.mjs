@@ -39,10 +39,28 @@ test("homepage: heading actions — View All → /moments, My Journal → /journ
   assert.equal(F.MY_JOURNAL_HREF, "/journal");
 });
 
-test("homepage: the abandoned Map button stays gone; the Search row is the pre-experiment markup", () => {
+test("homepage: the abandoned black Map pill stays gone; Search is the full-flex primary control of the toolbar", () => {
   assert.ok(!existsSync("src/components/HomeMapButton.tsx"));
-  assert.doesNotMatch(HOME, /HomeMapButton|bg-\[#000000\]/);
-  assert.match(HOME, /<div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search anything you're into…" \/>\s*<\/div>/);
+  assert.doesNotMatch(HOME, /HomeMapButton|bg-\[#000000\]|w-\[23%\]/);
+  assert.match(HOME, /<div data-home-search-toolbar className="mx-auto flex max-w-6xl items-center gap-1\.5 px-4 pt-4 min-\[360px\]:gap-2 sm:px-6">\s*<Link/, "Explore Map leads the toolbar");
+  assert.match(HOME, /<\/Link>\s*<div className="min-w-0 flex-1">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search brands, events, places & more…" \/>\s*<\/div>\s*<\/div>/, "Search follows and takes the remaining width");
+});
+
+test("homepage: Explore Map sits left of Search on one row — slim neutral gray, pin icon, full label, /map, no Aqua, no embedded map", () => {
+  const toolbar = HOME.slice(HOME.indexOf("data-home-search-toolbar"), HOME.indexOf("<SearchBar", HOME.indexOf("data-home-search-toolbar")) + 10);
+  const link = toolbar.slice(toolbar.indexOf("<Link"), toolbar.indexOf("</Link>"));
+  assert.ok(toolbar.indexOf("data-home-explore-map") < toolbar.indexOf("<SearchBar"), "to the left of Search, same row");
+  assert.match(link, /href="\/map"/);
+  assert.match(link, /bg-\[#F3F3F3\]/);
+  assert.match(link, /border-\[#D4D4D4\]/);
+  assert.match(link, /text-\[#333333\]/);
+  assert.match(link, /whitespace-nowrap/, "the label never wraps");
+  assert.match(link, /h-10 shrink-0/, "slim, never shrinks away");
+  assert.match(link, /<NavIcon name="pin"/);
+  assert.match(link, />\s*Explore Map\s*$/);
+  assert.doesNotMatch(link, /findmi/, "no Aqua on this button");
+  assert.equal((HOME.match(/href="\/map"/g) ?? []).length, 1, "one homepage Map entry");
+  assert.doesNotMatch(HOME, /DiscoveryMapCanvas|MapExplorer|maplibre/, "no map embedded on the homepage");
 });
 
 // ── /moments ────────────────────────────────────────────────────────────────
@@ -189,4 +207,15 @@ test("every Journal view uses the newest-first helpers", () => {
   assert.match(c, /const dayEntries = sortNewestFirst\(entriesForDay\(entries, ymd\)\);/);
   assert.match(c, /const months = buildYearHistory\(entries, year\);/);
   assert.match(c, /const newest = sortNewestFirst\(entries\);/);
+});
+
+test("homepage toolbar sizing: Search submit keeps a 44×44 touch target (36px visible circle) inside the same 50px bar; Explore Map is slimmer", () => {
+  const bar = read("src/components/SearchBar.tsx");
+  assert.match(bar, /aria-label="Search"\s*className="group flex h-11 w-11 shrink-0/, "44×44 touch target");
+  assert.match(bar, /<span className="flex h-9 w-9 items-center justify-center rounded-full bg-findmi/, "36px visible Aqua circle");
+  assert.match(bar, /rounded-full border border-black\/10 bg-white py-\[2px\] pl-3\.5 pr-0/, "2 + 44 + 2 + border = the same 50px bar");
+  const link = HOME.slice(HOME.lastIndexOf("<Link", HOME.indexOf("data-home-explore-map")), HOME.indexOf("</Link>", HOME.indexOf("data-home-explore-map")));
+  assert.match(link, / px-1\.5 /);
+  assert.match(link, /min-\[360px\]:px-2"/);
+  assert.match(link, /text-sm font-semibold/, "the label keeps its size");
 });

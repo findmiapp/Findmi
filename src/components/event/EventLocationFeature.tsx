@@ -58,7 +58,7 @@ export default function EventLocationFeature({
       <div className="mt-3 rounded-2xl border border-black/5 bg-white p-3.5 sm:max-w-xl">
         {geo && (
           <div className="mb-3">
-            <ContextMap results={[geo]} label={`Map of ${location.name}`} />
+            <ContextMap results={[geo]} label={`Map of ${location.name}`} directionsOnly />
           </div>
         )}
         <div className="flex items-start gap-3">

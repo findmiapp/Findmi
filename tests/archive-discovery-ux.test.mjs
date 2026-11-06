@@ -144,7 +144,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const settle = () => act(async () => wait(60));
 const btn = (host, label) => [...host.querySelectorAll("button, a")].find((b) => b.textContent.trim() === label || b.getAttribute("aria-label") === label);
 
-async function mountShell(search) {
+async function mountShell(search, hint = null) {
+  // A fresh visit: no stored map context from an earlier test (Batch 2) —
+  // unless a test returns to one (`hint`: what the visitor left behind).
+  try {
+    window.sessionStorage.clear();
+    if (hint) window.sessionStorage.setItem(`findmi-geo-view:events:${hint.key}`, JSON.stringify({ t: Date.now(), ...hint }));
+  } catch {}
   globalThis.__search = search;
   globalThis.__path = "/events";
   const pushes = [];
@@ -203,26 +209,43 @@ test("phone Map is a screen: fixed below the header, page scroll locked (footer 
   assert.notEqual(document.body.style.overflow, "hidden", "released when leaving the Map");
 });
 
-test("sheet Peek: mapped count + partial geography in the sheet, persistent List; a multi-result Location opens its results to browse", async () => {
+test("sheet Peek: mapped count + partial geography in the sheet, one List action (heading); a multi-result Location opens its results to browse", async () => {
   const a = await mountShell("view=map");
   await settle();
   const head = sheetHead(a.host);
   assert.match(head.textContent, /4 Events on the map/);
   assert.match(head.textContent, /2 without locations/, "unmappable results are acknowledged, not hidden");
-  assert.ok([...sheet(a.host).querySelectorAll("button")].some((b) => b.textContent.trim() === "List"), "persistent List inside the geographic mode");
+  // Map Discovery Batch 1: the heading's List action is the one way back
+  // — the sheet no longer repeats it.
+  assert.ok(btn(a.host, "Show Events as a List"), "List stays reachable from the heading");
+  assert.ok(![...sheet(a.host).querySelectorAll("button")].some((b) => b.textContent.trim() === "List"), "no duplicate List in the sheet");
   const studio = `loc:${STUDIO.id}`;
   assert.equal(globalThis.__canvas.features.find((f) => f.id === studio).count, 3, "one marker for the three Events at Spring Studios");
   assert.ok(globalThis.__canvas.features.some((f) => f.promoted), "the map tells its story before any click");
   await act(async () => globalThis.__canvas.onSelect(studio));
   await settle();
   assert.match(sheetHead(a.host).textContent, /Spring Studios · 3 Events/);
+  // The floating preview at the marker: its lead result, real destination.
+  const fp = globalThis.__canvas.preview;
+  assert.equal(fp.featureId, studio);
+  assert.ok(fp.href.startsWith("/event/") || fp.href.startsWith("/"), "the result's public page");
+  assert.equal(fp.kind, "Event");
+  assert.equal(fp.more, 2, "+2 more here");
   const cards = [...sheet(a.host).querySelectorAll("[data-geo-card]")].map((c) => c.getAttribute("data-geo-card"));
   assert.deepEqual(cards.sort(), ["ev:art-walk", "ev:design-talk", "ev:family-bash"].sort(), "every result at that place, side by side");
+  // The marker selected its cards; each selected card is now ONE link to
+  // its page (no separate View).
+  for (const c of sheet(a.host).querySelectorAll("[data-geo-card]")) {
+    const link = c.querySelector("a");
+    assert.ok(link && link.className.includes("after:inset-0"), "the whole selected card opens its page");
+    assert.equal(c.querySelectorAll("a").length, 1, "and there is no second View link");
+  }
   assert.equal(head.getAttribute("aria-expanded"), "false");
   // Back to every result (Peek strip); tapping one keeps the map in sync.
   // (Peek → Browse → Expanded heights are /map's own sheet model, covered
   // by tests/map-ux-completion.test.mjs — jsdom has no layout.)
   await act(async () => btn(a.host, "Show all results").click());
+  assert.equal(globalThis.__canvas.preview, null, "closing returns the marker to its compact state");
   assert.match(sheetHead(a.host).textContent, /4 Events on the map/);
   const tabli = [...sheet(a.host).querySelectorAll("[data-geo-card]")].find((c) => c.getAttribute("data-geo-card") === "ev:tabli");
   await act(async () => tabli.querySelector("button").click());
@@ -235,7 +258,7 @@ test("Map → List keeps context: the place selected on the Map is brought into 
   const a = await mountShell("view=map");
   await settle();
   await act(async () => globalThis.__canvas.onSelect(`loc:${EATALY.id}`));
-  const listBtn = [...sheet(a.host).querySelectorAll("button")].find((b) => b.textContent.trim() === "List");
+  const listBtn = btn(a.host, "Show Events as a List");
   globalThis.__scrolledTo = null;
   await act(async () => listBtn.click());
   assert.equal(a.pushes.at(-1), "/events?view=list", "an explicit List — Map-first is only a fresh visit's default");
@@ -336,3 +359,60 @@ test("every archive: heading + view action, ONE search + Refine row, lenses only
   assert.match(read("src/components/discover/ArchiveSearchField.tsx"), /name=\{name\}/, "still the same named URL field");
 });
 
+
+// ---------------------------------------------------------------- Map Discovery Batch 2: Back to an archive map
+
+const PANNED = [-74.02, 40.71, -73.99, 40.735];
+
+test("Back to an archive map (Events / Locations / Businesses / Findmi Here share this shell): same camera, selection + floating preview, sheet", async () => {
+  // Filters, view and map area live in the URL already; the camera,
+  // selection and sheet come back from the visitor's own context.
+  const a = await mountShell("view=map&when=weekend", { key: "when=weekend", viewport: PANNED, selected: `loc:${STUDIO.id}`, sheet: "browse" });
+  await settle();
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED, "the same center / zoom, not a fresh fit to the results");
+  assert.equal(globalThis.__canvas.fit, null, "no auto-fit over the restored camera");
+  assert.equal(globalThis.__canvas.selectedId, `loc:${STUDIO.id}`);
+  assert.equal(globalThis.__canvas.preview?.featureId, `loc:${STUDIO.id}`, "its floating preview is open again");
+  assert.equal(sheetHead(a.host).getAttribute("aria-expanded"), "true", "the sheet position");
+  assert.ok(btn(a.host, "Search This Area"), "the restored camera differs from the queried area, so Search This Area is offered");
+  a.root.unmount();
+});
+
+test("Back to an archive map whose selected place is gone: the camera stays, the selection clears quietly; another result set ignores the context", async () => {
+  const a = await mountShell("view=map", { key: "", viewport: PANNED, selected: "loc:gone", sheet: "peek" });
+  await settle();
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED);
+  assert.equal(globalThis.__canvas.selectedId, null);
+  assert.equal(globalThis.__canvas.preview, null);
+  a.root.unmount();
+  const b = await mountShell("view=map&when=today", { key: "when=weekend", viewport: PANNED, selected: `loc:${STUDIO.id}`, sheet: "browse" });
+  await settle();
+  assert.notDeepEqual(globalThis.__canvas.initialBbox, PANNED, "a different result set starts fresh");
+  assert.equal(globalThis.__canvas.selectedId, null);
+  b.root.unmount();
+});
+
+test("exploring an archive map keeps its context for the return (camera, selected place, sheet)", async () => {
+  const a = await mountShell("view=map");
+  await settle();
+  await act(async () => globalThis.__canvas.onViewportChange(PANNED, true));
+  await act(async () => globalThis.__canvas.onSelect(`loc:${EATALY.id}`));
+  await settle();
+  const saved = JSON.parse(window.sessionStorage.getItem("findmi-geo-view:events:"));
+  assert.deepEqual(saved.viewport, PANNED);
+  assert.equal(saved.selected, `loc:${EATALY.id}`);
+  assert.equal(saved.key, "");
+  a.root.unmount();
+});
+
+test("Findmi Here: no silent 30 — the List pages with Load More and honest counts; the map reads the same bounded set", () => {
+  const page = read("src/app/(public)/find/page.tsx");
+  assert.doesNotMatch(page, /slice\(0, 30\)|getFindMiHereFeed\(when, 30/, "no 30-result cap on the List");
+  assert.match(page, /getFindMiHereFeed\(when, GEO_LIMIT/, "the window's whole (bounded) set is read once");
+  assert.match(page, /Load More/);
+  assert.match(page, /Showing \{shown\.toLocaleString\(\)\} of \{shownTotal\.toLocaleString\(\)\}/, "loaded vs total is explicit");
+  assert.match(page, /count=\{`\$\{totalLabel\}/, "the total sits beside the heading");
+  const route = read("src/app/api/geo/[surface]/route.ts");
+  assert.doesNotMatch(route, /slice\(0, 30\)|Math\.min\(inside\.length, 30\)|appearanceGeo\(a\.when, 30/, "the map isn't capped at 30 either");
+  assert.match(route, /truncated: items\.length >= GEO_LIMIT/, "a full bounded read says so (\"zoom in for more\")");
+});

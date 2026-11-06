@@ -7,7 +7,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import type { Bbox } from "@/lib/discovery/map-core";
 import { bboxParam, boundsOf, geoFeatures, type GeoResponse, type GeoResult, type ViewMode } from "@/lib/geo-results";
 import { DEFAULT_MAP_BBOX } from "@/lib/map-config";
+import { geoViewStorageKey, parseGeoViewHint, type GeoViewHint } from "@/lib/discovery/map-restore";
 import GeoResultCard from "./GeoResultCard";
+import { geoPreview } from "@/lib/geo-preview";
 import ViewModeSwitch from "./ViewModeSwitch";
 import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetState } from "./sheet";
 
@@ -22,7 +24,8 @@ import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetSt
 // phones the archive becomes a screen below the Findmi header — compact
 // controls, the map filling the rest of the dynamic viewport, and /map's
 // own Peek / Browse / Expanded sheet model (components/map/sheet.ts) for
-// the results, with a persistent List action. Desktop keeps List / Map /
+// the results. The heading's List action is the one way back to the List
+// (the sheet no longer repeats it). Desktop keeps List / Map /
 // Split (sticky map beside the List, hover ↔ marker sync).
 //
 // Both draw the SAME result set (/api/geo/<surface> reads the archive's own
@@ -123,6 +126,21 @@ export default function ArchiveGeoShell({
     return p.toString();
   }, [search]);
 
+  // Returning to this result set (Back from a detail page, or back through
+  // the app's own navigation within ~30 min): its camera, selection and
+  // sheet, read once (lib/discovery/map-restore).
+  const resumeHint = useRef<GeoViewHint | null | undefined>(undefined);
+  if (resumeHint.current === undefined) {
+    let raw: string | null = null;
+    try {
+      raw = typeof window === "undefined" ? null : window.sessionStorage.getItem(geoViewStorageKey(surface, queryKey));
+    } catch {
+      /* storage unavailable — a fresh map */
+    }
+    resumeHint.current = parseGeoViewHint(raw, queryKey);
+    if (resumeHint.current?.viewport) lastView.current = { key: queryKey, bbox: resumeHint.current.viewport };
+  }
+
   const hrefWith = useCallback(
     (edit: (p: URLSearchParams) => void) => {
       const p = new URLSearchParams(search.toString());
@@ -206,8 +224,16 @@ export default function ArchiveGeoShell({
         // What was queried: the URL's map area, or the results' extent the
         // map opens on (the canvas reports no move for its first view).
         queried.current = bbox ?? boundsOf(body.results);
-        lastView.current = null;
-        if (!bbox) {
+        const hint = resumeHint.current;
+        if (hint && hint.key === queryKey && hint.viewport) {
+          // Returning: the camera the visitor left, not a fresh fit.
+          lastView.current = { key: queryKey, bbox: hint.viewport };
+          awaitingFit.current = false;
+          setShowSearchArea(hint.searchArea ?? movedMeaningfully(queried.current, hint.viewport));
+        } else {
+          lastView.current = null;
+        }
+        if (!bbox && !(hint && hint.key === queryKey && hint.viewport)) {
           const b = boundsOf(body.results);
           if (b) {
             awaitingFit.current = true;
@@ -233,6 +259,10 @@ export default function ArchiveGeoShell({
   }, [features]);
   const selectedFeature = features.find((f) => f.id === selected) ?? null;
   const selectedResults = useMemo(() => (selectedFeature && results ? results.filter((r) => selectedFeature.keys.includes(r.key)) : []), [selectedFeature, results]);
+  // The floating preview at a tapped marker (lib/geo-preview — the same
+  // card every selectable map shows) — only for a real selection, never
+  // while browsing the Peek strip.
+  const floatingPreview = selected && results ? geoPreview(selectedFeature, results) : null;
   const initialBbox = useMemo<Bbox>(
     () => (lastView.current?.key === queryKey ? lastView.current.bbox : null) ?? bbox ?? (results ? boundsOf(results) : null) ?? DEFAULT_MAP_BBOX,
     // Only the first view of a mounted map matters.
@@ -270,7 +300,15 @@ export default function ArchiveGeoShell({
     if (view !== "split") return;
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-geo-key]");
     const f = el?.dataset.geoKey ? featureByEntity.get(el.dataset.geoKey) : undefined;
-    if (f && f !== selected) setSelected(f);
+    // Hover only highlights its marker (like browsing the Peek strip): the
+    // floating preview opens on a click, so it never pops over nearby
+    // markers while the pointer crosses the List.
+    if (f && f !== browsing) {
+      setBrowsing(f);
+      // Attention moved to another List item: its marker lights up and an
+      // open preview for a different place closes (no card pops up).
+      if (selected && selected !== f) setSelected(null);
+    }
   };
 
   const onViewportChange = useCallback(
@@ -318,7 +356,27 @@ export default function ArchiveGeoShell({
   const partialLine = results && unmapped > 0 ? `${unmapped.toLocaleString()} without ${unmapped === 1 ? "a location" : "locations"}${data?.body.truncated ? " · zoom in for more" : ""}` : null;
 
   // ---------------------------------------------------------------- mobile sheet (the /map model)
-  const [sheet, setSheet] = useState<SheetState>("peek");
+  const [sheet, setSheet] = useState<SheetState>(resumeHint.current?.sheet ?? "peek");
+  // Restore the selection once its markers exist — only if it's still in
+  // the result set — then keep this map's context for the next return.
+  useEffect(() => {
+    const hint = resumeHint.current;
+    if (!hint || !results || hint.key !== queryKey) return;
+    resumeHint.current = null;
+    if (hint.selected && features.some((f) => f.id === hint.selected)) {
+      setSelected(hint.selected);
+      setSheet(hint.sheet);
+    }
+  }, [results, features, queryKey]);
+  useEffect(() => {
+    if (!geoMode || !results || resumeHint.current) return;
+    const camera = viewport ?? (lastView.current?.key === queryKey ? lastView.current.bbox : null);
+    try {
+      window.sessionStorage.setItem(geoViewStorageKey(surface, queryKey), JSON.stringify({ key: queryKey, viewport: camera, selected, sheet, searchArea: showSearchArea, t: Date.now() } satisfies GeoViewHint));
+    } catch {
+      /* storage unavailable — nothing to restore later */
+    }
+  }, [geoMode, results, surface, queryKey, viewport, selected, sheet, showSearchArea]);
   const [dragH, setDragH] = useState<number | null>(null);
   const sheetDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -413,9 +471,12 @@ export default function ArchiveGeoShell({
         initialBbox={initialBbox}
         fit={fit}
         focus={focus}
-        padding={isPhone() ? { top: 56, bottom: (measured ? heights[sheet] : 140) + 12, left: 28, right: 28 } : undefined}
+        // Desktop: while Search This Area shows, the floating preview keeps below it.
+        padding={isPhone() ? { top: 56, bottom: (measured ? heights[sheet] : 140) + 12, left: 28, right: 28 } : showSearchArea ? { top: 56, bottom: 24, left: 24, right: 24 } : undefined}
         label={`Map of ${many}`}
         autoCollapseAttribution
+        keepSelectionInView
+        preview={floatingPreview}
       />
     ) : results ? (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 pb-40 text-center lg:pb-6">
@@ -470,10 +531,6 @@ export default function ArchiveGeoShell({
                 <Glyph d="M6 6l12 12M18 6 6 18" className="h-4 w-4" />
               </button>
             )}
-            <button type="button" onClick={() => setView("list")} className="flex min-h-9 items-center gap-1.5 rounded-full bg-black/[0.05] px-3 text-xs font-bold text-ink/75">
-              <Glyph d={LIST_ICON} className="h-3.5 w-3.5" />
-              List
-            </button>
           </span>
         </span>
       </div>
@@ -483,7 +540,7 @@ export default function ArchiveGeoShell({
             <div ref={stripRef} onScroll={onStripScroll} className="flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sheetResults.slice(0, 30).map((r) => (
                 <div key={r.key} className="w-[84%] max-w-[22rem] shrink-0 snap-start">
-                  <GeoResultCard result={r} compact selected={selectedFeature !== null || browsing === featureOfKey.get(r.key)} onSelect={selectResult} />
+                  <GeoResultCard result={r} compact selected={selectedFeature !== null} highlighted={browsing === featureOfKey.get(r.key)} onSelect={selectResult} viewLink={false} />
                 </div>
               ))}
             </div>
@@ -491,7 +548,7 @@ export default function ArchiveGeoShell({
         ) : (
           <div ref={contentRef} className="flex flex-col gap-2 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             {sheetResults.map((r) => (
-              <GeoResultCard key={r.key} result={r} compact selected={selected !== null && featureOfKey.get(r.key) === selected} onSelect={selectResult} />
+              <GeoResultCard key={r.key} result={r} compact selected={selected !== null && featureOfKey.get(r.key) === selected} onSelect={selectResult} viewLink={false} />
             ))}
           </div>
         )}
@@ -500,7 +557,9 @@ export default function ArchiveGeoShell({
   );
 
   const desktopSelection =
-    view === "map" && selectedResults.length > 0 ? (
+    // Several results at one place: the list of them beside the floating
+    // preview (which shows the lead one).
+    view === "map" && selectedResults.length > 1 ? (
       <div className="absolute bottom-3 left-3 hidden max-h-[45%] w-96 flex-col gap-2 overflow-y-auto rounded-2xl bg-white/95 p-2 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur lg:flex">
         <div className="flex items-center justify-between px-1">
           <p className="truncate text-xs font-bold text-ink/60">{sheetTitle}</p>
@@ -509,7 +568,7 @@ export default function ArchiveGeoShell({
           </button>
         </div>
         {selectedResults.map((r) => (
-          <GeoResultCard key={r.key} result={r} compact />
+          <GeoResultCard key={r.key} result={r} compact selected />
         ))}
       </div>
     ) : null;
@@ -563,7 +622,7 @@ export default function ArchiveGeoShell({
             className={`relative overflow-hidden bg-[#eef0ef] max-lg:absolute max-lg:inset-0 max-lg:[&_.maplibregl-ctrl-bottom-right]:!bottom-[calc(var(--sheet-h)+0.25rem)] ${sheet !== "peek" || dragH !== null ? "max-lg:[&_.maplibregl-ctrl-bottom-right]:hidden max-lg:[&_[data-search-area]]:hidden" : ""} lg:rounded-2xl lg:border lg:border-black/5 ${view === "split" ? "lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)] lg:min-h-[420px]" : "lg:h-[calc(100vh-12rem)] lg:min-h-[480px]"}`}
           >
             {mapCanvas}
-            <div data-search-area className="pointer-events-none absolute inset-x-0 top-3 z-[5] flex justify-center px-3">{searchAreaButton}</div>
+            <div data-search-area className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">{searchAreaButton}</div>
             {desktopSelection}
             {mobileSheet}
           </div>

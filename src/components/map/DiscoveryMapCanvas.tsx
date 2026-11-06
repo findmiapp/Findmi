@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpressionSpecification, GeoJSONSource, Map as MLMap, MapGeoJSONFeature, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
+import MapFloatingPreview, { type MapPreview } from "./MapFloatingPreview";
+import { placePreview, previewMedia, previewPan, previewWidth, selectedLabelSide, selectedLabelWidth, selectionNeedsPan, type ControlsRect, type Insets } from "./selected-label";
 
 // Discovery Map renderer. Population rendering is entirely native MapLibre
 // layers on ONE clustered GeoJSON source (no React/DOM marker per result):
@@ -13,7 +15,9 @@ import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-co
 //           in red AND a "LIVE" word in the label — never color alone)
 //   close → Brand/Place logo inside the shell + identity label
 //   closer→ identity + status/time label ("Lavazza · LIVE · Ends 4 PM")
-// Only the SELECTED result gets a rich DOM marker. The canvas never fetches
+// Only the SELECTED result gets a DOM marker: with a `preview` (discovery
+// maps) a compact selected pin plus the floating preview card anchored to
+// it; otherwise the rich identity label. The canvas never fetches
 // on pan/zoom; it reports the viewport and the page decides (Search This
 // Area).
 
@@ -53,7 +57,17 @@ export interface CanvasProps {
    * by pressing that control's own toggle, never by hiding it. Off for
    * /map. */
   autoCollapseAttribution?: boolean;
+  /** Pan a newly selected marker into the visible, control-free part of
+   * the map when it isn't already there (archives; /map on desktop —
+   * /map's phone sheet does its own settling pan). */
+  keepSelectionInView?: boolean;
+  /** Discovery maps: the selected result's floating preview card, drawn at
+   * its marker (only when `preview.featureId` is the selection). */
+  preview?: MapPreview | null;
 }
+
+const DEFAULT_PAD: Insets = { top: 24, bottom: 24, left: 24, right: 24 };
+
 
 /** How long the full credits stay open on a map that set
  * autoCollapseAttribution. */
@@ -119,9 +133,26 @@ async function loadLogoImage(url: string): Promise<ImageData | null> {
   });
 }
 
-function selectedElement(f: MapFeature): HTMLElement {
+/** The selected marker while its floating preview is open: a compact,
+ * emphasized pin (logo or initial) — the card carries the words. */
+function pinElement(f: MapFeature): HTMLElement {
   const el = document.createElement("div");
-  el.className = "pointer-events-none flex -translate-y-1/2 items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-1 pr-3 shadow-[0_6px_20px_rgba(20,176,188,0.35)] ring-2 " + (f.live ? "ring-red-600" : "ring-findmi");
+  el.className = `pointer-events-none flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-[3px] bg-white text-xs font-bold text-findmi-700 shadow-[0_4px_14px_rgba(20,176,188,0.45)] ${f.live ? "border-red-600" : "border-findmi"}`;
+  el.setAttribute("data-selected-pin", f.id);
+  if (f.logo) {
+    const img = document.createElement("img");
+    img.src = f.logo;
+    img.alt = "";
+    img.className = "h-full w-full object-contain p-0.5";
+    el.appendChild(img);
+  } else el.textContent = f.pinText ?? (f.label || "?").slice(0, 1).toUpperCase();
+  return el;
+}
+
+function selectedElement(f: MapFeature, side: "left" | "right", textWidth: number): HTMLElement {
+  const el = document.createElement("div");
+  // The mark sits on the marker's point; the words run toward `side`.
+  el.className = `pointer-events-none flex items-center gap-2 rounded-full border border-black/10 bg-white py-1 shadow-[0_6px_20px_rgba(20,176,188,0.35)] ring-2 ${side === "left" ? "flex-row-reverse pl-3 pr-1" : "pl-1 pr-3"} ` + (f.live ? "ring-red-600" : "ring-findmi");
   const mark = document.createElement("div");
   mark.className = "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-findmi-50 text-xs font-bold text-findmi-700";
   if (f.logo) {
@@ -132,19 +163,23 @@ function selectedElement(f: MapFeature): HTMLElement {
     mark.appendChild(img);
   } else mark.textContent = f.pinText ?? (f.label || "?").slice(0, 1).toUpperCase();
   const text = document.createElement("div");
-  text.className = "flex min-w-0 flex-col leading-tight";
+  text.className = `flex min-w-0 flex-col leading-tight ${side === "left" ? "items-end text-right" : ""}`;
   const name = document.createElement("span");
-  name.className = "max-w-[11rem] truncate text-[13px] font-bold text-ink";
+  name.className = "truncate text-[13px] font-bold text-ink";
+  name.style.maxWidth = `${textWidth}px`;
   name.textContent = f.label;
+  // Long names stay whole for screen readers and on hover.
+  name.title = f.label;
   const status = document.createElement("span");
-  status.className = "max-w-[11rem] truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
+  status.className = "truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
+  status.style.maxWidth = `${textWidth}px`;
   status.textContent = f.live ? (f.status && f.status !== "LIVE" ? `● LIVE · ${f.status}` : "● LIVE") : f.status || f.place;
   text.append(name, status);
   el.append(mark, text);
   return el;
 }
 
-export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false }: CanvasProps) {
+export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false, keepSelectionInView = false, preview = null }: CanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -155,6 +190,28 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   cb.current = { onSelect, onViewportChange };
   const featuresRef = useRef(features);
   featuresRef.current = features;
+  const paddingRef = useRef(padding);
+  paddingRef.current = padding;
+  const lastSelected = useRef<string | null>(null);
+  // ---- floating preview state: where the selected pin is on screen, the
+  // card's measured size, and one pending "make it fit" pan per selection.
+  const floatingId = preview?.featureId ?? null;
+  const [anchor, setAnchor] = useState<{ id: string; x: number; y: number; w: number; h: number; controls: ControlsRect | null } | null>(null);
+  /** The bottom-right control stack (zoom + map credits) as it is now, in
+   * map coordinates; null while it's hidden. */
+  const controlsRect = useCallback((): ControlsRect | null => {
+    const root = container.current;
+    const el = root?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+    if (!root || !el) return null;
+    const r = el.getBoundingClientRect();
+    const o = root.getBoundingClientRect();
+    return r.width && r.height ? { x: r.left - o.left, y: r.top - o.top, w: r.width, h: r.height } : null;
+  }, []);
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null);
+  const [cardH, setCardH] = useState(0);
+  const cardSize = useRef<{ w: number; h: number } | null>(null);
+  const floatingFeature = useRef<MapFeature | null>(null);
+  const pendingFit = useRef(false);
 
   // ---- mount once
   useEffect(() => {
@@ -393,8 +450,151 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     markerRef.current?.remove();
     markerRef.current = null;
     const f = selectedId ? features.find((x) => x.id === selectedId) : null;
-    if (f) markerRef.current = new lib.Marker({ element: selectedElement(f), anchor: "left", offset: [-18, 0] }).setLngLat([f.lng, f.lat]).addTo(map);
-  }, [selectedId, features, ready]);
+    const isNew = selectedId !== lastSelected.current;
+    lastSelected.current = selectedId;
+    const floating = Boolean(f && floatingId === f.id);
+    floatingFeature.current = floating ? f! : null;
+    if (!floating) setAnchor(null);
+    if (!f) return;
+    // The rich label extends away from the nearer edge and is only as wide
+    // as the room on that side — re-placed whenever the map settles, so a
+    // pan or zoom never leaves it hanging off the visible map.
+    let side: "left" | "right" | null = null;
+    let width = 0;
+    const place = () => {
+      if (floating) {
+        // The compact pin never changes with the camera.
+        if (markerRef.current) return;
+      } else {
+        const w = map.getContainer().clientWidth;
+        const pt = map.project([f.lng, f.lat]);
+        const nextSide = selectedLabelSide(pt.x, w);
+        const nextWidth = selectedLabelWidth(nextSide === "left" ? pt.x : w - pt.x);
+        if (markerRef.current && nextSide === side && Math.abs(nextWidth - width) < 8) return;
+        side = nextSide;
+        width = nextWidth;
+      }
+      markerRef.current?.remove();
+      markerRef.current = new lib.Marker(
+        floating
+          ? { element: pinElement(f), anchor: "center" }
+          : { element: selectedElement(f, side!, width), anchor: side === "left" ? "right" : "left", offset: [side === "left" ? 18 : -18, 0] }
+      )
+        .setLngLat([f.lng, f.lat])
+        .addTo(map);
+    };
+    place();
+    map.on("moveend", place);
+    // The floating card follows its pin on every camera frame.
+    let raf = 0;
+    let controlsRo: ResizeObserver | null = null;
+    const track = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const c = map.getContainer();
+        const pt = map.project([f.lng, f.lat]);
+        setAnchor({ id: f.id, x: pt.x, y: pt.y, w: c.clientWidth, h: c.clientHeight, controls: controlsRect() });
+      });
+    };
+    if (floating) {
+      if (isNew) {
+        // Fold the map credits to their ⓘ while a preview is open — MapLibre's
+        // own toggle (what its first drag does; never hidden, one tap away) —
+        // so the card has room beside its pin instead of yielding to a
+        // ~300px credits strip.
+        const open = container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show .maplibregl-ctrl-attrib-button");
+        open?.click();
+        pendingFit.current = true;
+        // A marker tap moves nothing: check the fit once the card is drawn.
+        requestAnimationFrame(() => tryFit());
+      }
+      track();
+      map.on("move", track);
+      map.on("resize", track);
+      map.on("moveend", tryFit);
+      // The credits fold / unfold (and the stack lifts with the sheet)
+      // without a camera move: re-place the card then too.
+      const stack = container.current?.querySelector(".maplibregl-ctrl-bottom-right");
+      if (stack && typeof ResizeObserver !== "undefined") {
+        controlsRo = new ResizeObserver(() => track());
+        controlsRo.observe(stack);
+      }
+    }
+    if (keepSelectionInView && isNew && !floating) {
+      const c = map.getContainer();
+      const pad = paddingRef.current ?? { top: 24, bottom: 24, left: 24, right: 24 };
+      const pt = map.project([f.lng, f.lat]);
+      if (selectionNeedsPan(pt.x, pt.y, c.clientWidth, c.clientHeight, pad)) map.easeTo({ center: [f.lng, f.lat], padding: pad, duration: prefersReducedMotion() ? 0 : 400 });
+    }
+    return () => {
+      map.off("moveend", place);
+      map.off("move", track);
+      map.off("resize", track);
+      map.off("moveend", tryFit);
+      controlsRo?.disconnect();
+      cancelAnimationFrame(raf);
+    };
+    // tryFit is stable (refs only).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, features, ready, keepSelectionInView, floatingId]);
+
+  // ---- floating preview: one corrective pan per selection when the card
+  // can't fit whole beside its pin (waits for any camera move to settle).
+  const tryFit = useCallback(() => {
+    const map = mapRef.current;
+    const f = floatingFeature.current;
+    const size = cardSize.current;
+    if (!pendingFit.current || !map || !f || !size) return;
+    if (map.isMoving()) return;
+    pendingFit.current = false;
+    const c = map.getContainer();
+    const pt = map.project([f.lng, f.lat]);
+    const view = { w: c.clientWidth, h: c.clientHeight };
+    const pad = paddingRef.current ?? DEFAULT_PAD;
+    const controls = controlsRect();
+    if (!placePreview(pt, size, view, pad, controls).fits) map.panBy(previewPan(pt, size, view, pad, controls), { duration: prefersReducedMotion() ? 0 : 400 });
+  }, [controlsRect]);
+  // The card's real size (cover image, wrapped title) drives placement.
+  useEffect(() => {
+    if (!cardEl) return;
+    const read = () => {
+      const size = { w: cardEl.offsetWidth, h: cardEl.offsetHeight };
+      cardSize.current = size;
+      setCardH(size.h);
+      if (pendingFit.current) requestAnimationFrame(() => tryFit());
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(cardEl);
+    return () => ro.disconnect();
+  }, [cardEl, tryFit]);
+  // The sheet / controls settled at a new height (a selection can change
+  // the tray): if the open preview no longer fits beside its pin, one more
+  // corrective pan. Never on the visitor's own map moves.
+  const padTop = padding?.top ?? 0;
+  const padBottom = padding?.bottom ?? 0;
+  useEffect(() => {
+    if (!floatingFeature.current || !cardSize.current) return;
+    const t = setTimeout(() => {
+      pendingFit.current = true;
+      tryFit();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [padTop, padBottom, tryFit]);
+  // Escape closes the floating preview.
+  useEffect(() => {
+    if (!floatingId || selectedId !== floatingId) return;
+    // …but never an Escape meant for a dialog open above the map. Read in
+    // the capture phase: a dialog that closes itself on Escape (its own
+    // document listener) is still in the DOM when this runs.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      cb.current.onSelect(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [floatingId, selectedId]);
 
   // ---- programmatic camera moves
   useEffect(() => {
@@ -418,6 +618,25 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     <div className="relative h-full w-full bg-[#eef0ef]">
       {/* h-full, not absolute: maplibre-gl.css makes .maplibregl-map position: relative. */}
       <div ref={container} className="h-full w-full" role="region" aria-label={`${label}. Every result is also listed in the results panel.`} />
+      {preview && anchor && anchor.id === preview.featureId && selectedId === preview.featureId && (() => {
+        const pad = padding ?? DEFAULT_PAD;
+        const view = { w: anchor.w, h: anchor.h };
+        const w = previewWidth(view.w);
+        const at = placePreview(anchor, { w, h: cardH || 240 }, view, pad, anchor.controls);
+        if (!at.visible) return null;
+        return (
+          <MapFloatingPreview
+            preview={preview}
+            side={at.side}
+            caretX={at.caretX}
+            cardRef={setCardEl}
+            media={previewMedia(view.h - pad.top - pad.bottom)}
+            onClose={() => onSelect(null)}
+            // Measured once before it's shown, so it never flashes in the wrong spot.
+            style={{ left: at.left, top: at.top, width: w, visibility: cardH ? "visible" : "hidden" }}
+          />
+        );
+      })()}
       {failed && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
           <p className="max-w-xs rounded-2xl bg-white/95 px-4 py-3 text-sm text-ink/70 shadow-sm">The map couldn&rsquo;t load right now. Every result is still listed below.</p>

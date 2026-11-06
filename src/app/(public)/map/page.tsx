@@ -3,7 +3,7 @@ import { NOINDEX_FOLLOW, hasStateParams } from "@/lib/seo/indexing";
 import MapExplorer from "@/components/map/MapExplorer";
 import type { FilterOptions } from "@/components/map/MapFilterSheet";
 import { getMapPersonalSignals, runMapDiscovery } from "@/lib/discovery/map-server";
-import { paramsToQuery, type DiscoveryQuery } from "@/lib/discovery/query";
+import { mapView, paramsToQuery, type DiscoveryQuery } from "@/lib/discovery/query";
 import { getVocabulary } from "@/lib/discovery/server";
 import { DEFAULT_MAP_BBOX } from "@/lib/map-config";
 
@@ -25,14 +25,14 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 }
 
 /**
- * Discovery Map + Feed (Discovery Engine V1). The URL is the Discovery
+ * Discovery Map + List (Discovery Engine V1). The URL is the Discovery
  * Query (lib/discovery/query). The first result set is rendered on the
  * server by the same engine the client calls afterwards.
  */
 export default async function MapPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const parsed = paramsToQuery(params);
-  const view = params.view === "feed" ? "feed" : "map";
+  const view = mapView(params.view);
   // Near Me is never resolved without the viewer's explicit tap on THIS
   // device: a shared "near me" link opens on a default area and asks.
   const nearRequested = Boolean(parsed.near && !parsed.bbox);

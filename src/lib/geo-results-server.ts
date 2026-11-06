@@ -5,6 +5,7 @@ import { isEventHappeningNow } from "@/lib/event-filter";
 import { eventHref } from "@/lib/event-links";
 import { calendarDate, formatWhen } from "@/lib/event-time";
 import { isLocationDiscoverable } from "@/lib/location-eligibility";
+import { unambiguousEventLocations } from "@/lib/event-location-resolution";
 import { geoPlace, inBbox, placeResult, type GeoPlace, type GeoResponse, type GeoResult } from "@/lib/geo-results";
 import type { Bbox } from "@/lib/discovery/map-core";
 
@@ -61,7 +62,13 @@ type EventDiscoveryRow = Awaited<ReturnType<typeof getEventsDiscoveryRows>>[numb
 function eventRowResults(rows: readonly EventDiscoveryRow[]): GeoResult[] {
   const out: GeoResult[] = [];
   for (const r of rows) {
-    const place = placeOf(r.occurrenceLocation as unknown as Row);
+    // Discovery projection: listed Locations only — the same rule as
+    // locationsById (Findmi Here, Brands, Products) and /map. An unlisted
+    // (Needs Review), archived or trashed Location never draws a public
+    // Event date; the Event itself still lists without a marker.
+    const lr = r.occurrenceLocation as unknown as Row | null;
+    if (!lr || lr.is_demo === true || lr.archived_at || lr.trashed_at) continue;
+    const place = placeOf(lr);
     if (!place) continue;
     const live = isEventHappeningNow(r.effectiveStart, r.effectiveEnd);
     const when = r.occurrence ? formatWhen(r.occurrence) : (calendarDate(r.event) ?? "");
@@ -172,11 +179,37 @@ export async function brandsInBbox<T extends { id: string }>(brands: T[], bbox: 
 
 // ---------------------------------------------------------------- Pop-Ups (Findmi Here)
 
+/** Where a Pop-Up is, by its real relationships only: its own Location; for
+ * an Event-linked one without it, its date's Location, else its Event's
+ * single Location (lib/event-location-resolution). Never a headquarters,
+ * never geocoded text, never for a hidden-location Event. */
+async function appearanceLocationIds(items: readonly AppearanceFeedItem[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const needs = items.filter((i) => !i.location_id && i.event_id && !(i as { location_hidden?: boolean }).location_hidden);
+  for (const i of items) if (i.location_id) out.set(i.id, i.location_id);
+  const supabase = getSupabase();
+  if (!needs.length || !supabase) return out;
+  const eventIds = [...new Set(needs.map((i) => i.event_id as string))];
+  const { data } = await supabase.from("event_occurrences").select("id, event_id, location_id, status").in("event_id", eventIds).limit(2000);
+  const rows = (data ?? []) as { id: string; event_id: string; location_id: string | null; status: string | null }[];
+  const byOccurrence = new Map(rows.map((r) => [r.id, r.location_id]));
+  const single = unambiguousEventLocations(rows);
+  for (const i of needs) {
+    const loc = (i.event_occurrence_id ? byOccurrence.get(i.event_occurrence_id) : null) ?? single.get(i.event_id as string) ?? null;
+    if (loc) out.set(i.id, loc);
+  }
+  return out;
+}
+
 export async function appearanceResults(items: AppearanceFeedItem[]): Promise<GeoResult[]> {
-  const locs = await locationsById(items.map((i) => i.location_id ?? "").filter(Boolean));
+  // Discovery projection: listed Locations only (an unlisted / Needs Review
+  // Location is drawn in context only on its Business's own map).
+  const placeOfItem = await appearanceLocationIds(items);
+  const locs = await locationsById([...placeOfItem.values()]);
   const out: GeoResult[] = [];
   for (const a of items) {
-    const place = placeOf(a.location_id ? locs.get(a.location_id) : null);
+    const locationId = placeOfItem.get(a.id);
+    const place = placeOf(locationId ? locs.get(locationId) : null);
     if (!place) continue;
     const live = isEventHappeningNow(a.start_at, a.end_at);
     const when = formatWhen(dated(a as unknown as Row)) || null;
@@ -292,7 +325,7 @@ export async function brandPlaceResults(business: { id: string; slug: string }):
  * show) as map results: each date at ITS OWN linked Location. A date with
  * no linked Location, or whose Event withholds the venue, isn't drawn. */
 export async function scheduleResults(
-  items: { id: string; title: string; start_at: string; end_at: string | null; location_id: string | null; location_hidden?: boolean; event_id?: string | null; event_occurrence_id?: string | null; event?: { slug: string } | null }[],
+  items: { id: string; title: string; start_at: string; end_at: string | null; location_id: string | null; location_hidden?: boolean; event_id?: string | null; event_occurrence_id?: string | null; flyer_image_url?: string | null; event?: { slug: string; cover_image_url?: string | null } | null }[],
   business: { slug: string; name: string; logo_url?: string | null }
 ): Promise<GeoResult[]> {
   const mappable = items.filter((a) => a.location_id && !a.location_hidden);
@@ -306,11 +339,15 @@ export async function scheduleResults(
     const when = formatWhen(dated(a as unknown as Row)) || null;
     out.push({
       key: `app:${a.id}`,
-      kind: "appearance",
+      // An Event-backed date (hosted or participating) is an Event; a
+      // standalone date is a Pop-Up — what the map preview calls it.
+      kind: a.event?.slug ? "event" : "appearance",
       title: place.name,
       subtitle: a.title && a.title !== business.name ? a.title : null,
       href: a.event?.slug ? eventHref(a.event.slug, a.event_occurrence_id ?? null) : (place.href ?? `/business/${business.slug}`),
-      image: null,
+      // The date's own image (its flyer, else its Event's cover) for the
+      // floating map preview; the Brand's logo rides along.
+      image: a.flyer_image_url ?? a.event?.cover_image_url ?? null,
       logo: business.logo_url ?? null,
       status: live ? "LIVE" : when,
       live,

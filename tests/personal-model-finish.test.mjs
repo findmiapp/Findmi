@@ -82,14 +82,24 @@ test("Product cards: no Save overlay competing with the Want pill", () => {
   assert.doesNotMatch(code("src/components/ProductCard.tsx"), /SaveIconButton/);
 });
 
-test("Add to Collection: Collection membership only — never a relationship, Want or Save write", () => {
+test("Add to Collection (one control): lists and Collections stay independent — never a Want or Save write; guests save on this device", () => {
   const src = code(ACTIONS);
+  // Signed in: the account's own Collections picker; the type's built-in
+  // lists write ONLY relationship rows (a list toggle never adds to a
+  // Collection, and a Collection toggle never sets a relationship).
   assert.match(src, /<CollectionPicker entityType=\{entityType\} entityId=\{entityId\} \/>/);
-  assert.doesNotMatch(src, /\/api\/relationships|\/api\/product-want|account_saved|toggleSaved|useAccountSaved/);
+  assert.match(src, /fetch\("\/api\/relationships", \{ method: "POST"/);
+  assert.doesNotMatch(src, /\/api\/product-want|account_saved|toggleSaved|useAccountSaved/);
   const picker = code("src/components/CollectionPicker.tsx");
   assert.doesNotMatch(picker, /\/api\/relationships|\/api\/product-want|toggleSaved/);
-  // Signed out → sign in (never a local-only, silently-lost Collection).
-  assert.match(src, /window\.location\.href = `\/login\?next=\$\{encodeURIComponent\(pathname \|\| "\/"\)\}`/);
+  // Signed out: no sign-in wall — the guest library (versioned, on this
+  // device) with a one-time, dismissible reminder; never silently lost: the
+  // device copy is cleared only after the account confirms the merge.
+  assert.doesNotMatch(src, /window\.location\.href = `\/login/);
+  assert.match(src, /writeGuestLibrary\(next\)/);
+  assert.match(src, /shouldShowGuestReminder\(guest\.lib\)/);
+  const sync = code("src/components/GuestLibrarySync.tsx");
+  assert.match(sync, /if \(!d\?\.ok\) return;[\s\S]*clearGuestLibrary\(\)/);
 });
 
 test("relationship toggles never touch Collections (the API writes only relationship rows)", () => {
