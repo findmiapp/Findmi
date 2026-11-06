@@ -100,7 +100,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const [focusCards, setFocusCards] = useState<Card[] | null>(null);
   const [extras, setExtras] = useState<{ brands: { name: string; slug: string }[]; moments: { id: string; title: string; href: string }[]; open: boolean | null } | null>(null);
   const [viewport, setViewport] = useState<Bbox>(start.entry?.viewport ?? (start.query.bbox as Bbox | undefined) ?? defaultBbox);
-  const [showSearchArea, setShowSearchArea] = useState(() => Boolean(start.entry?.viewport && movedMeaningfully(start.query.bbox as Bbox | undefined, start.entry.viewport)));
+  const [showSearchArea, setShowSearchArea] = useState(() => start.entry?.searchArea ?? Boolean(start.entry?.viewport && movedMeaningfully(start.query.bbox as Bbox | undefined, start.entry.viewport)));
   const [sheet, setSheet] = useState<SheetState>(start.entry?.sheet ?? "peek");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -236,9 +236,9 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // viewer's own position — a Near Me view keeps no camera).
   useEffect(() => {
     const shareable = query.near ? { ...query, bbox: undefined } : query;
-    const state = mapEntryState(window.history.state, { key, viewport: query.near ? null : viewport, selected: pendingSel.current ?? selected, sheet, derived: derived.current });
+    const state = mapEntryState(window.history.state, { key, viewport: query.near ? null : viewport, selected: pendingSel.current ?? selected, sheet, derived: derived.current, searchArea: showSearchArea });
     window.history.replaceState(state, "", mapHref({ ...shareable, offset: undefined }, view));
-  }, [query, view, key, viewport, selected, sheet]);
+  }, [query, view, key, viewport, selected, sheet, showSearchArea]);
 
   const apply = useCallback((next: DiscoveryQuery) => {
     setFailed(null);

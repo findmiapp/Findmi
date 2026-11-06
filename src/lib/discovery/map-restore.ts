@@ -43,6 +43,9 @@ export interface MapEntry {
   sheet: RestoredSheet;
   /** Filters the typed search contributed (so Clear still removes them). */
   derived?: Partial<DiscoveryQuery>;
+  /** Whether Search This Area was offered — restored as it was, not
+   * re-derived (a programmatic pan never offers it). */
+  searchArea?: boolean;
 }
 
 const keyOf = (q: DiscoveryQuery) => queryKey({ ...q, offset: undefined });
@@ -59,6 +62,7 @@ function readEntry(state: unknown, key: string): MapEntry | null {
     selected: typeof e.selected === "string" ? e.selected : null,
     sheet: SHEETS.includes(e.sheet as RestoredSheet) ? (e.sheet as RestoredSheet) : "peek",
     derived: e.derived && typeof e.derived === "object" ? e.derived : undefined,
+    searchArea: typeof e.searchArea === "boolean" ? e.searchArea : undefined,
   };
 }
 
@@ -103,6 +107,8 @@ export interface GeoViewHint {
   viewport: Bbox | null;
   selected: string | null;
   sheet: RestoredSheet;
+  /** Search This Area was offered when the visitor left. */
+  searchArea?: boolean;
   t: number;
 }
 
@@ -117,6 +123,7 @@ export function parseGeoViewHint(raw: string | null, key: string, now = Date.now
       viewport: validBbox(h.viewport),
       selected: typeof h.selected === "string" ? h.selected : null,
       sheet: SHEETS.includes(h.sheet as RestoredSheet) ? (h.sheet as RestoredSheet) : "peek",
+      searchArea: typeof h.searchArea === "boolean" ? h.searchArea : undefined,
       t: h.t,
     };
   } catch {

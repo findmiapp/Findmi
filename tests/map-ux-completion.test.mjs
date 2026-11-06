@@ -516,6 +516,15 @@ test("Back to /map: filters / search / time from the entry URL, the same camera,
   root.unmount();
 });
 
+test("Back to /map restores Search This Area exactly as it was (a programmatic pan never offered it)", async () => {
+  const url = `/map?bbox=${BBOX.join("%2C")}`;
+  const key = Q.queryKey({ bbox: BBOX });
+  const { host, root } = await mount({}, () => DATA, { url, state: { findmiMap: { v: 1, key, viewport: PANNED, selected: null, sheet: "peek", searchArea: false } } });
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED);
+  assert.equal(btn(host, "Search This Area"), undefined);
+  root.unmount();
+});
+
 test("Back to /map with a selection that's gone: camera and filters stay, the selection clears quietly", async () => {
   const url = `/map?free=1&bbox=${BBOX.join("%2C")}`;
   const key = Q.queryKey({ bbox: BBOX, free: true });
@@ -534,6 +543,7 @@ test("the history entry keeps the context as the visitor explores (camera, selec
   const e = window.history.state.findmiMap;
   assert.deepEqual(e.viewport, PANNED);
   assert.equal(e.selected, "loc:A");
+  assert.equal(e.searchArea, true, "whether Search This Area was offered is kept, not re-derived");
   assert.equal(e.key, Q.queryKey({ bbox: [-74.02, 40.7, -73.96, 40.77] }));
   root.unmount();
   const n = await mount({ initialQuery: { near: true, bbox: BBOX } });

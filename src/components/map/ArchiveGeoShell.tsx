@@ -232,7 +232,7 @@ export default function ArchiveGeoShell({
           // Returning: the camera the visitor left, not a fresh fit.
           lastView.current = { key: queryKey, bbox: hint.viewport };
           awaitingFit.current = false;
-          setShowSearchArea(movedMeaningfully(queried.current, hint.viewport));
+          setShowSearchArea(hint.searchArea ?? movedMeaningfully(queried.current, hint.viewport));
         } else {
           lastView.current = null;
         }
@@ -390,11 +390,11 @@ export default function ArchiveGeoShell({
     if (!geoMode || !results || resumeHint.current) return;
     const camera = viewport ?? (lastView.current?.key === queryKey ? lastView.current.bbox : null);
     try {
-      window.sessionStorage.setItem(geoViewStorageKey(surface, queryKey), JSON.stringify({ key: queryKey, viewport: camera, selected, sheet, t: Date.now() } satisfies GeoViewHint));
+      window.sessionStorage.setItem(geoViewStorageKey(surface, queryKey), JSON.stringify({ key: queryKey, viewport: camera, selected, sheet, searchArea: showSearchArea, t: Date.now() } satisfies GeoViewHint));
     } catch {
       /* storage unavailable — nothing to restore later */
     }
-  }, [geoMode, results, surface, queryKey, viewport, selected, sheet]);
+  }, [geoMode, results, surface, queryKey, viewport, selected, sheet, showSearchArea]);
   const [dragH, setDragH] = useState<number | null>(null);
   const sheetDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
