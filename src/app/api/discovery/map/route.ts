@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { paramsToQuery, queryToParams, type DiscoveryQuery } from "@/lib/discovery/query";
+import { mapView, paramsToQuery, queryToParams, type DiscoveryQuery } from "@/lib/discovery/query";
 import { getVocabulary, interpretSearch } from "@/lib/discovery/server";
 import { isTaxonomyTopic } from "@/lib/discovery/map-core";
 import { subjectWordsAsText } from "@/lib/discovery/search-state";
@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
  *                       resolution); the response carries the structured
  *                       interpretation so the UI shows it as chips
  *     &count=1          result count only (filter sheet "Show 23 …")
- *     &view=feed        chip / relaxation links keep the Feed view
+ *     &view=list        chip / relaxation links keep the List view
+ *                       (the old `view=feed` is still read as List)
  *     &focus=<loc id>   every qualifying result at one Location (the
  *                       selected marker's preview — lazy hydration)
  *
@@ -27,7 +28,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const view = params.get("view") === "feed" ? "feed" : "map";
+  const view = mapView(params.get("view"));
   let query: DiscoveryQuery = paramsToQuery(params);
   const nl = (params.get("nl") ?? "").trim().slice(0, 200);
   const now = new Date();

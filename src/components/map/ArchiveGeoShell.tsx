@@ -22,7 +22,8 @@ import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetSt
 // phones the archive becomes a screen below the Findmi header — compact
 // controls, the map filling the rest of the dynamic viewport, and /map's
 // own Peek / Browse / Expanded sheet model (components/map/sheet.ts) for
-// the results, with a persistent List action. Desktop keeps List / Map /
+// the results. The heading's List action is the one way back to the List
+// (the sheet no longer repeats it). Desktop keeps List / Map /
 // Split (sticky map beside the List, hover ↔ marker sync).
 //
 // Both draw the SAME result set (/api/geo/<surface> reads the archive's own
@@ -416,6 +417,7 @@ export default function ArchiveGeoShell({
         padding={isPhone() ? { top: 56, bottom: (measured ? heights[sheet] : 140) + 12, left: 28, right: 28 } : undefined}
         label={`Map of ${many}`}
         autoCollapseAttribution
+        keepSelectionInView
       />
     ) : results ? (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 pb-40 text-center lg:pb-6">
@@ -470,10 +472,6 @@ export default function ArchiveGeoShell({
                 <Glyph d="M6 6l12 12M18 6 6 18" className="h-4 w-4" />
               </button>
             )}
-            <button type="button" onClick={() => setView("list")} className="flex min-h-9 items-center gap-1.5 rounded-full bg-black/[0.05] px-3 text-xs font-bold text-ink/75">
-              <Glyph d={LIST_ICON} className="h-3.5 w-3.5" />
-              List
-            </button>
           </span>
         </span>
       </div>
@@ -483,7 +481,7 @@ export default function ArchiveGeoShell({
             <div ref={stripRef} onScroll={onStripScroll} className="flex snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sheetResults.slice(0, 30).map((r) => (
                 <div key={r.key} className="w-[84%] max-w-[22rem] shrink-0 snap-start">
-                  <GeoResultCard result={r} compact selected={selectedFeature !== null || browsing === featureOfKey.get(r.key)} onSelect={selectResult} />
+                  <GeoResultCard result={r} compact selected={selectedFeature !== null} highlighted={browsing === featureOfKey.get(r.key)} onSelect={selectResult} viewLink={false} />
                 </div>
               ))}
             </div>
@@ -491,7 +489,7 @@ export default function ArchiveGeoShell({
         ) : (
           <div ref={contentRef} className="flex flex-col gap-2 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             {sheetResults.map((r) => (
-              <GeoResultCard key={r.key} result={r} compact selected={selected !== null && featureOfKey.get(r.key) === selected} onSelect={selectResult} />
+              <GeoResultCard key={r.key} result={r} compact selected={selected !== null && featureOfKey.get(r.key) === selected} onSelect={selectResult} viewLink={false} />
             ))}
           </div>
         )}
@@ -509,7 +507,7 @@ export default function ArchiveGeoShell({
           </button>
         </div>
         {selectedResults.map((r) => (
-          <GeoResultCard key={r.key} result={r} compact />
+          <GeoResultCard key={r.key} result={r} compact selected />
         ))}
       </div>
     ) : null;

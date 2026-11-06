@@ -5,6 +5,7 @@ import type { ExpressionSpecification, GeoJSONSource, Map as MLMap, MapGeoJSONFe
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
+import { selectedLabelSide, selectedLabelWidth, selectionNeedsPan } from "./selected-label";
 
 // Discovery Map renderer. Population rendering is entirely native MapLibre
 // layers on ONE clustered GeoJSON source (no React/DOM marker per result):
@@ -53,6 +54,10 @@ export interface CanvasProps {
    * by pressing that control's own toggle, never by hiding it. Off for
    * /map. */
   autoCollapseAttribution?: boolean;
+  /** Pan a newly selected marker into the visible, control-free part of
+   * the map when it isn't already there (archives; /map on desktop —
+   * /map's phone sheet does its own settling pan). */
+  keepSelectionInView?: boolean;
 }
 
 /** How long the full credits stay open on a map that set
@@ -119,9 +124,10 @@ async function loadLogoImage(url: string): Promise<ImageData | null> {
   });
 }
 
-function selectedElement(f: MapFeature): HTMLElement {
+function selectedElement(f: MapFeature, side: "left" | "right", textWidth: number): HTMLElement {
   const el = document.createElement("div");
-  el.className = "pointer-events-none flex -translate-y-1/2 items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-1 pr-3 shadow-[0_6px_20px_rgba(20,176,188,0.35)] ring-2 " + (f.live ? "ring-red-600" : "ring-findmi");
+  // The mark sits on the marker's point; the words run toward `side`.
+  el.className = `pointer-events-none flex items-center gap-2 rounded-full border border-black/10 bg-white py-1 shadow-[0_6px_20px_rgba(20,176,188,0.35)] ring-2 ${side === "left" ? "flex-row-reverse pl-3 pr-1" : "pl-1 pr-3"} ` + (f.live ? "ring-red-600" : "ring-findmi");
   const mark = document.createElement("div");
   mark.className = "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-findmi-50 text-xs font-bold text-findmi-700";
   if (f.logo) {
@@ -132,19 +138,23 @@ function selectedElement(f: MapFeature): HTMLElement {
     mark.appendChild(img);
   } else mark.textContent = f.pinText ?? (f.label || "?").slice(0, 1).toUpperCase();
   const text = document.createElement("div");
-  text.className = "flex min-w-0 flex-col leading-tight";
+  text.className = `flex min-w-0 flex-col leading-tight ${side === "left" ? "items-end text-right" : ""}`;
   const name = document.createElement("span");
-  name.className = "max-w-[11rem] truncate text-[13px] font-bold text-ink";
+  name.className = "truncate text-[13px] font-bold text-ink";
+  name.style.maxWidth = `${textWidth}px`;
   name.textContent = f.label;
+  // Long names stay whole for screen readers and on hover.
+  name.title = f.label;
   const status = document.createElement("span");
-  status.className = "max-w-[11rem] truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
+  status.className = "truncate text-[11px] font-semibold " + (f.live ? "text-red-600" : "text-findmi-700");
+  status.style.maxWidth = `${textWidth}px`;
   status.textContent = f.live ? (f.status && f.status !== "LIVE" ? `● LIVE · ${f.status}` : "● LIVE") : f.status || f.place;
   text.append(name, status);
   el.append(mark, text);
   return el;
 }
 
-export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false }: CanvasProps) {
+export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false, keepSelectionInView = false }: CanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -155,6 +165,9 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   cb.current = { onSelect, onViewportChange };
   const featuresRef = useRef(features);
   featuresRef.current = features;
+  const paddingRef = useRef(padding);
+  paddingRef.current = padding;
+  const lastSelected = useRef<string | null>(null);
 
   // ---- mount once
   useEffect(() => {
@@ -393,8 +406,37 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     markerRef.current?.remove();
     markerRef.current = null;
     const f = selectedId ? features.find((x) => x.id === selectedId) : null;
-    if (f) markerRef.current = new lib.Marker({ element: selectedElement(f), anchor: "left", offset: [-18, 0] }).setLngLat([f.lng, f.lat]).addTo(map);
-  }, [selectedId, features, ready]);
+    const isNew = selectedId !== lastSelected.current;
+    lastSelected.current = selectedId;
+    if (!f) return;
+    // The rich label extends away from the nearer edge and is only as wide
+    // as the room on that side — re-placed whenever the map settles, so a
+    // pan or zoom never leaves it hanging off the visible map.
+    let side: "left" | "right" | null = null;
+    let width = 0;
+    const place = () => {
+      const w = map.getContainer().clientWidth;
+      const pt = map.project([f.lng, f.lat]);
+      const nextSide = selectedLabelSide(pt.x, w);
+      const nextWidth = selectedLabelWidth(nextSide === "left" ? pt.x : w - pt.x);
+      if (markerRef.current && nextSide === side && Math.abs(nextWidth - width) < 8) return;
+      side = nextSide;
+      width = nextWidth;
+      markerRef.current?.remove();
+      markerRef.current = new lib.Marker({ element: selectedElement(f, nextSide, nextWidth), anchor: nextSide === "left" ? "right" : "left", offset: [nextSide === "left" ? 18 : -18, 0] }).setLngLat([f.lng, f.lat]).addTo(map);
+    };
+    place();
+    map.on("moveend", place);
+    if (keepSelectionInView && isNew) {
+      const c = map.getContainer();
+      const pad = paddingRef.current ?? { top: 24, bottom: 24, left: 24, right: 24 };
+      const pt = map.project([f.lng, f.lat]);
+      if (selectionNeedsPan(pt.x, pt.y, c.clientWidth, c.clientHeight, pad)) map.easeTo({ center: [f.lng, f.lat], padding: pad, duration: prefersReducedMotion() ? 0 : 400 });
+    }
+    return () => {
+      map.off("moveend", place);
+    };
+  }, [selectedId, features, ready, keepSelectionInView]);
 
   // ---- programmatic camera moves
   useEffect(() => {

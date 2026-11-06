@@ -203,13 +203,16 @@ test("phone Map is a screen: fixed below the header, page scroll locked (footer 
   assert.notEqual(document.body.style.overflow, "hidden", "released when leaving the Map");
 });
 
-test("sheet Peek: mapped count + partial geography in the sheet, persistent List; a multi-result Location opens its results to browse", async () => {
+test("sheet Peek: mapped count + partial geography in the sheet, one List action (heading); a multi-result Location opens its results to browse", async () => {
   const a = await mountShell("view=map");
   await settle();
   const head = sheetHead(a.host);
   assert.match(head.textContent, /4 Events on the map/);
   assert.match(head.textContent, /2 without locations/, "unmappable results are acknowledged, not hidden");
-  assert.ok([...sheet(a.host).querySelectorAll("button")].some((b) => b.textContent.trim() === "List"), "persistent List inside the geographic mode");
+  // Map Discovery Batch 1: the heading's List action is the one way back
+  // — the sheet no longer repeats it.
+  assert.ok(btn(a.host, "Show Events as a List"), "List stays reachable from the heading");
+  assert.ok(![...sheet(a.host).querySelectorAll("button")].some((b) => b.textContent.trim() === "List"), "no duplicate List in the sheet");
   const studio = `loc:${STUDIO.id}`;
   assert.equal(globalThis.__canvas.features.find((f) => f.id === studio).count, 3, "one marker for the three Events at Spring Studios");
   assert.ok(globalThis.__canvas.features.some((f) => f.promoted), "the map tells its story before any click");
@@ -218,6 +221,13 @@ test("sheet Peek: mapped count + partial geography in the sheet, persistent List
   assert.match(sheetHead(a.host).textContent, /Spring Studios · 3 Events/);
   const cards = [...sheet(a.host).querySelectorAll("[data-geo-card]")].map((c) => c.getAttribute("data-geo-card"));
   assert.deepEqual(cards.sort(), ["ev:art-walk", "ev:design-talk", "ev:family-bash"].sort(), "every result at that place, side by side");
+  // The marker selected its cards; each selected card is now ONE link to
+  // its page (no separate View).
+  for (const c of sheet(a.host).querySelectorAll("[data-geo-card]")) {
+    const link = c.querySelector("a");
+    assert.ok(link && link.className.includes("after:inset-0"), "the whole selected card opens its page");
+    assert.equal(c.querySelectorAll("a").length, 1, "and there is no second View link");
+  }
   assert.equal(head.getAttribute("aria-expanded"), "false");
   // Back to every result (Peek strip); tapping one keeps the map in sync.
   // (Peek → Browse → Expanded heights are /map's own sheet model, covered
@@ -235,7 +245,7 @@ test("Map → List keeps context: the place selected on the Map is brought into 
   const a = await mountShell("view=map");
   await settle();
   await act(async () => globalThis.__canvas.onSelect(`loc:${EATALY.id}`));
-  const listBtn = [...sheet(a.host).querySelectorAll("button")].find((b) => b.textContent.trim() === "List");
+  const listBtn = btn(a.host, "Show Events as a List");
   globalThis.__scrolledTo = null;
   await act(async () => listBtn.click());
   assert.equal(a.pushes.at(-1), "/events?view=list", "an explicit List — Map-first is only a fresh visit's default");

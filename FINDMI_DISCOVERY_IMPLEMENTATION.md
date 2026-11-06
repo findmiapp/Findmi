@@ -1,7 +1,28 @@
 # Findmi — Discovery & Map Implementation Plan
 
-Companion to `FINDMI_DISCOVERY_AUDIT.md`. **Nothing here has been started.**
-Implementation waits for review and approval.
+Companion to `FINDMI_DISCOVERY_AUDIT.md`.
+
+## Status (2026-11-06)
+
+**Batch 1: implemented** (approved scope):
+- **P0-1:** controls and attribution lifted above the `/map` sheet.
+- **P0-2:** selected card is the link; View links removed; selected cards a
+  step larger.
+- **P1-1:** the selected label flips side and clamps its width; a new
+  selection pans when hidden (archives, desktop `/map`).
+- **P1-3:** duplicate List controls removed; "Feed" → "List" (`view=list`;
+  `view=feed` is still read).
+- **P1-5:** `/discover` → View On Map keeps Area and When. Category isn't
+  carried, because the two category vocabularies differ.
+- **P1-4 (partial):** the `/map` error state with Try Again.
+
+**Not started (awaiting approval):** P0-3 (Back-navigation restore;
+browser QA confirmed filters are lost on Back), P1-2 (sheet cap), the
+`/find` totals and event-linked appearance fallback (rest of P1-4), and
+all of P2.
+
+Decisions D1–D3 were taken as recommended. D4 (nav item) is a founder
+action.
 
 Scope rules: change only what the 13 requirements need, reuse the existing
 components, add no new map or sheet framework, and make no schema changes.

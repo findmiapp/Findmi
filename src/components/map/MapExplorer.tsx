@@ -4,14 +4,14 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { bboxAround, type Bbox, type MapFeature } from "@/lib/discovery/map-core";
 import type { MapResponse, MapResultCard as Card } from "@/lib/discovery/map-server";
-import { mapHref, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, type DiscoveryWhen } from "@/lib/discovery/query";
+import { mapHref, mapView, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, type DiscoveryWhen } from "@/lib/discovery/query";
 import { clearedQuery, derivedFrom, hasGeo } from "@/lib/discovery/search-state";
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
 import MapFilterSheet, { type FilterOptions } from "./MapFilterSheet";
 import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetState } from "./sheet";
 
-// Discovery Map + Feed — ONE Discovery Query, one result set, two
+// Discovery Map + List — ONE Discovery Query, one result set, two
 // renderers. The map never fetches while it moves: panning only reveals
 // "Search This Area"; any filter / chip / search change re-runs the same
 // query for both the markers and the list. Selection is shared: a marker
@@ -22,7 +22,7 @@ const DiscoveryMapCanvas = dynamic(() => import("./DiscoveryMapCanvas"), {
   loading: () => <div className="h-full w-full animate-pulse bg-[#eef0ef] motion-reduce:animate-none" />,
 });
 
-type View = "map" | "feed";
+type View = "map" | "list";
 
 const GEO_KEYS: (keyof DiscoveryQuery)[] = ["bbox", "area", "market", "census", "place", "near", "radius"];
 const withoutGeo = (q: DiscoveryQuery): DiscoveryQuery => {
@@ -32,7 +32,7 @@ const withoutGeo = (q: DiscoveryQuery): DiscoveryQuery => {
 };
 const fromHref = (href: string): { query: DiscoveryQuery; view: View } => {
   const p = new URLSearchParams(href.split("?")[1] ?? "");
-  return { query: paramsToQuery(p), view: p.get("view") === "feed" ? "feed" : "map" };
+  return { query: paramsToQuery(p), view: mapView(p.get("view")) };
 };
 const bboxOf = (features: MapFeature[]): Bbox | null => {
   if (!features.length) return null;
@@ -99,6 +99,10 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(nearRequested ? "near" : null);
   const [fit, setFit] = useState<{ bbox: Bbox; key: number } | null>(null);
+  // A request that failed (network / server): which one, so Try Again
+  // repeats exactly it. The last good results stay on screen meanwhile.
+  const [failed, setFailed] = useState<null | "results" | "search" | "more">(null);
+  const [retry, setRetry] = useState(0);
   const [focus, setFocus] = useState<{ lng: number; lat: number; key: number } | null>(null);
   // Which query the rendered results belong to. The fetch effect compares
   // against it (not a one-shot "skip" flag), so returning to a query whose
@@ -185,10 +189,11 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     ctl.current = c;
     setLoading(true);
     const t = setTimeout(() => {
-      fetch(`/api/discovery/map?${queryToParams({ ...query, offset: undefined }).toString()}${view === "feed" ? "&view=feed" : ""}`, { signal: c.signal })
-        .then((r) => (r.ok ? r.json() : null))
+      fetch(`/api/discovery/map?${queryToParams({ ...query, offset: undefined }).toString()}${view === "list" ? "&view=list" : ""}`, { signal: c.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
         .then((d: MapResponse | null) => {
           if (!d || c.signal.aborted) return;
+          setFailed(null);
           dataKey.current = key;
           setData(d);
           setResults(d.results);
@@ -201,13 +206,15 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
             }
           }
         })
-        .catch(() => undefined)
+        .catch(() => {
+          if (!c.signal.aborted) setFailed("results");
+        })
         .finally(() => !c.signal.aborted && setLoading(false));
     }, 120);
     return () => clearTimeout(t);
-    // `key` is the query's canonical identity.
+    // `key` is the query's canonical identity; `retry` is Try Again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, retry]);
 
   // ---- shareable URL (no history spam; never the viewer's own position)
   useEffect(() => {
@@ -216,6 +223,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   }, [query, view]);
 
   const apply = useCallback((next: DiscoveryQuery) => {
+    setFailed(null);
     setSelected(null);
     setFocusCards(null);
     setExtras(null);
@@ -303,8 +311,11 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     derived.current = {};
     apply(next);
   };
-  const onSearch = async (e: FormEvent) => {
+  const onSearch = (e: FormEvent) => {
     e.preventDefault();
+    void runSearch();
+  };
+  const runSearch = async () => {
     const nl = text.trim().replace(/\s+/g, " ");
     if (!nl) {
       clearSearch();
@@ -324,6 +335,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       if (!r.ok) throw new Error(String(r.status));
       const d = (await r.json()) as MapResponse & { interpretation?: { params: string } };
       if (c.signal.aborted || seq !== searchSeq.current) return;
+      setFailed(null);
       const next: DiscoveryQuery = d.interpretation ? paramsToQuery(new URLSearchParams(d.interpretation.params)) : base;
       derived.current = derivedFrom(next, base);
       dataKey.current = queryKey({ ...next, offset: undefined });
@@ -344,7 +356,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       (document.activeElement as HTMLElement | null)?.blur?.();
       setSheet("browse");
     } catch {
-      /* aborted, or superseded by a newer request */
+      // Aborted or superseded: nothing to say. A real failure is shown.
+      if (!c.signal.aborted && seq === searchSeq.current) setFailed("search");
     } finally {
       if (ctl.current === c) setLoading(false);
     }
@@ -386,14 +399,22 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     if (data?.nextOffset == null) return;
     const forKey = key;
     fetch(`/api/discovery/map?${queryToParams({ ...query, offset: data.nextOffset }).toString()}`)
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: MapResponse | null) => {
         // A page of an older query never lands in a newer result set.
         if (!d || keyRef.current !== forKey || dataKey.current !== forKey) return;
+        setFailed(null);
         setResults((prev) => [...prev, ...d.results.filter((c) => !prev.some((p) => p.key === c.key))]);
         setData((prev) => (prev ? { ...prev, nextOffset: d.nextOffset } : d));
       })
-      .catch(() => undefined);
+      .catch(() => keyRef.current === forKey && setFailed("more"));
+  };
+  const tryAgain = () => {
+    const kind = failed;
+    setFailed(null);
+    if (kind === "search") void runSearch();
+    else if (kind === "more") loadMore();
+    else setRetry((n) => n + 1);
   };
 
   const count = useCallback(async (q: DiscoveryQuery, signal: AbortSignal) => {
@@ -457,7 +478,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         <Icon d={SLIDERS} />
         {filterCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-findmi px-1 text-[11px] font-bold text-white">{filterCount}</span>}
       </button>
-      <button type="button" onClick={() => setView(view === "map" ? "feed" : "map")} aria-label={view === "map" ? "Show as Feed" : "Show on Map"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white text-ink shadow-[0_4px_18px_rgba(0,0,0,0.08)] hover:border-black/20 lg:hidden">
+      <button type="button" onClick={() => setView(view === "map" ? "list" : "map")} aria-label={view === "map" ? "Show as List" : "Show on Map"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white text-ink shadow-[0_4px_18px_rgba(0,0,0,0.08)] hover:border-black/20 lg:hidden">
         <Icon d={view === "map" ? LIST : MAP} />
       </button>
     </form>
@@ -502,6 +523,17 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         </div>
       )}
       {notice && notice !== "near" && <p className="rounded-2xl bg-black/[0.04] px-3 py-2.5 text-sm text-ink/70">{notice}</p>}
+      {failed && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white px-3 py-2.5 text-sm text-ink/75">
+          <span>
+            {failed === "search" ? "We couldn’t run that search right now." : failed === "more" ? "We couldn’t load more results right now." : "We couldn’t update these results right now."}
+            {data && results.length > 0 && failed !== "more" ? " Showing the last results we found." : ""}
+          </span>
+          <button type="button" onClick={tryAgain} className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-xs font-bold text-white">
+            Try Again
+          </button>
+        </div>
+      )}
       {data && !data.mapReady && <p className="rounded-2xl bg-black/[0.04] px-3 py-2.5 text-sm text-ink/70">Findmi places are still being placed on the map. Results will appear here as they&rsquo;re located.</p>}
       {data?.truncated && <p className="rounded-2xl bg-black/[0.04] px-3 py-2.5 text-sm text-ink/70">There&rsquo;s a lot here — zoom in or add a filter to see everything in this area.</p>}
     </>
@@ -530,7 +562,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       {notices}
       {emptyState}
       {selectedFeature && view === "map" && results.length > selectedCards.length && <p className="text-xs font-bold uppercase tracking-wide text-ink/45">More Results</p>}
-      <ul role="list" className={view === "feed" ? "grid gap-2.5 lg:grid-cols-2" : "flex flex-col gap-2.5"}>
+      <ul role="list" className={view === "list" ? "grid gap-2.5 lg:grid-cols-2" : "flex flex-col gap-2.5"}>
         {results.filter((card) => !(view === "map" && selectedFeature?.keys.includes(card.key))).map((card, i) => (
           <li key={card.key} ref={mobile && i === 0 ? firstRef : undefined}>
             <MapResultCard card={card} selected={selectedFeature?.keys.includes(card.key) ?? false} onSelect={view === "map" ? selectCard : undefined} showDistance={Boolean(query.near)} />
@@ -646,11 +678,6 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     if (next === "peek") listRef.current?.scrollTo({ top: 0 });
     setSheet(next);
   };
-  const toggleList = () => {
-    const next: SheetState = sheet === "peek" ? "browse" : "peek";
-    if (next === "peek") listRef.current?.scrollTo({ top: 0 });
-    setSheet(next);
-  };
 
   return (
     <div className="relative flex h-[calc(100dvh-3.5rem-var(--admin-bar-h))] overflow-hidden bg-paper lg:h-[calc(100dvh-4.0625rem)]">
@@ -659,7 +686,14 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       </p>
 
       {/* MAP column (mobile: whole surface in Map view; desktop: ~62%) */}
-      <div ref={columnRef} className={`relative min-w-0 flex-1 ${view === "feed" ? "hidden" : ""}`}>
+      {/* Map controls (zoom + the map credits) ride just above the mobile
+          sheet — the same lift the archive maps use — and step aside while
+          the sheet is expanded or being dragged. */}
+      <div
+        ref={columnRef}
+        style={{ ["--sheet-h" as string]: `${measured ? sheetPx : 120}px` }}
+        className={`relative min-w-0 flex-1 max-lg:[&_.maplibregl-ctrl-bottom-right]:!bottom-[calc(var(--sheet-h)+0.25rem)] max-lg:[&_.maplibregl-ctrl-bottom-left]:!bottom-[calc(var(--sheet-h)+0.25rem)] ${sheet === "expanded" || dragH !== null ? "max-lg:[&_.maplibregl-ctrl-bottom-right]:hidden max-lg:[&_.maplibregl-ctrl-bottom-left]:hidden" : ""} ${view === "list" ? "hidden" : ""}`}
+      >
         <DiscoveryMapCanvas
           features={data?.features ?? []}
           selectedId={selected}
@@ -669,6 +703,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           fit={fit}
           focus={focus}
           userPosition={userPos}
+          keepSelectionInView={screen.desktop}
           padding={
             screen.desktop
               ? { top: 48, bottom: 48, left: 48, right: 48 }
@@ -712,12 +747,6 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
             <span aria-hidden className="h-1.5 w-10 rounded-full bg-black/15" />
             <span className="flex w-full items-center justify-between gap-3">
               <span className="font-display text-[15px] font-bold text-ink">{loading && !data ? "Finding…" : countLine}</span>
-              {total > 0 && (
-                <button type="button" data-sheet-action onClick={toggleList} className="flex min-h-9 items-center gap-1.5 rounded-full bg-black/[0.05] px-3 text-xs font-bold text-ink/75">
-                  <Icon d={sheet === "peek" ? LIST : MAP} className="h-3.5 w-3.5" />
-                  {sheet === "peek" ? "List" : "Map"}
-                </button>
-              )}
             </span>
           </div>
           <div
@@ -732,8 +761,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
         </section>
       </div>
 
-      {/* mobile FEED view */}
-      {view === "feed" && (
+      {/* mobile LIST view */}
+      {view === "list" && (
         <div className="flex min-w-0 flex-1 flex-col lg:hidden">
           <div className="flex flex-col gap-2 border-b border-black/5 bg-paper p-3">
             {searchBar}
@@ -747,22 +776,22 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       )}
 
       {/* DESKTOP results panel (~38%), independently scrolling */}
-      <aside aria-label="Results" className={`hidden min-w-0 flex-col border-l border-black/5 bg-paper lg:flex ${view === "feed" ? "flex-1" : "w-[38%] min-w-[380px] max-w-[540px]"}`}>
-        <div className={`flex flex-col gap-2.5 border-b border-black/5 p-4 ${view === "feed" ? "[&>*]:mx-auto [&>*]:w-full [&>*]:max-w-4xl" : ""}`}>
+      <aside aria-label="Results" className={`hidden min-w-0 flex-col border-l border-black/5 bg-paper lg:flex ${view === "list" ? "flex-1" : "w-[38%] min-w-[380px] max-w-[540px]"}`}>
+        <div className={`flex flex-col gap-2.5 border-b border-black/5 p-4 ${view === "list" ? "[&>*]:mx-auto [&>*]:w-full [&>*]:max-w-4xl" : ""}`}>
           {searchBar}
           {chipRow}
           <div className="flex items-center justify-between">
             <p className="font-display text-[15px] font-bold text-ink">{countLine}</p>
             <div role="radiogroup" aria-label="View" className="flex rounded-full bg-black/[0.05] p-0.5 text-xs font-bold">
-              {(["map", "feed"] as View[]).map((v) => (
+              {(["map", "list"] as View[]).map((v) => (
                 <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)} className={`rounded-full px-3 py-1.5 ${view === v ? "bg-white text-ink shadow-sm" : "text-ink/55"}`}>
-                  {v === "map" ? "Map" : "Feed"}
+                  {v === "map" ? "Map" : "List"}
                 </button>
               ))}
             </div>
           </div>
         </div>
-        <div ref={view === "feed" ? undefined : listRef} className={`min-h-0 flex-1 overflow-y-auto p-4 ${view === "feed" ? "mx-auto w-full max-w-4xl" : ""}`}>
+        <div ref={view === "list" ? undefined : listRef} className={`min-h-0 flex-1 overflow-y-auto p-4 ${view === "list" ? "mx-auto w-full max-w-4xl" : ""}`}>
           {selectedFeature && view === "map" && <div className="mb-4 rounded-2xl bg-findmi-50/60 p-3">{renderPreview(false)}</div>}
           {renderList(false)}
         </div>

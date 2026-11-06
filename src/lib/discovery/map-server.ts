@@ -501,8 +501,8 @@ export interface RunMapOptions {
   now?: Date;
   personal?: PersonalSignals | null;
   countOnly?: boolean;
-  /** "feed" hrefs keep the Feed view when a chip or relaxation is tapped. */
-  view?: "map" | "feed";
+  /** "list" hrefs keep the List view when a chip or relaxation is tapped. */
+  view?: "map" | "list";
   /** Href builder for chips / relaxations (Manager surfaces pass their own). */
   href?: (q: DiscoveryQuery) => string;
   /** Lazy hydration for a selected marker: return every qualifying result

@@ -24,6 +24,7 @@ import {
 } from "@/lib/data";
 import type { DiscoveryWindow } from "@/lib/format";
 import { resolveCanonicalGeoScope } from "@/lib/geo/canonical-scope";
+import { discoverMapHref } from "@/lib/discovery/query";
 
 const BASE_METADATA: Metadata = {
   title: "Discover",
@@ -169,7 +170,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
       <SearchFilterAnalytics pageType="discover" filterParams={["category", "market", "area", "when"]} />
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
-        <Link href="/map" className="inline-flex min-h-9 items-center rounded-full border border-black/10 bg-white px-3.5 text-xs font-bold text-ink/75 hover:border-findmi hover:text-findmi-700">
+        <Link href={discoverMapHref({ market: marketSlug, area: areaSlug, when: whenKey })} className="inline-flex min-h-9 items-center rounded-full border border-black/10 bg-white px-3.5 text-xs font-bold text-ink/75 hover:border-findmi hover:text-findmi-700">
           View On Map
         </Link>
       </div>

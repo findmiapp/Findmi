@@ -49,6 +49,7 @@ registerHooks({
 });
 
 const S = await import("../src/components/map/sheet.ts");
+const L = await import("../src/components/map/selected-label.ts");
 
 // ---------------------------------------------------------------- MapExplorer in jsdom
 
@@ -158,6 +159,8 @@ async function mount(props = {}, responder = () => DATA) {
   globalThis.fetch = async (url) => {
     calls.push(String(url));
     const body = responder(String(url));
+    // A responder may answer with a failed HTTP status.
+    if (body && body.__status) return { ok: false, status: body.__status, json: async () => ({}) };
     return { ok: true, json: async () => body };
   };
   Object.defineProperty(dom.window.navigator, "geolocation", { value: { getCurrentPosition: (_ok, no) => { geo.push(1); no?.({ code: 1 }); } }, configurable: true });
@@ -173,28 +176,33 @@ async function mount(props = {}, responder = () => DATA) {
 const sheet = (host) => host.querySelector('section[aria-label="Results"]');
 const btn = (host, text) => [...host.querySelectorAll("button")].find((b) => b.textContent.trim() === text || b.getAttribute("aria-label") === text);
 
-test("Peek shows the first result; List / Map switch the sheet without changing the result set", async () => {
+test("Peek shows the first result; the one List / Map switch changes the view without changing the result set", async () => {
   const { host, root, calls } = await mount();
   const s = sheet(host);
   assert.ok(s.textContent.includes("3 Results"));
   assert.ok(s.querySelector('[data-result-key="occ:1"]'), "first useful result is in the sheet");
-  await act(async () => btn(s, "List").click());
-  assert.equal(s.querySelector("[aria-expanded]").getAttribute("aria-expanded"), "true");
-  await act(async () => btn(s, "Map").click());
-  assert.equal(s.querySelector("[aria-expanded]").getAttribute("aria-expanded"), "false");
+  // Map Discovery Batch 1: no second "List" pill in the sheet — the top
+  // bar's List / Map switch is the one view change; the header expands.
+  assert.ok(![...s.querySelectorAll("button")].some((b) => ["List", "Map"].includes(b.textContent.trim())), "no duplicate List / Map control in the sheet");
+  await act(async () => btn(host, "Show as List").click());
+  assert.ok(btn(host, "Show on Map"), "List view; the same control returns to the Map");
+  assert.ok(host.querySelector('[data-result-key="occ:1"]'), "same results in the List");
+  await act(async () => btn(host, "Show on Map").click());
   assert.equal(calls.length, 0, "switching views never re-queries");
   root.unmount();
 });
 
 test("marker → preview (live first, Happening Here) → close returns to Peek; another marker replaces it", async () => {
   const { host, root } = await mount();
-  await act(async () => btn(sheet(host), "List").click());
+  const head = sheet(host).querySelector("[aria-expanded]");
+  await act(async () => head.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   await act(async () => globalThis.__canvas.onSelect("loc:A"));
   await settle();
   const s = sheet(host);
   assert.equal(globalThis.__canvas.selectedId, "loc:A");
   assert.equal(s.querySelector("[aria-expanded]").getAttribute("aria-expanded"), "false", "selection settles on the content-sized Peek");
-  assert.ok(s.textContent.includes("View Event"), "the preview leads to the canonical page — no modal");
+  assert.ok(s.querySelector('[aria-current="true"] a[href="/event/occ:1"]'), "the whole preview card leads to the canonical page — no modal");
+  assert.ok(!s.textContent.includes("View Event"), "no separate View button");
   assert.match(s.textContent, /Live· Ends 9 PM/, "● LIVE · Ends 9 PM");
   assert.ok(s.textContent.includes("Coming Up Here"), "other activity at the same Location is grouped, not stacked");
   await act(async () => globalThis.__canvas.onSelect("loc:B"));
@@ -204,7 +212,7 @@ test("marker → preview (live first, Happening Here) → close returns to Peek;
   await act(async () => btn(sheet(host), "Close preview").click());
   await settle();
   assert.equal(globalThis.__canvas.selectedId, null);
-  assert.ok(!sheet(host).textContent.includes("View Event"));
+  assert.ok(!sheet(host).querySelector('[aria-current="true"]'), "closing clears the selected preview");
   root.unmount();
 });
 
@@ -280,5 +288,62 @@ test("filter CTA: shows the count; zero is a disabled, explained state — not a
   assert.equal(cta().textContent.trim(), "Show 4 Results");
   await act(async () => cta().click());
   assert.equal(applied.length, 1);
+  root.unmount();
+});
+
+// ================================================================ Map Discovery Batch 1
+
+test("selected label runs away from the nearer edge and is only as wide as the room there", () => {
+  // 390px phone: a centered marker's label used to run off the right edge.
+  assert.equal(L.selectedLabelSide(195 + 1, 390), "left");
+  assert.equal(L.selectedLabelSide(60, 390), "right");
+  assert.equal(L.selectedLabelSide(370, 390), "left", "near the right edge → label to the left");
+  assert.equal(L.selectedLabelWidth(390 - 60), 176, "plenty of room → the normal max width");
+  assert.equal(L.selectedLabelWidth(150), 88, "tight room → a narrower, truncated label");
+  assert.equal(L.selectedLabelWidth(20), 72, "never collapses below a readable minimum");
+  // Label + mark + offset always fit on the chosen side (360 / 390 / 412).
+  for (const w of [360, 390, 412]) for (const x of [16, w / 3, w / 2, (2 * w) / 3, w - 16]) {
+    const side = L.selectedLabelSide(x, w);
+    const room = side === "left" ? x : w - x;
+    if (room >= 134) assert.ok(L.selectedLabelWidth(room) + 62 <= room, `fits at ${w}px, x=${x}`);
+  }
+});
+
+test("a new selection pans only when hidden: under the sheet / panel, off the padded view, or in the zoom-control corner", () => {
+  const pad = { top: 140, bottom: 220, left: 28, right: 28 };
+  assert.equal(L.selectionNeedsPan(195, 400, 390, 844, pad), false, "clearly visible → the map stays put");
+  assert.equal(L.selectionNeedsPan(195, 700, 390, 844, pad), true, "under the sheet");
+  assert.equal(L.selectionNeedsPan(195, 100, 390, 844, pad), true, "under the top controls");
+  assert.equal(L.selectionNeedsPan(10, 400, 390, 844, pad), true, "at the edge");
+  const desk = { top: 24, bottom: 24, left: 24, right: 24 };
+  assert.equal(L.selectionNeedsPan(1180, 700, 1200, 760, desk), true, "beside the zoom control");
+  assert.equal(L.selectionNeedsPan(600, 380, 1200, 760, desk), false);
+});
+
+test("/map request failures show a useful error with Try Again; the last results stay; a retry recovers", async () => {
+  let fail = true;
+  const { host, root, calls } = await mount({}, (u) => (fail ? { __status: 500 } : { ...DATA, total: 1, results: [card("occ:9", "loc:A")] }));
+  const free = [...host.querySelectorAll("button")].find((b) => b.textContent === "Free");
+  await act(async () => free.click());
+  await settle();
+  const alert = host.querySelector('[role="alert"]');
+  assert.ok(alert, "an error is shown instead of silently keeping stale results");
+  assert.match(alert.textContent, /couldn’t update these results/);
+  assert.match(alert.textContent, /Showing the last results we found/);
+  assert.ok(host.querySelector('[data-result-key="occ:1"]'), "the last results stay on screen");
+  fail = false;
+  const n = calls.length;
+  await act(async () => [...alert.querySelectorAll("button")].find((b) => b.textContent.trim() === "Try Again").click());
+  await settle();
+  assert.equal(calls.length, n + 1, "Try Again repeats the request once");
+  assert.equal(host.querySelector('[role="alert"]'), null, "and clears the error on success");
+  assert.ok(host.querySelector('[data-result-key="occ:9"]'));
+  root.unmount();
+});
+
+test("loading and empty states are unchanged", async () => {
+  const { host, root } = await mount({ initialData: { ...DATA, total: 0, features: [], results: [], relaxations: [] } });
+  assert.match(host.textContent, /Nothing matches all of these filters\./);
+  assert.equal(host.querySelector('[role="alert"]'), null, "an empty result is not an error");
   root.unmount();
 });
