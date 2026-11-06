@@ -564,3 +564,8 @@ test("the history entry keeps the context as the visitor explores (camera, selec
   assert.equal(window.history.state.findmiMap.viewport, null, "the viewer's own area is never stored");
   n.root.unmount();
 });
+
+test("Escape closes the floating preview — but never an Escape meant for a dialog open above the map", () => {
+  const canvas = readFileSync("src/components/map/DiscoveryMapCanvas.tsx", "utf8");
+  assert.match(canvas, /if \(e\.key !== "Escape" \|\| e\.defaultPrevented \|\| document\.querySelector\('\[role="dialog"\]\[aria-modal="true"\]'\)\) return;/);
+});

@@ -585,7 +585,11 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   // Escape closes the floating preview.
   useEffect(() => {
     if (!floatingId || selectedId !== floatingId) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && cb.current.onSelect(null);
+    // …but never an Escape meant for a dialog open above the map.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      cb.current.onSelect(null);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [floatingId, selectedId]);
