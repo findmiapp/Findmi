@@ -77,6 +77,24 @@ sheet stays an independent result list.
 row below, attaching Locations to two upcoming Events) and live checks on
 production tiles and data.
 
+**Cross-surface consistency (2026-11-06)**
+
+| Map surface | Component | Selectable? | Interaction now |
+| --- | --- | --- | --- |
+| `/map` | MapExplorer → DiscoveryMapCanvas | yes | Shared floating preview (modified in earlier batches) |
+| Events / Locations / Businesses / Findmi Here maps | ArchiveGeoShell | yes | Shared floating preview, using `lib/geo-preview` (refactored to the shared mapping) |
+| Brand → Findmi Here → Map (e.g. Tamagotchi → Duffy Square) | AppearanceFindMiHere → ContextMap | yes | **Modified:** shared floating preview |
+| Brand "Where to find" | BusinessPublicView → ContextMap | yes | **Modified:** shared floating preview |
+| Product "Where to find it" | product page → ContextMap | yes | **Modified:** shared floating preview |
+| Event dates map (several places) | UpcomingDatesRail → ContextMap | yes | **Modified:** shared floating preview |
+| Guide map section | GuideView → ContextMap | yes | **Modified:** shared floating preview |
+| Event / Location page Location block | EventLocationFeature → ContextMap (`directionsOnly`) | no (one known place) | Excluded: directions map, unchanged |
+| Opportunity explore (owner) | ContextMap (`directionsOnly`) | no | Excluded: owner tool, single place |
+| Business Manager map | ManagerMapView | owner tool | Excluded: no Business Manager changes |
+| Moments map | MomentsMap (own place tray of Moment cards) | Moments, not entities | Excluded: approved Moments tray; needs a founder decision if it should change |
+
+Rule: a dated result (Event date, Pop-Up) is drawn on a public discovery map only at a **listed** Location (`is_demo ≠ true`). `/map` now matches Findmi Here, the Events map and the Brands map. An unlisted (Needs Review) Location is drawn in context only on its own Business's map. Listed Locations without imagery still map, unlinked.
+
 **Navigation (founder decision, not applied):** add a top-level **Map**
 row in Admin → Site → Navigation:
 
