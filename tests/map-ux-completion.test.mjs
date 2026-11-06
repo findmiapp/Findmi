@@ -192,29 +192,76 @@ test("Peek shows the first result; the one List / Map switch changes the view wi
   root.unmount();
 });
 
-test("marker → preview (live first, Happening Here) → close returns to Peek; another marker replaces it", async () => {
+test("marker → floating preview at the marker (live first); the sheet stays the result list; another marker replaces it; close clears it", async () => {
   const { host, root } = await mount();
-  const head = sheet(host).querySelector("[aria-expanded]");
-  await act(async () => head.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   await act(async () => globalThis.__canvas.onSelect("loc:A"));
   await settle();
   const s = sheet(host);
   assert.equal(globalThis.__canvas.selectedId, "loc:A");
-  assert.equal(s.querySelector("[aria-expanded]").getAttribute("aria-expanded"), "false", "selection settles on the content-sized Peek");
-  assert.ok(s.querySelector('[aria-current="true"] a[href="/event/occ:1"]'), "the whole preview card leads to the canonical page — no modal");
-  assert.ok(!s.textContent.includes("View Event"), "no separate View button");
-  assert.match(s.textContent, /Live· Ends 9 PM/, "● LIVE · Ends 9 PM");
-  assert.ok(s.textContent.includes("Coming Up Here"), "other activity at the same Location is grouped, not stacked");
+  // The floating preview the canvas anchors to the marker: the live result
+  // first, its real card data and public destination.
+  const p = globalThis.__canvas.preview;
+  assert.equal(p.featureId, "loc:A");
+  assert.equal(p.href, "/event/occ:1");
+  assert.equal(p.title, "Title occ:1");
+  assert.equal(p.kind, "Event");
+  assert.equal(p.live, true);
+  assert.equal(p.status, "Ends 9 PM");
+  assert.equal(p.more, 1, "+1 more here");
+  // The bottom tray is independent: still every result, the selection
+  // highlighted in place (and itself a link), selection settles on Peek.
+  assert.equal(s.querySelector("[aria-expanded]").getAttribute("aria-expanded"), "false");
+  assert.deepEqual([...s.querySelectorAll("[data-result-key]")].map((x) => x.getAttribute("data-result-key")), ["occ:1", "occ:2", "occ:3"], "the sheet keeps the full list");
+  assert.ok(s.querySelector('[data-result-key="occ:1"][aria-current="true"] a[href="/event/occ:1"]'));
+  assert.ok(!s.textContent.includes("Coming Up Here"), "no second, in-sheet preview on phones");
+  // Desktop panel keeps its richer preview of the place.
+  const aside = host.querySelector('aside[aria-label="Results"]');
+  assert.ok(aside.textContent.includes("Coming Up Here"), "desktop: other activity at the same Location is grouped");
   await act(async () => globalThis.__canvas.onSelect("loc:B"));
   await settle();
   assert.equal(globalThis.__canvas.selectedId, "loc:B");
-  assert.ok(!sheet(host).textContent.includes("Coming Up Here"), "empty sections aren't rendered");
-  await act(async () => btn(sheet(host), "Close preview").click());
+  assert.equal(globalThis.__canvas.preview.featureId, "loc:B", "another marker replaces the preview");
+  assert.equal(globalThis.__canvas.preview.href, "/event/occ:2");
+  await act(async () => globalThis.__canvas.onSelect(null));
   await settle();
   assert.equal(globalThis.__canvas.selectedId, null);
-  assert.ok(!sheet(host).querySelector('[aria-current="true"]'), "closing clears the selected preview");
+  assert.equal(globalThis.__canvas.preview, null, "closing returns the marker to its compact state");
+  assert.ok(!sheet(host).querySelector('[aria-current="true"]'));
   root.unmount();
 });
+
+test("floating preview placement: above the pin when it fits, else below; inside the visible map; clear of the controls", () => {
+  const view = { w: 390, h: 788 };
+  const pad = { top: 140, bottom: 170, left: 28, right: 28 };
+  const card = { w: L.previewWidth(390), h: 230 };
+  assert.equal(card.w, 300, "substantial on phones");
+  for (const w of [360, 390, 412]) assert.ok(L.previewWidth(w) <= w - 16 && L.previewWidth(w) >= 280, `${w}px`);
+  const mid = L.placePreview({ x: 195, y: 500 }, card, view, pad);
+  assert.equal(mid.side, "above");
+  assert.ok(mid.fits && mid.visible);
+  assert.ok(mid.top + card.h <= 500 - 20, "the card doesn't cover its pin");
+  const high = L.placePreview({ x: 195, y: 200 }, card, view, pad);
+  assert.equal(high.side, "below", "no room above (top controls) → below");
+  assert.ok(high.top >= pad.top);
+  // Near an edge: the card slides to stay inside, the caret still points at the pin.
+  const edge = L.placePreview({ x: 375, y: 520 }, card, view, pad);
+  assert.ok(edge.left >= 8 && edge.left + card.w <= 390 - 8, "inside the screen");
+  assert.equal(edge.left + edge.caretX >= 375 - 20, true, "caret points at the pin");
+  // Never over the zoom control / credits (bottom-right, just above the sheet).
+  const low = L.placePreview({ x: 360, y: 610 }, card, view, pad);
+  assert.ok(low.left + card.w <= 390 - 52 || low.top + card.h <= 788 - 170 - 120, "clear of the control stack");
+  assert.ok(low.top + card.h <= 788 - pad.bottom, "never under the sheet");
+  // A pin just under the top controls keeps its card, below it and inside.
+  const top = L.placePreview({ x: 195, y: 120 }, card, view, pad);
+  assert.ok(top.visible && top.side === "below" && top.top >= pad.top, "near the top: card below, clear of the controls");
+  // A pin under the sheet: hidden until the corrective pan brings it up.
+  const under = L.placePreview({ x: 195, y: 700 }, card, view, pad);
+  assert.equal(under.visible, false);
+  const [dx, dy] = L.previewPan({ x: 195, y: 700 }, card, view, pad);
+  const after = L.placePreview({ x: 195 - dx, y: 700 - dy }, card, view, pad);
+  assert.ok(after.fits && after.side === "above", "one pan makes it fit above its pin");
+});
+
 
 test("a preview whose detail comes back empty doesn't leave a blank placeholder", async () => {
   const data = { ...DATA, results: [card("occ:2", "loc:B")] };
@@ -345,5 +392,30 @@ test("loading and empty states are unchanged", async () => {
   const { host, root } = await mount({ initialData: { ...DATA, total: 0, features: [], results: [], relaxations: [] } });
   assert.match(host.textContent, /Nothing matches all of these filters\./);
   assert.equal(host.querySelector('[role="alert"]'), null, "an empty result is not an error");
+  root.unmount();
+});
+
+test("floating preview card: cover or Findmi fallback, type + title + context, ONE whole-card link, Close above it", async () => {
+  const { default: MapFloatingPreview } = await import("../src/components/map/MapFloatingPreview.tsx");
+  const host = document.createElement("div");
+  document.body.innerHTML = "";
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  let closed = 0;
+  const preview = { featureId: "loc:A", href: "/event/x", title: "A Very Long Holiday Makers Market Name That Wraps", kind: "Event", image: null, logo: null, status: "Starts 3 PM", live: false, detail: "Sat, Nov 7 · 3–9 PM", subtitle: "Chelsea Piers", more: 2 };
+  await act(async () => root.render(React.createElement(MapFloatingPreview, { preview, side: "above", caretX: 150, style: { left: 10, top: 10, width: 300 }, onClose: () => closed++ })));
+  const card = host.querySelector('[data-map-preview="loc:A"]');
+  assert.ok(card);
+  const links = card.querySelectorAll("a");
+  assert.equal(links.length, 1, "one destination");
+  assert.equal(links[0].getAttribute("href"), "/event/x");
+  assert.ok(links[0].className.includes("after:inset-0"), "the whole card is the link");
+  assert.ok(card.querySelector(".from-findmi-700.to-ink"), "no image → the Findmi gradient fallback");
+  for (const t of ["Event", "Starts 3 PM", "Sat, Nov 7 · 3–9 PM", "Chelsea Piers", "+2 more here", preview.title]) assert.ok(card.textContent.includes(t), t);
+  assert.ok(card.querySelector(".line-clamp-3"), "full, readable title (wraps up to three lines)");
+  const close = card.querySelector('button[aria-label="Close map preview"]');
+  assert.ok(close.className.includes("z-10"), "Close sits above the card link");
+  await act(async () => close.click());
+  assert.equal(closed, 1);
   root.unmount();
 });

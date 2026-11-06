@@ -8,6 +8,7 @@ import { mapHref, mapView, paramsToQuery, queryKey, queryToParams, type Discover
 import { clearedQuery, derivedFrom, hasGeo } from "@/lib/discovery/search-state";
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
+import type { MapPreview } from "./MapFloatingPreview";
 import MapFilterSheet, { type FilterOptions } from "./MapFilterSheet";
 import { movedMeaningfully, nextOnTap, sheetHeights, snapAfterDrag, type SheetState } from "./sheet";
 
@@ -46,6 +47,8 @@ const bboxOf = (features: MapFeature[]): Bbox | null => {
   const pad = 0.004;
   return [w - pad, s - pad, e + pad, n + pad];
 };
+
+const PREVIEW_KIND: Record<Card["kind"], string> = { event: "Event", appearance: "Pop-Up", place: "Place" };
 
 const QUICK: { label: string; when?: DiscoveryWhen; flag?: "free" | "near" }[] = [
   { label: "Happening Now", when: "now" },
@@ -561,9 +564,12 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     <div className="flex flex-col gap-2.5">
       {notices}
       {emptyState}
-      {selectedFeature && view === "map" && results.length > selectedCards.length && <p className="text-xs font-bold uppercase tracking-wide text-ink/45">More Results</p>}
+      {!mobile && selectedFeature && view === "map" && results.length > selectedCards.length && <p className="text-xs font-bold uppercase tracking-wide text-ink/45">More Results</p>}
       <ul role="list" className={view === "list" ? "grid gap-2.5 lg:grid-cols-2" : "flex flex-col gap-2.5"}>
-        {results.filter((card) => !(view === "map" && selectedFeature?.keys.includes(card.key))).map((card, i) => (
+        {/* Phones: the sheet stays the full result list (the selection's
+            preview floats on the map); the desktop panel lifts the
+            selection into its own preview above the rest. */}
+        {results.filter((card) => mobile || !(view === "map" && selectedFeature?.keys.includes(card.key))).map((card, i) => (
           <li key={card.key} ref={mobile && i === 0 ? firstRef : undefined}>
             <MapResultCard card={card} selected={selectedFeature?.keys.includes(card.key) ?? false} onSelect={view === "map" ? selectCard : undefined} showDistance={Boolean(query.near)} />
           </li>
@@ -585,6 +591,26 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // Selected preview: what's happening there first, then useful context.
   // Every section renders only when it has something in it.
   const [primary, ...others] = selectedCards;
+  // The floating preview at the selected marker — the same card data the
+  // lists use; the marker's own identity while its result is loading.
+  const floatingPreview: MapPreview | null =
+    selectedFeature && view === "map"
+      ? primary
+        ? {
+            featureId: selectedFeature.id,
+            href: primary.href,
+            title: primary.title,
+            kind: PREVIEW_KIND[primary.kind],
+            image: primary.image,
+            logo: primary.logo,
+            status: primary.status.text || null,
+            live: primary.status.live,
+            detail: primary.kind === "place" ? null : primary.when || null,
+            subtitle: [primary.brand && primary.brand.name !== primary.title ? primary.brand.name : null, primary.place.name !== primary.title ? primary.place.name : null].filter(Boolean).join(" · ") || null,
+            more: Math.max(0, selectedFeature.count - 1),
+          }
+        : { featureId: selectedFeature.id, href: null, title: selectedFeature.label, kind: "", image: null, logo: selectedFeature.logo, status: selectedFeature.status || null, live: selectedFeature.live, detail: null, subtitle: selectedFeature.place, more: Math.max(0, selectedFeature.count - 1) }
+      : null;
   const othersLive = others.some((c) => c.status.live);
   const renderPreview = (mobile: boolean) => selectedFeature && (
     <div ref={mobile ? previewRef : undefined} className="flex flex-col gap-2">
@@ -643,17 +669,9 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   const heights = sheetHeights(metrics);
   const measured = metrics.column > 0 && metrics.head > 0;
   const sheetPx = dragH ?? heights[sheet];
-  // Keep the selected marker in the visible part of the map: once the
-  // preview has rendered and the sheet has settled at its new height, pan
-  // the marker clear of it (marker taps near the bottom included).
-  const settledSheet = measured ? heights[sheet] : 0;
-  useEffect(() => {
-    if (!selectedFeature || view !== "map" || screen.desktop) return;
-    const t = setTimeout(() => setFocus({ lng: selectedFeature.lng, lat: selectedFeature.lat, key: Date.now() }), 180);
-    return () => clearTimeout(t);
-    // Re-run only when the selection or the settled sheet height changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFeature?.id, settledSheet]);
+  // (The canvas keeps the floating preview inside the visible map — between
+  // the top controls and this sheet — with one corrective pan per
+  // selection, so no separate settling pan is needed here.)
 
   const onSheetDown = (e: ReactPointerEvent) => {
     if ((e.target as HTMLElement).closest("[data-sheet-action]")) return;
@@ -703,7 +721,8 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           fit={fit}
           focus={focus}
           userPosition={userPos}
-          keepSelectionInView={screen.desktop}
+          keepSelectionInView
+          preview={floatingPreview}
           padding={
             screen.desktop
               ? { top: 48, bottom: 48, left: 48, right: 48 }
@@ -754,7 +773,6 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
             className={`min-h-0 flex-1 overscroll-contain px-3 ${sheet === "peek" && !selectedFeature ? "overflow-hidden" : "overflow-y-auto"}`}
           >
             <div ref={contentRef} className="flex flex-col gap-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-              {renderPreview(true)}
               {renderList(true)}
             </div>
           </div>

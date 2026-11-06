@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpressionSpecification, GeoJSONSource, Map as MLMap, MapGeoJSONFeature, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
-import { selectedLabelSide, selectedLabelWidth, selectionNeedsPan } from "./selected-label";
+import MapFloatingPreview, { type MapPreview } from "./MapFloatingPreview";
+import { placePreview, previewPan, previewWidth, selectedLabelSide, selectedLabelWidth, selectionNeedsPan, type Insets } from "./selected-label";
 
 // Discovery Map renderer. Population rendering is entirely native MapLibre
 // layers on ONE clustered GeoJSON source (no React/DOM marker per result):
@@ -14,7 +15,9 @@ import { selectedLabelSide, selectedLabelWidth, selectionNeedsPan } from "./sele
 //           in red AND a "LIVE" word in the label — never color alone)
 //   close → Brand/Place logo inside the shell + identity label
 //   closer→ identity + status/time label ("Lavazza · LIVE · Ends 4 PM")
-// Only the SELECTED result gets a rich DOM marker. The canvas never fetches
+// Only the SELECTED result gets a DOM marker: with a `preview` (discovery
+// maps) a compact selected pin plus the floating preview card anchored to
+// it; otherwise the rich identity label. The canvas never fetches
 // on pan/zoom; it reports the viewport and the page decides (Search This
 // Area).
 
@@ -58,7 +61,14 @@ export interface CanvasProps {
    * the map when it isn't already there (archives; /map on desktop —
    * /map's phone sheet does its own settling pan). */
   keepSelectionInView?: boolean;
+  /** Discovery maps: the selected result's floating preview card, drawn at
+   * its marker (only when `preview.featureId` is the selection). */
+  preview?: MapPreview | null;
 }
+
+const DEFAULT_PAD: Insets = { top: 24, bottom: 24, left: 24, right: 24 };
+/** A short visible map gets the shorter cover. */
+const COMPACT_MEDIA_BELOW = 300;
 
 /** How long the full credits stay open on a map that set
  * autoCollapseAttribution. */
@@ -124,6 +134,22 @@ async function loadLogoImage(url: string): Promise<ImageData | null> {
   });
 }
 
+/** The selected marker while its floating preview is open: a compact,
+ * emphasized pin (logo or initial) — the card carries the words. */
+function pinElement(f: MapFeature): HTMLElement {
+  const el = document.createElement("div");
+  el.className = `pointer-events-none flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-[3px] bg-white text-xs font-bold text-findmi-700 shadow-[0_4px_14px_rgba(20,176,188,0.45)] ${f.live ? "border-red-600" : "border-findmi"}`;
+  el.setAttribute("data-selected-pin", f.id);
+  if (f.logo) {
+    const img = document.createElement("img");
+    img.src = f.logo;
+    img.alt = "";
+    img.className = "h-full w-full object-contain p-0.5";
+    el.appendChild(img);
+  } else el.textContent = f.pinText ?? (f.label || "?").slice(0, 1).toUpperCase();
+  return el;
+}
+
 function selectedElement(f: MapFeature, side: "left" | "right", textWidth: number): HTMLElement {
   const el = document.createElement("div");
   // The mark sits on the marker's point; the words run toward `side`.
@@ -154,7 +180,7 @@ function selectedElement(f: MapFeature, side: "left" | "right", textWidth: numbe
   return el;
 }
 
-export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false, keepSelectionInView = false }: CanvasProps) {
+export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onViewportChange, initialBbox, fit, focus, userPosition, padding, label = "Map of results", cooperativeGestures = false, autoCollapseAttribution = false, keepSelectionInView = false, preview = null }: CanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -168,6 +194,15 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   const paddingRef = useRef(padding);
   paddingRef.current = padding;
   const lastSelected = useRef<string | null>(null);
+  // ---- floating preview state: where the selected pin is on screen, the
+  // card's measured size, and one pending "make it fit" pan per selection.
+  const floatingId = preview?.featureId ?? null;
+  const [anchor, setAnchor] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null);
+  const [cardH, setCardH] = useState(0);
+  const cardSize = useRef<{ w: number; h: number } | null>(null);
+  const floatingFeature = useRef<MapFeature | null>(null);
+  const pendingFit = useRef(false);
 
   // ---- mount once
   useEffect(() => {
@@ -408,6 +443,9 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     const f = selectedId ? features.find((x) => x.id === selectedId) : null;
     const isNew = selectedId !== lastSelected.current;
     lastSelected.current = selectedId;
+    const floating = Boolean(f && floatingId === f.id);
+    floatingFeature.current = floating ? f! : null;
+    if (!floating) setAnchor(null);
     if (!f) return;
     // The rich label extends away from the nearer edge and is only as wide
     // as the room on that side — re-placed whenever the map settles, so a
@@ -415,19 +453,51 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     let side: "left" | "right" | null = null;
     let width = 0;
     const place = () => {
-      const w = map.getContainer().clientWidth;
-      const pt = map.project([f.lng, f.lat]);
-      const nextSide = selectedLabelSide(pt.x, w);
-      const nextWidth = selectedLabelWidth(nextSide === "left" ? pt.x : w - pt.x);
-      if (markerRef.current && nextSide === side && Math.abs(nextWidth - width) < 8) return;
-      side = nextSide;
-      width = nextWidth;
+      if (floating) {
+        // The compact pin never changes with the camera.
+        if (markerRef.current) return;
+      } else {
+        const w = map.getContainer().clientWidth;
+        const pt = map.project([f.lng, f.lat]);
+        const nextSide = selectedLabelSide(pt.x, w);
+        const nextWidth = selectedLabelWidth(nextSide === "left" ? pt.x : w - pt.x);
+        if (markerRef.current && nextSide === side && Math.abs(nextWidth - width) < 8) return;
+        side = nextSide;
+        width = nextWidth;
+      }
       markerRef.current?.remove();
-      markerRef.current = new lib.Marker({ element: selectedElement(f, nextSide, nextWidth), anchor: nextSide === "left" ? "right" : "left", offset: [nextSide === "left" ? 18 : -18, 0] }).setLngLat([f.lng, f.lat]).addTo(map);
+      markerRef.current = new lib.Marker(
+        floating
+          ? { element: pinElement(f), anchor: "center" }
+          : { element: selectedElement(f, side!, width), anchor: side === "left" ? "right" : "left", offset: [side === "left" ? 18 : -18, 0] }
+      )
+        .setLngLat([f.lng, f.lat])
+        .addTo(map);
     };
     place();
     map.on("moveend", place);
-    if (keepSelectionInView && isNew) {
+    // The floating card follows its pin on every camera frame.
+    let raf = 0;
+    const track = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const c = map.getContainer();
+        const pt = map.project([f.lng, f.lat]);
+        setAnchor({ id: f.id, x: pt.x, y: pt.y, w: c.clientWidth, h: c.clientHeight });
+      });
+    };
+    if (floating) {
+      if (isNew) {
+        pendingFit.current = true;
+        // A marker tap moves nothing: check the fit once the card is drawn.
+        requestAnimationFrame(() => tryFit());
+      }
+      track();
+      map.on("move", track);
+      map.on("resize", track);
+      map.on("moveend", tryFit);
+    }
+    if (keepSelectionInView && isNew && !floating) {
       const c = map.getContainer();
       const pad = paddingRef.current ?? { top: 24, bottom: 24, left: 24, right: 24 };
       const pt = map.project([f.lng, f.lat]);
@@ -435,8 +505,52 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     }
     return () => {
       map.off("moveend", place);
+      map.off("move", track);
+      map.off("resize", track);
+      map.off("moveend", tryFit);
+      cancelAnimationFrame(raf);
     };
-  }, [selectedId, features, ready, keepSelectionInView]);
+    // tryFit is stable (refs only).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, features, ready, keepSelectionInView, floatingId]);
+
+  // ---- floating preview: one corrective pan per selection when the card
+  // can't fit whole beside its pin (waits for any camera move to settle).
+  const tryFit = useCallback(() => {
+    const map = mapRef.current;
+    const f = floatingFeature.current;
+    const size = cardSize.current;
+    if (!pendingFit.current || !map || !f || !size) return;
+    if (map.isMoving()) return;
+    pendingFit.current = false;
+    const c = map.getContainer();
+    const pt = map.project([f.lng, f.lat]);
+    const view = { w: c.clientWidth, h: c.clientHeight };
+    const pad = paddingRef.current ?? DEFAULT_PAD;
+    if (!placePreview(pt, size, view, pad).fits) map.panBy(previewPan(pt, size, view, pad), { duration: prefersReducedMotion() ? 0 : 400 });
+  }, []);
+  // The card's real size (cover image, wrapped title) drives placement.
+  useEffect(() => {
+    if (!cardEl) return;
+    const read = () => {
+      const size = { w: cardEl.offsetWidth, h: cardEl.offsetHeight };
+      cardSize.current = size;
+      setCardH(size.h);
+      if (pendingFit.current) requestAnimationFrame(() => tryFit());
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(cardEl);
+    return () => ro.disconnect();
+  }, [cardEl, tryFit]);
+  // Escape closes the floating preview.
+  useEffect(() => {
+    if (!floatingId || selectedId !== floatingId) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && cb.current.onSelect(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [floatingId, selectedId]);
 
   // ---- programmatic camera moves
   useEffect(() => {
@@ -460,6 +574,25 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     <div className="relative h-full w-full bg-[#eef0ef]">
       {/* h-full, not absolute: maplibre-gl.css makes .maplibregl-map position: relative. */}
       <div ref={container} className="h-full w-full" role="region" aria-label={`${label}. Every result is also listed in the results panel.`} />
+      {preview && anchor && anchor.id === preview.featureId && selectedId === preview.featureId && (() => {
+        const pad = padding ?? DEFAULT_PAD;
+        const view = { w: anchor.w, h: anchor.h };
+        const w = previewWidth(view.w);
+        const at = placePreview(anchor, { w, h: cardH || 240 }, view, pad);
+        if (!at.visible) return null;
+        return (
+          <MapFloatingPreview
+            preview={preview}
+            side={at.side}
+            caretX={at.caretX}
+            cardRef={setCardEl}
+            compactMedia={view.h - pad.top - pad.bottom < COMPACT_MEDIA_BELOW}
+            onClose={() => onSelect(null)}
+            // Measured once before it's shown, so it never flashes in the wrong spot.
+            style={{ left: at.left, top: at.top, width: w, visibility: cardH ? "visible" : "hidden" }}
+          />
+        );
+      })()}
       {failed && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
           <p className="max-w-xs rounded-2xl bg-white/95 px-4 py-3 text-sm text-ink/70 shadow-sm">The map couldn&rsquo;t load right now. Every result is still listed below.</p>

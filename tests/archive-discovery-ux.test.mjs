@@ -219,6 +219,12 @@ test("sheet Peek: mapped count + partial geography in the sheet, one List action
   await act(async () => globalThis.__canvas.onSelect(studio));
   await settle();
   assert.match(sheetHead(a.host).textContent, /Spring Studios · 3 Events/);
+  // The floating preview at the marker: its lead result, real destination.
+  const fp = globalThis.__canvas.preview;
+  assert.equal(fp.featureId, studio);
+  assert.ok(fp.href.startsWith("/event/") || fp.href.startsWith("/"), "the result's public page");
+  assert.equal(fp.kind, "Event");
+  assert.equal(fp.more, 2, "+2 more here");
   const cards = [...sheet(a.host).querySelectorAll("[data-geo-card]")].map((c) => c.getAttribute("data-geo-card"));
   assert.deepEqual(cards.sort(), ["ev:art-walk", "ev:design-talk", "ev:family-bash"].sort(), "every result at that place, side by side");
   // The marker selected its cards; each selected card is now ONE link to
@@ -233,6 +239,7 @@ test("sheet Peek: mapped count + partial geography in the sheet, one List action
   // (Peek → Browse → Expanded heights are /map's own sheet model, covered
   // by tests/map-ux-completion.test.mjs — jsdom has no layout.)
   await act(async () => btn(a.host, "Show all results").click());
+  assert.equal(globalThis.__canvas.preview, null, "closing returns the marker to its compact state");
   assert.match(sheetHead(a.host).textContent, /4 Events on the map/);
   const tabli = [...sheet(a.host).querySelectorAll("[data-geo-card]")].find((c) => c.getAttribute("data-geo-card") === "ev:tabli");
   await act(async () => tabli.querySelector("button").click());
