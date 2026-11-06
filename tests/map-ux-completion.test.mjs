@@ -568,4 +568,5 @@ test("the history entry keeps the context as the visitor explores (camera, selec
 test("Escape closes the floating preview — but never an Escape meant for a dialog open above the map", () => {
   const canvas = readFileSync("src/components/map/DiscoveryMapCanvas.tsx", "utf8");
   assert.match(canvas, /if \(e\.key !== "Escape" \|\| e\.defaultPrevented \|\| document\.querySelector\('\[role="dialog"\]\[aria-modal="true"\]'\)\) return;/);
+  assert.match(canvas, /window\.addEventListener\("keydown", onKey, true\);/, "capture phase: runs before a dialog's own Escape handler removes it");
 });

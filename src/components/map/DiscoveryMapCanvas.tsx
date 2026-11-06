@@ -585,13 +585,15 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   // Escape closes the floating preview.
   useEffect(() => {
     if (!floatingId || selectedId !== floatingId) return;
-    // …but never an Escape meant for a dialog open above the map.
+    // …but never an Escape meant for a dialog open above the map. Read in
+    // the capture phase: a dialog that closes itself on Escape (its own
+    // document listener) is still in the DOM when this runs.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       cb.current.onSelect(null);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [floatingId, selectedId]);
 
   // ---- programmatic camera moves
