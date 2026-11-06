@@ -42,11 +42,11 @@ test("homepage: heading actions — View All → /moments, My Journal → /journ
 test("homepage: the abandoned Map button stays gone; the Search row is the pre-experiment markup", () => {
   assert.ok(!existsSync("src/components/HomeMapButton.tsx"));
   assert.doesNotMatch(HOME, /HomeMapButton|bg-\[#000000\]/);
-  assert.match(HOME, /<div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search anything you're into…" \/>\s*<\/div>/);
+  assert.match(HOME, /<div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search brands, events, places & more…" \/>\s*<\/div>/);
 });
 
 test("homepage: Explore Map (approved) — one plain link to /map right under the full-width Search, Findmi Aqua tokens, no embedded map", () => {
-  const search = HOME.indexOf('<SearchBar marketSlug={marketSlug} placeholder="Search anything you\'re into…" />');
+  const search = HOME.indexOf('<SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />');
   const explore = HOME.indexOf("data-home-explore-map");
   assert.ok(search > 0 && explore > search, "directly after the Search row");
   assert.ok(explore - search < 1200, "right under it — before the Bulletin");

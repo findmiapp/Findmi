@@ -233,7 +233,7 @@ export default async function HomePage({
           in this same "right after Hero" slot below, rather than
           inventing a new one. */}
       <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
+        <SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />
       </div>
 
       {/* Explore Map (approved 2026-11-06) — the homepage's one direct way

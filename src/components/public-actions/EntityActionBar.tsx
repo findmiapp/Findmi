@@ -40,6 +40,7 @@ export default function EntityActionBar({
   opportunityCount = 0,
   className = "",
   noRecipient = false,
+  variant = "default",
 }: {
   kind: TargetKind;
   entityId: string;
@@ -57,6 +58,9 @@ export default function EntityActionBar({
   /** Nobody manages this page on Findmi: a General Inquiry goes to Findmi
    * and says so (InquireButton's noRecipient). */
   noRecipient?: boolean;
+  /** "primary": the filled Findmi Aqua treatment (white text) for a single
+   * promoted action — the brand page's Inquire / Work With Us. */
+  variant?: "default" | "primary";
 }) {
   const [sheet, setSheet] = useState<{ slot: number; type: PublicActionType | "opportunities" } | null>(null);
 
@@ -86,7 +90,7 @@ export default function EntityActionBar({
     : "flex h-12 w-full min-w-0 items-center justify-center rounded-2xl px-3 text-center text-sm font-bold uppercase leading-tight tracking-wide [text-wrap:balance] transition";
   // One treatment for every slot (the Native Rose outlined INQUIRE): no
   // action is promoted over another.
-  const cls = `${base} border border-findmi/40 bg-white text-findmi-700 hover:bg-findmi-50`;
+  const cls = variant === "primary" ? `${base} bg-findmi text-white shadow-sm hover:bg-findmi-600` : `${base} border border-findmi/40 bg-white text-findmi-700 hover:bg-findmi-50`;
   // One analytics event family: canonical type + slot, never the label.
   const track = (a: PublicActionView) =>
     trackEvent({ event_name: "click_public_action", subject_type: kind, subject_id: entityId, [`${kind}_id`]: entityId, page_path: pagePath, metadata: { action_type: a.type, slot: a.slot } });

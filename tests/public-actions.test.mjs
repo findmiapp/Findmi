@@ -302,7 +302,10 @@ test("37. analytics: one event family — canonical type + slot, never the label
 
 test("16. outlined treatment for every action — nothing auto-promoted to filled", () => {
   const bar = read(BAR);
-  assert.match(bar, /const cls = `\$\{base\} border border-findmi\/40 bg-white text-findmi-700 hover:bg-findmi-50`;/);
+  // The filled Aqua treatment exists only as an explicit opt-in variant
+  // (the brand page's standalone Inquire / Work With Us), never by position.
+  assert.match(bar, /const cls = variant === "primary" \? `\$\{base\} bg-findmi text-white shadow-sm hover:bg-findmi-600` : `\$\{base\} border border-findmi\/40 bg-white text-findmi-700 hover:bg-findmi-50`;/);
+  assert.match(bar, /variant = "default"/, "outlined unless a page explicitly asks");
   assert.doesNotMatch(bar, /bg-findmi text-white[^"]*"\s*\}?\s*;?\s*\n\s*const secondary|i === 0 \?/);
 });
 
@@ -439,3 +442,16 @@ function seed() {
     business_targets: [],
   };
 }
+
+test("Brand page: Inquire / Work With Us stands alone below Featured Appearance — same action, primary Aqua, custom labels kept", () => {
+  const s = read(BIZ);
+  const featured = s.indexOf("Featured Appearance</h2>");
+  const cta = s.indexOf("data-brand-inquiry-cta");
+  assert.ok(featured > 0 && cta > featured && cta < s.indexOf("<SectionAnchorNav"), "right below Featured Appearance, before the tabs");
+  assert.match(s, /\{inquiryCta && \(/, "rendered whether or not there's a Featured Appearance (its own slot)");
+  assert.match(s, /featuredAppearance \? "mt-3" : "mt-4"/);
+  assert.match(s, /actions=\{barActions\}/, "the bar no longer repeats it");
+  assert.match(s, /a\.route !== "general_inquiry"/);
+  assert.match(s, /PUBLIC_ACTION_DEFAULT_LABELS\.general_inquiry \? "Inquire \/ Work With Us" : inquiryAction\.label/, "default label reads Inquire / Work With Us; a manager's custom label is kept");
+  assert.match(s.slice(cta, cta + 700), /actions=\{\[inquiryCta\]\}[\s\S]*?variant="primary"/, "the same EntityActionBar action (destination, analytics, sign-in return), primary treatment");
+});
