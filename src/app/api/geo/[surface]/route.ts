@@ -27,11 +27,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ surf
     body = await brandGeo(a.search, a.bbox);
   } else if (surface === "find") {
     const a = await findArchive(p);
+    // Map Discovery Batch 2 — the window's whole (GEO_LIMIT-bounded) set,
+    // the same one the /find List pages through; never a silent 30.
+    const { items, geo } = await appearanceGeo(a.when, GEO_LIMIT, a.extra);
     if (a.bbox) {
-      const { items } = await appearanceGeo(a.when, GEO_LIMIT, a.extra);
       const inside = await appearancesInBbox(items, a.bbox);
-      body = { results: await appearanceResults(inside.slice(0, 30)), total: Math.min(inside.length, 30), truncated: false };
-    } else body = (await appearanceGeo(a.when, 30, a.extra)).geo;
+      body = { results: await appearanceResults(inside), total: inside.length, truncated: items.length >= GEO_LIMIT };
+    } else body = { ...geo, truncated: items.length >= GEO_LIMIT };
   }
   if (!body) return NextResponse.json({ error: "Unknown surface" }, { status: 404 });
   return NextResponse.json(body, { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } });

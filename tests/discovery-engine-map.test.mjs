@@ -499,6 +499,9 @@ const DATA = {
 };
 
 async function mount(props = {}) {
+  // Each mount is a fresh visit: no earlier test's URL or history entry
+  // (Map Discovery Batch 2 resumes those on Back).
+  window.history.replaceState(null, "", "/map");
   const calls = [];
   const geo = [];
   globalThis.fetch = async (url) => {

@@ -75,6 +75,8 @@ interface Params {
   /** Map Everywhere — Search This Area bounds and the presentation. */
   bbox?: string;
   view?: string;
+  /** List paging (Load More): how many results to show. */
+  limit?: string;
 }
 
 /** Carousel-First pass — stable round-robin by business.id, preserving
@@ -139,6 +141,13 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   // (already the broadest window) needs no second query — its own result
   // set already covers everything, so the existing carousel+diversified-
   // slice model is untouched for it.
+  // Map Discovery Batch 2 — no silent 30 cap: the window's whole result set
+  // is read once (bounded by GEO_LIMIT, the same bound the map and Search
+  // This Area use), counted honestly, and the List pages through it with
+  // `limit` (Load More, as on /events). The map draws the same bounded set.
+  const PAGE_SIZE = 30;
+  const limitParam = Number(raw.limit);
+  const limit = Math.min(GEO_LIMIT, Math.max(PAGE_SIZE, Number.isFinite(limitParam) ? Math.ceil(limitParam / PAGE_SIZE) * PAGE_SIZE : PAGE_SIZE));
   const CONSTRAINED_WINDOWS: FindWindow[] = ["live", "today", "weekend"];
   const isConstrainedWindow = CONSTRAINED_WINDOWS.includes(when);
 
@@ -148,13 +157,13 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
     // Search This Area (Map Everywhere): the same feed, narrowed to Pop-Ups
     // at a Location inside the area — exactly what /api/geo/find maps.
     bbox
-      ? getFindMiHereFeed(when, GEO_LIMIT, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }).then(async (all) => (await appearancesInBbox(all, bbox)).slice(0, 30))
-      : getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }),
+      ? getFindMiHereFeed(when, GEO_LIMIT, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }).then((all) => appearancesInBbox(all, bbox))
+      : getFindMiHereFeed(when, GEO_LIMIT, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }),
     category || marketSlug || canonicalGeo
       ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, canonicalGeo, bbox, limit: 6 })
       : Promise.resolve([]),
     isConstrainedWindow
-      ? getFindMiHereFeed("anytime", bbox ? GEO_LIMIT : 20, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }).then(async (all) => (bbox ? (await appearancesInBbox(all, bbox)).slice(0, 20) : all))
+      ? getFindMiHereFeed("anytime", GEO_LIMIT, { categorySlug: category, marketSlug, areaSlug, q, canonicalGeo }).then((all) => (bbox ? appearancesInBbox(all, bbox) : all))
       : Promise.resolve([]),
   ]);
 
@@ -184,9 +193,17 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   // with more than one real future appearance can still show again below,
   // per Section 5). For NEXT UP, nothing has changed: the feed is simply
   // the rest of the same diversified list.
-  const moreItems = isConstrainedWindow
+  const moreAll = isConstrainedWindow
     ? continuationItems.filter((i) => !carouselItems.some((c) => c.id === i.id))
     : diversified.slice(CAROUSEL_SIZE);
+  const moreItems = moreAll.slice(0, Math.max(0, limit - CAROUSEL_SIZE));
+  const hasMore = moreAll.length > moreItems.length;
+  // Honest counts: every match in this window (a "+" only if the bounded
+  // read itself was full), and how many the List shows so far.
+  const total = items.length;
+  const totalLabel = `${total.toLocaleString()}${total >= GEO_LIMIT ? "+" : ""}`;
+  const shown = carouselItems.length + moreItems.length;
+  const shownTotal = carouselItems.length + moreAll.length;
 
   const SECTION_LABELS: Record<FindWindow, { top: string; more: string }> = {
     live: { top: "Happening Now", more: "Coming Up Next" },
@@ -243,6 +260,11 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   }
 
   const viewAllAreasHref = buildHref({ market: undefined, area: undefined });
+  const loadMoreHref = (() => {
+    const base = buildHref();
+    return `${base}${base.includes("?") ? "&" : "?"}limit=${limit + PAGE_SIZE}`;
+  })();
+  const WINDOW_SUFFIX: Record<FindWindow, string> = { live: " happening now", today: " today", weekend: " this weekend", anytime: "" };
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-6 pt-3 sm:px-6 sm:py-6">
@@ -259,6 +281,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         allowSplit={false}
         title="Findmi Here"
         subtitle="Help me find something specific."
+        count={`${totalLabel} ${total === 1 ? "pop-up" : "pop-ups"}${WINDOW_SUFFIX[when]}`}
         controls={
           <form method="get" className="flex items-center gap-2">
             {bbox && <input type="hidden" name="bbox" value={bboxParam(bbox)} />}
@@ -418,6 +441,20 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                   <FindAppearanceRow key={item.id} item={item} position={i + 1} />
                 ))}
               </div>
+            </div>
+          )}
+          {hasMore && (
+            <div className="mt-6 flex flex-col items-center gap-2">
+              <p className="text-xs font-medium text-ink/45">
+                Showing {shown.toLocaleString()} of {shownTotal.toLocaleString()}
+              </p>
+              <Link
+                href={loadMoreHref}
+                scroll={false}
+                className="flex h-11 items-center justify-center rounded-full border border-black/10 px-6 text-sm font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              >
+                Load More
+              </Link>
             </div>
           )}
         </>

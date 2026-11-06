@@ -50,6 +50,8 @@ registerHooks({
 
 const S = await import("../src/components/map/sheet.ts");
 const L = await import("../src/components/map/selected-label.ts");
+const R = await import("../src/lib/discovery/map-restore.ts");
+const Q = await import("../src/lib/discovery/query.ts");
 
 // ---------------------------------------------------------------- MapExplorer in jsdom
 
@@ -153,7 +155,11 @@ const DATA = {
 };
 const settle = () => act(async () => new Promise((r) => setTimeout(r, 250)));
 
-async function mount(props = {}, responder = () => DATA) {
+async function mount(props = {}, responder = () => DATA, entry = null) {
+  // Each mount is a fresh visit: no earlier test's URL or history entry
+  // (Map Discovery Batch 2 resumes those on Back) — unless a test returns
+  // to one (`entry`: the URL + history state Back lands on).
+  window.history.replaceState(entry?.state ?? null, "", entry?.url ?? "/map");
   const calls = [];
   const geo = [];
   globalThis.fetch = async (url) => {
@@ -418,4 +424,85 @@ test("floating preview card: cover or Findmi fallback, type + title + context, O
   await act(async () => close.click());
   assert.equal(closed, 1);
   root.unmount();
+});
+
+// ================================================================ Map Discovery Batch 2 — Back restores the discovery context
+
+const BBOX = [-74.02, 40.7, -73.96, 40.77];
+const PANNED = [-73.995, 40.72, -73.975, 40.74];
+
+test("resume rules: the entry's URL beats a stale first render; its camera / selection / sheet only for that same query", () => {
+  const initial = { bbox: BBOX };
+  const loc = { pathname: "/map", search: `?free=1&when=weekend&bbox=${BBOX.join("%2C")}&view=list` };
+  const key = Q.queryKey({ bbox: BBOX, free: true, when: "weekend" });
+  const state = { __NA: true, findmiMap: { v: 1, key, viewport: PANNED, selected: "loc:B", sheet: "browse" } };
+  const r = R.resumeMap(initial, "map", loc, state);
+  assert.deepEqual({ free: r.query.free, when: r.query.when }, { free: true, when: "weekend" }, "filters + time from the URL");
+  assert.equal(r.view, "list", "presentation from the URL");
+  assert.deepEqual(r.entry.viewport, PANNED);
+  assert.equal(r.entry.selected, "loc:B");
+  assert.equal(r.entry.sheet, "browse");
+  assert.equal(R.resumeMap(initial, "map", loc, { findmiMap: { ...state.findmiMap, key: "other" } }).entry, null, "another query's context is never applied");
+  assert.equal(R.resumeMap(initial, "map", loc, { findmiMap: { ...state.findmiMap, viewport: [1, 2, 0, 3] } }).entry.viewport, null, "an invalid camera is dropped");
+  const near = R.resumeMap(initial, "map", { pathname: "/map", search: "?near=1&free=1" }, null);
+  assert.equal(near.query, initial, "Near Me is never resumed from a URL — the page asks again");
+  const fresh = R.resumeMap(initial, "map", { pathname: "/map", search: "" }, null);
+  assert.equal(fresh.query, initial, "a fresh visit keeps the server's default area");
+  const next = R.mapEntryState({ __NA: true, tree: 1 }, { key, viewport: PANNED, selected: null, sheet: "peek" });
+  assert.equal(next.__NA, true, "the router's own history state is kept");
+  assert.equal(next.findmiMap.v, 1);
+});
+
+test("archive hints: only for the same result set, recent, and well-formed", () => {
+  const now = 1_800_000_000_000;
+  const ok = JSON.stringify({ key: "when=weekend", viewport: PANNED, selected: "loc:x", sheet: "browse", t: now - 60_000 });
+  assert.deepEqual(R.parseGeoViewHint(ok, "when=weekend", now).viewport, PANNED);
+  assert.equal(R.parseGeoViewHint(ok, "when=today", now), null, "another result set");
+  assert.equal(R.parseGeoViewHint(JSON.stringify({ ...JSON.parse(ok), t: now - R.GEO_VIEW_TTL_MS - 1 }), "when=weekend", now), null, "stale");
+  assert.equal(R.parseGeoViewHint("{oops", "when=weekend", now), null);
+  assert.equal(R.parseGeoViewHint(JSON.stringify({ ...JSON.parse(ok), sheet: "huge" }), "when=weekend", now).sheet, "peek");
+});
+
+test("Back to /map: filters / search / time from the entry URL, the same camera, the selected result's floating preview and the sheet", async () => {
+  const url = `/map?free=1&when=weekend&bbox=${BBOX.join("%2C")}`;
+  const key = Q.queryKey({ bbox: BBOX, free: true, when: "weekend" });
+  const state = { findmiMap: { v: 1, key, viewport: PANNED, selected: "loc:B", sheet: "browse" } };
+  // The server's (cached) first render was the unfiltered query.
+  const { host, root, calls } = await mount({}, () => DATA, { url, state });
+  await settle();
+  assert.ok(calls.some((u) => /free=1/.test(u) && /when=weekend/.test(u)), "the entry's query is what's fetched");
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED, "same center / zoom as when the visitor left");
+  assert.equal(globalThis.__canvas.selectedId, "loc:B", "the selected result");
+  assert.equal(globalThis.__canvas.preview?.featureId, "loc:B", "its floating preview is open again");
+  assert.equal(sheet(host).querySelector("[aria-expanded]").getAttribute("aria-expanded"), "true", "the sheet position");
+  const on = (label) => [...host.querySelectorAll('button[aria-pressed="true"]')].some((b) => b.textContent.trim() === label);
+  assert.ok(on("Free"), "the Free filter chip is on");
+  assert.ok(on("This Weekend"), "and the time window");
+  assert.match(window.location.search, /free=1/, "and the URL keeps them (never rewritten to the stale render)");
+  root.unmount();
+});
+
+test("Back to /map with a selection that's gone: camera and filters stay, the selection clears quietly", async () => {
+  const url = `/map?free=1&bbox=${BBOX.join("%2C")}`;
+  const key = Q.queryKey({ bbox: BBOX, free: true });
+  const { root } = await mount({}, () => DATA, { url, state: { findmiMap: { v: 1, key, viewport: PANNED, selected: "loc:GONE", sheet: "peek" } } });
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED);
+  assert.equal(globalThis.__canvas.selectedId, null);
+  assert.equal(globalThis.__canvas.preview, null);
+  root.unmount();
+});
+
+test("the history entry keeps the context as the visitor explores (camera, selection, sheet) — never a Near Me camera", async () => {
+  const { root } = await mount();
+  await act(async () => globalThis.__canvas.onViewportChange(PANNED, true));
+  await act(async () => globalThis.__canvas.onSelect("loc:A"));
+  await settle();
+  const e = window.history.state.findmiMap;
+  assert.deepEqual(e.viewport, PANNED);
+  assert.equal(e.selected, "loc:A");
+  assert.equal(e.key, Q.queryKey({ bbox: [-74.02, 40.7, -73.96, 40.77] }));
+  root.unmount();
+  const n = await mount({ initialQuery: { near: true, bbox: BBOX } });
+  assert.equal(window.history.state.findmiMap.viewport, null, "the viewer's own area is never stored");
+  n.root.unmount();
 });

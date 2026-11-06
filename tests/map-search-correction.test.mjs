@@ -239,6 +239,9 @@ const settle = () => act(async () => wait(300));
 /** Mount with the real route behind fetch. `delay(url)` holds a response
  * back (ms) — and late responses still resolve: abort is not relied on. */
 async function mount(delay = () => 0) {
+  // Each mount is a fresh visit: no earlier test's URL or history entry
+  // (Map Discovery Batch 2 resumes those on Back).
+  window.history.replaceState(null, "", "/map");
   const calls = [];
   globalThis.fetch = async (url) => {
     const u = String(url);

@@ -16,13 +16,66 @@ Companion to `FINDMI_DISCOVERY_AUDIT.md`.
   carried, because the two category vocabularies differ.
 - **P1-4 (partial):** the `/map` error state with Try Again.
 
-**Not started (awaiting approval):** P0-3 (Back-navigation restore;
-browser QA confirmed filters are lost on Back), P1-2 (sheet cap), the
-`/find` totals and event-linked appearance fallback (rest of P1-4), and
-all of P2.
+**Batch 1 correction: implemented** (`4df9fc2`, `81467cb`). Floating,
+image-rich preview anchored to the selected pin on `/map` and every archive
+map (`MapFloatingPreview`, placement in `selected-label.ts`). The phone
+sheet stays an independent result list.
 
-Decisions D1–D3 were taken as recommended. D4 (nav item) is a founder
-action.
+**Batch 2: implemented**:
+- **P0-3, Back restores the discovery context**
+  (`lib/discovery/map-restore.ts`):
+  - **`/map`:** on mount, the history entry's own URL (filters, search,
+    time, area, List/Map) wins over a stale first render. Its
+    `history.state` entry carries the camera, the selection (and so its
+    floating preview), the sheet position and the search-derived filters.
+    It's written with the replaceState `/map` already used.
+  - **Archives:** the URL already held filters, view and `bbox`. A
+    per-result-set `sessionStorage` hint (30 min) carries the camera,
+    selection and sheet.
+  - A selection that no longer exists is dropped; the camera and filters
+    stay. Near Me never stores a camera.
+  - Browser Back, the header back arrow (`router.back()`), and returning
+    to the same result set through in-app links within 30 minutes (archives
+    only) all restore.
+- **P1-4 (rest), `/find` 30-result cap:** the cap hit the map markers, the
+  List, the totals (`Math.min(…, 30)`, `truncated: false`), Search This
+  Area, and there was no pagination.
+  - Now one read per page, bounded by the existing `GEO_LIMIT` (500).
+  - Honest totals ("N pop-ups …", "+" only when the bounded read is full).
+  - The List pages with `limit` (Load More, "Showing X of Y"), as on
+    `/events`.
+  - The geo endpoint maps the whole bounded set and reports `truncated`.
+  - No unbounded queries; appearances are de-duplicated by id and markers
+    fold by Location.
+- **Positioning fixes:**
+  - **Split hover:** hovering the List only highlights its marker. The
+    floating preview opens on a click, and an open preview for another
+    place closes, so no card pops over nearby markers.
+  - **Search This Area:** never covered (`81467cb`).
+  - **Sheet / pins / controls:** re-verified in the browser at 360×640,
+    360, 390, 412 and 1280.
+
+**Navigation (founder decision, not applied):** add a top-level **Map**
+row in Admin → Site → Navigation:
+
+| Field | Value |
+| --- | --- |
+| Label | `Map` |
+| Destination | Existing Findmi Page → `Map` (`route_key = map`, already in `lib/public-routes.ts`) |
+| Parent | none (top level) |
+| Audience | Everyone |
+| Visible | yes |
+| Sort order | `35` (after Moments at 34, so no existing row moves) |
+| Icon | `pin` (the curated, test-locked set has no map glyph; Places also uses `pin`). Or no icon. A dedicated map icon would need a small code change and its test updated: ask if wanted |
+
+No code hardcodes a duplicate entry. The homepage Map button stays
+rejected.
+
+**Still open:** P1-2 (sheet cap tuning beyond what QA showed is needed),
+the event-linked appearance fallback for map placement (latent: 0 rows
+today), and P2 docs/data items. Also: with a Market filter,
+`getFindMiHereFeed` over-fetches at most 200 rows before geography
+filtering, so a "+" can't signal truncation there. Real volume is dozens.
 
 Scope rules: change only what the 13 requirements need, reuse the existing
 components, add no new map or sheet framework, and make no schema changes.

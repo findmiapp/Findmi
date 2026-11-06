@@ -241,6 +241,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const settle = () => act(async () => wait(50));
 
 async function mountShell(search, props = {}) {
+  // A fresh visit: no stored map context from an earlier test (Batch 2).
+  try {
+    window.sessionStorage.clear();
+  } catch {}
   globalThis.__search = search;
   globalThis.__path = "/events";
   const pushes = [];
@@ -295,6 +299,7 @@ test("marker → its results; Split: list hover ↔ marker; Search This Area onl
   assert.match(a.host.textContent, /Fall Art Walk/, "and its card is offered (mobile Split = Map)");
   await act(async () => a.host.querySelector('[data-geo-key="ev:tabli"]').dispatchEvent(new dom.window.MouseEvent("pointerover", { bubbles: true })));
   assert.equal(globalThis.__canvas.selectedId, `loc:${EATALY.id}`, "List item → its marker");
+  assert.equal(globalThis.__canvas.preview, null, "hover highlights the marker; the floating preview opens only on a click (never pops over nearby markers)");
   const n = a.calls.length;
   // The very first drag counts (the map's first view is the results' extent).
   await act(async () => globalThis.__canvas.onViewportChange([-74.1, 40.6, -74.06, 40.65], true));

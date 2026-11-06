@@ -144,7 +144,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const settle = () => act(async () => wait(60));
 const btn = (host, label) => [...host.querySelectorAll("button, a")].find((b) => b.textContent.trim() === label || b.getAttribute("aria-label") === label);
 
-async function mountShell(search) {
+async function mountShell(search, hint = null) {
+  // A fresh visit: no stored map context from an earlier test (Batch 2) —
+  // unless a test returns to one (`hint`: what the visitor left behind).
+  try {
+    window.sessionStorage.clear();
+    if (hint) window.sessionStorage.setItem(`findmi-geo-view:events:${hint.key}`, JSON.stringify({ t: Date.now(), ...hint }));
+  } catch {}
   globalThis.__search = search;
   globalThis.__path = "/events";
   const pushes = [];
@@ -353,3 +359,60 @@ test("every archive: heading + view action, ONE search + Refine row, lenses only
   assert.match(read("src/components/discover/ArchiveSearchField.tsx"), /name=\{name\}/, "still the same named URL field");
 });
 
+
+// ---------------------------------------------------------------- Map Discovery Batch 2: Back to an archive map
+
+const PANNED = [-74.02, 40.71, -73.99, 40.735];
+
+test("Back to an archive map (Events / Locations / Businesses / Findmi Here share this shell): same camera, selection + floating preview, sheet", async () => {
+  // Filters, view and map area live in the URL already; the camera,
+  // selection and sheet come back from the visitor's own context.
+  const a = await mountShell("view=map&when=weekend", { key: "when=weekend", viewport: PANNED, selected: `loc:${STUDIO.id}`, sheet: "browse" });
+  await settle();
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED, "the same center / zoom, not a fresh fit to the results");
+  assert.equal(globalThis.__canvas.fit, null, "no auto-fit over the restored camera");
+  assert.equal(globalThis.__canvas.selectedId, `loc:${STUDIO.id}`);
+  assert.equal(globalThis.__canvas.preview?.featureId, `loc:${STUDIO.id}`, "its floating preview is open again");
+  assert.equal(sheetHead(a.host).getAttribute("aria-expanded"), "true", "the sheet position");
+  assert.ok(btn(a.host, "Search This Area"), "the restored camera differs from the queried area, so Search This Area is offered");
+  a.root.unmount();
+});
+
+test("Back to an archive map whose selected place is gone: the camera stays, the selection clears quietly; another result set ignores the context", async () => {
+  const a = await mountShell("view=map", { key: "", viewport: PANNED, selected: "loc:gone", sheet: "peek" });
+  await settle();
+  assert.deepEqual(globalThis.__canvas.initialBbox, PANNED);
+  assert.equal(globalThis.__canvas.selectedId, null);
+  assert.equal(globalThis.__canvas.preview, null);
+  a.root.unmount();
+  const b = await mountShell("view=map&when=today", { key: "when=weekend", viewport: PANNED, selected: `loc:${STUDIO.id}`, sheet: "browse" });
+  await settle();
+  assert.notDeepEqual(globalThis.__canvas.initialBbox, PANNED, "a different result set starts fresh");
+  assert.equal(globalThis.__canvas.selectedId, null);
+  b.root.unmount();
+});
+
+test("exploring an archive map keeps its context for the return (camera, selected place, sheet)", async () => {
+  const a = await mountShell("view=map");
+  await settle();
+  await act(async () => globalThis.__canvas.onViewportChange(PANNED, true));
+  await act(async () => globalThis.__canvas.onSelect(`loc:${EATALY.id}`));
+  await settle();
+  const saved = JSON.parse(window.sessionStorage.getItem("findmi-geo-view:events:"));
+  assert.deepEqual(saved.viewport, PANNED);
+  assert.equal(saved.selected, `loc:${EATALY.id}`);
+  assert.equal(saved.key, "");
+  a.root.unmount();
+});
+
+test("Findmi Here: no silent 30 — the List pages with Load More and honest counts; the map reads the same bounded set", () => {
+  const page = read("src/app/(public)/find/page.tsx");
+  assert.doesNotMatch(page, /slice\(0, 30\)|getFindMiHereFeed\(when, 30/, "no 30-result cap on the List");
+  assert.match(page, /getFindMiHereFeed\(when, GEO_LIMIT/, "the window's whole (bounded) set is read once");
+  assert.match(page, /Load More/);
+  assert.match(page, /Showing \{shown\.toLocaleString\(\)\} of \{shownTotal\.toLocaleString\(\)\}/, "loaded vs total is explicit");
+  assert.match(page, /count=\{`\$\{totalLabel\}/, "the total sits beside the heading");
+  const route = read("src/app/api/geo/[surface]/route.ts");
+  assert.doesNotMatch(route, /slice\(0, 30\)|Math\.min\(inside\.length, 30\)|appearanceGeo\(a\.when, 30/, "the map isn't capped at 30 either");
+  assert.match(route, /truncated: items\.length >= GEO_LIMIT/, "a full bounded read says so (\"zoom in for more\")");
+});

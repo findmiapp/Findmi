@@ -6,6 +6,7 @@ import { bboxAround, type Bbox, type MapFeature } from "@/lib/discovery/map-core
 import type { MapResponse, MapResultCard as Card } from "@/lib/discovery/map-server";
 import { mapHref, mapView, paramsToQuery, queryKey, queryToParams, type DiscoveryQuery, type DiscoveryWhen } from "@/lib/discovery/query";
 import { clearedQuery, derivedFrom, hasGeo } from "@/lib/discovery/search-state";
+import { mapEntryState, resumeMap } from "@/lib/discovery/map-restore";
 import { NEAR_ME_RADIUS_MILES } from "@/lib/map-config";
 import MapResultCard from "./MapResultCard";
 import type { MapPreview } from "./MapFloatingPreview";
@@ -85,20 +86,25 @@ export interface MapExplorerProps {
 }
 
 export default function MapExplorer({ initialQuery, initialView, initialData, defaultBbox, options, nearRequested = false }: MapExplorerProps) {
-  const [query, setQuery] = useState<DiscoveryQuery>(initialQuery);
-  const [view, setView] = useState<View>(initialView);
+  // Returning (Back / Forward): this history entry's URL and saved camera /
+  // selection / sheet win over the first server render (lib/discovery/map-restore).
+  const resume = useRef<ReturnType<typeof resumeMap> | null>(null);
+  if (!resume.current) resume.current = typeof window === "undefined" ? { query: initialQuery, view: initialView, entry: null } : resumeMap(initialQuery, initialView, window.location, window.history.state);
+  const start = resume.current;
+  const [query, setQuery] = useState<DiscoveryQuery>(start.query);
+  const [view, setView] = useState<View>(start.view);
   const [data, setData] = useState<MapResponse | null>(initialData);
   const [results, setResults] = useState<Card[]>(initialData?.results ?? []);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [focusCards, setFocusCards] = useState<Card[] | null>(null);
   const [extras, setExtras] = useState<{ brands: { name: string; slug: string }[]; moments: { id: string; title: string; href: string }[]; open: boolean | null } | null>(null);
-  const [viewport, setViewport] = useState<Bbox>(initialQuery.bbox ?? defaultBbox);
-  const [showSearchArea, setShowSearchArea] = useState(false);
-  const [sheet, setSheet] = useState<SheetState>("peek");
+  const [viewport, setViewport] = useState<Bbox>(start.entry?.viewport ?? (start.query.bbox as Bbox | undefined) ?? defaultBbox);
+  const [showSearchArea, setShowSearchArea] = useState(() => Boolean(start.entry?.viewport && movedMeaningfully(start.query.bbox as Bbox | undefined, start.entry.viewport)));
+  const [sheet, setSheet] = useState<SheetState>(start.entry?.sheet ?? "peek");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [text, setText] = useState(initialQuery.text ?? "");
+  const [text, setText] = useState(start.query.text ?? "");
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(nearRequested ? "near" : null);
   const [fit, setFit] = useState<{ bbox: Bbox; key: number } | null>(null);
@@ -112,7 +118,11 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // results aren't on screen always re-fetches.
   const dataKey = useRef<string | null>(initialData ? queryKey({ ...initialQuery, offset: undefined }) : null);
   // Filters the last typed search contributed (cleared with the search).
-  const derived = useRef<Partial<DiscoveryQuery>>({});
+  const derived = useRef<Partial<DiscoveryQuery>>(start.entry?.derived ?? {});
+  // A restored camera replaces the first auto-fit; a restored selection is
+  // applied once its result set has loaded (dropped if it's gone).
+  const keepCamera = useRef(Boolean(start.entry?.viewport));
+  const pendingSel = useRef<string | null>(start.entry?.selected ?? null);
   const mounted = useRef(false);
   // Bumped by every search and every Clear: only the latest one may land.
   const searchSeq = useRef(0);
@@ -124,7 +134,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
   // Bounds the current results were queried for (Search This Area compares
   // against these): the query's own viewport, or — for an Area / place /
   // search query — the view the map fitted to its results.
-  const queriedBounds = useRef<Bbox | null>((initialQuery.bbox as Bbox | undefined) ?? null);
+  const queriedBounds = useRef<Bbox | null>((start.query.bbox as Bbox | undefined) ?? null);
   const awaitingFit = useRef(false);
 
   // ---- measured sheet geometry (content-driven heights)
@@ -181,10 +191,11 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
       ctl.current?.abort();
       setLoading(false);
       // Server-rendered Area / place results: fit the map to them once.
-      if (first && !query.bbox && data?.features.length) {
+      if (first && !query.bbox && data?.features.length && !keepCamera.current) {
         awaitingFit.current = true;
         setFit({ bbox: bboxOf(data.features)!, key: Date.now() });
       }
+      keepCamera.current = false;
       return;
     }
     ctl.current?.abort();
@@ -201,7 +212,9 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           setData(d);
           setResults(d.results);
           counts.current.set(key, d.total);
-          if (!query.bbox) {
+          const keep = keepCamera.current;
+          keepCamera.current = false;
+          if (!query.bbox && !keep) {
             const b = bboxOf(d.features);
             if (b) {
               awaitingFit.current = true;
@@ -219,11 +232,13 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, retry]);
 
-  // ---- shareable URL (no history spam; never the viewer's own position)
+  // ---- shareable URL + this entry's context (no history spam; never the
+  // viewer's own position — a Near Me view keeps no camera).
   useEffect(() => {
     const shareable = query.near ? { ...query, bbox: undefined } : query;
-    window.history.replaceState(window.history.state, "", mapHref({ ...shareable, offset: undefined }, view));
-  }, [query, view]);
+    const state = mapEntryState(window.history.state, { key, viewport: query.near ? null : viewport, selected: pendingSel.current ?? selected, sheet, derived: derived.current });
+    window.history.replaceState(state, "", mapHref({ ...shareable, offset: undefined }, view));
+  }, [query, view, key, viewport, selected, sheet]);
 
   const apply = useCallback((next: DiscoveryQuery) => {
     setFailed(null);
@@ -277,6 +292,19 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
     },
     [featureById, results, query, key]
   );
+  // Restore the selection (and its floating preview) once its result set is
+  // on screen — only if that marker is still part of it.
+  useEffect(() => {
+    const id = pendingSel.current;
+    if (!id || !data || dataKey.current !== key) return;
+    pendingSel.current = null;
+    if (!featureById.has(id)) return;
+    const restoredSheet = start.entry?.sheet;
+    selectFeature(id);
+    if (restoredSheet) setSheet(restoredSheet);
+    // (`loading` too: re-checked whenever a request settles.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, key, featureById, loading]);
   const selectCard = (card: Card) => {
     selectFeature(card.featureId);
     setFocus({ lng: card.lng, lat: card.lat, key: Date.now() });
@@ -717,7 +745,7 @@ export default function MapExplorer({ initialQuery, initialView, initialData, de
           selectedId={selected}
           onSelect={selectFeature}
           onViewportChange={onViewportChange}
-          initialBbox={(query.bbox as Bbox | undefined) ?? defaultBbox}
+          initialBbox={start.entry?.viewport ?? (query.bbox as Bbox | undefined) ?? defaultBbox}
           fit={fit}
           focus={focus}
           userPosition={userPos}

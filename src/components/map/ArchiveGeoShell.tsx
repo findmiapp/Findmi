@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import type { Bbox } from "@/lib/discovery/map-core";
 import { bboxParam, boundsOf, geoFeatures, type GeoResponse, type GeoResult, type ViewMode } from "@/lib/geo-results";
 import { DEFAULT_MAP_BBOX } from "@/lib/map-config";
+import { geoViewStorageKey, parseGeoViewHint, type GeoViewHint } from "@/lib/discovery/map-restore";
 import GeoResultCard from "./GeoResultCard";
 import type { MapPreview } from "./MapFloatingPreview";
 import ViewModeSwitch from "./ViewModeSwitch";
@@ -128,6 +129,21 @@ export default function ArchiveGeoShell({
     return p.toString();
   }, [search]);
 
+  // Returning to this result set (Back from a detail page, or back through
+  // the app's own navigation within ~30 min): its camera, selection and
+  // sheet, read once (lib/discovery/map-restore).
+  const resumeHint = useRef<GeoViewHint | null | undefined>(undefined);
+  if (resumeHint.current === undefined) {
+    let raw: string | null = null;
+    try {
+      raw = typeof window === "undefined" ? null : window.sessionStorage.getItem(geoViewStorageKey(surface, queryKey));
+    } catch {
+      /* storage unavailable — a fresh map */
+    }
+    resumeHint.current = parseGeoViewHint(raw, queryKey);
+    if (resumeHint.current?.viewport) lastView.current = { key: queryKey, bbox: resumeHint.current.viewport };
+  }
+
   const hrefWith = useCallback(
     (edit: (p: URLSearchParams) => void) => {
       const p = new URLSearchParams(search.toString());
@@ -211,8 +227,16 @@ export default function ArchiveGeoShell({
         // What was queried: the URL's map area, or the results' extent the
         // map opens on (the canvas reports no move for its first view).
         queried.current = bbox ?? boundsOf(body.results);
-        lastView.current = null;
-        if (!bbox) {
+        const hint = resumeHint.current;
+        if (hint && hint.key === queryKey && hint.viewport) {
+          // Returning: the camera the visitor left, not a fresh fit.
+          lastView.current = { key: queryKey, bbox: hint.viewport };
+          awaitingFit.current = false;
+          setShowSearchArea(movedMeaningfully(queried.current, hint.viewport));
+        } else {
+          lastView.current = null;
+        }
+        if (!bbox && !(hint && hint.key === queryKey && hint.viewport)) {
           const b = boundsOf(body.results);
           if (b) {
             awaitingFit.current = true;
@@ -294,7 +318,15 @@ export default function ArchiveGeoShell({
     if (view !== "split") return;
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-geo-key]");
     const f = el?.dataset.geoKey ? featureByEntity.get(el.dataset.geoKey) : undefined;
-    if (f && f !== selected) setSelected(f);
+    // Hover only highlights its marker (like browsing the Peek strip): the
+    // floating preview opens on a click, so it never pops over nearby
+    // markers while the pointer crosses the List.
+    if (f && f !== browsing) {
+      setBrowsing(f);
+      // Attention moved to another List item: its marker lights up and an
+      // open preview for a different place closes (no card pops up).
+      if (selected && selected !== f) setSelected(null);
+    }
   };
 
   const onViewportChange = useCallback(
@@ -342,7 +374,27 @@ export default function ArchiveGeoShell({
   const partialLine = results && unmapped > 0 ? `${unmapped.toLocaleString()} without ${unmapped === 1 ? "a location" : "locations"}${data?.body.truncated ? " · zoom in for more" : ""}` : null;
 
   // ---------------------------------------------------------------- mobile sheet (the /map model)
-  const [sheet, setSheet] = useState<SheetState>("peek");
+  const [sheet, setSheet] = useState<SheetState>(resumeHint.current?.sheet ?? "peek");
+  // Restore the selection once its markers exist — only if it's still in
+  // the result set — then keep this map's context for the next return.
+  useEffect(() => {
+    const hint = resumeHint.current;
+    if (!hint || !results || hint.key !== queryKey) return;
+    resumeHint.current = null;
+    if (hint.selected && features.some((f) => f.id === hint.selected)) {
+      setSelected(hint.selected);
+      setSheet(hint.sheet);
+    }
+  }, [results, features, queryKey]);
+  useEffect(() => {
+    if (!geoMode || !results || resumeHint.current) return;
+    const camera = viewport ?? (lastView.current?.key === queryKey ? lastView.current.bbox : null);
+    try {
+      window.sessionStorage.setItem(geoViewStorageKey(surface, queryKey), JSON.stringify({ key: queryKey, viewport: camera, selected, sheet, t: Date.now() } satisfies GeoViewHint));
+    } catch {
+      /* storage unavailable — nothing to restore later */
+    }
+  }, [geoMode, results, surface, queryKey, viewport, selected, sheet]);
   const [dragH, setDragH] = useState<number | null>(null);
   const sheetDrag = useRef<{ y: number; h: number; moved: boolean } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
