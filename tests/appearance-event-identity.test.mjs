@@ -344,3 +344,53 @@ test("L. messaging disabled => no direct or replacement communication CTA on Bus
     assert.match(readFileSync(page, "utf8"), /messagingEnabled=\{isDirectBusinessMessagingEnabled\(\)\}/, page);
   }
 });
+
+// ── Event-level rows borrow their Event's single Location (2026-11-06) ────
+// Live trace: Tamagotchi HOSTS "Tamagotchi Times Square Spectacular"; its one
+// date is at Duffy Square (geocoded), but the Business page's Findmi Here
+// map had nothing to place — the Event-level row was synthesized with
+// location_id null.
+const ER = await import("../src/lib/event-location-resolution.ts");
+
+test("unambiguousEventLocations: one Location for every non-cancelled date → that Location; otherwise none", () => {
+  const m = ER.unambiguousEventLocations([
+    { event_id: "tama", location_id: "duffy", status: "scheduled" },
+    { event_id: "multi", location_id: "a", status: "scheduled" },
+    { event_id: "multi", location_id: "b", status: "scheduled" },
+    { event_id: "gap", location_id: "a", status: "scheduled" },
+    { event_id: "gap", location_id: null, status: "scheduled" },
+    { event_id: "moved", location_id: "old", status: "cancelled" },
+    { event_id: "moved", location_id: "new", status: "scheduled" },
+    { event_id: "none", location_id: null, status: "scheduled" },
+  ]);
+  assert.equal(m.get("tama"), "duffy");
+  assert.equal(m.has("multi"), false, "dates in different places: never guessed");
+  assert.equal(m.has("gap"), false, "a date with no Location makes it ambiguous");
+  assert.equal(m.get("moved"), "new", "cancelled dates don't count");
+  assert.equal(m.has("none"), false);
+});
+
+test("hosted / Event-level participation rows take the Event's single Location (so the Business map can place them); ambiguous Events stay unplaced", () => {
+  const start = new Date(NOW + 3 * DAY).toISOString();
+  const end = new Date(NOW + 3 * DAY + 6 * H).toISOString();
+  const ev = (id) => ({ id, slug: id, name: id, cover_image_url: null, start_at: start, end_at: end, venue_name: "Duffy Square", address: "7th Avenue & West 47th Street", city: "New York", state: "NY", is_featured: false });
+  const duffy = { id: "duffy", name: "Duffy Square", slug: "duffy-square", is_demo: false, logo_url: null, cover_image_url: null };
+  const events = new Map([["tama", ev("tama")], ["spread", ev("spread")]]);
+  const rows = D.reconcileBusinessActivity({ businessId: "biz", rows: [], eventLinkIds: ["tama", "spread"], occurrences: [], events, eventLocations: new Map([["tama", duffy]]) });
+  const tama = rows.find((r) => r.event_id === "tama");
+  assert.equal(tama.location_id, "duffy");
+  assert.equal(tama.location.name, "Duffy Square");
+  assert.equal(rows.find((r) => r.event_id === "spread").location_id, null, "no single Location → unplaced, never guessed");
+  // An existing Event-level Appearance with no Location of its own, too.
+  const own = { ...row({ event: "tama", source: "manual", start: NOW + 3 * DAY }), location_id: null, location: null };
+  const r2 = D.reconcileBusinessActivity({ businessId: "biz", rows: [own], eventLinkIds: [], occurrences: [], events, eventLocations: new Map([["tama", duffy]]) });
+  assert.equal(r2[0].location_id, "duffy");
+});
+
+test("Findmi Here map: Pop-Ups are placed by real relationships only (own Location, date, Event's single Location); listed Locations only", () => {
+  const src = readFileSync("src/lib/geo-results-server.ts", "utf8");
+  assert.match(src, /locationsById\(\[\.\.\.placeOfItem\.values\(\)\]\)/, "discovery keeps the listed-Locations rule (no projection widened)");
+  assert.match(src, /!\(i as \{ location_hidden\?: boolean \}\)\.location_hidden/, "never re-placing a hidden-location Event's Pop-Up");
+  assert.match(src, /unambiguousEventLocations\(rows\)/);
+  assert.doesNotMatch(src.slice(src.indexOf("async function appearanceLocationIds"), src.indexOf("export async function appearanceResults")), /business\.(address|latitude|city)|headquarters/i, "never a Business address / headquarters");
+});
