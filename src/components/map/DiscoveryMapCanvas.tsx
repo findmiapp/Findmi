@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
 import MapFloatingPreview, { type MapPreview } from "./MapFloatingPreview";
-import { placePreview, previewPan, previewWidth, selectedLabelSide, selectedLabelWidth, selectionNeedsPan, type Insets } from "./selected-label";
+import { placePreview, previewMedia, previewPan, previewWidth, selectedLabelSide, selectedLabelWidth, selectionNeedsPan, type Insets } from "./selected-label";
 
 // Discovery Map renderer. Population rendering is entirely native MapLibre
 // layers on ONE clustered GeoJSON source (no React/DOM marker per result):
@@ -67,8 +67,7 @@ export interface CanvasProps {
 }
 
 const DEFAULT_PAD: Insets = { top: 24, bottom: 24, left: 24, right: 24 };
-/** A short visible map gets the shorter cover. */
-const COMPACT_MEDIA_BELOW = 380;
+
 
 /** How long the full credits stay open on a map that set
  * autoCollapseAttribution. */
@@ -599,7 +598,7 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
             side={at.side}
             caretX={at.caretX}
             cardRef={setCardEl}
-            compactMedia={view.h - pad.top - pad.bottom < COMPACT_MEDIA_BELOW}
+            media={previewMedia(view.h - pad.top - pad.bottom)}
             onClose={() => onSelect(null)}
             // Measured once before it's shown, so it never flashes in the wrong spot.
             style={{ left: at.left, top: at.top, width: w, visibility: cardH ? "visible" : "hidden" }}

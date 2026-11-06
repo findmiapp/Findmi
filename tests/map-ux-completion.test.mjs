@@ -266,14 +266,25 @@ test("floating preview placement: above the pin when it fits, else below; inside
   const [dx, dy] = L.previewPan({ x: 195, y: 700 }, card, view, pad);
   const after = L.placePreview({ x: 195 - dx, y: 700 - dy }, card, view, pad);
   assert.ok(after.fits && after.side === "above", "one pan makes it fit above its pin");
-  // A short visible map (small phone, two results at one place): no room
-  // above → the pin goes near the top with the card below it.
+  // A short visible map (small phone, two results at one place): the pan
+  // targets an exact fit above the pin, else the pin near the top with the
+  // card below it.
   const shortView = { w: 360, h: 684 };
   const shortPad = { top: 136, bottom: 200, left: 28, right: 28 };
   const tall = { w: 300, h: 294 };
   const [sx, sy] = L.previewPan({ x: 180, y: 310 }, tall, shortView, shortPad);
   const placed = L.placePreview({ x: 180 - sx, y: 310 - sy }, tall, shortView, shortPad);
-  assert.ok(placed.fits && placed.side === "below", "fits below its pin instead of covering it");
+  assert.ok(placed.fits, "one pan makes it fit whole beside its pin instead of covering it");
+  // Shorter covers on short visible maps (Search This Area showing, small
+  // phones) so the card still fits whole beside its pin.
+  assert.equal(L.previewMedia(500), "full");
+  assert.equal(L.previewMedia(340), "compact");
+  assert.equal(L.previewMedia(296), "tight");
+  // 360x740 with Search This Area showing: ~296px visible, tight card ~230px.
+  const staPad = { top: 180, bottom: 200, left: 28, right: 28 };
+  const tight = { w: 300, h: 230 };
+  const [tx, ty] = L.previewPan({ x: 180, y: 332 }, tight, shortView, staPad);
+  assert.ok(L.placePreview({ x: 180 - tx, y: 332 - ty }, tight, shortView, staPad).fits, "fits after the one corrective pan");
 });
 
 

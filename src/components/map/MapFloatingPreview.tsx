@@ -10,6 +10,8 @@ import SupabaseImage from "@/components/SupabaseImage";
 // words, the Findmi gradient + initial when there's no image). The WHOLE
 // card is one link to the result's public page; Close sits above it.
 
+export type PreviewMedia = "full" | "compact" | "tight";
+
 export interface MapPreview {
   /** The marker this preview belongs to (MapFeature.id). */
   featureId: string;
@@ -38,7 +40,7 @@ export default function MapFloatingPreview({
   style,
   onClose,
   cardRef,
-  compactMedia = false,
+  media = "full",
 }: {
   preview: MapPreview;
   side: "above" | "below";
@@ -46,8 +48,9 @@ export default function MapFloatingPreview({
   style: CSSProperties;
   onClose: () => void;
   cardRef?: Ref<HTMLDivElement>;
-  /** A short map: a shorter cover so the card still fits. */
-  compactMedia?: boolean;
+  /** Cover height for the visible map: "full", or shorter on short maps
+   * ("compact", "tight") so the card still fits beside its pin. */
+  media?: PreviewMedia;
 }) {
   const p = preview;
   const label = [p.kind, p.title].filter(Boolean).join(": ");
@@ -60,7 +63,7 @@ export default function MapFloatingPreview({
         className={`absolute h-3.5 w-3.5 rotate-45 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.05)] ${side === "above" ? "-bottom-[7px]" : "-top-[7px]"}`}
       />
       <article className="relative overflow-hidden rounded-2xl bg-white shadow-[0_14px_36px_rgba(0,0,0,0.22)] ring-1 ring-black/5 transition hover:ring-findmi/50">
-        <div className={`relative w-full overflow-hidden bg-black/5 ${compactMedia ? "h-20" : "h-[7.5rem]"}`}>
+        <div className={`relative w-full overflow-hidden bg-black/5 ${media === "tight" ? "h-14" : media === "compact" ? "h-20" : "h-[7.5rem]"}`}>
           {p.image ? (
             <SupabaseImage src={p.image} alt="" fill sizes="300px" className="object-cover" />
           ) : (

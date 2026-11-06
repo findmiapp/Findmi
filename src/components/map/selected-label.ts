@@ -47,6 +47,13 @@ const EDGE = 8;
 const CONTROLS_W = 52;
 const CONTROLS_H = 120;
 
+/** Cover height for a visible map this tall (between the top controls and
+ * the sheet): the full image-rich cover where there's room, shorter on
+ * short maps so the card still fits whole beside its pin. */
+export function previewMedia(visibleH: number): "full" | "compact" | "tight" {
+  return visibleH >= 380 ? "full" : visibleH >= 320 ? "compact" : "tight";
+}
+
 /** Card width for a map this wide: substantial on phones (300px at 360 /
  * 390 / 412), never wider than the map allows. */
 export function previewWidth(viewW: number): number {
@@ -102,8 +109,9 @@ export function previewPan(pin: { x: number; y: number }, card: { w: number; h: 
   const wantX = view.w / 2;
   // Card above the pin if the visible map is tall enough; otherwise the
   // pin near the top with the card below it; only then the middle.
-  const above = s.t + card.h + PREVIEW_PIN_GAP + 6;
+  // (2px slack; the pin itself needs ~18px to stay visible.)
+  const above = s.t + card.h + PREVIEW_PIN_GAP + 2;
   const below = s.t + 18;
-  const wantY = above <= s.b - 16 ? above : below + PREVIEW_PIN_GAP + card.h <= s.b ? below : (s.t + s.b) / 2;
+  const wantY = above <= s.b - 18 ? above : below + PREVIEW_PIN_GAP + card.h <= s.b ? below : (s.t + s.b) / 2;
   return [Math.round(pin.x - wantX), Math.round(pin.y - wantY)];
 }
