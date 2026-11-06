@@ -194,6 +194,8 @@ test("Brand detail Map = the SAME upcoming schedule: each date at its own Locati
   assert.deepEqual(geo.map((g) => g.key), ["app:a1", "app:a2"]);
   assert.equal(geo[1].live, true);
   assert.match(geo[1].href, /\/event\/art-walk\?occurrence=o4/);
+  assert.equal(geo[0].kind, "appearance", "a standalone date is a Pop-Up");
+  assert.equal(geo[1].kind, "event", "an Event-backed date (hosted / participating) is an Event");
   assert.equal(geo[0].title, "Seaport Pier 17", "markers name the place");
 
   const host = document.createElement("div");
@@ -287,4 +289,14 @@ test("geoPreview: one mapping for archive + contextual maps — lead result (LIV
   for (const src of [shell, ctx]) assert.match(src, /geoPreview\(selectedFeature, results\)/, "no second preview implementation");
   assert.match(ctx, /<GeoResultCard key=\{r\.key\} result=\{r\} compact onSelect=\{onResult\} viewLink=\{false\} \/>/, "no redundant View links on map result cards");
   assert.match(read("src/components/event/EventLocationFeature.tsx"), /directionsOnly \/>/, "the Event page's directions map is left as it is");
+});
+
+test("every public discovery map uses the listed-Location rule: Events map + Guide events skip unlisted / archived / trashed date Locations", () => {
+  const geo = read("src/lib/geo-results-server.ts");
+  const fn = geo.slice(geo.indexOf("function eventRowResults"), geo.indexOf("// ---------------------------------------------------------------- Places"));
+  assert.match(fn, /if \(!lr \|\| lr\.is_demo === true \|\| lr\.archived_at \|\| lr\.trashed_at\) continue;/);
+  assert.match(geo, /\(opts\.inContext \|\| r\.is_demo !== true\)/, "locationsById: listed only unless a Business's own map");
+  assert.match(read("src/lib/discovery/map-server.ts"), /const listedLocation = /, "/map");
+  // Listed without imagery still maps (unlinked): eligibility only decides the link.
+  assert.match(geo, /placeOf = \(l: Row \| null \| undefined\): GeoPlace \| null => \(l \? geoPlace\(l as Parameters<typeof geoPlace>\[0\], \{ linkable: isLocationDiscoverable/);
 });

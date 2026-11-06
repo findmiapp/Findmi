@@ -20,7 +20,7 @@ export function geoPreview(feature: MapFeature | null | undefined, results: read
   if (!lead) return null;
   // A schedule date names its Location as the title and what's on as the
   // subtitle; on a preview the thing itself leads, the place follows.
-  const scheduleDate = lead.kind === "appearance" && lead.subtitle && lead.title === lead.place.name;
+  const scheduleDate = (lead.kind === "appearance" || lead.kind === "event") && lead.subtitle && lead.title === lead.place.name;
   return {
     featureId: feature.id,
     href: lead.href || null,

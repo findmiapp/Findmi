@@ -62,7 +62,13 @@ type EventDiscoveryRow = Awaited<ReturnType<typeof getEventsDiscoveryRows>>[numb
 function eventRowResults(rows: readonly EventDiscoveryRow[]): GeoResult[] {
   const out: GeoResult[] = [];
   for (const r of rows) {
-    const place = placeOf(r.occurrenceLocation as unknown as Row);
+    // Discovery projection: listed Locations only — the same rule as
+    // locationsById (Findmi Here, Brands, Products) and /map. An unlisted
+    // (Needs Review), archived or trashed Location never draws a public
+    // Event date; the Event itself still lists without a marker.
+    const lr = r.occurrenceLocation as unknown as Row | null;
+    if (!lr || lr.is_demo === true || lr.archived_at || lr.trashed_at) continue;
+    const place = placeOf(lr);
     if (!place) continue;
     const live = isEventHappeningNow(r.effectiveStart, r.effectiveEnd);
     const when = r.occurrence ? formatWhen(r.occurrence) : (calendarDate(r.event) ?? "");
@@ -333,7 +339,9 @@ export async function scheduleResults(
     const when = formatWhen(dated(a as unknown as Row)) || null;
     out.push({
       key: `app:${a.id}`,
-      kind: "appearance",
+      // An Event-backed date (hosted or participating) is an Event; a
+      // standalone date is a Pop-Up — what the map preview calls it.
+      kind: a.event?.slug ? "event" : "appearance",
       title: place.name,
       subtitle: a.title && a.title !== business.name ? a.title : null,
       href: a.event?.slug ? eventHref(a.event.slug, a.event_occurrence_id ?? null) : (place.href ?? `/business/${business.slug}`),
