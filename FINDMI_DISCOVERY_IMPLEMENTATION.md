@@ -55,6 +55,28 @@ sheet stays an independent result list.
   - **Sheet / pins / controls:** re-verified in the browser at 360×640,
     360, 390, 412 and 1280.
 
+**Close-out (2026-11-06): implemented**:
+- **Homepage Explore Map:** a Findmi Aqua pill directly under the
+  full-width Search, linking to `/map`. It's full width on phones and a
+  compact pill from `sm`. No embedded map, and Search is untouched.
+  The Oct 28 black "MAP" pill that squeezed the Search row stays rejected
+  (`DESIGN-SYSTEM.md` updated).
+- **Floating preview:**
+  - 270px wide, with a 150px cover where the visible map allows. Shorter
+    covers on short maps keep it inside the usable viewport.
+  - Metadata on one line (when · where).
+  - Immediate press feedback and a small "Opening…" indicator while
+    navigating. It clears on a new preview, on timeout and on bfcache
+    return; new-tab clicks are ignored.
+  - Applies to `/map` and every archive map (shared canvas).
+- **Back navigation:** the `/map` filter loss is fixed (Batch 2,
+  `9067262`), and the final homepage → map → detail → Back flow passes
+  in the browser.
+
+**Workstream status:** closed. Remaining items are founder actions (the nav
+row below, attaching Locations to two upcoming Events) and live checks on
+production tiles and data.
+
 **Navigation (founder decision, not applied):** add a top-level **Map**
 row in Admin → Site → Navigation:
 

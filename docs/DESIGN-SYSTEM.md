@@ -49,4 +49,4 @@ component's current classes.
 | Flower icon for manager navigation | Rejected. Performance uses a chart icon |
 | Chip-rail-only swipe for Moments | Doesn't satisfy board swipe |
 | Standalone Needs Attention row/nav | It's a badge inside Inbox / Follow-Ups |
-| Homepage Map button next to Search | Experiment cancelled (`1c34590`) |
+| Homepage Map button squeezed into the Search row (black "MAP" pill) | Experiment cancelled (`1c34590`). The approved entry is **Explore Map**: a Findmi Aqua pill under the full-width Search, linking to `/map` (no embedded map) |

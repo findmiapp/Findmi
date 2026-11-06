@@ -240,8 +240,9 @@ test("floating preview placement: above the pin when it fits, else below; inside
   const view = { w: 390, h: 788 };
   const pad = { top: 140, bottom: 170, left: 28, right: 28 };
   const card = { w: L.previewWidth(390), h: 230 };
-  assert.equal(card.w, 300, "substantial on phones");
-  for (const w of [360, 390, 412]) assert.ok(L.previewWidth(w) <= w - 16 && L.previewWidth(w) >= 280, `${w}px`);
+  assert.equal(card.w, 270, "~270px on phones");
+  for (const w of [360, 390, 412, 1280]) assert.equal(L.previewWidth(w), 270, `${w}px`);
+  assert.ok(L.previewWidth(240) <= 240 - 16, "never wider than a narrow map allows");
   const mid = L.placePreview({ x: 195, y: 500 }, card, view, pad);
   assert.equal(mid.side, "above");
   assert.ok(mid.fits && mid.visible);
@@ -277,7 +278,8 @@ test("floating preview placement: above the pin when it fits, else below; inside
   assert.ok(placed.fits, "one pan makes it fit whole beside its pin instead of covering it");
   // Shorter covers on short visible maps (Search This Area showing, small
   // phones) so the card still fits whole beside its pin.
-  assert.equal(L.previewMedia(500), "full");
+  assert.equal(L.previewMedia(500), "full", "the tall ~150px cover where there's room");
+  assert.equal(L.previewMedia(400), "compact");
   assert.equal(L.previewMedia(340), "compact");
   assert.equal(L.previewMedia(296), "tight");
   // 360x740 with Search This Area showing: ~296px visible, tight card ~230px.
@@ -438,6 +440,19 @@ test("floating preview card: cover or Findmi fallback, type + title + context, O
   assert.ok(card.querySelector(".from-findmi-700.to-ink"), "no image → the Findmi gradient fallback");
   for (const t of ["Event", "Starts 3 PM", "Sat, Nov 7 · 3–9 PM", "Chelsea Piers", "+2 more here", preview.title]) assert.ok(card.textContent.includes(t), t);
   assert.ok(card.querySelector(".line-clamp-3"), "full, readable title (wraps up to three lines)");
+  assert.ok(card.querySelector(".h-\\[150px\\]"), "the tall ~150px cover by default");
+  assert.ok(card.textContent.includes("Sat, Nov 7 · 3–9 PM · Chelsea Piers"), "compact metadata: when · where on one line");
+  // Tap feedback: pressed at once, then a small pending indicator.
+  assert.ok(card.querySelector("article").className.includes("active:scale-[0.98]"), "immediate press feedback");
+  assert.equal(card.querySelector('[role="status"]'), null);
+  await act(async () => links[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })));
+  assert.equal(card.getAttribute("data-pending"), "true");
+  assert.match(card.querySelector('[role="status"]').textContent, /Opening…/, "pending-navigation indicator");
+  assert.ok(card.querySelector("article").className.includes("ring-findmi"));
+  await act(async () => dom.window.dispatchEvent(new dom.window.Event("pageshow")));
+  assert.equal(card.querySelector('[role="status"]'), null, "cleared when the page comes back (back/forward cache)");
+  await act(async () => links[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0, metaKey: true })));
+  assert.equal(card.querySelector('[role="status"]'), null, "a new-tab click leaves the card as it is");
   const close = card.querySelector('button[aria-label="Close map preview"]');
   assert.ok(close.className.includes("z-10"), "Close sits above the card link");
   await act(async () => close.click());

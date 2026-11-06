@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { CSSProperties, Ref } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent, type Ref } from "react";
 import SupabaseImage from "@/components/SupabaseImage";
 
 // The selected result's floating preview — anchored to its marker on the
@@ -54,18 +54,42 @@ export default function MapFloatingPreview({
 }) {
   const p = preview;
   const label = [p.kind, p.title].filter(Boolean).join(": ");
+  // Tap feedback: the card presses in at once and shows "Opening…" until
+  // the destination takes over. Cleared for a new preview, after a few
+  // seconds (navigation canceled) and when the page comes back from the
+  // back/forward cache.
+  const [pending, setPending] = useState(false);
+  useEffect(() => setPending(false), [p.featureId, p.href]);
+  useEffect(() => {
+    if (!pending) return;
+    const t = setTimeout(() => setPending(false), 8000);
+    const onShow = () => setPending(false);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("pageshow", onShow);
+    };
+  }, [pending]);
+  const onOpen = (e: MouseEvent<HTMLAnchorElement>) => {
+    // A new-tab / modified click leaves this page as it is.
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    setPending(true);
+  };
+  const meta = [p.detail, p.subtitle].filter(Boolean).join(" · ");
   return (
-    <div ref={cardRef} data-map-preview={p.featureId} style={style} className="pointer-events-auto absolute z-20">
+    <div ref={cardRef} data-map-preview={p.featureId} data-pending={pending ? "true" : undefined} style={style} className="pointer-events-auto absolute z-20">
       {/* caret pointing at the pin */}
       <span
         aria-hidden
         style={{ left: caretX - 7 }}
         className={`absolute h-3.5 w-3.5 rotate-45 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.05)] ${side === "above" ? "-bottom-[7px]" : "-top-[7px]"}`}
       />
-      <article className="relative overflow-hidden rounded-2xl bg-white shadow-[0_14px_36px_rgba(0,0,0,0.22)] ring-1 ring-black/5 transition hover:ring-findmi/50">
-        <div className={`relative w-full overflow-hidden bg-black/5 ${media === "tight" ? "h-14" : media === "compact" ? "h-20" : "h-[7.5rem]"}`}>
+      <article
+        className={`relative overflow-hidden rounded-2xl bg-white shadow-[0_14px_36px_rgba(0,0,0,0.22)] ring-1 transition duration-150 active:scale-[0.98] ${pending ? "scale-[0.98] ring-2 ring-findmi" : "ring-black/5 hover:ring-findmi/50"}`}
+      >
+        <div className={`relative w-full overflow-hidden bg-black/5 ${media === "tight" ? "h-16" : media === "compact" ? "h-24" : "h-[150px]"}`}>
           {p.image ? (
-            <SupabaseImage src={p.image} alt="" fill sizes="300px" className="object-cover" />
+            <SupabaseImage src={p.image} alt="" fill sizes="270px" className="object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-findmi-700 to-ink">
               {p.logo ? (
@@ -89,21 +113,26 @@ export default function MapFloatingPreview({
               {p.status && p.status !== "LIVE" && <span className="font-semibold normal-case tracking-normal">· {p.status}</span>}
             </span>
           )}
+          {pending && (
+            <span role="status" className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-findmi-700 shadow-sm">
+              <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-findmi/30 border-t-findmi motion-reduce:animate-none" />
+              Opening…
+            </span>
+          )}
         </div>
-        <div className="flex flex-col gap-1 p-3 pr-3.5">
+        <div className="flex flex-col gap-0.5 px-3 pb-2.5 pt-2">
           <div className="flex min-w-0 items-center gap-1.5">
             {p.kind && <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-findmi-700">{p.kind}</span>}
             {!p.live && p.status && <span className="truncate rounded-full bg-findmi-50 px-2 py-0.5 text-[10px] font-bold text-findmi-700">{p.status}</span>}
           </div>
           {p.href ? (
-            <Link href={p.href} aria-label={label} className="min-w-0 after:absolute after:inset-0 after:rounded-2xl focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-findmi">
-              <span className="line-clamp-3 break-words font-display text-base font-bold leading-snug text-ink">{p.title}</span>
+            <Link href={p.href} aria-label={label} onClick={onOpen} className="min-w-0 after:absolute after:inset-0 after:rounded-2xl focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-findmi">
+              <span className="line-clamp-3 break-words font-display text-[15px] font-bold leading-snug text-ink">{p.title}</span>
             </Link>
           ) : (
-            <span className="line-clamp-3 break-words font-display text-base font-bold leading-snug text-ink">{p.title}</span>
+            <span className="line-clamp-3 break-words font-display text-[15px] font-bold leading-snug text-ink">{p.title}</span>
           )}
-          {p.detail && <p className="truncate text-xs font-semibold text-ink/65">{p.detail}</p>}
-          {p.subtitle && <p className="truncate text-xs text-ink/55">{p.subtitle}</p>}
+          {meta && <p className="truncate text-xs text-ink/60">{meta}</p>}
           {p.more > 0 && <p className="text-[11px] font-semibold text-findmi-700">+{p.more} more here</p>}
         </div>
         <button

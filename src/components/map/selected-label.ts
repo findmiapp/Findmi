@@ -51,13 +51,13 @@ const CONTROLS_H = 120;
  * the sheet): the full image-rich cover where there's room, shorter on
  * short maps so the card still fits whole beside its pin. */
 export function previewMedia(visibleH: number): "full" | "compact" | "tight" {
-  return visibleH >= 380 ? "full" : visibleH >= 320 ? "compact" : "tight";
+  return visibleH >= 420 ? "full" : visibleH >= 340 ? "compact" : "tight";
 }
 
-/** Card width for a map this wide: substantial on phones (300px at 360 /
- * 390 / 412), never wider than the map allows. */
+/** Card width for a map this wide: ~270px at 360 / 390 / 412 and on
+ * desktop, never wider than the map allows. */
 export function previewWidth(viewW: number): number {
-  return Math.max(200, Math.min(300, Math.floor(viewW - 2 * EDGE - 16)));
+  return Math.max(200, Math.min(270, Math.floor(viewW - 2 * EDGE - 16)));
 }
 
 /** The part of the map a preview may occupy: full width minus a small

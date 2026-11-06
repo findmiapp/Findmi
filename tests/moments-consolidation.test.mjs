@@ -45,6 +45,22 @@ test("homepage: the abandoned Map button stays gone; the Search row is the pre-e
   assert.match(HOME, /<div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search anything you're into…" \/>\s*<\/div>/);
 });
 
+test("homepage: Explore Map (approved) — one plain link to /map right under the full-width Search, Findmi Aqua tokens, no embedded map", () => {
+  const search = HOME.indexOf('<SearchBar marketSlug={marketSlug} placeholder="Search anything you\'re into…" />');
+  const explore = HOME.indexOf("data-home-explore-map");
+  assert.ok(search > 0 && explore > search, "directly after the Search row");
+  assert.ok(explore - search < 1200, "right under it — before the Bulletin");
+  assert.ok(explore < HOME.indexOf("HomepageBulletinCarousel", search));
+  const link = HOME.slice(HOME.lastIndexOf("<Link", explore), HOME.indexOf("</Link>", explore));
+  assert.match(link, /href="\/map"/);
+  assert.match(link, /bg-findmi-50/);
+  assert.match(link, /text-findmi-700/);
+  assert.match(link, />\s*Explore Map\s*</);
+  assert.match(link, /w-full[^"]*sm:w-auto/, "full width (easy to reach) on phones");
+  assert.equal((HOME.match(/href="\/map"/g) ?? []).length, 1, "one homepage Map entry, no duplicate control");
+  assert.doesNotMatch(HOME, /DiscoveryMapCanvas|MapExplorer|maplibre/, "no map embedded on the homepage");
+});
+
 // ── /moments ────────────────────────────────────────────────────────────────
 
 test("/moments: URL state — mode, its category and Feed/Map are deep-linkable; defaults omitted", () => {
