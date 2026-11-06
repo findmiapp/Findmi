@@ -498,6 +498,12 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     };
     if (floating) {
       if (isNew) {
+        // Fold the map credits to their ⓘ while a preview is open — MapLibre's
+        // own toggle (what its first drag does; never hidden, one tap away) —
+        // so the card has room beside its pin instead of yielding to a
+        // ~300px credits strip.
+        const open = container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show .maplibregl-ctrl-attrib-button");
+        open?.click();
         pendingFit.current = true;
         // A marker tap moves nothing: check the fit once the card is drawn.
         requestAnimationFrame(() => tryFit());

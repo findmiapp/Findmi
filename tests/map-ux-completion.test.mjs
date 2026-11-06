@@ -468,6 +468,7 @@ test("floating preview card: cover or Findmi fallback, type + title + context, O
   assert.equal(card.querySelector('[role="status"]'), null, "a new-tab click leaves the card as it is");
   const close = card.querySelector('button[aria-label="Close map preview"]');
   assert.ok(close.className.includes("z-10"), "Close sits above the card link");
+  assert.ok(card.className.includes("z-[5]"), "the card stacks below the results sheet (z-10) and Search This Area (z-30)");
   await act(async () => close.click());
   assert.equal(closed, 1);
   root.unmount();

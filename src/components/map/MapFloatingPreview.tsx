@@ -9,6 +9,9 @@ import SupabaseImage from "@/components/SupabaseImage";
 // Same card language as the result cards (white, rounded-2xl, LIVE in
 // words, the Findmi gradient + initial when there's no image). The WHOLE
 // card is one link to the result's public page; Close sits above it.
+// Stacking: above the map and its controls (z-2), always BELOW the results
+// sheet (z-10) and Search This Area (z-30), so an expanded sheet is never
+// covered and never loses a tap to the card.
 
 export type PreviewMedia = "full" | "compact" | "tight";
 
@@ -77,7 +80,7 @@ export default function MapFloatingPreview({
   };
   const meta = [p.detail, p.subtitle].filter(Boolean).join(" · ");
   return (
-    <div ref={cardRef} data-map-preview={p.featureId} data-pending={pending ? "true" : undefined} style={style} className="pointer-events-auto absolute z-20">
+    <div ref={cardRef} data-map-preview={p.featureId} data-pending={pending ? "true" : undefined} style={style} className="pointer-events-auto absolute z-[5]">
       {/* caret pointing at the pin */}
       <span
         aria-hidden
