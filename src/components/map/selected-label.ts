@@ -78,7 +78,17 @@ export interface PreviewPlacement {
   fits: boolean;
 }
 
-export function placePreview(pin: { x: number; y: number }, card: { w: number; h: number }, view: { w: number; h: number }, pad: Insets): PreviewPlacement {
+export interface ControlsRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** `controls`: the measured bottom-right control stack (zoom + map credits,
+ * whatever width the credits currently have); without it, a typical
+ * zoom-control footprint just above the bottom padding is assumed. */
+export function placePreview(pin: { x: number; y: number }, card: { w: number; h: number }, view: { w: number; h: number }, pad: Insets, controls?: ControlsRect | null): PreviewPlacement {
   const s = previewSafeArea(view, pad);
   // Hidden only when its pin is off the map or clearly under the bottom
   // sheet (24px grace: bottom padding isn't always a covering sheet — on
@@ -93,20 +103,34 @@ export function placePreview(pin: { x: number; y: number }, card: { w: number; h
   let top = side === "above" ? aboveTop : belowTop;
   top = Math.max(s.t, Math.min(top, s.b - card.h));
   let left = Math.max(s.l, Math.min(pin.x - card.w / 2, s.r - card.w));
-  // Step left of the zoom control / credits when the card would cover them.
-  const controlsTop = view.h - pad.bottom - CONTROLS_H;
-  if (left + card.w > view.w - CONTROLS_W && top + card.h > controlsTop) left = Math.max(s.l, view.w - CONTROLS_W - 4 - card.w);
+  // Never over the zoom control / map credits: step left of them, else
+  // above them (then it may not fit beside its pin → the corrective pan).
+  const c: ControlsRect = controls ?? { x: view.w - CONTROLS_W, y: view.h - pad.bottom - CONTROLS_H, w: CONTROLS_W, h: CONTROLS_H };
+  const hits = (l: number, t: number) => l < c.x + c.w && l + card.w > c.x && t < c.y + c.h && t + card.h > c.y;
+  let clearOfControls = true;
+  if (hits(left, top)) {
+    const stepLeft = c.x - 4 - card.w;
+    if (stepLeft >= s.l) left = stepLeft;
+    else if (!controls) left = Math.max(s.l, stepLeft); // assumed footprint: as close as the edge allows
+    else {
+      top = Math.max(s.t, c.y - 4 - card.h);
+      clearOfControls = !hits(left, top);
+    }
+  }
   const caretX = Math.max(18, Math.min(card.w - 18, pin.x - left));
-  const fits = visible && (side === "above" ? fitsAbove : fitsBelow) && pin.x - left >= 12 && left + card.w - pin.x >= 12;
+  const coversPin = pin.y >= top - 4 && pin.y <= top + card.h + 4 && pin.x >= left && pin.x <= left + card.w;
+  const fits = visible && clearOfControls && !coversPin && (side === "above" ? fitsAbove : fitsBelow) && pin.x - left >= 12 && left + card.w - pin.x >= 12;
   return { left: Math.round(left), top: Math.round(top), side, caretX: Math.round(caretX), visible, fits };
 }
 
 /** When a new selection's preview doesn't fit, the one corrective pan
  * (`map.panBy` offset): the pin moves to the horizontal middle, low enough
  * for the card to sit above it (or to the middle of a short map). */
-export function previewPan(pin: { x: number; y: number }, card: { w: number; h: number }, view: { w: number; h: number }, pad: Insets): [number, number] {
-  const s = previewSafeArea(view, pad);
+export function previewPan(pin: { x: number; y: number }, card: { w: number; h: number }, view: { w: number; h: number }, pad: Insets, controls?: ControlsRect | null): [number, number] {
+  const s = { ...previewSafeArea(view, pad) };
   const wantX = view.w / 2;
+  // A centered card that would reach the control stack ends above it.
+  if (controls && wantX + card.w / 2 > controls.x) s.b = Math.min(s.b, controls.y - 4);
   // Card above the pin if the visible map is tall enough; otherwise the
   // pin near the top with the card below it; only then the middle.
   // (2px slack; the pin itself needs ~18px to stay visible.)

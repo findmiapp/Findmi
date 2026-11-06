@@ -261,6 +261,19 @@ test("floating preview placement: above the pin when it fits, else below; inside
   // A pin just under the top controls keeps its card, below it and inside.
   const top = L.placePreview({ x: 195, y: 120 }, card, view, pad);
   assert.ok(top.visible && top.side === "below" && top.top >= pad.top, "near the top: card below, clear of the controls");
+  // The measured control stack (zoom + expanded map credits ~300px wide,
+  // just above the sheet): the card never covers it.
+  const credits = { x: 52, y: 788 - 170 - 64, w: 330, h: 60 };
+  const nearCredits = L.placePreview({ x: 195, y: 330 }, card, view, pad, credits);
+  const over = (c, r) => c.left < r.x + r.w && c.left + card.w > r.x && c.top < r.y + r.h && c.top + card.h > r.y;
+  assert.ok(!over(nearCredits, credits), "clear of the expanded credits");
+  const below = L.placePreview({ x: 195, y: 250 }, card, view, pad, credits);
+  assert.ok(!over(below, credits), "a card below its pin stops above the credits");
+  if (!below.fits) {
+    const [px, py] = L.previewPan({ x: 195, y: 250 }, card, view, pad, credits);
+    const again = L.placePreview({ x: 195 - px, y: 250 - py }, card, view, pad, credits);
+    assert.ok(!over(again, credits), "and the corrective pan keeps it clear");
+  }
   // A pin under the sheet: hidden until the corrective pan brings it up.
   const under = L.placePreview({ x: 195, y: 700 }, card, view, pad);
   assert.equal(under.visible, false);

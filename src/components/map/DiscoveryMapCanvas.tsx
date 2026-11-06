@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Bbox, MapFeature } from "@/lib/discovery/map-core";
 import { MAP_LABEL_FONT, MAP_LABEL_FONT_BOLD, MAP_STYLE_URL } from "@/lib/map-config";
 import MapFloatingPreview, { type MapPreview } from "./MapFloatingPreview";
-import { placePreview, previewMedia, previewPan, previewWidth, selectedLabelSide, selectedLabelWidth, selectionNeedsPan, type Insets } from "./selected-label";
+import { placePreview, previewMedia, previewPan, previewWidth, selectedLabelSide, selectedLabelWidth, selectionNeedsPan, type ControlsRect, type Insets } from "./selected-label";
 
 // Discovery Map renderer. Population rendering is entirely native MapLibre
 // layers on ONE clustered GeoJSON source (no React/DOM marker per result):
@@ -196,7 +196,17 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
   // ---- floating preview state: where the selected pin is on screen, the
   // card's measured size, and one pending "make it fit" pan per selection.
   const floatingId = preview?.featureId ?? null;
-  const [anchor, setAnchor] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ id: string; x: number; y: number; w: number; h: number; controls: ControlsRect | null } | null>(null);
+  /** The bottom-right control stack (zoom + map credits) as it is now, in
+   * map coordinates; null while it's hidden. */
+  const controlsRect = useCallback((): ControlsRect | null => {
+    const root = container.current;
+    const el = root?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+    if (!root || !el) return null;
+    const r = el.getBoundingClientRect();
+    const o = root.getBoundingClientRect();
+    return r.width && r.height ? { x: r.left - o.left, y: r.top - o.top, w: r.width, h: r.height } : null;
+  }, []);
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null);
   const [cardH, setCardH] = useState(0);
   const cardSize = useRef<{ w: number; h: number } | null>(null);
@@ -477,12 +487,13 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     map.on("moveend", place);
     // The floating card follows its pin on every camera frame.
     let raf = 0;
+    let controlsRo: ResizeObserver | null = null;
     const track = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const c = map.getContainer();
         const pt = map.project([f.lng, f.lat]);
-        setAnchor({ id: f.id, x: pt.x, y: pt.y, w: c.clientWidth, h: c.clientHeight });
+        setAnchor({ id: f.id, x: pt.x, y: pt.y, w: c.clientWidth, h: c.clientHeight, controls: controlsRect() });
       });
     };
     if (floating) {
@@ -495,6 +506,13 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
       map.on("move", track);
       map.on("resize", track);
       map.on("moveend", tryFit);
+      // The credits fold / unfold (and the stack lifts with the sheet)
+      // without a camera move: re-place the card then too.
+      const stack = container.current?.querySelector(".maplibregl-ctrl-bottom-right");
+      if (stack && typeof ResizeObserver !== "undefined") {
+        controlsRo = new ResizeObserver(() => track());
+        controlsRo.observe(stack);
+      }
     }
     if (keepSelectionInView && isNew && !floating) {
       const c = map.getContainer();
@@ -507,6 +525,7 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
       map.off("move", track);
       map.off("resize", track);
       map.off("moveend", tryFit);
+      controlsRo?.disconnect();
       cancelAnimationFrame(raf);
     };
     // tryFit is stable (refs only).
@@ -526,8 +545,9 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
     const pt = map.project([f.lng, f.lat]);
     const view = { w: c.clientWidth, h: c.clientHeight };
     const pad = paddingRef.current ?? DEFAULT_PAD;
-    if (!placePreview(pt, size, view, pad).fits) map.panBy(previewPan(pt, size, view, pad), { duration: prefersReducedMotion() ? 0 : 400 });
-  }, []);
+    const controls = controlsRect();
+    if (!placePreview(pt, size, view, pad, controls).fits) map.panBy(previewPan(pt, size, view, pad, controls), { duration: prefersReducedMotion() ? 0 : 400 });
+  }, [controlsRect]);
   // The card's real size (cover image, wrapped title) drives placement.
   useEffect(() => {
     if (!cardEl) return;
@@ -590,7 +610,7 @@ export default function DiscoveryMapCanvas({ features, selectedId, onSelect, onV
         const pad = padding ?? DEFAULT_PAD;
         const view = { w: anchor.w, h: anchor.h };
         const w = previewWidth(view.w);
-        const at = placePreview(anchor, { w, h: cardH || 240 }, view, pad);
+        const at = placePreview(anchor, { w, h: cardH || 240 }, view, pad, anchor.controls);
         if (!at.visible) return null;
         return (
           <MapFloatingPreview
