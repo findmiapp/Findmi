@@ -232,26 +232,23 @@ export default async function HomePage({
           Wrapper padding reuses the exact value the Bulletin block used
           in this same "right after Hero" slot below, rather than
           inventing a new one. */}
-      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-        <SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />
-      </div>
-
-      {/* Explore Map — the homepage's one direct way into /map: a compact
-          chip tucked right under Search, part of the same search/discovery
-          group (not a second full-width block). Search stays full width and
-          untouched (the canceled Oct 28 experiment squeezed a black "MAP"
-          pill into the Search row). Findmi Aqua pale tint + text-findmi-700,
-          ≥40px tap target, a plain link — no embedded map, modal or
-          geolocation. */}
-      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
+      {/* Discovery toolbar: [ Search ……… ] [ Explore Map ] on ONE row at
+          every width. Search is the primary control (takes the remaining
+          space; its placeholder ellipsizes); Explore Map is a slim, neutral
+          secondary link to /map (#F3F3F3 / #D4D4D4 / #333333 — no Aqua),
+          vertically centered beside it, never wrapping. Not the canceled
+          Oct 28 pattern (a heavy black "MAP" pill taking 23% of the row). */}
+      <div data-home-search-toolbar className="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-4 min-[360px]:gap-2 sm:px-6">
+        <div className="min-w-0 flex-1">
+          <SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />
+        </div>
         <Link
           href="/map"
           data-home-explore-map
-          className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-findmi/25 bg-findmi-50 px-3.5 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 active:scale-[0.98]"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#D4D4D4] bg-[#F3F3F3] px-2.5 text-sm font-semibold text-[#333333] transition hover:border-[#C4C4C4] hover:bg-[#EAEAEA] active:scale-[0.98] active:bg-[#E2E2E2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#333333]/35 focus-visible:ring-offset-2 min-[360px]:px-3"
         >
           <NavIcon name="pin" className="h-4 w-4 shrink-0" />
           Explore Map
-          <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
       </div>
 

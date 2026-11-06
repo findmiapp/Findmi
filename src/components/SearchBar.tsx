@@ -111,7 +111,7 @@ export default function SearchBar({
     <div ref={containerRef} className="relative w-full">
       <form
         onSubmit={handleSubmit}
-        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-4 pr-1 shadow-sm transition focus-within:border-ink/25"
+        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-3.5 pr-1 shadow-sm transition focus-within:border-ink/25 min-[360px]:pl-4"
       >
         <input autoCapitalize="none"
           value={q}
@@ -129,7 +129,7 @@ export default function SearchBar({
           aria-controls="homepage-search-results"
           aria-autocomplete="list"
           placeholder={placeholder}
-          className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
+          className="min-w-0 flex-1 text-ellipsis bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
         />
         <button
           type="submit"

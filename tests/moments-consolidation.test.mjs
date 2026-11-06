@@ -39,26 +39,26 @@ test("homepage: heading actions — View All → /moments, My Journal → /journ
   assert.equal(F.MY_JOURNAL_HREF, "/journal");
 });
 
-test("homepage: the abandoned Map button stays gone; the Search row is the pre-experiment markup", () => {
+test("homepage: the abandoned black Map pill stays gone; Search is the full-flex primary control of the toolbar", () => {
   assert.ok(!existsSync("src/components/HomeMapButton.tsx"));
-  assert.doesNotMatch(HOME, /HomeMapButton|bg-\[#000000\]/);
-  assert.match(HOME, /<div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search brands, events, places & more…" \/>\s*<\/div>/);
+  assert.doesNotMatch(HOME, /HomeMapButton|bg-\[#000000\]|w-\[23%\]/);
+  assert.match(HOME, /<div data-home-search-toolbar className="mx-auto flex max-w-6xl items-center gap-1\.5 px-4 pt-4 min-\[360px\]:gap-2 sm:px-6">\s*<div className="min-w-0 flex-1">\s*<SearchBar marketSlug=\{marketSlug\} placeholder="Search brands, events, places & more…" \/>\s*<\/div>/, "Search takes the remaining width");
 });
 
-test("homepage: Explore Map (approved) — one plain link to /map right under the full-width Search, Findmi Aqua tokens, no embedded map", () => {
-  const search = HOME.indexOf('<SearchBar marketSlug={marketSlug} placeholder="Search brands, events, places & more…" />');
-  const explore = HOME.indexOf("data-home-explore-map");
-  assert.ok(search > 0 && explore > search, "directly after the Search row");
-  assert.ok(explore - search < 1200, "right under it — before the Bulletin");
-  assert.ok(explore < HOME.indexOf("HomepageBulletinCarousel", search));
-  const link = HOME.slice(HOME.lastIndexOf("<Link", explore), HOME.indexOf("</Link>", explore));
+test("homepage: Explore Map sits beside Search on one row — slim neutral gray, pin icon, full label, /map, no Aqua, no embedded map", () => {
+  const toolbar = HOME.slice(HOME.indexOf("data-home-search-toolbar"), HOME.indexOf("</Link>", HOME.indexOf("data-home-explore-map")));
+  const link = toolbar.slice(toolbar.lastIndexOf("<Link"));
+  assert.ok(toolbar.indexOf("<SearchBar") < toolbar.indexOf("data-home-explore-map"), "to the right of Search, same row");
   assert.match(link, /href="\/map"/);
-  assert.match(link, /bg-findmi-50/);
-  assert.match(link, /text-findmi-700/);
-  assert.match(link, />\s*Explore Map\s*</);
-  assert.match(link, /inline-flex min-h-10 /, "a compact chip (≥40px tap target), not a second full-width block");
-  assert.doesNotMatch(link, /w-full/, "never full width");
-  assert.equal((HOME.match(/href="\/map"/g) ?? []).length, 1, "one homepage Map entry, no duplicate control");
+  assert.match(link, /bg-\[#F3F3F3\]/);
+  assert.match(link, /border-\[#D4D4D4\]/);
+  assert.match(link, /text-\[#333333\]/);
+  assert.match(link, /whitespace-nowrap/, "the label never wraps");
+  assert.match(link, /h-10 shrink-0/, "slim, never shrinks away");
+  assert.match(link, /<NavIcon name="pin"/);
+  assert.match(link, />\s*Explore Map\s*$/);
+  assert.doesNotMatch(link, /findmi/, "no Aqua on this button");
+  assert.equal((HOME.match(/href="\/map"/g) ?? []).length, 1, "one homepage Map entry");
   assert.doesNotMatch(HOME, /DiscoveryMapCanvas|MapExplorer|maplibre/, "no map embedded on the homepage");
 });
 

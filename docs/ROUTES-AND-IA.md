@@ -7,7 +7,7 @@ from the route tree instead of trusting this list blindly.
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Home. Approved render order (guarded by `tests/homepage-section-order.test.mjs`): Weather · Hero · Search (with the Explore Map action to `/map` under it) · Bulletin · Start Here doorway · Primary Discovery · What's Happening · Brands We Love · Moments · Featured Locations · Explore More Discovery · Business Showcase · remaining founder rows · Closing CTA |
+| `/` | Home. Approved render order (guarded by `tests/homepage-section-order.test.mjs`): Weather · Hero · Search toolbar (Search + Explore Map to `/map` on one row) · Bulletin · Start Here doorway · Primary Discovery · What's Happening · Brands We Love · Moments · Featured Locations · Explore More Discovery · Business Showcase · remaining founder rows · Closing CTA |
 | `/discover` | Broader discovery (Discovery Engine) |
 | `/explore/[market]/[area]` | Geographic discovery |
 | `/find` | Findmi Here feed (appearances, now / today / weekend / anytime) |
