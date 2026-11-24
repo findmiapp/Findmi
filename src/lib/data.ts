@@ -4,7 +4,7 @@ import { connectedEventIds, participantsExcludingHost } from "./event-roles";
 import { isCheckoutSupportedMethod } from "./commerce/fulfillment-support";
 import { applyMarketplaceProductFilter, isMarketplaceBusinessEligible } from "./commerce/marketplace-eligibility";
 import { annotateMarketplaceEligibility, filterMarketplaceEligible } from "./commerce/marketplace-readiness-server";
-import { applyCatalogProductFilter, isCatalogBusinessPublic } from "./product-catalog";
+import { applyCatalogProductFilter, isCatalogBusinessPublic, isCatalogVisible } from "./product-catalog";
 import { buildVisibleAreaTree } from "./area-visibility";
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
@@ -1378,7 +1378,7 @@ export async function getBusinessGalleryImagesMap(businessIds: string[]): Promis
 // explicitly keeps visible regardless of marketplace distribution choice
 // (catalog_only + live + active is public here). Only the broader
 // discovery surfaces above (getMarketplaceProducts, getFeaturedProducts,
-// getHomepageRowProducts, getProductsByIds, getEventProducts) require
+// getHomepageRowProducts, getProductsByIds) require
 // marketplace_status='approved'.
 export async function getProductsForBusiness(businessId: string): Promise<Product[]> {
   const supabase = getSupabase();
@@ -4278,14 +4278,17 @@ export async function getEventProducts(eventId: string): Promise<MarketplaceProd
     })
     .filter(
       (item): item is Product & { business: JoinedBusiness } =>
-        Boolean(item) &&
-        item!.is_active &&
-        // Event product carousels are a cross-business discovery surface,
-        // not the owning business's own catalog view.
-        item!.marketplace_status === "approved" &&
-        Boolean(item!.business) &&
-        !item!.business.is_demo &&
-        item!.business.publication_status === "live"
+        // Editorial Product Discovery (2026-11-24): an event_products row is
+        // a curated, permission-checked relationship (Admin or the Event's
+        // managers), so the Event page shows the Product when it passes the
+        // CATALOG rule (lib/product-catalog.ts: active, content-approved,
+        // not archived/trashed, Business live and real). Marketplace
+        // approval is NOT required to be shown here — it still gates
+        // selling: annotateMarketplaceEligibility below decides whether a
+        // card gets commerce UI, and getMarketplaceProducts /
+        // getFeaturedProducts / homepage rows keep requiring
+        // marketplace_status='approved'.
+        Boolean(item) && isCatalogVisible(item!, item!.business)
     );
   // Cards here show commerce UI only when the canonical rule says so.
   return (await annotateMarketplaceEligibility(supabase, eventRows, (r) => r.business)).map(
